@@ -1,0 +1,44 @@
+#!/usr/bin/env bash
+# Run the platform's own test-suites, each in its own process: core alone (no
+# client loaded), then each client of scripts/client-systems with core: the
+# test client in tests/client/, and any client under clients/.
+# Compiler warnings count as failures. Run inside `nix develop`.
+# TUN_TEST_SUITES="core test-client" limits the run.
+# bin/test --only SUITE runs one FiveAM suite of the core tests (such as ui
+# or auth), compiled as strictly, and nothing else.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+command -v sbcl >/dev/null || { echo "bin/test: run inside 'nix develop'" >&2; exit 2; }
+if [ "${1:-}" = --only ]; then
+  [ -n "${2:-}" ] || { echo "usage: bin/test --only SUITE" >&2; exit 2; }
+  exec sbcl --noinform --non-interactive --no-userinit --no-sysinit \
+    --load scripts/test.lisp core "$2"
+fi
+suites="${TUN_TEST_SUITES:-core $(scripts/client-systems)}"
+# Shell scripts first: bash parses lazily, so a syntax error in a branch a
+# run never takes would otherwise surface only when some run takes it.
+for f in bin/* src/cli/template/bin/* scripts/client-systems scripts/test-*.sh; do
+  if head -1 "$f" | grep -q bash; then
+    bash -n "$f" || { echo "bin/test: shell syntax error in $f" >&2; exit 2; }
+  fi
+done
+echo "== shell syntax of bin/, scripts/ and the client templates ok"
+bash scripts/test-indent.sh
+bash scripts/test-lint.sh
+bash scripts/test-repl.sh
+bash scripts/test-lisp.sh
+status=0
+for suite in $suites; do
+  echo "== $suite suite"
+  if [ "$suite" = core ]; then
+    # The store tests run on Postgres too (spec/store.md 5), on a throwaway
+    # server that lives as long as the suite.
+    bin/with-postgres bash -c 'TUN_TEST_POSTGRES="$DATABASE_URL" \
+      exec sbcl --noinform --non-interactive --no-userinit --no-sysinit --load scripts/test.lisp core' \
+      || status=$?
+  else
+    sbcl --noinform --non-interactive --no-userinit --no-sysinit --load scripts/test.lisp "$suite" || status=$?
+  fi
+  [ $status -ne 0 ] && break
+done
+exit $status

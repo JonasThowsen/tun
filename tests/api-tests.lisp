@@ -1,0 +1,115 @@
+;;;; tests/api-tests.lisp -- the HTTP API: POST /api/TOOL with a bearer token
+;;;; (spec/api.md 6).
+
+(in-package #:tun.tests)
+
+(def-suite api :in core)
+(in-suite api)
+
+(defun api-request (port tool body &key token headers (method :post))
+  "Send BODY, a string, to /api/TOOL with TOKEN as a bearer token.  Values
+the status, the parsed body (NIL when empty) and the headers."
+  (multiple-value-bind (bytes status response-headers)
+      (drakma:http-request (format nil "http://127.0.0.1:~d/api/~a" port tool)
+                           :method method :content-type "application/json"
+                           :content (and (eq method :post)
+                                         (sb-ext:string-to-octets body :external-format :utf-8))
+                           :additional-headers
+                           (append (and token (list (cons "Authorization"
+                                                          (format nil "Bearer ~a" token))))
+                                   headers)
+                           :force-binary t)
+    (let ((text (if bytes (sb-ext:octets-to-string bytes :external-format :utf-8) "")))
+      (values status (and (plusp (length text)) (parse-json text)) response-headers))))
+
+(defun api-call (port token tool &rest keys-and-values)
+  "POST the arguments KEYS-AND-VALUES to /api/TOOL.  Values the status and the body."
+  (api-request port tool (to-json-string (apply #'jobj keys-and-values)) :token token))
+
+(test an-api-call-answers-the-tools-result
+  (with-test-server (port :identity :authenticated)
+    (let ((token (make-token (make-account "erp" "agent" "admin"))))
+      (multiple-value-bind (status json headers) (api-request port "accounts_whoami" "" :token token)
+        (is (= 200 status) "an empty body is no arguments")
+        (is (string= "admin:erp" (jget json "actor")))
+        (is (string= "token" (jget json "credential")))
+        (is (string-prefix-p "req_" (cdr (assoc :x-tun-request-id headers)))))
+      (multiple-value-bind (status first)
+          (api-call port token "accounts_create" "name" "robot" "kind" "agent" "role" "viewer"
+                    "request_key" "erp-4711")
+        (is (= 200 status))
+        (is (string= "robot" (jget first "name")))
+        (multiple-value-bind (status again)
+            (api-call port token "accounts_create" "name" "robot" "kind" "agent" "role" "viewer"
+                      "request_key" "erp-4711")
+          (is (= 200 status) "the same request_key")
+          (is (equal (jget first "id") (jget again "id")) "answers the first call's result")))
+      (is (= 1 (count "robot" (admin-items "accounts_list")
+                      :key (lambda (item) (jget item "name")) :test #'equal))
+          "and made one account")
+      (is (string= "admin:erp" (jget (first (admin-items "audit_list" "entity_type" "account"))
+                                     "actor"))
+          "audited as the token's account")
+      (is (find "accounts_create" (admin-items "introspect_recent" "tool" "accounts_create")
+                :key (lambda (item) (jget item "tool")) :test #'equal)
+          "retained as the tool's record"))))
+
+(test an-api-call-answers-errors-with-their-status
+  (with-test-server (port :identity :authenticated)
+    (let ((admin (make-token (make-account "erp" "agent" "admin")))
+          (viewer (make-token (make-account "skjerm" "agent" "viewer"))))
+      (flet ((code (json) (jget (jget json "error") "code")))
+        (multiple-value-bind (status json)
+            (api-call port viewer "accounts_create" "name" "x" "kind" "agent" "role" "viewer")
+          (is (= 403 status) "the tool's policy meets the token's role")
+          (is (string= "forbidden" (code json))))
+        (multiple-value-bind (status json) (api-call port admin "no_such_tool")
+          (is (= 404 status))
+          (is (string= "unknown_tool" (code json))))
+        (multiple-value-bind (status json) (api-request port "accounts_whoami" "{nope" :token admin)
+          (is (= 400 status))
+          (is (string= "invalid_json" (code json))))
+        (is (= 400 (api-request port "accounts_whoami" "[1]" :token admin)) "an array is no arguments")
+        (multiple-value-bind (status json)
+            (api-call port admin "accounts_create" "name" "Ikke Gyldig" "kind" "agent" "role" "viewer")
+          (is (= 422 status))
+          (is (string= "invalid_input" (code json)))
+          (is (jget (jget json "error") "fields") "with the fields"))
+        (api-call port admin "accounts_create" "name" "dobbel" "kind" "agent" "role" "viewer")
+        (multiple-value-bind (status json)
+            (api-call port admin "accounts_create" "name" "dobbel" "kind" "agent" "role" "viewer")
+          (is (= 409 status))
+          (is (string= "conflict" (code json))))))))
+
+(test the-api-refuses-callers-as-mcp-does
+  (with-test-server (port :identity :authenticated)
+    (flet ((code (json) (jget (jget json "error") "code")))
+      (multiple-value-bind (status json headers)
+          (api-request port "accounts_whoami" "{}" :headers '(("X-Tun-Actor" . "admin:mallory")))
+        (is (= 401 status) "no token, and X-Tun-Actor is ignored")
+        (is (string= "unauthenticated" (code json)))
+        (is (string= "Bearer realm=\"tun\"" (cdr (assoc :www-authenticate headers)))))
+      (multiple-value-bind (status json headers)
+          (api-request port "accounts_whoami" "{}" :token "tun_nope")
+        (declare (ignore json))
+        (is (= 401 status))
+        (is (search "error=\"invalid_token\"" (cdr (assoc :www-authenticate headers)))))
+      (let ((token (make-token (make-account "erp" "agent" "admin"))))
+        (multiple-value-bind (status json)
+            (api-request port "accounts_whoami" "{}" :token token
+                                                     :headers '(("Origin" . "https://evil.example")))
+          (is (= 403 status) "another site's page")
+          (is (string= "forbidden" (code json))))
+        (multiple-value-bind (status json headers)
+            (api-request port "accounts_whoami" "" :token token :method :get)
+          (declare (ignore json))
+          (is (= 405 status))
+          (is (string= "POST" (cdr (assoc :allow headers))))))
+      (is (<= 3 (length (admin-items "introspect_recent" "kind" "rejected" "request_kind" "api")))
+          "the refusals are retained as requests of kind api")))
+  (with-test-server (port)
+    (multiple-value-bind (status json) (api-request port "accounts_whoami" "{}"
+                                                    :headers '(("X-Tun-Actor" . "viewer:vera")))
+      (is (= 200 status) "with claimed identity, X-Tun-Actor names the caller")
+      (is (string= "viewer:vera" (jget json "actor"))))
+    (is (= 401 (api-request port "accounts_whoami" "{}")) "and without it there is none")))

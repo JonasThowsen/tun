@@ -1,0 +1,36 @@
+#!/usr/bin/env bash
+# Advisory lint with the repository's pinned tool and configuration.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v mallet >/dev/null || { echo "bin/lint: run inside 'nix develop'" >&2; exit 2; }
+baseline=false
+report="$here/reference/lint-baseline.md"
+if [ "${1:-}" = --baseline ]; then
+  baseline=true
+  shift
+  if [ "$#" -gt 0 ]; then
+    report="$1"
+    shift
+    [ "$#" -gt 0 ] || { echo "usage: bin/lint --baseline [REPORT FILE...]" >&2; exit 2; }
+  fi
+fi
+if [ "$#" -eq 0 ]; then
+  cd "$here"
+  set -- src modules tests scripts tun.asd
+  [ -d clients ] && set -- "$@" clients
+fi
+if ! "$baseline"; then
+  exec mallet --config "$here/.mallet.lisp" "$@"
+fi
+mkdir -p "$here/.build"
+json="$(mktemp "$here/.build/lint.XXXXXX.json")"
+trap 'rm -f "$json"' EXIT
+status=0
+mallet --config "$here/.mallet.lisp" --format json "$@" >"$json" || status=$?
+[ "$status" -le 1 ] || exit "$status"
+version="$(mallet --version)"
+revision="$(git -C "$here" rev-parse HEAD)"
+sbcl --noinform --non-interactive --no-userinit --no-sysinit \
+  --load "$here/scripts/lint-baseline.lisp" \
+  --end-toplevel-options "$json" "$report" "$version" "$revision"
+mv "$json" "$here/.build/lint.json"

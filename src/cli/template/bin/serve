@@ -1,0 +1,37 @@
+#!/usr/bin/env bash
+# bin/serve [--port N] [FLAG...] -- serve this working tree on
+# http://127.0.0.1:N (default 8080) against a Postgres server of the
+# client's own under .data/postgres, reachable only through a socket in that
+# directory. The first run creates the database; later runs keep its data.
+# Other flags go to the server ($TUN_SOURCE/src/runtime.lisp, MAIN). Run
+# inside the dev shell.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+command -v pg_ctl >/dev/null || { echo "bin/serve: run inside 'nix develop'" >&2; exit 2; }
+
+data="$PWD/.data/postgres"
+if [ ! -d "$data/cluster" ]; then
+  mkdir -p "$data"
+  initdb -D "$data/cluster" -U dev --auth=trust --encoding=UTF8 --no-locale >"$data/initdb.log" \
+    || { cat "$data/initdb.log" >&2; exit 2; }
+  fresh=1
+fi
+if ! pg_ctl -D "$data/cluster" status >/dev/null 2>&1; then
+  pg_ctl -D "$data/cluster" -l "$data/server.log" -w \
+         -o "-c listen_addresses= -k $data" start >/dev/null \
+    || { cat "$data/server.log" >&2; exit 2; }
+  # Stop the Postgres server this script started, however the script ends.
+  trap 'pg_ctl -D "$data/cluster" -m fast stop >/dev/null' EXIT
+  trap 'exit 130' INT
+  trap 'exit 143' TERM
+fi
+if [ -n "${fresh:-}" ]; then
+  createdb -h "$data" -U dev dev
+fi
+
+export DATABASE_URL="postgresql://dev@/dev?host=$data"
+sbcl --noinform --non-interactive --no-userinit --no-sysinit \
+  --eval '(load (sb-ext:posix-getenv "ASDF"))' \
+  --eval '(handler-bind ((warning (function muffle-warning))) (asdf:load-system "{{name}}"))' \
+  --eval '(tun.runtime:main {{name}}:*application-class* :name "{{name}}")' \
+  --end-toplevel-options "$@"

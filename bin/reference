@@ -1,0 +1,9 @@
+#!/usr/bin/env bash
+# bin/reference -- build the pinned reading material (flake output
+# `reference`) and link it at reference/lib.  The link is not committed; run
+# this again after the flake's nixpkgs moves.  See reference/README.md.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v nix >/dev/null || { echo "bin/reference: needs nix" >&2; exit 2; }
+nix build "$here#reference" --out-link "$here/reference/lib"
+echo "reference/lib -> $(readlink "$here/reference/lib")"

@@ -1,0 +1,9 @@
+.build/
+*.fasl
+result
+.acceptance-state.json
+
+# The pinned reading material built by bin/reference.
+/reference/lib
+.direnv/
+.data/

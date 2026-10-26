@@ -1,0 +1,20 @@
+#!/usr/bin/env bash
+# Start a client from this working tree:
+#   bin/serve --client NAME --port N --db PATH|URL [--test-clock]
+# NAME is a client system on ASDF's source registry: test-client, one under
+# clients/, or one in a directory CL_SOURCE_REGISTRY adds. Without --db,
+# DATABASE_URL names the database (spec/store.md). Run inside `nix develop`.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v sbcl >/dev/null || { echo "bin/serve: run inside 'nix develop'" >&2; exit 2; }
+# introspect_runtime's build revisions (core.md §8.2): the working tree's HEAD.
+if command -v git >/dev/null && rev="$(git -C "$here" rev-parse --short=12 HEAD 2>/dev/null)"; then
+  [ -n "$(git -C "$here" status --porcelain -- . 2>/dev/null)" ] && rev="$rev-dirty"
+  export TUN_CORE_REVISION="${TUN_CORE_REVISION:-$rev}" TUN_CLIENT_REVISION="${TUN_CLIENT_REVISION:-$rev}"
+  # ... and each module's (introspect_runtime.modules): the same working tree.
+  for m in "$here"/modules/*/; do
+    m="$(basename "$m")"; var="TUN_MODULE_REVISION_${m^^}"
+    export "$var=${!var:-$rev}"
+  done
+fi
+exec sbcl --noinform --non-interactive --no-userinit --no-sysinit --load "$here/scripts/serve.lisp" "$@"

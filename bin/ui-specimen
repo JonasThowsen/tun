@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# bin/ui-specimen [DIR] -- write the design system's specimen as standalone
+# HTML files, the stylesheet and script inline (spec/ui.md 7): index.html
+# and NAME.html for each component.  DIR defaults to .build/ui/specimen/.
+# Run inside `nix develop`.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v sbcl >/dev/null || { echo "bin/ui-specimen: run inside 'nix develop'" >&2; exit 2; }
+exec sbcl --noinform --non-interactive --no-userinit --no-sysinit \
+  --load "$here/scripts/ui-specimen.lisp" "$@"

@@ -1,0 +1,400 @@
+#!/usr/bin/env bash
+# bin/test-cli -- the tun command's whole path (spec/cli.md 7): commit this
+# working tree to a temporary clone of Tun, create a client from it with the
+# clone's own tun, build and test the client, check that its bin/test runs
+# a query and refuses a broken one, run its image as nixploy would
+# (spec/deploy.md 5) and through its first administrator, made through a
+# fake WorkOS, and access token (spec/auth.md 9), run it again on a restored dump of its database
+# (spec/deploy.md 4), serve it against its local Postgres, preview it and
+# run a browser check on it (spec/preview.md), take a change through the
+# feature loop (spec/loop.md), add a module,
+# build and test again, then move it to a second commit of the clone with
+# tun update and build and test once more. Every Tun input must be locked
+# at the clone's revision. Builds with Nix, so it takes minutes. Run inside `nix develop`,
+# on a machine with Podman; TUN_KEEP=1 keeps the temporary directory.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v pg_ctl >/dev/null || { echo "bin/test-cli: run inside 'nix develop'" >&2; exit 2; }
+command -v podman >/dev/null || { echo "bin/test-cli: needs podman" >&2; exit 2; }
+
+work="$(mktemp -d "${TMPDIR:-/tmp}/tun-cli.XXXXXX")"
+container="tun-test-cli-$$"
+image=""
+cleanup() {
+  [ -z "${idp:-}" ] || kill "$idp" 2>/dev/null || true
+  podman rm --force --ignore "$container" >/dev/null 2>&1 || true
+  [ -z "$image" ] || podman rmi --force "$image" >/dev/null 2>&1 || true
+  [ ! -d "$work/pg" ] || pg_ctl -D "$work/pg/cluster" -m immediate stop >/dev/null 2>&1 || true
+  if [ "${TUN_KEEP:-}" = 1 ]; then echo "== kept $work"; else rm -rf "$work"; fi
+}
+trap cleanup EXIT
+step() { echo "== $*"; }
+fail() { echo "bin/test-cli: FAIL: $*" >&2; exit 1; }
+
+step "snapshot of the working tree"
+git clone --quiet --no-hardlinks "$here" "$work/tun"
+# The snapshot is the clone's main, the branch a client's inputs follow.
+git -C "$work/tun" checkout --quiet -B main
+# Every file git would commit, including changes and new files not yet added.
+git -C "$here" ls-files -z --cached --others --exclude-standard \
+  | tar -C "$here" --null --ignore-failed-read -T - -cf - 2>/dev/null \
+  | tar -C "$work/tun" -xf -
+git -C "$work/tun" add --all
+git -C "$work/tun" -c user.name=test-cli -c user.email=test-cli@localhost \
+  commit --quiet --allow-empty -m "bin/test-cli snapshot"
+revision="$(git -C "$work/tun" rev-parse HEAD)"
+url="git+file://$work/tun"
+tun() { nix run --quiet "$url" -- "$@"; }
+
+step "tun new demo customers reviews"
+(cd "$work" && tun new demo customers reviews --tun-url "$url")
+client="$work/demo"
+in_client() { (cd "$client" && nix develop --quiet --command "$@"); }
+
+# Tun's inputs and their locked revisions: every root input but nixploy.
+locked_revisions() {
+  python3 -c 'import json, sys
+lock = json.load(open(sys.argv[1]))
+for name in lock["nodes"]["root"]["inputs"]:
+    if name != "nixploy":
+        print(name, lock["nodes"][name]["locked"]["rev"])' "$client/flake.lock"
+}
+check_pins() { # input...
+  local pins
+  pins="$(locked_revisions)"
+  for input in "$@"; do
+    echo "$pins" | grep -qx "$input $revision" || fail "$input is not locked at $revision: $pins"
+  done
+  [ "$(echo "$pins" | wc -l)" -eq "$#" ] || fail "expected inputs $*, the lock has: $pins"
+}
+check_pins tun customers reviews
+grep -q '"nixploy"' "$client/flake.lock" || fail "flake.lock does not lock nixploy"
+
+step "build and test the client"
+(cd "$client" && nix build --quiet) || fail "nix build"
+[ -x "$client/result/bin/demo-server" ] || fail "no result/bin/demo-server"
+in_client bin/test || fail "bin/test"
+
+step "a macro, a query and a record policy in the client: bin/test runs them, and refuses them broken"
+cp "$client/application.lisp" "$work/application.lisp"
+cat >>"$client/application.lisp" <<'LISP'
+
+(define-query customers-named ((name :required t))
+    (:returns customer)
+  "SELECT c.* FROM {customer} c WHERE c.name = :name ORDER BY c.seq")
+
+(define-entity memo (:id-prefix "mem" :label "Notat" :table "memos"
+                     :record-policy ((:admin t) (:employee "author = :actor_name")))
+  ((text :type (string :min 1 :max 200) :required t :label "Tekst")
+   (author :type (string :max 64) :input nil :label "Forfatter")))
+
+(defmacro by-the-caller ((memo) &body body)
+  "Run BODY with MEMO written by the caller."
+  `(progn (setf (memo-author ,memo) (actor-name *actor*))
+          ,@body))
+
+(define-operation memos-create ((:draft memo))
+    (:entity memo :kind :create :policy :employee :title "Nytt notat")
+  (by-the-caller (memo)
+    (insert memo)))
+LISP
+in_client bin/test >"$work/query.log" 2>&1 \
+  || { cat "$work/query.log" >&2; fail "bin/test with a macro, a query and a record policy"; }
+sed -i 's/"author = :actor_name"/"writer = :actor_name"/' "$client/application.lisp"
+in_client bin/test >"$work/query.log" 2>&1 && fail "bin/test passed a policy on a missing column"
+grep -q "memo.*employee.*writer" "$work/query.log" \
+  || { cat "$work/query.log" >&2; fail "the refusal does not name the entity, role and column"; }
+sed -i 's/"writer = :actor_name"/"author = :actor_name"/' "$client/application.lisp"
+sed -i 's/c\.name = :name/c.nickname = :name/' "$client/application.lisp"
+in_client bin/test >"$work/query.log" 2>&1 && fail "bin/test passed a query on a missing column"
+grep -q "customers-named.*nickname" "$work/query.log" \
+  || { cat "$work/query.log" >&2; fail "the refusal does not name the query and its column"; }
+# ASDF compares file times to the second: restored in the second bin/test
+# compiled the broken file, the file would look older than its compiled
+# copy, and bin/serve, which does not force a compile, would load that.
+sleep 1
+cp "$work/application.lisp" "$client/application.lisp"
+
+free_port() {
+  python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0))
+print(s.getsockname()[1])'
+}
+
+step "run the image as nixploy would, against Postgres on the loopback"
+image_file="$(cd "$client" && nix build --quiet --no-link --print-out-paths .#docker)" \
+  || fail "nix build .#docker"
+image="$(podman load --quiet --input "$image_file" | sed -n 's/^Loaded image: //p' | tail -1)"
+[ -n "$image" ] || fail "podman load named no image"
+pg_port="$(free_port)"
+mkdir -p "$work/pg"
+printf 'secret\n' >"$work/pg/password"
+initdb -D "$work/pg/cluster" -U demo --auth=scram-sha-256 --pwfile="$work/pg/password" \
+  --encoding=UTF8 --no-locale >"$work/pg/initdb.log" 2>&1 || fail "initdb"
+pg_ctl -D "$work/pg/cluster" -l "$work/pg/server.log" -w \
+  -o "-c listen_addresses=127.0.0.1 -p $pg_port -k $work/pg" start >/dev/null || fail "pg_ctl start"
+PGPASSWORD=secret createdb -h 127.0.0.1 -p "$pg_port" -U demo demo
+# Waits until the container answers /health and has logged that it listens:
+# the server prints the setup line, when it needs one, right after that.
+await_container() { # port
+  local logs
+  for _ in $(seq 1 300); do
+    if curl -sf "http://127.0.0.1:$1/health" >/dev/null; then
+      logs="$(podman logs "$container" 2>&1)"
+      case "$logs" in *" listening on "*) return 0;; esac
+    fi
+    [ "$(podman inspect --format '{{.State.Running}}' "$container")" = true ] \
+      || { podman logs "$container" >&2; fail "the container stopped"; }
+    sleep 0.2
+  done
+  podman logs "$container" >&2; fail "/health"
+}
+# The fake WorkOS the client's (:sign-in (:workos ...)) signs in through.
+idp_port="$(free_port)"
+python3 "$here/scripts/fake-workos.py" "$idp_port" demo-client demo-secret admin@example.com &
+idp=$!
+workos=(--env WORKOS_DOMAIN="http://127.0.0.1:$idp_port"
+        --env WORKOS_CLIENT_ID=demo-client --env WORKOS_CLIENT_SECRET=demo-secret)
+port="$(free_port)"
+podman run --detach --name "$container" --network host "${workos[@]}" \
+  --env PORT="$port" --env DATABASE_URL="postgresql://demo:secret@127.0.0.1:$pg_port/demo" \
+  "$image" >/dev/null || fail "podman run"
+await_container "$port"
+
+step "the image starts authenticated (spec/auth.md 9): setup, a token, MCP with it"
+base="http://127.0.0.1:$port"
+list='{"jsonrpc":"2.0","id":1,"method":"tools/list"}'
+status="$(curl -s -o /dev/null -w '%{http_code}' -H 'Content-Type: application/json' \
+  -H 'X-Tun-Actor: admin:test' --data "$list" "$base/mcp")"
+[ "$status" = 401 ] || fail "/mcp without a token answered $status, not 401"
+code="$(podman logs "$container" 2>&1 \
+  | sed -n 's|.*no administrator yet; create one at /setup/\([0-9a-f]*\).*|\1|p' | tail -1)" || true
+[ -n "$code" ] || { podman logs "$container" >&2; fail "the log has no setup line"; }
+jar="$work/cookies"
+redirect() { # curl arguments: the Location of the answer, which must be a redirect
+  curl -s -o /dev/null -b "$jar" -c "$jar" -w '%{redirect_url}' "$@"
+}
+authorize="$(redirect --data-urlencode name=admin -d provider=workos "$base/setup/$code")"
+case "$authorize" in
+  "http://127.0.0.1:$idp_port/oauth2/authorize?"*) ;;
+  *) fail "«Fortsett» at /setup sent the browser to $authorize, not the fake WorkOS";;
+esac
+callback="$(redirect "$authorize")"
+[ -n "$callback" ] || fail "the fake WorkOS sent the browser nowhere"
+[ "$(redirect "$callback")" = "$base/access" ] \
+  || { podman logs "$container" >&2; fail "the callback did not make the admin"; }
+curl -sf -o /dev/null -b "$jar" -d name=agent -d kind=agent -d role=viewer "$base/access/accounts" \
+  || fail "POST /access/accounts"
+account="$(curl -sf -b "$jar" "$base/access" | grep -o 'value="acc_[0-9a-z]*">agent ' \
+  | sed 's/value="\([^"]*\)".*/\1/')" || true
+[ -n "$account" ] || fail "/access does not offer the agent account"
+token="$(curl -sf -b "$jar" -d account_id="$account" -d label=test-cli "$base/access/tokens" \
+  | grep -o 'tun_[0-9a-z]\{40\}' | head -1)" || true
+[ -n "$token" ] || fail "/access/tokens showed no token"
+tools="$(curl -sf -H 'Content-Type: application/json' -H "Authorization: Bearer $token" \
+  --data "$list" "$base/mcp")" || fail "tools/list with the token"
+case "$tools" in *'"accounts_whoami"'*) ;; *) fail "tools/list with the token: $tools";; esac
+
+tables="$(PGPASSWORD=secret psql -h 127.0.0.1 -p "$pg_port" -U demo -d demo -Atc \
+  "select count(*) from information_schema.tables where table_schema = 'public'")"
+[ "$tables" -gt 0 ] || fail "the server created no tables in its database"
+account_rows() { # database role: the rows of the agent account made above
+  PGPASSWORD=secret psql -h 127.0.0.1 -p "$pg_port" -U "$2" -d "$1" -Atc \
+    "select count(*) from accounts where id = '$account'"
+}
+[ "$(account_rows demo demo)" = 1 ] || fail "the account made through the server is not stored"
+podman stop --time 10 "$container" >/dev/null
+podman rm "$container" >/dev/null
+
+step "restore a dump of its database (spec/deploy.md 4) and run the image on it"
+# Dumped as services.postgresqlBackup does, then loaded as a role that owns
+# the new database and is not a superuser, as a host's tenant role is.
+PGPASSWORD=secret pg_dump -h 127.0.0.1 -p "$pg_port" -U demo --no-owner --no-privileges demo \
+  | gzip >"$work/pg/demo.sql.gz" || fail "pg_dump"
+PGPASSWORD=secret psql -h 127.0.0.1 -p "$pg_port" -U demo -d demo -qc \
+  "create role tenant login password 'secret'" || fail "create role tenant"
+PGPASSWORD=secret createdb -h 127.0.0.1 -p "$pg_port" -U demo --owner tenant restored \
+  || fail "createdb restored"
+gunzip -c "$work/pg/demo.sql.gz" \
+  | PGPASSWORD=secret psql -h 127.0.0.1 -p "$pg_port" -U tenant -d restored \
+      -v ON_ERROR_STOP=1 --single-transaction >"$work/pg/restore.log" 2>&1 \
+  || { cat "$work/pg/restore.log" >&2; fail "loading the dump into a new database"; }
+podman run --detach --name "$container" --network host "${workos[@]}" \
+  --env PORT="$port" --env DATABASE_URL="postgresql://tenant:secret@127.0.0.1:$pg_port/restored" \
+  "$image" >/dev/null || fail "podman run on the restored database"
+await_container "$port"
+logs="$(podman logs "$container" 2>&1)"
+case "$logs" in
+  *"no administrator yet"*) echo "$logs" >&2; fail "the restored server offers setup";;
+esac
+[ "$(account_rows restored tenant)" = 1 ] || fail "the account is not in the restored database"
+tools="$(curl -sf -H 'Content-Type: application/json' -H "Authorization: Bearer $token" \
+  --data "$list" "$base/mcp")" || fail "tools/list with the token on the restored database"
+case "$tools" in *'"accounts_whoami"'*) ;; *) fail "tools/list after the restore: $tools";; esac
+podman stop --time 10 "$container" >/dev/null
+podman rm "$container" >/dev/null
+pg_ctl -D "$work/pg/cluster" -m fast stop >/dev/null
+
+step "the nixploy configuration takes a target from deploy.nix"
+cp "$client/deploy.nix" "$work/deploy.nix"
+cat >"$client/deploy.nix" <<'NIX'
+{
+  example = {
+    ip = "203.0.113.10";
+    web = { domain = "demo.example.com"; slots = { blue = 4100; green = 4101; }; };
+  };
+}
+NIX
+git -C "$client" add deploy.nix
+target="$(cd "$client" && nix eval --json .#nixploy.targets.example)" || fail "nix eval .#nixploy"
+echo "$target" | python3 -c 'import json, sys
+t = json.load(sys.stdin)
+assert t["image"] == "docker" and t["run"]["network"] == "host", t
+assert t["run"]["environment"]["PORT"] == "{port}" and t["web"]["healthPath"] == "/health", t
+assert t["web"]["domain"] == "demo.example.com", t' || fail "the example target: $target"
+cp "$work/deploy.nix" "$client/deploy.nix"
+git -C "$client" add deploy.nix
+
+step "serve it against its own Postgres"
+port="$(free_port)"
+# In a process group of its own, so stopping it reaches every process.
+WORKOS_DOMAIN="http://127.0.0.1:$idp_port" WORKOS_CLIENT_ID=demo-client WORKOS_CLIENT_SECRET=demo-secret \
+  setsid bash -c 'cd "$1" && exec nix develop --quiet --command bin/serve --port "$2"' \
+  _ "$client" "$port" >"$work/serve.log" 2>&1 &
+server=$!
+for _ in $(seq 1 300); do
+  curl -sf "http://127.0.0.1:$port/health" >/dev/null && break
+  kill -0 "$server" 2>/dev/null || { cat "$work/serve.log" >&2; fail "bin/serve stopped"; }
+  sleep 0.2
+done
+curl -sf "http://127.0.0.1:$port/health" >/dev/null \
+  || { cat "$work/serve.log" >&2; fail "/health"; }
+grep -q "postgresql://dev@/dev" "$work/serve.log" || fail "bin/serve did not use its Postgres"
+kill -TERM -- "-$server"; wait "$server" 2>/dev/null || true
+[ -d "$client/.data/postgres/cluster" ] || fail "no Postgres cluster under .data/postgres"
+curl -sf "http://127.0.0.1:$port/health" >/dev/null && fail "the server still answers"
+pg_ctl -D "$client/.data/postgres/cluster" status >/dev/null 2>&1 \
+  && fail "bin/serve left its Postgres server running"
+
+step "tun preview: the working tree on a port of its own, with its scenario (spec/preview.md 2)"
+cp "$client/tests/scenarios.lisp" "$work/scenarios.lisp"
+cat >"$client/tests/scenarios.lisp" <<'LISP'
+(in-package #:demo.tests)
+
+(define-scenario default (:actors ("employee:anna"))
+  "Én kunde."
+  (call-ok "customers_create" "employee:anna" "name" "Kari Nordmann" "email" "kari@example.no"))
+LISP
+# The previews' files go to a directory of the test's own.
+preview() { in_client env XDG_STATE_HOME="$work/state" tun preview "$@"; }
+preview --no-share --json >"$work/preview.json" || fail "tun preview"
+field() { python3 -c 'import json, sys; print(json.load(open(sys.argv[1]))[sys.argv[2]])' "$work/preview.json" "$1"; }
+preview_url="$(field local_url)"; preview_name="$(field name)"; preview_port="$(field port)"
+branch="$(git -C "$client" symbolic-ref --short HEAD)"
+[ "$preview_name" = "demo-$branch" ] || fail "the preview is named $preview_name, not demo-$branch"
+curl -sf "$preview_url/health" >/dev/null || fail "the preview does not answer /health"
+grep -q '"actor":"employee:anna"' "$work/preview.json" || fail "the preview offers no sign-in as anna"
+customers() {
+  curl -sf -H 'Content-Type: application/json' -H 'X-Tun-Actor: employee:anna' \
+    --data '{"jsonrpc":"2.0","id":1,"method":"tools/call","params":{"name":"customers_list","arguments":{}}}' \
+    "$preview_url/mcp" | python3 -c 'import json, sys
+result = json.load(sys.stdin)["result"]
+print(json.loads(result["content"][0]["text"])["returned"])'
+}
+[ "$(customers)" = 1 ] || fail "the scenario's customer is not there"
+preview --no-share --json >"$work/preview.json" || fail "tun preview, a second time"
+[ "$(field port)" = "$preview_port" ] || fail "a second start moved the preview to $(field port)"
+[ "$(customers)" = 1 ] || fail "a second start did not begin from a fresh database"
+preview list | grep -q "^$preview_name *running" || fail "tun preview list does not show $preview_name running"
+preview stop "$preview_name" >/dev/null || fail "tun preview stop"
+curl -sf "$preview_url/health" >/dev/null && fail "the preview still answers after stop"
+[ -e "$client/.data/preview" ] && fail "stop left the preview's database"
+[ -n "$(ls -A "$work/state/tun/previews" 2>/dev/null)" ] && fail "stop left the preview's file"
+
+step "tun check: a check passes, a broken one fails (spec/preview.md 4)"
+mkdir -p "$client/checks"
+cat >"$client/checks/home.py" <<'PYTHON'
+"""Anna sees the customers' list."""
+
+def run(t):
+    page = t.phone()
+    page.sign_in("employee:anna")
+    page.goto("/")
+    t.check(page.get_by_text("Kari Nordmann").count() > 0, "the scenario's customer is listed")
+PYTHON
+in_client env XDG_STATE_HOME="$work/state" tun check >"$work/check.log" 2>&1 \
+  || { cat "$work/check.log" >&2; fail "tun check"; }
+grep -q "ok    home" "$work/check.log" || { cat "$work/check.log" >&2; fail "tun check did not pass home"; }
+sed -i 's/Kari Nordmann/Ola Nordmann/' "$client/checks/home.py"
+in_client env XDG_STATE_HOME="$work/state" tun check >"$work/check.log" 2>&1 \
+  && { cat "$work/check.log" >&2; fail "tun check passed a broken check"; }
+grep -q "FAIL  home" "$work/check.log" || { cat "$work/check.log" >&2; fail "tun check did not name home"; }
+ls "$client"/.build/checks/home-*.png >/dev/null 2>&1 || fail "no screenshot of the failure"
+sed -i 's/Ola Nordmann/Kari Nordmann/' "$client/checks/home.py"
+
+step "tun loop: a change from start to finish, its gates answered by hand (spec/loop.md)"
+loop() { in_client env XDG_STATE_HOME="$work/state" tun loop "$@"; }
+loop start home-list --title "Kundene på forsiden" >/dev/null || fail "tun loop start"
+loop gate A >"$work/loop.log" 2>&1 && fail "gate A without criteria"
+sed -i 's/^## Criteria$/## Criteria\n\n1. Anna ser kundene på forsiden (checks\/home.py)./' "$client/loops/home-list.md"
+loop gate A >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop gate A"; }
+grep -q "waits for the person" "$work/loop.log" || fail "gate A did not wait for the person"
+loop decide A approve --by test-cli --why "«ja»" >/dev/null || fail "tun loop decide A"
+loop verify >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop verify"; }
+grep -q "ok    check" "$work/loop.log" || { cat "$work/loop.log" >&2; fail "verify ran no checks"; }
+loop show --path / >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop show"; }
+for shot in phone-root desktop-root; do
+  [ -s "$client/.build/loop/home-list/show/$shot.png" ] || fail "no $shot screenshot"
+done
+loop gate B >/dev/null || fail "tun loop gate B"
+loop decide B approve --by test-cli --why "«fint»" >/dev/null || fail "tun loop decide B"
+loop finish >"$work/loop.log" 2>&1 && fail "finish before the shown tree is committed"
+git -C "$client" add --all
+git -C "$client" -c user.name=test-cli -c user.email=test-cli@localhost commit --quiet -m "Kundene på forsiden"
+loop finish >/dev/null || fail "tun loop finish"
+grep -q "finished at demo" "$client/loops/home-list.md" || fail "the record does not say the loop finished"
+in_client env XDG_STATE_HOME="$work/state" tun preview stop demo-home-list >/dev/null \
+  || fail "the loop's preview"
+rm -rf "$client/checks" "$client/.build"
+cp "$work/scenarios.lisp" "$client/tests/scenarios.lisp"
+
+step "tun add inventory (and catalog, its dependency)"
+in_client tun add inventory || fail "tun add"
+check_pins tun customers reviews inventory catalog
+grep -q '"tun-inventory"' "$client/demo.asd" || fail "demo.asd lacks tun-inventory"
+grep -q '(:modules customers reviews inventory)' "$client/application.lisp" \
+  || fail "application.lisp does not enable inventory"
+in_client tun add inventory | grep -q "already has" || fail "a second tun add changed something"
+
+step "build and test again"
+(cd "$client" && nix build --quiet) || fail "nix build after tun add"
+in_client bin/test || fail "bin/test after tun add"
+
+step "tun update to a second commit of Tun's main"
+git -C "$work/tun" -c user.name=test-cli -c user.email=test-cli@localhost \
+  commit --quiet --allow-empty -m "bin/test-cli second commit"
+first_revision="$revision"
+revision="$(git -C "$work/tun" rev-parse HEAD)"
+nixploy_node() {
+  python3 -c 'import json, sys
+print(json.dumps(json.load(open(sys.argv[1]))["nodes"]["nixploy"], sort_keys=True))' \
+    "$client/flake.lock"
+}
+nixploy_before="$(nixploy_node)"
+cp "$client/flake.nix" "$work/flake.nix.before"
+out="$(in_client tun update)" || fail "tun update"
+echo "$out"
+case "$out" in
+  *"$first_revision -> $revision"*) ;;
+  *) fail "tun update did not print the old and the new revision";;
+esac
+check_pins tun customers reviews inventory catalog
+[ "$(nixploy_node)" = "$nixploy_before" ] || fail "tun update moved nixploy"
+cmp -s "$client/flake.nix" "$work/flake.nix.before" || fail "tun update changed flake.nix"
+out="$(in_client tun update)" || fail "a second tun update"
+case "$out" in *"nothing changed"*) ;; *) fail "a second tun update changed something: $out";; esac
+
+step "build and test after tun update"
+(cd "$client" && nix build --quiet) || fail "nix build after tun update"
+in_client bin/test || fail "bin/test after tun update"
+
+step "ok: tun new, build, test, image, restore, serve, preview, check, loop, tun add and tun update, at $revision"

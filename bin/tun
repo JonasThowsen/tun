@@ -1,0 +1,21 @@
+#!/usr/bin/env bash
+# bin/tun COMMAND... -- the tun command (spec/cli.md) from this working tree,
+# describing the modules in it. `bin/tun help` lists the commands. Run inside
+# `nix develop`.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v sbcl >/dev/null || { echo "bin/tun: run inside 'nix develop'" >&2; exit 2; }
+# The revision tun reports, and pins a new client at: the checked-out
+# commit, unless the working tree has changes.
+revision="$(git -C "$here" rev-parse HEAD)"
+git -C "$here" diff --quiet HEAD || revision="$revision-dirty"
+export TUN_CORE_REVISION="$revision"
+# tun preview runs a client on this working tree of Tun, in place of the
+# Tun the client pins (spec/preview.md 2).
+export TUN_WORKTREE="$here"
+# The caller's ASDF settings, before SBCL's wrapper adds its own, for the
+# programs tun loop verify runs (spec/loop.md 6).
+export TUN_CALLER_CL_SOURCE_REGISTRY="${CL_SOURCE_REGISTRY-}"
+export TUN_CALLER_ASDF_OUTPUT_TRANSLATIONS="${ASDF_OUTPUT_TRANSLATIONS-}"
+exec sbcl --noinform --non-interactive --no-userinit --no-sysinit \
+  --load "$here/scripts/cli.lisp" --end-toplevel-options "$@"

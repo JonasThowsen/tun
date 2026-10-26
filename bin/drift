@@ -1,0 +1,52 @@
+#!/usr/bin/env python3
+"""Compare loaded definitions and source hashes with this checkout."""
+import argparse
+import hashlib
+import json
+import os
+from pathlib import Path
+import urllib.request
+
+parser = argparse.ArgumentParser(description=__doc__)
+parser.add_argument("--url", required=True)
+parser.add_argument("--source-root", type=Path, default=Path(__file__).resolve().parent.parent)
+args = parser.parse_args()
+
+
+def headers():
+    """An access token from TUN_TOKEN (spec/auth.md 3.2), else the claim a
+    server started with --claimed-identity takes."""
+    token = os.environ.get("TUN_TOKEN")
+    if token:
+        return {"Content-Type": "application/json", "Authorization": "Bearer " + token}
+    return {"Content-Type": "application/json", "X-Tun-Actor": "admin:drift"}
+
+
+request = urllib.request.Request(
+    args.url.rstrip("/") + "/mcp",
+    headers=headers(),
+    data=json.dumps({"jsonrpc": "2.0", "id": 1, "method": "tools/call",
+                     "params": {"name": "introspect_runtime", "arguments": {}}}).encode(),
+)
+result = json.loads(urllib.request.urlopen(request, timeout=30).read())["result"]
+if result.get("isError"):
+    raise SystemExit(result)
+runtime = json.loads(result["content"][0]["text"])
+if "live_patches" not in runtime or not runtime.get("definition_sources"):
+    raise SystemExit("Server does not provide a loaded-definition baseline.")
+mismatches = []
+for source in runtime["definition_sources"]:
+    relative = Path(source["path"])
+    if relative.is_absolute() or ".." in relative.parts:
+        mismatches.append({"path": str(relative), "reason": "unmapped source"})
+        continue
+    path = args.source_root / relative
+    digest = hashlib.sha256(path.read_bytes()).hexdigest() if path.is_file() else None
+    if digest != source["source_hash"]:
+        mismatches.append({"path": str(relative), "loaded_hash": source["source_hash"],
+                           "checkout_hash": digest})
+patches = runtime["live_patches"]
+print(json.dumps({"clean": not patches and not mismatches, "live_patches": patches,
+                  "source_mismatches": mismatches}, ensure_ascii=False, indent=2))
+raise SystemExit(1 if patches or mismatches else 0)
+

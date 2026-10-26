@@ -1,0 +1,7 @@
+#!/usr/bin/env bash
+# bin/check [NAME...] -- Tun's own browser checks (spec/preview.md 4): the
+# showcase client in checks/showcase/, each check against a fresh preview of
+# its scenario on this working tree, in Chromium. Run inside `nix develop`.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+exec "$here/bin/tun" check --dir "$here/checks/showcase" "$@"

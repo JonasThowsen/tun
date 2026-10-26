@@ -1,0 +1,24 @@
+#!/usr/bin/env bash
+# Indent Common Lisp with the same hints used in the editor.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v emacs >/dev/null || { echo "bin/indent: run inside 'nix develop'" >&2; exit 2; }
+check=0
+files=()
+while [ "$#" -gt 0 ]; do
+  case "$1" in
+    --check) check=1 ;;
+    --) shift; files+=("$@"); break ;;
+    -*) echo "usage: bin/indent [--check] [--] FILE..." >&2; exit 2 ;;
+    *) files+=("$1") ;;
+  esac
+  shift
+done
+if [ "${#files[@]}" -eq 0 ]; then
+  [ "$check" -eq 1 ] || { echo "bin/indent: rewriting requires files" >&2; exit 2; }
+  cd "$here"
+  git rev-parse --is-inside-work-tree >/dev/null || exit 2
+  mapfile -d '' -t files < <(git ls-files -z -- '*.lisp' '*.asd')
+fi
+export TUN_INDENT_CHECK="$check"
+exec emacs --batch -Q --load "$here/scripts/indent.el" --funcall tun-indent-main "${files[@]}"

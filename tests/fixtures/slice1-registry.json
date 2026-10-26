@@ -1,0 +1,3307 @@
+{
+ "entities": [
+  {
+   "name": "workflow",
+   "label": "Arbeidsflyt",
+   "source": "core",
+   "module": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "kind",
+     "type": "string",
+     "label": "Type",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "customer_id",
+     "type": "id",
+     "label": "Kunde",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "due_at",
+     "type": "timestamp",
+     "label": "Forfall",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false,
+     "values": [
+      "planlagt",
+      "utført",
+      "avbrutt"
+     ]
+    },
+    {
+     "name": "executed_at",
+     "type": "timestamp",
+     "label": "Utført",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "note",
+     "type": "string",
+     "label": "Merknad",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "customer",
+   "label": "Kunde",
+   "source": "core",
+   "module": "customers",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "module": "customers",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "label": "Navn",
+     "required": true,
+     "source": "core",
+     "module": "customers",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "email",
+     "type": "email",
+     "label": "E-post",
+     "required": true,
+     "source": "core",
+     "module": "customers",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "phone",
+     "type": "string",
+     "label": "Telefon",
+     "required": false,
+     "source": "core",
+     "module": "customers",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "notes",
+     "type": "string",
+     "label": "Merknad",
+     "required": false,
+     "source": "core",
+     "module": "customers",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "completed_orders",
+     "type": "integer",
+     "label": "Fullførte ordrer",
+     "required": false,
+     "source": "core",
+     "module": "customers",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "customers",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "category",
+     "type": "enum",
+     "label": "Kundetype",
+     "required": true,
+     "source": "client",
+     "module": "client",
+     "input": true,
+     "computed": false,
+     "values": [
+      "Privat",
+      "Bedrift"
+     ]
+    },
+    {
+     "name": "organization_number",
+     "type": "string",
+     "label": "Organisasjonsnummer",
+     "required": false,
+     "source": "client",
+     "module": "client",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "display_name",
+     "type": "string",
+     "label": "Visningsnavn",
+     "required": false,
+     "source": "client",
+     "module": "client",
+     "input": false,
+     "computed": true
+    }
+   ],
+   "rules": [
+    {
+     "name": "business_customers_need_organization_number",
+     "field": "organization_number",
+     "message": "Bedriftskunder må ha et organisasjonsnummer på ni sifre",
+     "source": "client",
+     "module": "client"
+    }
+   ]
+  },
+  {
+   "name": "product",
+   "label": "Produkt",
+   "source": "core",
+   "module": "catalog",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "module": "catalog",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "label": "Navn",
+     "required": true,
+     "source": "core",
+     "module": "catalog",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "kind",
+     "type": "enum",
+     "label": "Produkttype",
+     "required": true,
+     "source": "core",
+     "module": "catalog",
+     "input": true,
+     "computed": false,
+     "values": [
+      "utleie",
+      "forbruk",
+      "tjeneste"
+     ]
+    },
+    {
+     "name": "unit",
+     "type": "string",
+     "label": "Enhet",
+     "required": true,
+     "source": "core",
+     "module": "catalog",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "unit_price_ore",
+     "type": "integer",
+     "label": "Enhetspris (øre)",
+     "required": true,
+     "source": "core",
+     "module": "catalog",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "stock_tracked",
+     "type": "boolean",
+     "label": "Lagerført",
+     "required": true,
+     "source": "core",
+     "module": "catalog",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "units_owned",
+     "type": "integer",
+     "label": "Antall eid",
+     "required": false,
+     "source": "core",
+     "module": "catalog",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "catalog",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "inventory_movement",
+   "label": "Lagerbevegelse",
+   "source": "core",
+   "module": "inventory",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "product_id",
+     "type": "id",
+     "label": "Produkt",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false,
+     "references": "product"
+    },
+    {
+     "name": "kind",
+     "type": "enum",
+     "label": "Type",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false,
+     "values": [
+      "mottak",
+      "justering",
+      "forbruk",
+      "reservasjon",
+      "frigivelse"
+     ]
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "balance_after",
+     "type": "integer",
+     "label": "Beholdning etter",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "label": "Begrunnelse",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "at",
+     "type": "timestamp",
+     "label": "Tidspunkt",
+     "required": false,
+     "source": "core",
+     "module": "inventory",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "order_line",
+   "label": "Ordrelinje",
+   "source": "core",
+   "module": "orders",
+   "embedded": true,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "product_id",
+     "type": "id",
+     "label": "Produkt",
+     "required": true,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false,
+     "references": "product"
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": true,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "price_mode",
+     "type": "enum",
+     "label": "Prisvalg",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false,
+     "values": [
+      "automatisk",
+      "prosent_rabatt",
+      "fast_rabatt",
+      "manuell_total"
+     ]
+    },
+    {
+     "name": "discount_percent",
+     "type": "decimal",
+     "label": "Rabatt i prosent",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "discount_ore_input",
+     "type": "integer",
+     "label": "Rabattbeløp (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "manual_total_ore",
+     "type": "integer",
+     "label": "Manuell linjesum (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "price_reason",
+     "type": "string",
+     "label": "Begrunnelse for prisen",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "notes",
+     "type": "string",
+     "label": "Merknad",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "unit_price_ore",
+     "type": "integer",
+     "label": "Enhetspris (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_total_ore",
+     "type": "integer",
+     "label": "Linjesum etter katalog (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_effective_ore",
+     "type": "integer",
+     "label": "Linjesum (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_adjustment_ore",
+     "type": "integer",
+     "label": "Linjejustering (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "hours",
+     "type": "integer",
+     "label": "Timer",
+     "required": false,
+     "source": "client",
+     "module": "client",
+     "input": true,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "requirement",
+   "label": "Behov",
+   "source": "core",
+   "module": "orders",
+   "embedded": true,
+   "fields": [
+    {
+     "name": "product_id",
+     "type": "id",
+     "label": "Produkt",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "references": "product"
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "order",
+   "label": "Ordre",
+   "source": "core",
+   "module": "orders",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "values": [
+      "utkast",
+      "tilbud_sendt",
+      "akseptert",
+      "bekreftet",
+      "hentet",
+      "returnert",
+      "send_faktura",
+      "fullført",
+      "avbrutt"
+     ]
+    },
+    {
+     "name": "customer_id",
+     "type": "id",
+     "label": "Kunde",
+     "required": true,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false,
+     "references": "customer"
+    },
+    {
+     "name": "event_date",
+     "type": "date",
+     "label": "Arrangementsdato",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "end_date",
+     "type": "date",
+     "label": "Sluttdato",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "delivery_address",
+     "type": "string",
+     "label": "Leveringsadresse",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "lines",
+     "type": "list",
+     "label": "Linjer",
+     "required": true,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false,
+     "items": "order_line"
+    },
+    {
+     "name": "tags",
+     "type": "list",
+     "label": "Merker",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "department",
+     "type": "string",
+     "label": "Avdeling",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "price_mode",
+     "type": "enum",
+     "label": "Prisvalg for ordren",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false,
+     "values": [
+      "automatisk",
+      "prosent_rabatt",
+      "fast_rabatt",
+      "manuell_total"
+     ]
+    },
+    {
+     "name": "discount_percent",
+     "type": "decimal",
+     "label": "Ordrerabatt i prosent",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "discount_ore_input",
+     "type": "integer",
+     "label": "Ordrerabatt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "price_reason",
+     "type": "string",
+     "label": "Begrunnelse for prisen",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "logistics",
+     "type": "json",
+     "label": "Logistikk",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "catalog_total_ore",
+     "type": "integer",
+     "label": "Katalogsum (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "subtotal_ore",
+     "type": "integer",
+     "label": "Sum før rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "discount_ore",
+     "type": "integer",
+     "label": "Rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "adjustment_ore",
+     "type": "integer",
+     "label": "Justering (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "total_ore",
+     "type": "integer",
+     "label": "Totalt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "requirements",
+     "type": "list",
+     "label": "Behov for forbruksvarer",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "items": "requirement"
+    },
+    {
+     "name": "pickup",
+     "type": "json",
+     "label": "Henting",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "return",
+     "type": "json",
+     "label": "Retur",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "accepted_snapshot_stale",
+     "type": "boolean",
+     "label": "Akseptert tilbud var utdatert",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "bookings",
+     "type": "json",
+     "label": "Bookinger",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "requires_pickup",
+     "type": "boolean",
+     "label": "Krever henting og retur",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "locked",
+     "type": "boolean",
+     "label": "Låst",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "dateless",
+     "type": "boolean",
+     "label": "Uten dato",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "logistics_settled",
+     "type": "boolean",
+     "label": "Logistikk avtalt",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "logistics_summary",
+     "type": "json",
+     "label": "Logistikk",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "quote",
+     "type": "json",
+     "label": "Tilbud",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "packed",
+     "type": "boolean",
+     "label": "Pakket",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": true
+    },
+    {
+     "name": "assignments",
+     "type": "json",
+     "label": "Tildelt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": true
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "quote",
+   "label": "Tilbud",
+   "source": "core",
+   "module": "orders",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "values": [
+      "awaiting_response",
+      "accepted",
+      "declined"
+     ]
+    },
+    {
+     "name": "offered_at",
+     "type": "timestamp",
+     "label": "Sendt",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "expires_at",
+     "type": "timestamp",
+     "label": "Utløper",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "responded_at",
+     "type": "timestamp",
+     "label": "Besvart",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "snapshot",
+     "type": "json",
+     "label": "Innhold da tilbudet ble sendt",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "basis",
+     "type": "json",
+     "label": "Ordren da tilbudet ble sendt",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "access_code",
+     "type": "string",
+     "label": "Tilgangskode",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "checklist_item",
+   "label": "Sjekklistepunkt",
+   "source": "core",
+   "module": "orders",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "order_line_id",
+     "type": "id",
+     "label": "Ordrelinje",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "origin",
+     "type": "enum",
+     "label": "Opprinnelse",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false,
+     "values": [
+      "automatic",
+      "manual"
+     ]
+    },
+    {
+     "name": "source_key",
+     "type": "string",
+     "label": "Kilde",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "description",
+     "type": "string",
+     "label": "Beskrivelse",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "category",
+     "type": "string",
+     "label": "Kategori",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "computed_quantity",
+     "type": "integer",
+     "label": "Beregnet antall",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "done_quantity",
+     "type": "integer",
+     "label": "Pakket antall",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "done",
+     "type": "boolean",
+     "label": "Ferdig",
+     "required": false,
+     "source": "core",
+     "module": "orders",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "employee",
+   "label": "Ansatt",
+   "source": "core",
+   "module": "staffing",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "label": "Navn",
+     "required": true,
+     "source": "core",
+     "module": "staffing",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "actor",
+     "type": "string",
+     "label": "Aktør",
+     "required": true,
+     "source": "core",
+     "module": "staffing",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "role",
+     "type": "enum",
+     "label": "Rolle",
+     "required": true,
+     "source": "core",
+     "module": "staffing",
+     "input": true,
+     "computed": false,
+     "values": [
+      "viewer",
+      "employee",
+      "admin"
+     ]
+    },
+    {
+     "name": "department",
+     "type": "string",
+     "label": "Avdeling",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "auto_assign_in_department",
+     "type": "boolean",
+     "label": "Tildeles automatisk i avdelingen",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "active",
+     "type": "boolean",
+     "label": "Aktiv",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "assignment",
+   "label": "Tildeling",
+   "source": "core",
+   "module": "staffing",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "employee_id",
+     "type": "id",
+     "label": "Ansatt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "employee"
+    },
+    {
+     "name": "auto",
+     "type": "boolean",
+     "label": "Automatisk",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "auto_department",
+     "type": "string",
+     "label": "Avdeling (automatisk)",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "started_at",
+     "type": "timestamp",
+     "label": "Start",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "ended_at",
+     "type": "timestamp",
+     "label": "Slutt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "assignment_override",
+   "label": "Overstyring av utilgjengelighet",
+   "source": "core",
+   "module": "staffing",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "assignment_id",
+     "type": "id",
+     "label": "Tildeling",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "assignment"
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "employee_id",
+     "type": "id",
+     "label": "Ansatt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "employee"
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "label": "Begrunnelse",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "conflict_ids",
+     "type": "list",
+     "label": "Utilgjengeligheter",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "conflict_summary",
+     "type": "string",
+     "label": "Konflikter",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_by",
+     "type": "string",
+     "label": "Overstyrt av",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "unavailability",
+   "label": "Utilgjengelighet",
+   "source": "core",
+   "module": "staffing",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "employee_id",
+     "type": "id",
+     "label": "Ansatt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "employee"
+    },
+    {
+     "name": "start_date",
+     "type": "date",
+     "label": "Fra dato",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "end_date",
+     "type": "date",
+     "label": "Til dato",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "whole_day",
+     "type": "boolean",
+     "label": "Hele dager",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "start_time",
+     "type": "string",
+     "label": "Fra klokken",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "end_time",
+     "type": "string",
+     "label": "Til klokken",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "private_note",
+     "type": "string",
+     "label": "Privat merknad",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "version",
+     "type": "integer",
+     "label": "Versjon",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "work_session",
+   "label": "Arbeidsøkt",
+   "source": "core",
+   "module": "staffing",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "assignment_id",
+     "type": "id",
+     "label": "Tildeling",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "assignment"
+    },
+    {
+     "name": "employee_id",
+     "type": "id",
+     "label": "Ansatt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "references": "employee"
+    },
+    {
+     "name": "started_at",
+     "type": "timestamp",
+     "label": "Start",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "ended_at",
+     "type": "timestamp",
+     "label": "Slutt",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "duration_seconds",
+     "type": "integer",
+     "label": "Varighet (sekunder)",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "note",
+     "type": "string",
+     "label": "Merknad",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "source",
+     "type": "enum",
+     "label": "Kilde",
+     "required": false,
+     "source": "core",
+     "module": "staffing",
+     "input": false,
+     "computed": false,
+     "values": [
+      "live",
+      "manual"
+     ]
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "calendar_event",
+   "label": "Hendelse",
+   "source": "core",
+   "module": "calendar",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "title",
+     "type": "string",
+     "label": "Tittel",
+     "required": true,
+     "source": "core",
+     "module": "calendar",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "description",
+     "type": "string",
+     "label": "Beskrivelse",
+     "required": false,
+     "source": "core",
+     "module": "calendar",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "start_date",
+     "type": "date",
+     "label": "Fra dato",
+     "required": true,
+     "source": "core",
+     "module": "calendar",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "end_date",
+     "type": "date",
+     "label": "Til dato",
+     "required": false,
+     "source": "core",
+     "module": "calendar",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "calendar",
+     "input": true,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "calendar",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "invoice_line",
+   "label": "Fakturalinje",
+   "source": "core",
+   "module": "invoicing",
+   "embedded": true,
+   "fields": [
+    {
+     "name": "description",
+     "type": "string",
+     "label": "Beskrivelse",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "unit_price_ore",
+     "type": "integer",
+     "label": "Enhetspris (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_total_ore",
+     "type": "integer",
+     "label": "Linjesum (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_effective_ore",
+     "type": "integer",
+     "label": "Linjesum etter prisvalg (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_adjustment_ore",
+     "type": "integer",
+     "label": "Linjejustering (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "invoice",
+   "label": "Faktura",
+   "source": "core",
+   "module": "invoicing",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": true,
+     "source": "core",
+     "module": "invoicing",
+     "input": true,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false,
+     "values": [
+      "utkast",
+      "sendt"
+     ]
+    },
+    {
+     "name": "customer",
+     "type": "json",
+     "label": "Kunde",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "lines",
+     "type": "list",
+     "label": "Linjer",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false,
+     "items": "invoice_line"
+    },
+    {
+     "name": "subtotal_ore",
+     "type": "integer",
+     "label": "Sum før rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "discount_ore",
+     "type": "integer",
+     "label": "Rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "adjustment_ore",
+     "type": "integer",
+     "label": "Justering (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "total_ore",
+     "type": "integer",
+     "label": "Totalt (øre)",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "external_ref",
+     "type": "string",
+     "label": "Ekstern referanse",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "sent_at",
+     "type": "timestamp",
+     "label": "Sendt",
+     "required": false,
+     "source": "core",
+     "module": "invoicing",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "message",
+   "label": "Melding",
+   "source": "core",
+   "module": "messaging",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "module": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "customer_id",
+     "type": "id",
+     "label": "Kunde",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "template",
+     "type": "string",
+     "label": "Mal",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "subject",
+     "type": "string",
+     "label": "Emne",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "body",
+     "type": "string",
+     "label": "Tekst",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "scheduled_at",
+     "type": "timestamp",
+     "label": "Planlagt",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "sent_at",
+     "type": "timestamp",
+     "label": "Sendt",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "module": "messaging",
+     "input": false,
+     "computed": false,
+     "values": [
+      "planlagt",
+      "sendt"
+     ]
+    }
+   ],
+   "rules": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "workflows_list",
+   "title": "Arbeidsflyter",
+   "entity": "workflow",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "workflows_get",
+   "title": "Hent arbeidsflyt",
+   "entity": "workflow",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "registry_describe",
+   "title": "Beskriv registeret",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "audit_list",
+   "title": "List revisjonslogg",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "clock_get",
+   "title": "Les klokken",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "clock_set",
+   "title": "Still klokken",
+   "entity": null,
+   "kind": "workflow",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "accounting_status",
+   "title": "Regnskapsstatus",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_record",
+   "title": "Inspiser post",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_request",
+   "title": "Inspiser forespørsel",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_recent",
+   "title": "Siste forespørsler",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_inflight",
+   "title": "Pågående forespørsler",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_workflows",
+   "title": "Arbeidsflyter",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "explain",
+   "title": "Forklar et kall",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_schema",
+   "title": "Databaseskjema",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_runtime",
+   "title": "Kjøretid",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "introspect_extensions",
+   "title": "Klientutvidelser",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "core"
+  },
+  {
+   "name": "customers_create",
+   "title": "Opprett kunde",
+   "entity": "customer",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "customers"
+  },
+  {
+   "name": "customers_get",
+   "title": "Hent kunde",
+   "entity": "customer",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "customers"
+  },
+  {
+   "name": "customers_list",
+   "title": "List kunder",
+   "entity": "customer",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "customers"
+  },
+  {
+   "name": "products_create",
+   "title": "Opprett produkt",
+   "entity": "product",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "catalog"
+  },
+  {
+   "name": "products_get",
+   "title": "Hent produkt",
+   "entity": "product",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "catalog"
+  },
+  {
+   "name": "products_list",
+   "title": "Produktliste",
+   "entity": "product",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "catalog"
+  },
+  {
+   "name": "inventory_receive",
+   "title": "Varemottak",
+   "entity": "inventory_movement",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "inventory"
+  },
+  {
+   "name": "inventory_adjust",
+   "title": "Lagerjustering",
+   "entity": "inventory_movement",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "inventory"
+  },
+  {
+   "name": "inventory_balance",
+   "title": "Lagerbeholdning",
+   "entity": "inventory_movement",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "inventory"
+  },
+  {
+   "name": "inventory_movements",
+   "title": "Lagerbevegelser",
+   "entity": "inventory_movement",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "inventory"
+  },
+  {
+   "name": "inventory_shortages",
+   "title": "Mangelliste",
+   "entity": "inventory_movement",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "inventory"
+  },
+  {
+   "name": "orders_create",
+   "title": "Opprett ordre",
+   "entity": "order",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_get",
+   "title": "Hent ordre",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_list",
+   "title": "Ordreliste",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_summary",
+   "title": "Ordreoversikt",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_update",
+   "title": "Endre ordre",
+   "entity": "order",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "availability_check",
+   "title": "Sjekk tilgjengelighet",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_send_quote",
+   "title": "Send tilbud",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_accept",
+   "title": "Aksepter tilbud",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_confirm",
+   "title": "Bekreft ordre",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_register_pickup",
+   "title": "Registrer henting",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_register_return",
+   "title": "Registrer retur",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_ready_for_invoice",
+   "title": "Klar til fakturering",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_complete",
+   "title": "Fullfør ordre",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_cancel",
+   "title": "Avbryt ordre",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_reopen",
+   "title": "Åpne ordre igjen",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_reactivate",
+   "title": "Gjenoppta som utkast",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "quotes_get",
+   "title": "Hent tilbud",
+   "entity": "quote",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "quotes_preview",
+   "title": "Forhåndsvis tilbud",
+   "entity": "quote",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "quotes_respond",
+   "title": "Svar på tilbud",
+   "entity": "quote",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "checklists_list",
+   "title": "Sjekkliste",
+   "entity": "checklist_item",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "checklists_sync",
+   "title": "Synkroniser sjekkliste",
+   "entity": "checklist_item",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "checklists_mark",
+   "title": "Merk sjekklistepunkt",
+   "entity": "checklist_item",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "checklists_add_manual",
+   "title": "Legg til sjekklistepunkt",
+   "entity": "checklist_item",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "checklists_delete",
+   "title": "Slett sjekklistepunkt",
+   "entity": "checklist_item",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "orders_suggest",
+   "title": "Forslag til ordren",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "orders"
+  },
+  {
+   "name": "employees_create",
+   "title": "Opprett ansatt",
+   "entity": "employee",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "employees_get",
+   "title": "Hent ansatt",
+   "entity": "employee",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "employees_list",
+   "title": "Ansatte",
+   "entity": "employee",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "employees_update",
+   "title": "Endre ansatt",
+   "entity": "employee",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "assignments_create",
+   "title": "Tildel ansatt",
+   "entity": "assignment",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "assignments_end",
+   "title": "Avslutt tildeling",
+   "entity": "assignment",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "assignments_list",
+   "title": "Tildelinger",
+   "entity": "assignment",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "assignment_overrides_list",
+   "title": "Overstyringer",
+   "entity": "assignment_override",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "work_sessions_start",
+   "title": "Start timer",
+   "entity": "work_session",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "work_sessions_stop",
+   "title": "Stopp timer",
+   "entity": "work_session",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "work_sessions_create_manual",
+   "title": "Registrer arbeidsøkt",
+   "entity": "work_session",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "work_sessions_list",
+   "title": "Arbeidsøkter",
+   "entity": "work_session",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "unavailability_create",
+   "title": "Registrer utilgjengelighet",
+   "entity": "unavailability",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "unavailability_update",
+   "title": "Endre utilgjengelighet",
+   "entity": "unavailability",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "unavailability_delete",
+   "title": "Slett utilgjengelighet",
+   "entity": "unavailability",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "unavailability_list",
+   "title": "Utilgjengelighet",
+   "entity": "unavailability",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "staffing"
+  },
+  {
+   "name": "calendar_events_create",
+   "title": "Opprett hendelse",
+   "entity": "calendar_event",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "calendar"
+  },
+  {
+   "name": "calendar_events_update",
+   "title": "Endre hendelse",
+   "entity": "calendar_event",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "calendar"
+  },
+  {
+   "name": "calendar_events_delete",
+   "title": "Slett hendelse",
+   "entity": "calendar_event",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "calendar"
+  },
+  {
+   "name": "calendar_events_get",
+   "title": "Hent hendelse",
+   "entity": "calendar_event",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "calendar"
+  },
+  {
+   "name": "calendar_events_list",
+   "title": "Hendelser",
+   "entity": "calendar_event",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core",
+   "module": "calendar"
+  },
+  {
+   "name": "calendar_list",
+   "title": "Kalender",
+   "entity": "calendar_event",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "calendar"
+  },
+  {
+   "name": "invoices_create_from_order",
+   "title": "Lag faktura",
+   "entity": "invoice",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core",
+   "module": "invoicing"
+  },
+  {
+   "name": "invoices_get",
+   "title": "Hent faktura",
+   "entity": "invoice",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "invoicing"
+  },
+  {
+   "name": "invoices_list",
+   "title": "Fakturaliste",
+   "entity": "invoice",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "invoicing"
+  },
+  {
+   "name": "invoices_send",
+   "title": "Send faktura",
+   "entity": "invoice",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core",
+   "module": "invoicing"
+  },
+  {
+   "name": "messages_list",
+   "title": "Meldinger",
+   "entity": "message",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core",
+   "module": "messaging"
+  }
+ ],
+ "workflows": [
+  {
+   "kind": "oppdragsbekreftelse",
+   "label": "Oppdragsbekreftelse",
+   "source": "client",
+   "module": "client"
+  }
+ ],
+ "message_templates": [
+  {
+   "name": "bekreftelse",
+   "label": "Oppdragsbekreftelse",
+   "source": "client",
+   "module": "client",
+   "final": false
+  },
+  {
+   "name": "tilbud",
+   "label": "Tilbud (standard)",
+   "source": "core",
+   "module": "messaging",
+   "final": false
+  },
+  {
+   "name": "faktura",
+   "label": "Faktura (standard)",
+   "source": "core",
+   "module": "messaging",
+   "final": false
+  }
+ ],
+ "screens": [
+  {
+   "name": "customer_list",
+   "source": "core",
+   "module": "customers",
+   "override": false
+  },
+  {
+   "name": "order_list",
+   "source": "core",
+   "module": "orders",
+   "override": false
+  },
+  {
+   "name": "order_detail",
+   "source": "core",
+   "module": "orders",
+   "override": false
+  },
+  {
+   "name": "customer_list",
+   "source": "client",
+   "module": "client",
+   "override": true
+  }
+ ],
+ "extension_points": [
+  {
+   "name": "screen",
+   "kind": "seam",
+   "hook_kind": "screen",
+   "function": "render_screen",
+   "module": "core",
+   "description": "Bodies of the generated pages; a module or client overrides one by name."
+  },
+  {
+   "name": "discount",
+   "kind": "seam",
+   "hook_kind": "before",
+   "function": "order_discount",
+   "module": "orders",
+   "description": "The automatic discount of an order's subtotal (price mode automatisk)."
+  },
+  {
+   "name": "requirements",
+   "kind": "seam",
+   "hook_kind": "before",
+   "function": "compute_order_requirements",
+   "module": "orders",
+   "description": "Consumables an order needs, per line."
+  },
+  {
+   "name": "booking_window",
+   "kind": "seam",
+   "hook_kind": "before",
+   "function": "booking_window",
+   "module": "orders",
+   "description": "Dates one booking of a rental unit blocks it."
+  },
+  {
+   "name": "suggestions",
+   "kind": "seam",
+   "hook_kind": "before",
+   "function": "order_suggestions",
+   "module": "orders",
+   "description": "Upsell suggestions for an order (orders_suggest)."
+  },
+  {
+   "name": "checklist_items",
+   "kind": "seam",
+   "hook_kind": "before",
+   "function": "order_checklist_items",
+   "module": "orders",
+   "description": "Extra automatic checklist items, keyed client:<key>."
+  },
+  {
+   "name": "departments",
+   "kind": "seam",
+   "hook_kind": "rule",
+   "function": "order_departments",
+   "module": "orders",
+   "description": "The departments an order may name."
+  },
+  {
+   "name": "department_changed",
+   "kind": "seam",
+   "hook_kind": "after",
+   "function": "order_department_changed",
+   "module": "orders",
+   "description": "Reacts inside the save when an order's department is set or changes."
+  },
+  {
+   "name": "closure_guard",
+   "kind": "seam",
+   "hook_kind": "rule",
+   "function": "order_closure_check",
+   "module": "orders",
+   "description": "May refuse completing, invoicing readiness or cancelling an order."
+  },
+  {
+   "name": "departments",
+   "kind": "seam",
+   "hook_kind": "rule",
+   "function": "departments",
+   "module": "staffing",
+   "description": "The business's departments (orders and employees name them)."
+  },
+  {
+   "name": "assignment_eligibility",
+   "kind": "seam",
+   "hook_kind": "rule",
+   "function": "assignment_eligibility",
+   "module": "staffing",
+   "description": "May refuse assigning an employee to an order, with a message."
+  }
+ ],
+ "modules": [
+  {
+   "name": "customers",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "catalog",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "inventory",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [
+    "catalog"
+   ],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "orders",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [
+    "customers",
+    "catalog",
+    "inventory"
+   ],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "staffing",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [
+    "orders"
+   ],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "calendar",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [
+    "orders",
+    "staffing"
+   ],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "invoicing",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [
+    "orders"
+   ],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  },
+  {
+   "name": "messaging",
+   "revision": "c9b02a4d3b6e584fece9a643eb78f123ae569efe",
+   "depends_on": [
+    "orders",
+    "customers"
+   ],
+   "enabled_by": "client",
+   "core_range": [
+    ">= 1.0",
+    "< 2.0"
+   ]
+  }
+ ]
+}

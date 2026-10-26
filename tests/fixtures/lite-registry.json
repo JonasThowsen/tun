@@ -1,0 +1,1253 @@
+{
+ "entities": [
+  {
+   "name": "customer",
+   "label": "Kunde",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "label": "Navn",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "email",
+     "type": "email",
+     "label": "E-post",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "phone",
+     "type": "string",
+     "label": "Telefon",
+     "required": false,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "completed_orders",
+     "type": "integer",
+     "label": "Fullførte ordrer",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "category",
+     "type": "enum",
+     "label": "Kundetype",
+     "required": true,
+     "source": "client",
+     "input": true,
+     "computed": false,
+     "values": [
+      "Privat",
+      "Bedrift"
+     ]
+    },
+    {
+     "name": "organization_number",
+     "type": "string",
+     "label": "Organisasjonsnummer",
+     "required": false,
+     "source": "client",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "display_name",
+     "type": "string",
+     "label": "Visningsnavn",
+     "required": false,
+     "source": "client",
+     "input": false,
+     "computed": true
+    }
+   ],
+   "rules": [
+    {
+     "name": "business_customers_need_organization_number",
+     "field": "organization_number",
+     "message": "Bedriftskunder må ha et organisasjonsnummer på ni sifre",
+     "source": "client"
+    }
+   ]
+  },
+  {
+   "name": "product",
+   "label": "Produkt",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "name",
+     "type": "string",
+     "label": "Navn",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "kind",
+     "type": "enum",
+     "label": "Produkttype",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false,
+     "values": [
+      "utleie",
+      "forbruk",
+      "tjeneste"
+     ]
+    },
+    {
+     "name": "unit",
+     "type": "string",
+     "label": "Enhet",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "unit_price_ore",
+     "type": "integer",
+     "label": "Enhetspris (øre)",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "stock_tracked",
+     "type": "boolean",
+     "label": "Lagerført",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "units_owned",
+     "type": "integer",
+     "label": "Antall eid",
+     "required": false,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "inventory_movement",
+   "label": "Lagerbevegelse",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "product_id",
+     "type": "id",
+     "label": "Produkt",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "references": "product"
+    },
+    {
+     "name": "kind",
+     "type": "enum",
+     "label": "Type",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "values": [
+      "mottak",
+      "justering",
+      "forbruk",
+      "reservasjon",
+      "frigivelse"
+     ]
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "balance_after",
+     "type": "integer",
+     "label": "Beholdning etter",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "reason",
+     "type": "string",
+     "label": "Begrunnelse",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "at",
+     "type": "timestamp",
+     "label": "Tidspunkt",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "message",
+   "label": "Melding",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "customer_id",
+     "type": "id",
+     "label": "Kunde",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "template",
+     "type": "string",
+     "label": "Mal",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "subject",
+     "type": "string",
+     "label": "Emne",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "body",
+     "type": "string",
+     "label": "Tekst",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "scheduled_at",
+     "type": "timestamp",
+     "label": "Planlagt",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "sent_at",
+     "type": "timestamp",
+     "label": "Sendt",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "values": [
+      "planlagt",
+      "sendt"
+     ]
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "workflow",
+   "label": "Arbeidsflyt",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "kind",
+     "type": "string",
+     "label": "Type",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "customer_id",
+     "type": "id",
+     "label": "Kunde",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "due_at",
+     "type": "timestamp",
+     "label": "Forfall",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "values": [
+      "planlagt",
+      "utført",
+      "avbrutt"
+     ]
+    },
+    {
+     "name": "executed_at",
+     "type": "timestamp",
+     "label": "Utført",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "note",
+     "type": "string",
+     "label": "Merknad",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "order_line",
+   "label": "Ordrelinje",
+   "source": "core",
+   "embedded": true,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "product_id",
+     "type": "id",
+     "label": "Produkt",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false,
+     "references": "product"
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "unit_price_ore",
+     "type": "integer",
+     "label": "Enhetspris (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_total_ore",
+     "type": "integer",
+     "label": "Linjesum (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "hours",
+     "type": "integer",
+     "label": "Timer",
+     "required": false,
+     "source": "client",
+     "input": true,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "requirement",
+   "label": "Behov",
+   "source": "core",
+   "embedded": true,
+   "fields": [
+    {
+     "name": "product_id",
+     "type": "id",
+     "label": "Produkt",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "references": "product"
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "order",
+   "label": "Ordre",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "revision",
+     "type": "integer",
+     "label": "Revisjon",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "values": [
+      "utkast",
+      "tilbud_sendt",
+      "akseptert",
+      "bekreftet",
+      "fullført",
+      "avbrutt"
+     ]
+    },
+    {
+     "name": "customer_id",
+     "type": "id",
+     "label": "Kunde",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false,
+     "references": "customer"
+    },
+    {
+     "name": "event_date",
+     "type": "date",
+     "label": "Arrangementsdato",
+     "required": false,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "delivery_address",
+     "type": "string",
+     "label": "Leveringsadresse",
+     "required": false,
+     "source": "core",
+     "input": true,
+     "computed": false
+    },
+    {
+     "name": "lines",
+     "type": "list",
+     "label": "Linjer",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false,
+     "items": "order_line"
+    },
+    {
+     "name": "subtotal_ore",
+     "type": "integer",
+     "label": "Sum før rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "discount_ore",
+     "type": "integer",
+     "label": "Rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "total_ore",
+     "type": "integer",
+     "label": "Totalt (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "requirements",
+     "type": "list",
+     "label": "Behov for forbruksvarer",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "items": "requirement"
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "bookings",
+     "type": "json",
+     "label": "Bookinger",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": true
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "invoice_line",
+   "label": "Fakturalinje",
+   "source": "core",
+   "embedded": true,
+   "fields": [
+    {
+     "name": "description",
+     "type": "string",
+     "label": "Beskrivelse",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "quantity",
+     "type": "integer",
+     "label": "Antall",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "unit_price_ore",
+     "type": "integer",
+     "label": "Enhetspris (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "line_total_ore",
+     "type": "integer",
+     "label": "Linjesum (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  },
+  {
+   "name": "invoice",
+   "label": "Faktura",
+   "source": "core",
+   "embedded": false,
+   "fields": [
+    {
+     "name": "id",
+     "type": "id",
+     "label": "ID",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "order_id",
+     "type": "id",
+     "label": "Ordre",
+     "required": true,
+     "source": "core",
+     "input": true,
+     "computed": false,
+     "references": "order"
+    },
+    {
+     "name": "status",
+     "type": "enum",
+     "label": "Status",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "values": [
+      "utkast",
+      "sendt"
+     ]
+    },
+    {
+     "name": "customer",
+     "type": "json",
+     "label": "Kunde",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "lines",
+     "type": "list",
+     "label": "Linjer",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false,
+     "items": "invoice_line"
+    },
+    {
+     "name": "subtotal_ore",
+     "type": "integer",
+     "label": "Sum før rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "discount_ore",
+     "type": "integer",
+     "label": "Rabatt (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "total_ore",
+     "type": "integer",
+     "label": "Totalt (øre)",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "external_ref",
+     "type": "string",
+     "label": "Ekstern referanse",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "created_at",
+     "type": "timestamp",
+     "label": "Opprettet",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    },
+    {
+     "name": "sent_at",
+     "type": "timestamp",
+     "label": "Sendt",
+     "required": false,
+     "source": "core",
+     "input": false,
+     "computed": false
+    }
+   ],
+   "rules": []
+  }
+ ],
+ "operations": [
+  {
+   "name": "customers_create",
+   "title": "Opprett kunde",
+   "entity": "customer",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "customers_get",
+   "title": "Hent kunde",
+   "entity": "customer",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "customers_list",
+   "title": "List kunder",
+   "entity": "customer",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "products_create",
+   "title": "Opprett produkt",
+   "entity": "product",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "products_get",
+   "title": "Hent produkt",
+   "entity": "product",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "products_list",
+   "title": "Produktliste",
+   "entity": "product",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "inventory_receive",
+   "title": "Varemottak",
+   "entity": "inventory_movement",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "inventory_adjust",
+   "title": "Lagerjustering",
+   "entity": "inventory_movement",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core"
+  },
+  {
+   "name": "inventory_balance",
+   "title": "Lagerbeholdning",
+   "entity": "inventory_movement",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "inventory_movements",
+   "title": "Lagerbevegelser",
+   "entity": "inventory_movement",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "inventory_shortages",
+   "title": "Mangelliste",
+   "entity": "inventory_movement",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "messages_list",
+   "title": "Meldinger",
+   "entity": "message",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "workflows_list",
+   "title": "Arbeidsflyter",
+   "entity": "workflow",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "orders_create",
+   "title": "Opprett ordre",
+   "entity": "order",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "orders_get",
+   "title": "Hent ordre",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "orders_list",
+   "title": "Ordreliste",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "orders_update",
+   "title": "Endre ordre",
+   "entity": "order",
+   "kind": "update",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "orders_send_quote",
+   "title": "Send tilbud",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "orders_accept",
+   "title": "Aksepter tilbud",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "orders_confirm",
+   "title": "Bekreft ordre",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "orders_complete",
+   "title": "Fullfør ordre",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "orders_cancel",
+   "title": "Avbryt ordre",
+   "entity": "order",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "availability_check",
+   "title": "Sjekk tilgjengelighet",
+   "entity": "order",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "invoices_create_from_order",
+   "title": "Lag faktura",
+   "entity": "invoice",
+   "kind": "create",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "employee",
+   "source": "core"
+  },
+  {
+   "name": "invoices_get",
+   "title": "Hent faktura",
+   "entity": "invoice",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "invoices_list",
+   "title": "Fakturaliste",
+   "entity": "invoice",
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "invoices_send",
+   "title": "Send faktura",
+   "entity": "invoice",
+   "kind": "transition",
+   "confirm": true,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core"
+  },
+  {
+   "name": "accounting_status",
+   "title": "Regnskapsstatus",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "admin",
+   "source": "core"
+  },
+  {
+   "name": "registry_describe",
+   "title": "Beskriv registeret",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "audit_list",
+   "title": "List revisjonslogg",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "clock_get",
+   "title": "Les klokken",
+   "entity": null,
+   "kind": "read",
+   "confirm": false,
+   "idempotent": false,
+   "audit": false,
+   "policy": "viewer",
+   "source": "core"
+  },
+  {
+   "name": "clock_set",
+   "title": "Still klokken",
+   "entity": null,
+   "kind": "workflow",
+   "confirm": false,
+   "idempotent": true,
+   "audit": true,
+   "policy": "admin",
+   "source": "core"
+  }
+ ],
+ "workflows": [
+  {
+   "kind": "oppdragsbekreftelse",
+   "label": "Oppdragsbekreftelse",
+   "source": "client"
+  }
+ ],
+ "message_templates": [
+  {
+   "name": "tilbud",
+   "label": "Tilbud (standard)",
+   "source": "core"
+  },
+  {
+   "name": "faktura",
+   "label": "Faktura (standard)",
+   "source": "core"
+  },
+  {
+   "name": "bekreftelse",
+   "label": "Oppdragsbekreftelse",
+   "source": "client"
+  }
+ ]
+}

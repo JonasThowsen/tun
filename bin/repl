@@ -1,0 +1,8 @@
+#!/usr/bin/env bash
+# Start SBCL with this checkout loaded and Slynk on 127.0.0.1, for SLY:
+#   bin/repl [--port N] [SYSTEM]      defaults: port 4010, system tun/tests
+# Run inside `nix develop`.  docs/emacs.md has the editor setup.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+command -v sbcl >/dev/null || { echo "bin/repl: run inside 'nix develop'" >&2; exit 2; }
+exec sbcl --noinform --no-userinit --no-sysinit --load "$here/scripts/repl.lisp" "$@"

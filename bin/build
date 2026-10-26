@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# Compile every system: core (+ core tests), then each client of
+# scripts/client-systems (+ its tests): the test client, and any under
+# clients/. Each in its own process. Incremental; --force recompiles our
+# systems. Any compiler warning fails the build. Run inside `nix develop`.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+command -v sbcl >/dev/null || { echo "bin/build: run inside 'nix develop'" >&2; exit 2; }
+for part in core $(scripts/client-systems); do
+  sbcl --noinform --non-interactive --no-userinit --no-sysinit --load scripts/build.lisp "$part" "$@"
+done

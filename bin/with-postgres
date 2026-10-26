@@ -1,0 +1,33 @@
+#!/usr/bin/env bash
+# bin/with-postgres COMMAND...   (spec/store.md 5)
+#
+# Start a private, throwaway Postgres server, run COMMAND with DATABASE_URL
+# naming an empty database on it, then stop the server and delete it.  The
+# server has its own cluster in a temporary directory and listens only on a
+# Unix socket there, never on TCP.  Exits with COMMAND's status.  Run inside
+# `nix develop`.
+set -euo pipefail
+[ "$#" -gt 0 ] || { echo "usage: bin/with-postgres COMMAND..." >&2; exit 2; }
+command -v initdb >/dev/null || { echo "bin/with-postgres: run inside 'nix develop'" >&2; exit 2; }
+
+# The socket path must fit in 107 bytes, so the directory stays short.
+dir="$(mktemp -d "${TMPDIR:-/tmp}/tun-pg.XXXXXX")"
+cleanup() {
+  pg_ctl -D "$dir/data" -m immediate stop >/dev/null 2>&1 || true
+  rm -rf "$dir"
+}
+trap cleanup EXIT
+
+initdb -D "$dir/data" -U tun --auth=trust --encoding=UTF8 --no-locale >"$dir/initdb.log" 2>&1 \
+  || { cat "$dir/initdb.log" >&2; exit 2; }
+# No fsync: the server is thrown away, so surviving a power loss is not
+# what anything run here can test, and the runs are much faster.
+pg_ctl -D "$dir/data" -l "$dir/server.log" -w \
+       -o "-c listen_addresses= -k $dir -c fsync=off -c full_page_writes=off" start >/dev/null \
+  || { cat "$dir/server.log" >&2; exit 2; }
+createdb -h "$dir" -U tun tun
+
+export DATABASE_URL="postgresql://tun@/tun?host=$dir"
+status=0
+"$@" || status=$?
+exit "$status"

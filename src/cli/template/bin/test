@@ -1,0 +1,10 @@
+#!/usr/bin/env bash
+# bin/test -- compile the client and its tests, failing on any compiler
+# warning in them, then run the suite (tests/run.lisp) with a throwaway
+# Postgres server for the tests that open the application. Run inside the
+# dev shell: `nix develop`, or direnv through .envrc.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+command -v sbcl >/dev/null || { echo "bin/test: run inside 'nix develop'" >&2; exit 2; }
+exec tun-with-postgres bash -c 'TUN_TEST_POSTGRES="$DATABASE_URL" exec sbcl --noinform \
+  --non-interactive --no-userinit --no-sysinit --load tests/run.lisp'

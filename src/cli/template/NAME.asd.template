@@ -1,0 +1,19 @@
+;;;; {{name}}.asd -- {{name}}, a client of Tun.
+
+(defsystem "{{name}}"
+  :description "{{name}} as a Tun client."
+  :version "0.1.0"
+  ;; Tun's kernel and the modules the client enables. `tun add` adds here.
+  :depends-on ("tun"{{module-systems}})
+  :serial t
+  :components ((:file "package")
+               (:file "application")))
+
+(defsystem "{{name}}/tests"
+  :description "The client's test-suite, with the public-interface check."
+  :depends-on ("{{name}}" "tun-test-support" "fiveam")
+  :serial t
+  :components ((:module "tests"
+                :components ((:file "package")
+                             (:file "scenarios")
+                             (:file "tests")))))

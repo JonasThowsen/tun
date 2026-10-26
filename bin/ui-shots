@@ -1,0 +1,11 @@
+#!/usr/bin/env bash
+# bin/ui-shots [--widths 390,1280] [--schemes light,dark] [NAME...] -- write
+# the specimen (bin/ui-specimen) and screenshot its pages in Chromium
+# (spec/ui.md 7): .build/ui/shots/NAME-WIDTH-SCHEME.png, every component
+# without NAMEs.  Chromium and Playwright come from this flake's
+# ui-shots package.  Run inside `nix develop`.
+set -euo pipefail
+here="$(cd "$(dirname "$0")/.." && pwd)"
+"$here/bin/ui-specimen" "$here/.build/ui/specimen/" >/dev/null
+exec nix run "$here#ui-shots" -- "$here/scripts/ui-shots.py" \
+  "$here/.build/ui/specimen" "$here/.build/ui/shots" "$@"

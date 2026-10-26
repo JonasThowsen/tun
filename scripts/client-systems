@@ -1,0 +1,14 @@
+#!/usr/bin/env bash
+# scripts/client-systems -- the client systems bin/build and bin/test compile
+# and test, one per line: the test client in tests/client/, then every
+# clients/<dir>/<system>.asd (a client's second manifest, such as
+# shop-minimal, too; a shared shop-base is not). A checkout without clients/
+# has the test client alone.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+echo test-client
+shopt -s nullglob
+for asd in clients/*/*.asd; do
+  name="$(basename "$asd" .asd)"
+  case "$name" in *-base) ;; *) echo "$name" ;; esac
+done
