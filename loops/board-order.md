@@ -2,7 +2,7 @@
 
 - loop: board-order
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: b7a392cdc7c9a04b02339d58cca4ac2b06a4b308
 - verified: 56ec0825b8fd436073e77dddf4cbf87a9f9bda95
 - shown: 56ec0825b8fd436073e77dddf4cbf87a9f9bda95
@@ -213,3 +213,4 @@ tun are agnostic to [the client] itself».
 - 2026-10-26 20:10  shown (/saker, /tavle)
 - 2026-10-26 20:10  gate B asked of a reviewer
 - 2026-10-26 20:13  gate B: approve (reviewer): rebase only: the change is gate-B-1's but for core 1.18.0; verify 3 passed; no address in the record
+- 2026-10-26 20:13  finished at tun e018ea1
