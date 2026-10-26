@@ -2,7 +2,7 @@
 
 - loop: web-push
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: b7a392cdc7c9a04b02339d58cca4ac2b06a4b308
 - verified: 9c5ad6bba4dc600e386cca43e92770675fca013c
 - shown: 9c5ad6bba4dc600e386cca43e92770675fca013c
@@ -270,3 +270,4 @@ The contract is `spec/push.md`; each criterion names the section.
 - 2026-10-26 20:23  shown (/varsler, /ui/push-switch)
 - 2026-10-26 20:23  gate B asked of a reviewer
 - 2026-10-26 20:30  gate B: approve (reviewer): the five earlier points met and tested (push 217/217); criteria 1-13 hold; security re-checked; merge with board-order intact; verify 4 green
+- 2026-10-26 20:30  finished at tun 8a2b59b
