@@ -277,6 +277,47 @@ by dragging, posting `card` and `column` to its `:action`. A page under
 «System» in the menu, rather than with the business's work, is defined
 with `:group :system`.
 
+With `:ordered t`, a person also sets the order of the cards within a
+column: by dragging a card between two others, or with «Flytt opp» and
+the rest of «Rekkefølge» in its menu. Every post then carries `before`
+too, the id of the card it now sits directly above in `column`, or empty
+for the end. The page stores the order. Give the entity a field for a
+rank key, and `rank-between` (`spec/core.md` §2.6) a key between the
+two neighbours; moving a card changes only its own key:
+
+```lisp
+(define-entity item (:id-prefix "itm" :label "Sak")
+  ((title :type (string :min 1 :max 200) :required t :label "Tittel")
+   (status :type (enum "ny" "planlagt" "ferdig") :initform "ny" :label "Status")
+   (place :type string :input nil :label "Plass")))   ; a rank key
+
+(defun column-items (status)
+  (select 'item :where `(:= "status" ,status) :order-by '(("place" :asc))))
+
+(defun place-before (item status before)
+  "A key putting ITEM in STATUS directly above the item BEFORE, or last."
+  (let* ((others (remove (entity-id item) (column-items status)
+                         :key #'entity-id :test #'equal))
+         (below (when before (member before others :key #'entity-id :test #'equal)))
+         (above (car (last (ldiff others below)))))
+    (when (and before (null below))
+      (fail :conflict "Tavla er endret. Last den inn på nytt."))
+    (rank-between (and above (item-place above)) (and below (item-place (first below))))))
+```
+
+The move operation sets `(item-place item)` to `(place-before item status
+before)` before it saves, and creating an item puts it last with
+`(place-before item status nil)`. Every item in the set needs a key:
+items made before the field existed get theirs in their current order,
+each `(rank-between previous nil)`. Keys sort by code point in every
+store, so a query orders by the field as `select` does:
+
+```lisp
+(define-query next-items ((status :required t))
+    (:returns item)
+  "SELECT * FROM {item} WHERE status = :status ORDER BY place LIMIT 5")
+```
+
 A link on a staff page loads its page in the background when a person
 rests the pointer on it or presses it, so the click shows the page at
 once (`spec/ui.md` §4.1). Such a request carries `Tun-Preload: true`, and

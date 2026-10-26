@@ -19,6 +19,9 @@
    #:error-code #:operation-error #:operation-error-code #:operation-error-message
    #:operation-error-fields #:operation-error-details #:fail #:fail-with-details #:fail-fields
    #:operation-error-json #:error-status #:actor-error #:actor-error-message #:extension-error
+   ;; rank keys
+   #:rank-between #:rank-key #:rank-key-p #:rank-order-error #:rank-order-error-low
+   #:rank-order-error-high
    ;; types (and the designator symbols used in field specs)
    #:field-type #:type-name #:type-json-schema #:coerce-input #:type->json #:type->db #:db->type
    #:type-sql #:type-lisp-type #:parse-field-type #:string-type #:email-type #:integer-type

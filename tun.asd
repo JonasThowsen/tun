@@ -27,6 +27,7 @@
                              (:file "util")
                              (:file "json")
                              (:file "conditions")
+                             (:file "rank")
                              (:file "trace")
                              (:file "module")
                              (:file "types")
@@ -121,6 +122,7 @@
   :components ((:module "tests"
                 :components ((:file "package")
                              (:file "util-tests")
+                             (:file "rank-tests")
                              (:file "settings-tests")
                              (:file "registry-tests")
                              (:file "widgets")

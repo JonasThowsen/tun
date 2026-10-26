@@ -83,7 +83,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "1.17.0";
+      coreVersion = "1.18.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;

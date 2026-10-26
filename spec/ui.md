@@ -2,7 +2,8 @@
 
 Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
 (§4.1, §8.1) and the board (§6.1), 2026-10-21; installing as an app
-(§4.2), 2026-10-22. How every Tun
+(§4.2), 2026-10-22; ordering a board's cards within a column (§6.1),
+2026-10-26, core 1.18.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -373,11 +374,49 @@ another column.
   while it is held. The columns do not snap while a card is dragged, and
   snap to a column again after. A finger beside the box, at the screen's
   edge, is over the column at the box's edge, the one showing there.
+- **Order within a column.** With `:ordered t` as well as ACTION, the
+  order of the cards in a column is the person's to set: the board shows
+  each column's cards in the order the page gives them, and every post
+  also carries `before`, the id of the card the moved card now sits
+  directly before in its column, or empty when it is last there.
+  - *Dragging.* A card dragged over a column, its own or another, goes
+    directly before the first other card in it whose vertical middle is
+    below the pointer, or last when there is none, and a drop posts that
+    place: its column and the card below it. A drop where the card
+    started posts nothing.
+  - *The menu.* Above «Flytt til», a group «Rekkefølge» has «Flytt
+    øverst» and «Flytt opp» on a card that is not first in its column,
+    and «Flytt ned» and «Flytt nederst» on one that is not last. Each
+    posts the card's own column and the `before` that puts it there: the
+    first card, the card above, the card two below (empty when the card
+    below is the last), and empty. «Flytt til» another column posts
+    `before` empty, to the end of that column. A group with no items,
+    such as on a card alone in its column, is left out, and the card has
+    its menu whenever the menu has any item.
+  - *The page* keeps the order: it puts the card directly before
+    `before` in COLUMN, or last there when `before` is empty, and refuses
+    a `before` that is not another card in COLUMN, such as one from a
+    board that is out of date or the moved card itself, as it refuses any
+    move. A page that shows only some of a column's cards reads an empty
+    `before` as the end of the whole column. `rank-between` (`core.md`
+    §2.6) gives a key to sort by for such a place.
+  - Without `:ordered`, a post is `card` and `column` alone and a card
+    dragged within its own column goes back where it was, as before.
 - **The answer.** The page at ACTION answers an htmx request with the
   board alone, as a fragment (§8.1), and any other request with
   `(values 303 PATH)`; a refused move answers the board as it was, with
   the error in MESSAGE. After a move from the keyboard, focus returns to
-  the moved card's menu button, in its new column.
+  the moved card's menu button, in its new column or its new place.
+- **Saying where a card went.** A board with ACTION has a status region
+  (`role="status"`), visually hidden: clipped to nothing on the screen
+  but not `hidden` or `display: none`, so screen readers read it. After a
+  move through htmx whose answer has the card somewhere else than before
+  it was moved, the board says there:
+  «Flyttet «TITLE» til plass N av COUNT i COLUMN.» on an ordered board,
+  N counted from the top of the column and COUNT what its heading shows,
+  and «Flyttet «TITLE» til COLUMN.» on another. An answer that has the
+  card where it was, as a refused move does, says nothing there; its
+  MESSAGE says why.
 - **MESSAGE.** Nodes shown above the columns, in a live region, such as
   an `error-alert`.
 - **Ids.** The ids of the cards and their menus are made from the
@@ -560,8 +599,8 @@ form of `field`s with an `error-summary`, a confirmation is a
   `client` layer.
 - Charts, a date picker beyond the browser's own, a combobox with
   search.
-- Ordering cards within a board's column by dragging; htmx's own
-  extensions (server-sent events, the head merge, morphing).
+- htmx's own extensions (server-sent events, the head merge,
+  morphing).
 - Path patterns with typed parameters for pages (`/saker/:item`), and
   links that name their page (`docs/roadmap.md`).
 
@@ -576,7 +615,15 @@ form of `field`s with an `error-summary`, a confirmation is a
   `:inherited`, and others (`hx-on`, `data-hx-on`, `hx-headers`,
   `hx-status`, an unknown modifier, a `javascript:` `hx-get`) do not.
 - `tests/ui-data-tests.lisp`: the board's columns, counts, cards, move
-  menus and their forms, and a board without an action.
+  menus and their forms, and a board without an action; an ordered
+  board's `before`, its «Rekkefølge» items and what each posts, its
+  status region, and a board without `:ordered` posting as before.
+- `tests/rank-tests.lisp`: `rank-between` (`core.md` §2.6).
+- `checks/showcase/checks/`: dragging a card to another column with a
+  mouse and on a phone (`board-drag-*`), a board filling a phone
+  (`board-fills-a-phone`), and ordering within a column with a mouse, by
+  touch and from the keyboard, with what is said and a refused move
+  (`board-order-*`), and a board without `:ordered` posting as before.
 - `tests/web-tests.lisp`: a page defined with `define-page` answers
   its path and the paths under it, posts, redirects, refuses a role its
   policy does not admit, shows an uncaught operation error, and is

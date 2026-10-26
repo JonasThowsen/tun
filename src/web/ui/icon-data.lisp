@@ -8,6 +8,10 @@
   '((:arrow-down
      (:path (:@ :d "M12 5v14"))
      (:path (:@ :d "m19 12-7 7-7-7")))
+    (:arrow-down-to-line
+     (:path (:@ :d "M12 17V3"))
+     (:path (:@ :d "m6 11 6 6 6-6"))
+     (:path (:@ :d "M19 21H5")))
     (:arrow-left
      (:path (:@ :d "m12 19-7-7 7-7"))
      (:path (:@ :d "M19 12H5")))
@@ -25,6 +29,10 @@
     (:arrow-up-right
      (:path (:@ :d "M7 7h10v10"))
      (:path (:@ :d "M7 17 17 7")))
+    (:arrow-up-to-line
+     (:path (:@ :d "M5 3h14"))
+     (:path (:@ :d "m18 13-6-6-6 6"))
+     (:path (:@ :d "M12 7v14")))
     (:ban
      (:circle (:@ :cx "12" :cy "12" :r "10"))
      (:path (:@ :d "M4.929 4.929 19.07 19.071")))

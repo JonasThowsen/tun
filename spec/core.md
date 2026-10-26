@@ -135,6 +135,95 @@ Identifiers are English. Labels, descriptions, titles and messages are
 Norwegian, with `æ`, `ø` and `å` preserved. Status values are Norwegian
 words and part of the API (`utkast`, `bekreftet`, `fullført`).
 
+### 2.6 Manual order
+
+Records a person puts in order, such as the cards of a board's column
+(`ui.md` §6.1), carry a rank key: a string, stored in a `string` field
+of the record, that the records are sorted by. Moving one record changes
+only its own key.
+
+- `(rank-between LOW HIGH)` returns a new key that sorts after the key
+  LOW and before the key HIGH. LOW `nil` means there is nothing above
+  (the top), HIGH `nil` nothing below (the end); both `nil` gives the
+  first key, `"a0"`. It is a pure function: the same arguments give the
+  same key, and the caller reads the neighbours' keys in its own
+  transaction and stores the result.
+- Keys compare by code point, the order every store sorts text in
+  (`store.md` §2, item 6): `:order-by '(("rank" :asc))` with `select`, or
+  `ORDER BY rank` in a `define-query`.
+- **Every record in an ordered set has a key.** `nil` is only an
+  argument, for no neighbour; a stored NULL or `""` is not a key. Records
+  that have none yet, such as those that existed before the field was
+  added, are given keys in their current order, each
+  `(rank-between PREVIOUS nil)` with PREVIOUS the key just given (`nil`
+  for the first), before the set is ordered by hand.
+
+**The format.** Clients store these keys, so the format is fixed: every
+later version of Tun reads the keys stored before it and sorts them the
+same. It is fractional indexing in base 62, after rocicorp's
+`fractional-indexing`:
+
+- The digits are `0-9A-Za-z`, 62 of them, in code-point order.
+- A key is a *whole part* followed by a *fraction*. The whole part's
+  first character is a letter that gives its length, itself included:
+  `a` gives 2 and each next letter one more, up to `z`, 27; `Z` gives 2
+  and each earlier letter one more, down to `A`, 27. The rest of the
+  whole part is digits. Whole parts starting with `a`…`z` are the
+  integers from zero upwards (`a0`, `a1`, …, `az`, `b00`, …), those
+  starting with `Z`…`A` the integers below zero (`Zz` is the one just
+  below `a0`).
+- The fraction is zero or more digits and does not end in `0`.
+- A string is a key when it is not empty, has only digits, starts with
+  a letter, is at least as long as its whole part, has a fraction that
+  does not end in `0`, and is not exactly the smallest whole part, `A`
+  followed by 26 `0`s. Any other string, `""` among them, given as LOW
+  or HIGH is a `type-error`. LOW not before HIGH signals
+  `rank-order-error`, whose readers `rank-order-error-low` and
+  `rank-order-error-high` give the two keys. Both arguments are checked
+  for being keys first, so a call with a non-key is a `type-error` even
+  when the two are also out of order.
+- **At the end** (HIGH `nil`), the new key is the whole part after
+  LOW's, with no fraction. When LOW's whole part is the largest (`z` and
+  26 `z`s), it is instead LOW's whole part with a fraction after LOW's.
+- **At the top** (LOW `nil`):
+  - when HIGH's whole part is the smallest (`A` and 26 `0`s), the new
+    key is that whole part with a fraction before HIGH's (HIGH then
+    always has a fraction, since the smallest whole part alone is not a
+    key);
+  - otherwise, when HIGH has a fraction, the new key is HIGH's whole
+    part alone;
+  - otherwise it is the whole part before HIGH's, with no fraction.
+- **Between two keys** with the same whole part, the new key is that
+  whole part with a fraction between theirs. With different whole
+  parts, it is the whole part after LOW's when that sorts before HIGH,
+  else LOW's whole part with a fraction after LOW's.
+- **A fraction between** a fraction A (possibly empty) and a fraction B,
+  or nothing for no upper bound, is made digit by digit. The digits the
+  two share at the start, A read with `0` where it has run out, are
+  kept. Then, with DA the value of A's next digit (0 when A has run out)
+  and DB that of B's (62 when there is no B):
+  - when DB − DA > 1, the fraction ends with the digit ⌊(DA + DB + 1) /
+    2⌋, the one halfway between, a half rounded up;
+  - else, when what is left of B is longer than one digit, it ends with
+    B's next digit;
+  - else, the digit DA is kept, and the fraction goes on with the
+    fraction between the rest of A and no upper bound.
+  So between `a0` and `a1` comes `a0V`, then between `a0V` and `a1`
+  `a0l`.
+
+**Growth.** A key added at the top or at the end steps the whole part,
+which gets a character longer only each time the keys added there grow
+about 62-fold: ten thousand keys added one after another at the end, or
+at the top, are at most four characters each. Keys added one after
+another directly after the same key (each between it and the key added
+last) take about one more character per six keys, as the halving digits
+run V, G, 8, 4, 2, 1; keys added directly before the same key take one
+more per five (V, l, t, x, z). So a thousand of them are at most 210
+characters (169 and 202 from `a0` and `a1`), within a `string` field's
+default 1000.
+
+`tests/rank-tests.lisp` shows each of these.
+
 ## 3. MCP contract
 
 ### 3.1 Transport

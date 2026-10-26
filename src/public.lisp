@@ -93,7 +93,9 @@ the listed symbols (the same symbol objects, not copies)."
    #:notify
    #:fetch #:fetch! #:select #:select-one #:define-query
    ;; JSON: a record as callers see it, for results that hold several
-   #:entity->json #:jobj #:jarr #:jget)
+   #:entity->json #:jobj #:jarr #:jget
+   ;; rank keys: records in an order a person chose (spec/core.md 2.6)
+   #:rank-between #:rank-order-error #:rank-order-error-low #:rank-order-error-high)
   ;; Writes, guarded: an extension's own fields and records only
   (#:tun.guarded #:insert #:save)
   ;; The web UI: screens a client can override, and its own pages, built

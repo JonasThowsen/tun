@@ -37,7 +37,7 @@ templates and extension points.
 agent needs one call:
 
 ```json
-{"core_version": "1.17.0", "revision": "…",
+{"core_version": "1.18.0", "revision": "…",
  "modules": [{"name": "orders", "system": "tun-orders", "description": "…",
               "depends_on": ["customers", "…"], "core_range": [">= 1.2.0", "< 2.0"],
               "entities": [{"name": "order", "label": "Ordre"}],

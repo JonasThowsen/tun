@@ -1,4 +1,5 @@
-;;;; cards.lisp -- cards on a board: what the board page shows and moves.
+;;;; cards.lisp -- cards on a board: what the board pages show and move, in
+;;;; an order a person sets within each column (spec/core.md 2.6).
 
 (in-package #:showcase)
 
@@ -9,23 +10,45 @@
 (define-entity card (:label "Kort" :id-prefix "krt" :table "cards")
   ((title :type (string :min 1 :max 200) :required t :label "Tittel")
    (status :type (enum "ny" "planlagt" "under_arbeid" "ferdig") :initform "ny" :label "Status")
-   (rank :type integer :input nil :label "Rekkefølge")))
+   (place :type (string :max 1000) :input nil :label "Plass"
+          :description "Rangnøkkelen kortet sorteres etter i sin kolonne.")))
+
+(defun column-cards (status)
+  "The cards in the column STATUS, in their order."
+  (select 'card :where `(:= "status" ,status) :order-by '(("place" :asc))))
+
+(defun place-before (card status before)
+  "A rank key that puts CARD in the column STATUS directly before the card
+whose id is BEFORE, or last when BEFORE is NIL.  A BEFORE that is not
+another card in that column, as from a board that is out of date, is
+refused."
+  (let* ((others (remove (entity-id card) (column-cards status) :key #'entity-id :test #'equal))
+         (below (when before (member before others :key #'entity-id :test #'equal)))
+         (above (car (last (ldiff others below)))))
+    (when (and before (null below))
+      (fail :conflict "Kortet ble ikke flyttet: tavla er endret siden du åpnet den. ~
+                       Last den inn på nytt."))
+    (rank-between (and above (card-place above)) (and below (card-place (first below))))))
 
 (define-operation cards-create ((:draft card))
     (:entity card :kind :create :policy :employee :title "Nytt kort"
              :description "Et kort på tavla, sist i sin kolonne.")
-  (setf (card-rank card) (1+ (length (select 'card))))
+  (setf (card-place card) (place-before card (card-status card) nil))
   (insert card))
 
 (define-operation cards-move ((id :type (id card) :required t :label "Kort")
-                              (:field card status))
+                              (:field card status)
+                              (before :type (id card) :label "Før kortet"
+                                      :description "Kortet det skal stå rett over; uten står
+det nederst."))
     (:entity card :kind :update :policy :employee :title "Flytt kort"
-             :description "Flytter et kort til en annen kolonne.")
+             :description "Flytter et kort til en kolonne, rett over et annet kort eller nederst.")
   (let ((card (fetch! 'card id)))
-    (setf (card-status card) status)
+    (setf (card-place card) (place-before card status before)
+          (card-status card) status)
     (save card)))
 
 (define-operation cards-list ()
     (:entity card :kind :read :policy :employee :title "Kort"
              :description "Alle kortene, i rekkefølge.")
-  (jobj "items" (jarr (mapcar #'entity->json (select 'card :order-by '(("rank" :asc)))))))
+  (jobj "items" (jarr (mapcar #'entity->json (select 'card :order-by '(("place" :asc)))))))

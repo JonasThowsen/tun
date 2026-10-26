@@ -13,7 +13,8 @@ import sys
 import xml.etree.ElementTree as ET
 
 ICONS = """
-arrow-down arrow-left arrow-right arrow-up arrow-up-down arrow-up-right ban bell building
+arrow-down arrow-down-to-line arrow-left arrow-right arrow-up arrow-up-down arrow-up-right
+arrow-up-to-line ban bell building
 building-complex calendar calendar-days check check-check chevron-down chevron-left
 chevron-right chevron-up chevrons-left chevrons-right chevrons-up-down circle circle-alert
 circle-check circle-question-mark circle-x clipboard clock copy download ellipsis

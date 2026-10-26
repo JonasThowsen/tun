@@ -1,51 +1,46 @@
 ;;;; web/ui/board.lisp -- the board: records as cards in columns, one column
-;;;; per state, and moving a card to another column (spec/ui.md 6.1).
+;;;; per state, moving a card to another column, and on an ordered board
+;;;; putting it in its place within a column (spec/ui.md 6.1).
 ;;;;
-;;;; Moving is a plain form per card, posted by the «Flytt til» menu's
-;;;; buttons, so it works without JavaScript and from the keyboard.  The
-;;;; script adds dragging: a dropped card is moved at once and the menu's
-;;;; button for its new column is clicked, which posts the same form, through
-;;;; htmx when the page has it.
+;;;; Moving is a plain form per card, posted by the buttons of the card's
+;;;; menu, so it works without JavaScript and from the keyboard.  The script
+;;;; adds dragging: a dropped card is moved at once and the menu's button for
+;;;; its new column is clicked, which posts the same form, through htmx when
+;;;; the page has it.  On an ordered board the card has a second form, for
+;;;; its place within its own column; a button posts one name, so the move
+;;;; form holds the card and its place (the buttons give the column) and the
+;;;; order form the card and its column (the buttons give the place).
 
 (in-package #:tun.ui)
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defun board-card (card &key board-id action columns column-key)
-  "The markup of CARD, a plist (:ID :TITLE :HREF :BADGES :META), in the
-column COLUMN-KEY of the board BOARD-ID.  With ACTION it carries the form
-that moves it and a menu of the other COLUMNS to move it to."
-  (destructuring-bind (&key id title href badges meta) card
-    (unless (and id title)
-      (error "A board card needs :id and :title"))
-    (let* ((base (format nil "~a-~a" board-id id))
-           (form-id (format nil "~a-form" base))
-           (targets (remove column-key columns :key (lambda (column) (getf column :key))
-                                               :test #'equal)))
-      `(:li (:@ :class "tun-board-card" :id ,base :data-tun-board-card ,id)
-            (:div (:@ :class "tun-board-card-head")
-                  ,(if href
-                       `(:a (:@ :class "tun-board-card-title" :href ,href) ,title)
-                       `(:span (:@ :class "tun-board-card-title") ,title))
-                  ,@(when (and action targets)
-                      `((:div (:@ :class "tun-board-card-actions")
-                              ,(dropdown-menu*
-                                (list :id (format nil "~a-move" base)
-                                      :label (format nil "Flytt «~a»" title)
-                                      :size :icon-sm :variant :ghost :icon :ellipsis
-                                      :align :end
-                                      :items (list (list :group "Flytt til"
-                                                         :items (mapcar (lambda (column)
-                                                                          (board-move-item column form-id))
-                                                                        targets)))))))))
-            ,@(when badges
-                `((:div (:@ :class "tun-board-card-badges") ,@badges)))
-            ,@(when meta
-                `((:p (:@ :class "tun-board-card-meta") ,meta)))
-            ,@(when action
-                `((:form (:@ :id ,form-id :method "post" :action ,action :hidden t
-                             :hx-post ,action :hx-target "closest .tun-board" :hx-swap "outerMorph")
-                         (:input (:@ :type "hidden" :name "card" :value ,id)))))))))
+(defun board-form (id action fields &rest children)
+  "A hidden form ID that posts the hidden FIELDS, a plist of names and
+values, and CHILDREN to ACTION, through htmx into the board."
+  `(:form (:@ :id ,id :method "post" :action ,action :hidden t
+              :hx-post ,action :hx-target "closest .tun-board" :hx-swap "outerMorph")
+          ,@(loop for (name value) on fields by #'cddr
+                  collect `(:input (:@ :type "hidden" :name ,name :value ,value
+                                       ,@(when (string= name "before")
+                                           (list :data-tun-board-before t)))))
+          ,@children))
+
+(defun board-order-items (place form-id)
+  "The «Rekkefølge» items of a card at PLACE in its column, a plist
+(:FIRST :PREVIOUS :NEXT :AFTER-NEXT) of card ids: each submits the order
+form FORM-ID with the before= that puts the card there."
+  (destructuring-bind (&key first previous next after-next) place
+    (flet ((item (label icon before)
+             (list :label label :icon icon
+                   :attributes (list :type "submit" :form form-id :name "before"
+                                     :value before))))
+      (append (when previous
+                (list (item "Flytt øverst" :arrow-up-to-line first)
+                      (item "Flytt opp" :arrow-up previous)))
+              (when next
+                (list (item "Flytt ned" :arrow-down (or after-next ""))
+                      (item "Flytt nederst" :arrow-down-to-line "")))))))
 
 (defun board-move-item (column form-id)
   "The menu item that moves a card to COLUMN: a button that submits the
@@ -55,12 +50,79 @@ card's form FORM-ID with column=KEY."
           :attributes (list :type "submit" :form form-id :name "column" :value key
                             :data-tun-board-move key))))
 
-(defun board-column (column &key board-id action columns heading-level)
-  "The markup of COLUMN, a plist (:KEY :TITLE :CARDS :COUNT :EMPTY)."
+(defun board-card-menu (base title targets order-items form-id)
+  "The card's menu: its «Rekkefølge» ORDER-ITEMS, then «Flytt til» the
+TARGETS columns, each group only when it has items; NIL when neither has."
+  (let ((groups (append (when order-items
+                          (list (list :group "Rekkefølge" :items order-items)))
+                        (when targets
+                          (list (list :group "Flytt til"
+                                      :items (mapcar (lambda (column)
+                                                       (board-move-item column form-id))
+                                                     targets)))))))
+    (when groups
+      `(:div (:@ :class "tun-board-card-actions")
+             ,(dropdown-menu* (list :id (format nil "~a-move" base)
+                                    :label (format nil "Flytt «~a»" title)
+                                    :size :icon-sm :variant :ghost :icon :ellipsis
+                                    :align :end
+                                    :items groups))))))
+
+(defun board-card (card &key board-id action columns column-key place)
+  "The markup of CARD, a plist (:ID :TITLE :HREF :BADGES :META), in the
+column COLUMN-KEY of the board BOARD-ID.  With ACTION it carries the form
+that moves it and a menu of the other COLUMNS to move it to.  PLACE, on an
+ordered board, is where it is in its column (see BOARD-ORDER-ITEMS): the
+card then also has the form and the menu items that order it there."
+  (destructuring-bind (&key id title href badges meta) card
+    (unless (and id title)
+      (error "A board card needs :id and :title"))
+    (let* ((base (format nil "~a-~a" board-id id))
+           (form-id (format nil "~a-form" base))
+           (order-form-id (format nil "~a-order-form" base))
+           (targets (remove column-key columns :key (lambda (column) (getf column :key))
+                                               :test #'equal))
+           (order-items (when place (board-order-items place order-form-id))))
+      `(:li (:@ :class "tun-board-card" :id ,base :data-tun-board-card ,id)
+            (:div (:@ :class "tun-board-card-head")
+                  ,(if href
+                       `(:a (:@ :class "tun-board-card-title" :href ,href) ,title)
+                       `(:span (:@ :class "tun-board-card-title") ,title))
+                  ,@(when action
+                      (let ((menu (board-card-menu base title targets order-items form-id)))
+                        (when menu (list menu)))))
+            ,@(when badges
+                `((:div (:@ :class "tun-board-card-badges") ,@badges)))
+            ,@(when meta
+                `((:p (:@ :class "tun-board-card-meta") ,meta)))
+            ,@(when action
+                (list (if place
+                          ;; The script sets before= and clicks the button
+                          ;; of the column a card is dropped in, its own too.
+                          (board-form form-id action (list "card" id "before" "")
+                                      `(:button (:@ :type "submit" :name "column"
+                                                    :value ,column-key
+                                                    :data-tun-board-move ,column-key)))
+                          (board-form form-id action (list "card" id)))))
+            ,@(when order-items
+                (list (board-form order-form-id action (list "card" id "column" column-key))))))))
+
+(defun card-places (cards)
+  "Where each of CARDS is in its column, as BOARD-CARD's :place."
+  (let ((ids (mapcar (lambda (card) (getf card :id)) cards)))
+    (loop for previous = nil then (first tail)
+          for tail on ids
+          collect (list :first (first ids) :previous previous
+                        :next (second tail) :after-next (third tail)))))
+
+(defun board-column (column &key board-id action columns heading-level ordered)
+  "The markup of COLUMN, a plist (:KEY :TITLE :CARDS :COUNT :EMPTY).  ORDERED
+gives each card the menu items and form that put it in its place."
   (destructuring-bind (&key key title cards count (empty "Ingen")) column
     (unless (and key title)
       (error "A board column needs :key and :title"))
-    (let ((heading-id (format nil "~a-~a" board-id key)))
+    (let ((heading-id (format nil "~a-~a" board-id key))
+          (places (if ordered (card-places cards) (make-list (length cards)))))
       `(:section (:@ :class "tun-board-column" :data-tun-board-column ,key
                      :aria-labelledby ,heading-id)
                  (:header (:@ :class "tun-board-column-header")
@@ -70,22 +132,28 @@ card's form FORM-ID with column=KEY."
                           (:span (:@ :class "tun-board-column-count" :data-tun-board-count t)
                                  ,(princ-to-string (or count (length cards)))))
                  (:ol (:@ :class "tun-board-cards")
-                      ,@(mapcar (lambda (card)
+                      ,@(mapcar (lambda (card place)
                                   (board-card card :board-id board-id :action action
-                                                   :columns columns :column-key key))
-                                cards))
+                                                   :columns columns :column-key key
+                                                   :place place))
+                                cards places))
                  (:p (:@ :class "tun-board-empty") ,empty)))))
 
-(define-component board ((&key label columns action message (heading-level 3) id attributes))
+(define-component board ((&key label columns action ordered message (heading-level 3) id
+                                attributes))
   (:group "Data")
   (:doc "Saker som kort i kolonner, én kolonne per status, som en tavle i Asana eller GitHub.
 Hver kolonne i COLUMNS er (:key :title :cards :count :empty), hvert kort (:id :title :href
 :badges :meta). Med ACTION har hvert kort en meny «Flytt til», som poster card=ID og
 column=KEY dit, og med JavaScript kan kortet dras til en annen kolonne (på en berøringsskjerm
-etter at man har holdt på det et øyeblikk). MESSAGE vises over kolonnene, for eksempel en feil.
-To tavler på én side trenger hver sin :id.")
+etter at man har holdt på det et øyeblikk). Med ORDERED bestemmer man også rekkefølgen i en
+kolonne: kortet kan dras mellom to kort, i sin egen kolonne eller en annen, og menyen får
+«Rekkefølge» (øverst, opp, ned, nederst); hver post har da også before=ID, kortet det nå står
+rett over, eller tom når det står nederst. Siden lagrer rekkefølgen, for eksempel med
+rank-between. Etter en flytting sier tavla til skjermlesere hvor kortet havnet. MESSAGE vises
+over kolonnene, for eksempel en feil. To tavler på én side trenger hver sin :id.")
   (:source "Tun's own, after GitHub Projects' board and Basecoat card (Vega)")
-  (:css "
+  (:css (concatenate 'string "
 /* A board fills the height the page leaves it when the app shell gives it
    one (data-tun-fill, spec/ui.md 8): the shell sets --tun-fill-align to
    stretch the columns to that height and --tun-fill-max-height to none, so
@@ -100,6 +168,9 @@ To tavler på én side trenger hver sin :id.")
      the page rather than a column's cards. */
   @media (max-width: 40rem) { padding-block-end: calc(var(--spacing) * 12); }
   & .tun-board-message:empty { display: none; }
+  /* Where a card went, for screen readers (spec/ui.md 6.1). */
+  & .tun-board-status {" +visually-hidden-css+ "
+  }
   /* Side by side, scrolling sideways in their own box; on a phone a column
      is nearly the screen's width, and the next one shows at the edge. */
   & .tun-board-columns {
@@ -262,14 +333,15 @@ To tavler på én side trenger hver sin :id.")
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 15%, transparent),
                 var(--shadow-lg);
   }
-}")
+}"))
   (:script "
-// Dragging a card to another column.  A mouse drags once it has moved a few
-// pixels; a finger first holds the card still for a moment, so a swipe
-// still scrolls.  The card moves while it is dragged, and a drop in another
-// column clicks that column's button in the card's «Flytt til» menu, which
-// posts the card's form: through htmx, whose answer replaces the board, or
-// as a plain form.  Escape puts the card back.
+// Dragging a card to another column, and on an ordered board to its place
+// in a column.  A mouse drags once it has moved a few pixels; a finger
+// first holds the card still for a moment, so a swipe still scrolls.  The
+// card moves while it is dragged, and a drop in another column, or on an
+// ordered board in another place, clicks that column's button for the
+// card's form, which posts it: through htmx, whose answer replaces the
+// board, or as a plain form.  Escape puts the card back.
 const threshold = 6;
 const holdMs = 300;
 const edge = 48;
@@ -281,6 +353,8 @@ let press = null;
 let drag = null;
 // After a drag, the click the browser sends when the pointer is lifted.
 let suppressClick = false;
+// Where a dropped card was before it was dragged, for what is said after.
+let droppedFrom = null;
 
 const cardSelector = '[data-tun-board] [data-tun-board-card]';
 
@@ -300,13 +374,21 @@ const mark = (column) => {
   if (column) column.dataset.tunBoardOver = '';
 };
 
-// Put the card where the pointer is: back in its place over its own column,
-// else before the first card in the column below the pointer.
+// Where CARD is: its column's key and its index there.
+const positionOf = (card) => {
+  const column = card.closest('[data-tun-board-column]');
+  const cards = [...column.querySelectorAll('.tun-board-cards > [data-tun-board-card]')];
+  return { column: column.dataset.tunBoardColumn, index: cards.indexOf(card) };
+};
+
+// Put the card where the pointer is: before the first other card in the
+// column under the pointer whose vertical middle is below it, or last; on
+// a board that is not ordered, back in its place over its own column.
 const place = (x, y) => {
   const column = columnAt(x, y);
   if (!column) return;
   mark(column);
-  if (column === drag.origin) {
+  if (column === drag.origin && !drag.ordered) {
     drag.origin.querySelector('.tun-board-cards').insertBefore(drag.card, drag.next);
     return;
   }
@@ -384,6 +466,8 @@ const begin = (x, y) => {
   card.dataset.tunBoardDragging = '';
   drag = {
     card, ghost, board,
+    ordered: board.hasAttribute('data-tun-board-ordered'),
+    from: positionOf(card),
     touch: press.touch,
     paging: null,
     origin: card.closest('[data-tun-board-column]'),
@@ -404,19 +488,26 @@ const bump = (column, by) => {
 };
 
 const end = (dropped) => {
-  const { card, ghost, board, origin, next, frame } = drag;
+  const { card, ghost, board, origin, next, frame, ordered, from } = drag;
   cancelAnimationFrame(frame);
   mark(null);
   ghost.remove();
   delete board.dataset.tunBoardMoving;
   delete card.dataset.tunBoardDragging;
   const column = card.closest('[data-tun-board-column]');
+  const moved = column !== origin || (ordered && card.nextElementSibling !== next);
   drag = null;
-  if (!dropped || column === origin) {
+  if (!dropped || !moved) {
     origin.querySelector('.tun-board-cards').insertBefore(card, next);
   } else {
-    bump(origin, -1);
-    bump(column, 1);
+    if (column !== origin) {
+      bump(origin, -1);
+      bump(column, 1);
+    }
+    if (ordered)
+      card.querySelector('[data-tun-board-before]').value =
+        card.nextElementSibling?.dataset.tunBoardCard ?? '';
+    droppedFrom = from;
     card.querySelector(`[data-tun-board-move='${CSS.escape(column.dataset.tunBoardColumn)}']`)
       ?.click();
   }
@@ -495,7 +586,38 @@ document.addEventListener('click', (event) => {
   suppressClick = false;
   event.preventDefault();
   event.stopPropagation();
-}, true);")
+}, true);
+
+// Saying where a card went (spec/ui.md 6.1).  A post of a card's form
+// notes where the card was; when htmx's answer has settled, the board's
+// status region says where it is now, if that is somewhere else.  A
+// refused move, which leaves it where it was, says nothing there.
+let moving = null;
+document.addEventListener('submit', (event) => {
+  const card = event.target instanceof HTMLFormElement && event.target.closest(cardSelector);
+  if (!card) return;
+  moving = { board: card.closest('[data-tun-board]').id, card: card.dataset.tunBoardCard,
+             from: droppedFrom ?? positionOf(card) };
+  droppedFrom = null;
+}, true);
+document.addEventListener('htmx:after:settle', () => {
+  if (!moving) return;
+  const { board: boardId, card: cardId, from } = moving;
+  const board = document.getElementById(boardId);
+  const card = document.getElementById(`${boardId}-${cardId}`);
+  const status = board?.querySelector('[data-tun-board-status]');
+  if (!card || !status) return;
+  moving = null;
+  const at = positionOf(card);
+  if (at.column === from.column && at.index === from.index) return;
+  const column = card.closest('[data-tun-board-column]');
+  const title = card.querySelector('.tun-board-card-title').textContent.trim();
+  const heading = column.querySelector('.tun-board-column-title').textContent.trim();
+  const count = column.querySelector('[data-tun-board-count]').textContent.trim();
+  status.textContent = board.hasAttribute('data-tun-board-ordered')
+    ? `Flyttet «${title}» til plass ${at.index + 1} av ${count} i ${heading}.`
+    : `Flyttet «${title}» til ${heading}.`;
+});")
   (:examples
    (("Saker etter status" :layout :stack)
     (board (:label "Saker etter status" :action "/saker/flytt"
@@ -518,6 +640,16 @@ document.addEventListener('click', (event) => {
                                         :cards (list (list :id "itm_4" :title "Rett skrivefeil i ordrebekreftelsen"
                                                            :href "/saker/itm_4"
                                                            :meta "Ferdig 18.10.2026")))))))
+   (("Ordnet: neste sak øverst" :layout :stack)
+    (board (:id "ko" :label "Køen" :action "/ko/flytt" :ordered t
+            :columns (list (list :key "neste" :title "Neste"
+                                 :cards (list (list :id "itm_6" :title "Kunden får ikke logget inn"
+                                                    :badges (list (badge (:variant :destructive)
+                                                                    "Haster")))
+                                              (list :id "itm_7" :title "Eksport til regnskap")
+                                              (list :id "itm_8" :title "Ny side for fakturaer")))
+                           (list :key "senere" :title "Senere"
+                                 :cards (list (list :id "itm_9" :title "Mørk modus")))))))
    ("Bare til å se på, med en melding"
     (board (:label "Mine saker"
                    :message (list (alert (:variant :warning :title "Saken ble ikke flyttet")
@@ -532,12 +664,17 @@ document.addEventListener('click', (event) => {
   ;; every answer, so htmx gives focus back to the menu a move was made with.
   (let ((board-id (or id "tun-board")))
     `(:div ,(attrs (list :class "tun-board" :id board-id :role "region" :aria-label label
-                         :data-tun-board (when action t) :data-tun-fill t)
+                         :data-tun-board (when action t)
+                         :data-tun-board-ordered (when (and action ordered) t)
+                         :data-tun-fill t)
                    attributes)
            (:div (:@ :class "tun-board-message" :aria-live "polite") ,@message)
+           ,@(when action
+               '((:p (:@ :class "tun-board-status" :role "status" :data-tun-board-status t))))
            (:div (:@ :class "tun-board-columns")
                  ,@(mapcar (lambda (column)
                              (board-column column :board-id board-id :action action
                                                   :columns columns
-                                                  :heading-level heading-level))
+                                                  :heading-level heading-level
+                                                  :ordered (and action ordered)))
                            columns)))))

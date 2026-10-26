@@ -212,6 +212,109 @@ aria-current=\"page\", in any order."
     (is (search "Ikke flyttet" html) "the message"))
   (signals error (tun.ui:board (:columns '())) "a board needs a label"))
 ;;; ------------------------------------------------------------------
+;;; Order within a column (spec/ui.md 6.1)
+
+(defun ordered-board (&rest options)
+  (tun.html:render-html
+   (tun.ui:board* (append options
+                          (list :label "Køen" :action "/ko/flytt"
+                                :columns (list (list :key "ny" :title "Ny"
+                                                     :cards (list (list :id "itm_1" :title "En")
+                                                                  (list :id "itm_2" :title "To")
+                                                                  (list :id "itm_3" :title "Tre")
+                                                                  (list :id "itm_4" :title "Fire")))
+                                               (list :key "ferdig" :title "Ferdig"
+                                                     :cards (list (list :id "itm_5"
+                                                                        :title "Fem")))))))))
+
+(defun order-items (html card)
+  "The «Rekkefølge» items of CARD in HTML, as (LABEL BEFORE) lists in order."
+  (let ((items '()))
+    (cl-ppcre:do-register-groups (before label)
+        ((format nil "<button [^>]*form=\"tun-board-~a-order-form\" name=\"before\" ~
+                      value=\"([^\"]*)\"[^>]*>.*?<span class=\"tun-dropdown-menu-text\">~
+                      ([^<]*)</span>" card)
+         html)
+      (push (list label before) items))
+    (nreverse items)))
+
+(test an-ordered-board-posts-where-a-card-goes-in-its-column
+  (let ((html (ordered-board :ordered t)))
+    (is (search "data-tun-board-ordered" html))
+    (is (search (format nil "<input type=\"hidden\" name=\"card\" value=\"itm_2\">~
+                             <input type=\"hidden\" name=\"before\" value=\"\" ~
+                             data-tun-board-before><button type=\"submit\" name=\"column\" ~
+                             value=\"ny\" data-tun-board-move=\"ny\">")
+                html)
+        "the move form posts before= and has a button for the card's own column")
+    (is (tag-with-p html "<form" "id=\"tun-board-itm_2-order-form\"" "hx-post=\"/ko/flytt\""
+                    "hx-swap=\"outerMorph\""))
+    (is (search (format nil "<input type=\"hidden\" name=\"card\" value=\"itm_2\">~
+                             <input type=\"hidden\" name=\"column\" value=\"ny\">")
+                html)
+        "the order form posts the card's own column")
+    (is (equal '(("Flytt ned" "itm_3") ("Flytt nederst" "")) (order-items html "itm_1"))
+        "the first card goes down before the card two below it, or to the end")
+    (is (equal '(("Flytt øverst" "itm_1") ("Flytt opp" "itm_1") ("Flytt ned" "itm_4")
+                 ("Flytt nederst" ""))
+               (order-items html "itm_2")))
+    (is (equal '(("Flytt øverst" "itm_1") ("Flytt opp" "itm_2") ("Flytt ned" "")
+                 ("Flytt nederst" ""))
+               (order-items html "itm_3"))
+        "below the next-to-last card comes the end")
+    (is (equal '(("Flytt øverst" "itm_1") ("Flytt opp" "itm_3")) (order-items html "itm_4"))
+        "the last card goes up only")
+    (is (search ">Rekkefølge</div>" html))
+    (is (tag-with-p html "form=\"tun-board-itm_2-form\"" "name=\"column\"" "value=\"ferdig\"")
+        "«Flytt til» posts the move form, whose before= is empty: the end of that column")))
+
+(test a-card-alone-in-its-column-has-no-order-group
+  (let ((html (ordered-board :ordered t)))
+    (is (null (order-items html "itm_5")))
+    (is (not (search "tun-board-itm_5-order-form" html)))
+    (is (search "id=\"tun-board-itm_5-move-trigger\"" html) "its menu moves it to other columns")
+    (is (search (format nil "<input type=\"hidden\" name=\"card\" value=\"itm_5\">~
+                             <input type=\"hidden\" name=\"before\"")
+                html)))
+  (let ((html (tun.html:render-html
+               (tun.ui:board (:label "Én" :action "/f" :ordered t
+                              :columns (list (list :key "ny" :title "Ny"
+                                                   :cards (list (list :id "itm_1"
+                                                                      :title "En")))))))))
+    (is (not (search "tun-dropdown-menu" html)) "a card with nothing in its menu has no menu")
+    (is (search "name=\"before\"" html) "and can still be dropped")))
+
+(test a-board-with-an-action-says-where-a-card-went-in-a-visually-hidden-region
+  (dolist (ordered '(t nil))
+    (let ((html (ordered-board :ordered ordered)))
+      (is (search "<p class=\"tun-board-status\" role=\"status\" data-tun-board-status></p>" html)
+          "a status region, not hidden from screen readers")))
+  (is (not (search "data-tun-board-status" (items-board))) "not on a board that moves nothing")
+  (let ((css (tun.ui:component-css (tun.ui:find-component "board")))
+        (script (tun.ui:component-script (tun.ui:find-component "board"))))
+    (let ((rule (subseq css (search "& .tun-board-status {" css))))
+      (is (search "clip-path: inset(50%)" (subseq rule 0 (search "}" rule))) "clipped to nothing")
+      (is (not (search "display: none" (subseq rule 0 (search "}" rule))))))
+    (is (search "`Flyttet «${title}» til plass ${at.index + 1} av ${count} i ${heading}.`" script))
+    (is (search "`Flyttet «${title}» til ${heading}.`" script))
+    (is (search "if (at.column === from.column && at.index === from.index) return;" script)
+        "nothing is said when the answer has the card where it was")))
+
+(test a-board-that-is-not-ordered-posts-as-before
+  (let ((html (ordered-board)))
+    (is (not (search "data-tun-board-ordered" html)))
+    (is (not (search "name=\"before\"" html)))
+    (is (not (search "order-form" html)))
+    (is (not (search "Rekkefølge" html)))
+    (is (search "<input type=\"hidden\" name=\"card\" value=\"itm_2\"></form>" html)
+        "the move form holds the card alone"))
+  (is (not (search "data-tun-board-ordered"
+                   (tun.html:render-html
+                    (tun.ui:board (:label "T" :ordered t
+                                   :columns (list (list :key "ny" :title "Ny")))))))
+      "a board without an action orders nothing"))
+
+;;; ------------------------------------------------------------------
 ;;; Sorting a table (spec/ui.md 6)
 
 (test a-sortable-header-links-to-the-other-direction
