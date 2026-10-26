@@ -44,12 +44,21 @@ inventory tools keep product_id required and take article_id instead).")
    (default :initarg :default :initform nil :reader parameter-default)
    (label :initarg :label :initform nil :reader parameter-label)
    (description :initarg :description :initform nil :reader parameter-description)
+   (secret :initarg :secret :initform nil
+           :documentation "True for a credential: a request's record shows \"***\" for it.")
    (entity-field :initarg :entity-field :initform nil :reader parameter-entity-field
                  :documentation "(entity json-name) when the parameter reuses an entity field.")))
 
 (defun parameter-field (parameter)
   (let ((ref (parameter-entity-field parameter)))
     (and ref (find-field (find-entity-class (first ref)) (second ref)))))
+
+(defun parameter-secret-p (parameter)
+  "True when PARAMETER carries a credential: declared :SECRET T, or reusing a
+secret field (core.md 8.2)."
+  (let ((field (parameter-field parameter)))
+    (or (slot-value parameter 'secret)
+        (and field (field-secret-p field)))))
 
 (defun parameter-type (parameter)
   (let ((field (parameter-field parameter)))
@@ -76,7 +85,7 @@ string written out: a spec is data, so +TEXT+ would not be evaluated."
                         (getf options :description))))
 
 (defun parse-parameter-spec (spec)
-  "SPEC is (NAME &key TYPE REQUIRED DEFAULT LABEL DESCRIPTION) or
+  "SPEC is (NAME &key TYPE REQUIRED DEFAULT LABEL DESCRIPTION SECRET) or
 (:FIELD ENTITY FIELD-NAME &key REQUIRED) reusing an entity field definition."
   (check-parameter-texts spec)
   (if (eq (first spec) :field)
@@ -86,12 +95,15 @@ string written out: a spec is data, so +TEXT+ would not be evaluated."
                                   :json-name (json-name-of field-name)
                                   :type nil :required required :label label :description description
                                   :entity-field (list entity (json-name-of field-name))))
-      (destructuring-bind (name &key (type 'string) required schema-required default label description) spec
+      (destructuring-bind (name &key (type 'string) required schema-required default label
+                                description secret)
+          spec
         (make-instance 'parameter :name name
                                   :keyword (intern (symbol-name name) :keyword)
                                   :json-name (json-name-of name)
                                   :type type :required required :schema-required schema-required
-                                  :default default :label label :description description))))
+                                  :default default :label label :description description
+                                  :secret secret))))
 
 ;;; ------------------------------------------------------------------
 ;;; Operation metadata

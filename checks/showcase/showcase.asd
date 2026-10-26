@@ -10,6 +10,7 @@
   :components ((:file "package")
                (:file "cards")
                (:file "pages")
+               (:file "notifications")
                (:file "application")))
 
 (defsystem "showcase/tests"

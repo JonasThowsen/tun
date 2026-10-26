@@ -12,7 +12,9 @@ What a check gets:
 
     t.phone(), t.desktop()     a page at 390x844 with touch, or 1280x800
                                with a mouse, each with its own cookies;
-                               both take another width and height
+                               both take another width and height, and
+                               permissions (["notifications"]) and
+                               user_agent for the page's browser
     page.sign_in(actor)        sign in as "employee:anna" (claimed identity)
     page.goto(path)
     page.card(title), page.column(key)
@@ -160,19 +162,23 @@ class Run:
         self.pages = []
         self.page = None
 
-    def _new_page(self, touch, **options):
+    def _new_page(self, touch, permissions=None, **options):
         context = self.browser.new_context(**options)
+        if permissions:
+            context.grant_permissions(permissions, origin=self.url)
         wrapped = Page(self, context.new_page(), touch)
         self.pages.append(wrapped)
         self.page = wrapped
         return wrapped
 
-    def phone(self, width=390, height=844):
-        return self._new_page(True, viewport={"width": width, "height": height},
-                              has_touch=True, is_mobile=True, device_scale_factor=2)
+    def phone(self, width=390, height=844, permissions=None, user_agent=None):
+        return self._new_page(True, permissions, viewport={"width": width, "height": height},
+                              has_touch=True, is_mobile=True, device_scale_factor=2,
+                              **({"user_agent": user_agent} if user_agent else {}))
 
-    def desktop(self, width=1280, height=800):
-        return self._new_page(False, viewport={"width": width, "height": height})
+    def desktop(self, width=1280, height=800, permissions=None, user_agent=None):
+        return self._new_page(False, permissions, viewport={"width": width, "height": height},
+                              **({"user_agent": user_agent} if user_agent else {}))
 
     def check(self, condition, text):
         result = {"text": text, "ok": bool(condition), "screenshot": None}
@@ -227,7 +233,9 @@ def main(argv):
     out, url, checks = pathlib.Path(argv[1]), argv[2].rstrip("/"), [pathlib.Path(a) for a in argv[3:]]
     out.mkdir(parents=True, exist_ok=True)
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        # The whole browser, headless: Playwright's default headless shell
+        # refuses notifications, which the push checks need.
+        browser = playwright.chromium.launch(channel="chromium")
         passed = [run_check(browser, url, out, path) for path in checks]
         browser.close()
     return 0 if all(passed) else 1

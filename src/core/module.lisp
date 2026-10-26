@@ -17,7 +17,7 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +core-version+ "1.18.0"
+(defparameter +core-version+ "1.19.0"
   "The kernel's version.  Modules declare the range they build against; the
 client build (flake.nix, lib.buildClient) and DEFINE-MODULE both refuse a
 module whose range does not contain it.  The first versioned core was 0.1.0.")
@@ -530,10 +530,24 @@ superclass) lists, as written, and as a second value whether any class
 declared them.  APPLICATION is an application or the name of its class."
   (declared-option *application-sign-in* application))
 
+(defvar *queue-defaults* (make-hash-table :test 'eq)
+  "Queue keyword -> how many jobs it runs at once when the application does
+not say, for the kernel's own queues (spec/jobs.md 6).")
+
+(defun declare-queue-default (queue limit)
+  "Let the kernel's QUEUE run LIMIT jobs at once unless an application's
+(:queues ...) says otherwise."
+  (check-type queue keyword)
+  (check-type limit (integer 1))
+  (setf (gethash queue *queue-defaults*) limit))
+
 (defun application-queue-limit (application queue)
   "How many jobs QUEUE, a keyword, runs at once in APPLICATION: what its
-class (or the nearest declaring superclass) says in (:queues ...), else 1."
-  (or (second (assoc queue (declared-option *application-queues* application))) 1))
+class (or the nearest declaring superclass) says in (:queues ...), else the
+kernel's default for QUEUE, else 1."
+  (or (second (assoc queue (declared-option *application-queues* application)))
+      (gethash queue *queue-defaults*)
+      1))
 
 (defun application-instructions (application)
   "What APPLICATION's class (or the nearest declaring superclass) tells

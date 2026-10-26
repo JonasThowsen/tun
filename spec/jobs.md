@@ -161,8 +161,11 @@ own documentation says can race, nor River's partial unique index.
   (:queues (:default 2) (:mail 1)))
 ```
 
-- Each queue runs at most N jobs at once in a process; `:default` is 1
-  unless the application says otherwise.
+- Each queue runs at most N jobs at once in a process. N is what the
+  application's `(:queues ...)` says; without it, the default Tun
+  declares for one of its own queues, which is 2 for `:push`
+  (`push.md` §5); and 1 for every other queue, `:default` and `:mail`
+  among them. `(:queues (:push 1))` overrides Tun's default.
 - The scheduler's tick (every second) starts a worker for each queue
   with room and a due job, and a commit that enqueued a job due now
   starts one at once; a worker takes the queue's due jobs by priority,

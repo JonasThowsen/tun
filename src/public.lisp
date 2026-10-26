@@ -108,6 +108,9 @@ the listed symbols (the same symbol objects, not copies)."
   ;; (spec/mail.md), and whom to send it to (spec/auth.md 2).  A client
   ;; creates and invites a person with (invoke 'accounts-create ...).
   (#:tun.mail #:send-mail)
+  ;; Push notifications to an installed app's devices: queued in the
+  ;; caller's write, delivered after it commits (spec/push.md)
+  (#:tun.push #:notify-push)
   ;; Calling other systems' JSON APIs, and answering for them in tests
   ;; (spec/outbound.md)
   (#:tun.outbound #:http-json-post #:*http-json-handler*
@@ -126,7 +129,7 @@ the listed symbols (the same symbol objects, not copies)."
 ;;; loads (TUN.CORE:PUBLISH): a client sees exactly the modules it enables.
 
 (setf tun.runtime::*core-packages*
-  '(#:tun #:tun.core #:tun.workflows #:tun.accounting #:tun.accounting.fake #:tun.mail #:tun.outbound #:tun.jobs #:tun.platform #:tun.errors
+  '(#:tun #:tun.core #:tun.workflows #:tun.accounting #:tun.accounting.fake #:tun.mail #:tun.push #:tun.outbound #:tun.jobs #:tun.platform #:tun.errors
     #:tun.introspection #:tun.auth #:tun.mcp #:tun.http #:tun.html #:tun.ui #:tun.web
     #:tun.guarded
     #:tun.runtime #:tun.store.memory #:tun.store.sqlite #:tun.store.postgres #:tun.public-builder))

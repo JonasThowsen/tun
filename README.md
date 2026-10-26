@@ -63,8 +63,10 @@ price is writing some plumbing ourselves.
   builds an OCI image and carries a nixploy configuration for its servers
   (`spec/deploy.md`).
 - **Generated HTML screens,** public customer pages and the MCP server.
-- **Fake adapters** for accounting, mail delivery and inbound mail behind
-  their ports. No external service is called.
+- **Push notifications** to the phones and computers where people turned
+  them on, for a client installed as an app.
+- **Fake adapters** for accounting, mail delivery, push delivery and
+  inbound mail behind their ports. No external service is called.
 - **Tests:** the kernel and module suite, the test client's suite, and
   browser checks on the showcase.
 

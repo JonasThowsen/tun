@@ -161,7 +161,8 @@ siste aktive administratoren som er en person, kan ikke deaktiveres eller miste 
     (when status
       (setf (account-status account) status)
       (when (equal status "disabled")
-        (end-account-sessions account)))
+        (end-account-sessions account)
+        (account-disabled *application* account)))
     (save account)))
 
 ;;; ------------------------------------------------------------------

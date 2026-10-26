@@ -47,7 +47,8 @@ An account is a record of the core entity `account` (id prefix `acc`):
 - The account's actor is `role:name`. Changing its role changes the actor
   that audit entries, receipts and other records name from then on.
 - A disabled account's sessions and tokens stop working at its next
-  request. Enabling it again does not bring back ended sessions.
+  request. Disabling it deletes its push subscriptions (`push.md` §3).
+  Enabling it again does not bring back ended sessions.
 - Once a tenant has an active admin who is a person, it keeps one: a
   change that would disable or demote the last one is refused with
   `conflict`.
@@ -117,7 +118,9 @@ offers the providers is §3.4.
 - The cookie is `HttpOnly`, `SameSite=Lax`, `Path=/`, and `Secure` when
   the request came over HTTPS (directly, or `X-Forwarded-Proto: https`
   from the proxy in front).
-- Logout is `POST /logout`.
+- Logout is `POST /logout`. It also deletes the push subscriptions made
+  or last checked in the session, so the device stops getting the
+  person's notifications (`push.md` §3).
 - A POST from another origin is refused before it is read, which with
   `SameSite` keeps another site from acting with the cookie. A browser
   that sends `Sec-Fetch-Site` is judged by it alone: `same-origin` or

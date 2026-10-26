@@ -297,7 +297,8 @@ request_key, and the target's revision."
 ;;; RUN-OPERATION
 
 (defun recorded-input (input)
-  "INPUT's arguments as given, minus confirmation_token and request_key (core.md §8.2)."
+  "INPUT's arguments as given, minus confirmation_token and request_key, with
+\"***\" for a secret (core.md §8.2)."
   (let ((args (input-arguments input)) (copy (jobj)))
     (when (hash-table-p args)
       (maphash (lambda (k v)
@@ -307,6 +308,11 @@ request_key, and the target's revision."
     (when (and (equal (current-operation-tool) "settings_set")
                (secret-setting-p (jget args "key")))
       (setf (gethash "value" copy) "***"))
+    (when *operation*
+      (dolist (parameter (operation-parameters *operation*))
+        (when (and (parameter-secret-p parameter)
+                   (nth-value 1 (gethash (parameter-json-name parameter) copy)))
+          (setf (gethash (parameter-json-name parameter) copy) "***"))))
     copy))
 
 (defun condition-text (condition)

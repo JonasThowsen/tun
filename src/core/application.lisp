@@ -57,6 +57,10 @@
    (mail :initarg :mail :initform nil :accessor application-mail
          :documentation "The mail provider's adapter (spec/mail.md 1), made from the
 client's (:mail ...) when the application opens unless given here.")
+   (push-service :initarg :push-service :initform nil :accessor application-push-service
+                 :documentation "The adapter push notifications are delivered through
+(spec/push.md 5): Web Push over HTTPS, or one that sends nothing with the test
+clock, when the application opens unless given here.")
    (debug-tools :initarg :debug-tools :initform nil :accessor application-debug-tools-p
                 :documentation "--debug-tools: expose the debug_* tools (core.md §7.6).")
    (allow-eval :initarg :allow-eval :initform nil :accessor application-allow-eval-p

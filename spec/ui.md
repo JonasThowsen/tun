@@ -3,7 +3,8 @@
 Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
 (§4.1, §8.1) and the board (§6.1), 2026-10-21; installing as an app
 (§4.2), 2026-10-22; ordering a board's cards within a column (§6.1),
-2026-10-26, core 1.18.0. How every Tun
+2026-10-26, core 1.18.0; push notifications in the service worker and
+`push-switch` (`push.md`), 2026-10-26, core 1.19.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -232,14 +233,17 @@ Without it, no page links a manifest and nothing is installed.
   and it never stores a response: pages, `/api` and `/mcp` carry
   signed-in data. A new version (a deploy that changed an asset, the
   title or the offline page) takes over at once and deletes the older
-  caches.
+  caches. It also shows the notifications pushed to the device and
+  opens their page on a click (`push.md` §7).
 - **Without `:web-app`,** `/manifest.webmanifest`, `/offline` and the
   icons are not found, and `/sw.js` is a worker that deletes Tun's
   caches and unregisters itself, so a client that drops the option
   leaves nothing behind in the browsers that installed it.
 - `/manifest.webmanifest`, `/sw.js` and `/offline` are Tun's paths, as
   `/login` is: a client's page cannot take them. None of them needs a
-  login.
+  login. The paths under `/push/` are Tun's too, and a client's page
+  cannot take them either; which of them need a login is `push.md`
+  §2.3.
 
 ## 5. Components
 
@@ -298,7 +302,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Group (file in `src/web/ui/`) | Components |
 |---|---|
 | Handlinger (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
-| Skjema (`forms`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions` |
+| Skjema (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1) |
 | Data (`data`, `board`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board` |
 | Tilbakemelding (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaksjon (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
@@ -637,6 +641,7 @@ form of `field`s with an `error-summary`, a confirmation is a
   headers; every page's head carries the tags; the worker keeps the
   current assets and the offline page and nothing else; without
   `:web-app` there is no manifest and the worker removes itself; a
-  client's page cannot take the paths.
+  client's page cannot take the paths. `push.md` §10 has the evidence
+  for push notifications.
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

@@ -94,7 +94,8 @@ admin, runs as the system: `(with-actor ((system-actor "items")) ...)`.
 
 `define-operation name (parameters) (options) body` declares input schemas,
 authorization, transactions and audit behavior. `:required t` validates a
-parameter; `:default` supplies an omitted value. `:confirm t` requires the
+parameter; `:default` supplies an omitted value; `:secret t` marks one that
+carries a credential, which a request's record shows as `"***"`. `:confirm t` requires the
 kernel's confirmation round trip. `:kind :read` selects a read transaction;
 mutating kinds are `:create`, `:update`, and `:transition`; `:kind :wait`
 reads until something changes (below). `request_key` is provided by the
@@ -367,6 +368,31 @@ frakoblet» when a page cannot be fetched. It never keeps a page or an
 answer from `/api` or `/mcp`. After changing an icon, recompile the
 file with `define-application` (`C-c C-k`, or touch it) for the new one
 to be served.
+
+### Notifications on people's phones
+
+An installable client can notify people on the devices where they have
+turned notifications on (`spec/push.md`). Put `ui:push-switch` on a page
+of the client's choosing, such as a person's own settings: it turns
+notifications on and off for the device it is shown on, says what to do
+where they cannot work (on an iPhone, the app must be on the Home Screen
+first), and offers a test notification. Then, inside an operation, a job
+or a workflow, send to a person by their account's name:
+
+```lisp
+(notify-push "kari" :title "Ny sak til deg"
+                    :body "Eksporten feiler for Fjord AS"
+                    :url "/saker/itm_12"
+                    :tag "sak:itm_12")
+```
+
+It returns how many devices it queued the notification for, and queues
+nothing when the operation rolls back. URL is a path on the server, the
+page a click opens; a later notification with the same TAG replaces this
+one on the device. Each device's notification is a job in the `:push`
+queue, retried as mail is; a device that is gone is forgotten. Tun makes
+and keeps its own key; there is nothing to configure. A deployed tenant
+needs an `https` `PUBLIC_URL`, which Apple's push service asks for.
 
 ## The HTTP API
 

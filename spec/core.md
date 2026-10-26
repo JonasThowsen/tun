@@ -438,8 +438,10 @@ used, with no restart; a setting may instead be read from the environment
 secrets as `"***"`; `settings_get` (employee) refuses a secret with
 `forbidden`; `settings_set` (admin) checks the value against the type and
 answers `not_found` for an undeclared key. Core declares `lenker.base_url`
-(absolute links in messages) and `lenker.hemmelighet` (the secret behind
-links, generated at first start).
+(absolute links in messages), `lenker.hemmelighet` (the secret behind
+links, generated at first start) and `push.hemmelighet` (the secret Tun's
+key for push notifications is derived from, `push.md` §6.3, generated
+the same way).
 
 ### 5.4 Link tokens
 
@@ -604,7 +606,10 @@ included, refused and failed ones too; a fault is also kept in the store
 ### 8.2 Tools
 
 Reads with policy `admin`, entity null and source `core`, always present.
-Inputs are shown as given minus `confirmation_token` and `request_key`.
+Inputs are shown as given minus `confirmation_token` and `request_key`,
+with `"***"` for a secret: the value of `settings_set` for a secret
+setting, and any parameter declared `:secret t` or reusing a secret field,
+such as `push_subscribe`'s `auth`.
 
 | Tool | Input | Output |
 |---|---|---|

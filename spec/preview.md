@@ -170,7 +170,8 @@ ends. A check gets:
 
 - `t.phone()` and `t.desktop()`: a page at 390×844 with touch, or at
   1280×800 with a mouse, each with its own cookies; both take another
-  width and height;
+  width and height, `permissions`, such as `["notifications"]`, which
+  the page's browser grants its preview, and `user_agent`;
 - `page.sign_in(actor)`, `page.goto(path)`, `page.card(title)` (the card
   with exactly that title, not the copy that follows a drag),
   `page.column(key)` and `page.visible_width(selector)`;
@@ -185,7 +186,9 @@ ends. A check gets:
 
 A check that raises, checks nothing, or leaves a JavaScript error on one
 of its pages fails. The runner is Tun's `scripts/tun_check.py`, run with
-`tun-check-python`, Python with Playwright and Chromium, which the dev
+`tun-check-python`, Python with Playwright and Chromium (the whole
+browser, headless, so that notifications and service workers behave as
+they do in Chrome), which the dev
 shells of Tun and of a client have. It writes `NAME.json` with each
 check's results and `NAME-N.png` for each failure to `DIR/.build/checks/`.
 `tun check` prints which passed and exits 0 only when every one did.

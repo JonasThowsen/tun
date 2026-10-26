@@ -4,7 +4,9 @@
 ;;;;
 ;;;; The service worker keeps the design system's assets and the offline
 ;;;; page, nothing else: a page a signed-in person sees, and every answer
-;;;; of /api and /mcp, goes to the network and is never stored.
+;;;; of /api and /mcp, goes to the network and is never stored.  It also
+;;;; shows the notifications pushed to the device and opens their page
+;;;; (spec/push.md 7).
 
 (in-package #:tun.web)
 
@@ -100,10 +102,13 @@ not logged in, whoever asks, since the worker keeps it."
 // Tun's service worker (spec/ui.md 4.2).  It keeps this version's
 // stylesheet, scripts and offline page, answers those assets from its
 // cache, and shows the offline page when a page cannot be fetched.  It
-// stores nothing else: pages, /api and /mcp carry signed-in data.
+// stores nothing else: pages, /api and /mcp carry signed-in data.  It
+// shows the notifications pushed to this device (spec/push.md 7).
 const version = ~s;
 const offline = '/offline';
 const kept = ~a;
+const title = ~a;
+const icon = ~a;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(version)
@@ -131,9 +136,57 @@ self.addEventListener('fetch', (event) => {
     event.respondWith(caches.match(request).then((answer) => answer || fetch(request)));
   }
 });
+
+// Every push shows a notification: iOS takes the permission back from an
+// app that is woken by a push and shows nothing.
+self.addEventListener('push', (event) => {
+  let message = null;
+  try {
+    message = event.data ? event.data.json() : null;
+  } catch (error) {
+    message = null;
+  }
+  if (!message || typeof message.title !== 'string')
+    message = { title, body: 'Du har et nytt varsel', url: '/' };
+  const options = { body: typeof message.body === 'string' ? message.body : '', icon,
+                    data: { url: message.url } };
+  if (typeof message.tag === 'string') {
+    options.tag = message.tag;
+    options.renotify = true;
+  }
+  event.waitUntil(self.registration.showNotification(message.title, options));
+});
+
+// The page a notification opens: its URL on this server, else the start page.
+const notificationUrl = (url) => {
+  const start = new URL('/', self.location.origin).href;
+  try {
+    const target = new URL(typeof url === 'string' ? url : '/', self.location.origin);
+    return target.origin === self.location.origin ? target.href : start;
+  } catch (error) {
+    return start;
+  }
+};
+
+// A click brings forward the app's window showing the page, else sends one
+// of its windows there, else opens a window.  Focusing is allowed only
+// while the click lasts, so a refusal must not stop the rest.
+self.addEventListener('notificationclick', (event) => {
+  event.notification.close();
+  const url = notificationUrl(event.notification.data && event.notification.data.url);
+  event.waitUntil(self.clients.matchAll({ type: 'window', includeUncontrolled: true })
+    .then(async (windows) => {
+      const showing = windows.find((client) => client.url === url);
+      if (showing) return showing.focus().catch(() => showing);
+      const other = windows[0];
+      if (!other) return self.clients.openWindow(url);
+      await other.focus().catch(() => other);
+      return other.navigate(url).catch(() => self.clients.openWindow(url));
+    }));
+});
 "
-  "The service worker, given its cache's name and the paths it keeps as a
-JSON array.")
+  "The service worker, given its cache's name, the paths it keeps as a JSON
+array, and the application's title and icon as JSON strings.")
 
 (defparameter +removing-service-worker+ "'use strict';
 // This Tun is not installed as an app (spec/ui.md 4.2).  A worker an earlier
@@ -159,7 +212,9 @@ installs a new worker, which deletes the older cache."
         (format nil +service-worker+
                 (format nil "tun-~a" (subseq (sha256-hex (format nil "~{~a~^ ~}~%~a" kept (offline-html)))
                                              0 12))
-                (to-json-string (jarr kept))))
+                (to-json-string (jarr kept))
+                (to-json-string (application-title *web-app*))
+                (to-json-string (icon-path (web-app-icon (web-app) "icon-192.png")))))
       +removing-service-worker+))
 
 ;;; ------------------------------------------------------------------

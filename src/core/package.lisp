@@ -86,7 +86,7 @@
    #:+test-clock-start+ #:application #:application-name #:application-store #:application-clock
    #:application-accounting #:application-message-transport #:application-mail #:application-debug-tools-p
    #:application-allow-eval-p #:application-repl-port #:application-identity #:claimed-identity-p
-   #:application-auth-state #:application-jobs-state #:application-queue-limit #:application-log-requests-p
+   #:application-auth-state #:application-jobs-state #:application-queue-limit #:declare-queue-default #:application-push-service #:application-log-requests-p
    #:application-public-url #:absolute-url
    #:application-started-us #:application-max-inflight #:application-inflight-cell
    #:operation-eval-only-p

@@ -3,6 +3,7 @@
 (in-package #:showcase)
 
 (define-application showcase ()
+  (:web-app :short-name "Showcase" :icons "icons/")
   (:default-initargs :name "showcase")
   (:documentation "Pages for Tun's browser checks."))
 

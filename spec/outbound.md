@@ -116,3 +116,15 @@ does with the accounting port (`core.md` §7.3).
                              (values 200 (jobj "kind" "feil" "echo" (jget body "input"))))))
   (invoke 'items-check :title "Knappen virker ikke"))
 ```
+
+## 5. Tun's own calls with other bodies
+
+A port of Tun's that posts a body that is not JSON, such as a push
+notification (`push.md` §5), makes the same call through
+`tun.outbound:http-post`, which is internal to Tun: URL, the body's
+octets, its content type and headers, and a timeout. It answers the
+status and the answer's text for any status, and NIL and what came
+instead when no answer did: a port decides for itself what a status
+means. It has §1's limits (HTTPS verified, no redirect, the operation's
+deadline, four calls at once) and is a step in the trace as §2 says,
+with the name the port gives it.

@@ -8,10 +8,14 @@
 ;;;; does), held to the operation's deadline, and is one :external step in
 ;;;; the request's trace.  A test answers for the other system by binding
 ;;;; *HTTP-JSON-HANDLER*.
+;;;;
+;;;; HTTP-POST is the same call for Tun's own ports whose body is not JSON,
+;;;; such as a push notification (spec/outbound.md 5): it answers any
+;;;; status and leaves its meaning to the port.
 
 (defpackage #:tun.outbound
   (:use #:cl #:tun.core)
-  (:export #:http-json-post #:*http-json-handler*
+  (:export #:http-json-post #:*http-json-handler* #:http-post
            #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url))
 
 (in-package #:tun.outbound)
@@ -65,19 +69,22 @@ http or https URL."
 
 (defun remote-failure (url status body control &rest arguments)
   (error 'remote-failure :url url :status status :body body
-                         :message (format nil "~a ~?" (url-host url) control arguments)))
+         :message (format nil "~a ~?" (url-host url) control arguments)))
 
 ;;; ------------------------------------------------------------------
 ;;; One call
 
-(defun check-call (url headers timeout)
+(defun check-call (caller url headers timeout)
+  "Signal an error naming CALLER unless URL, HEADERS and TIMEOUT are what a
+call takes."
   (unless (and (stringp url) (url-parts url))
-    (error "http-json-post: ~s is not an http or https URL" url))
-  (unless (every (lambda (header) (and (consp header) (stringp (car header)) (stringp (cdr header))))
+    (error "~(~a~): ~s is not an http or https URL" caller url))
+  (unless (every (lambda (header)
+                   (and (consp header) (stringp (car header)) (stringp (cdr header))))
                  headers)
-    (error "http-json-post: the headers are an alist of strings, not ~s" headers))
+    (error "~(~a~): the headers are an alist of strings, not ~s" caller headers))
   (unless (typep timeout '(real 1 60))
-    (error "http-json-post: the timeout is from 1 to 60 seconds, not ~s" timeout)))
+    (error "~(~a~): the timeout is from 1 to 60 seconds, not ~s" caller timeout)))
 
 (defun seconds-allowed (timeout)
   "TIMEOUT, held to the running operation's deadline less the margin."
@@ -86,35 +93,39 @@ http or https URL."
         (min timeout (- (/ left 1000) +deadline-margin-seconds+))
         timeout)))
 
-(defun post-over-network (url text headers seconds)
-  "POST TEXT to URL.  Values the status and the body's text.  Runs in the
-bounded thread: SBCL's deadline ends a read that drakma, which has no read
-timeout on SBCL, would wait on for ever, so an abandoned call ends too.
-SBCL signals DEADLINE-TIMEOUT, which is not an error; the caller is given
+(defun post-over-network (url content content-type accept headers seconds)
+  "POST CONTENT, a text or octets, to URL as CONTENT-TYPE, asking for ACCEPT.
+Values the status and the body's text.  Runs in the bounded thread: SBCL's
+deadline ends a read that drakma, which has no read timeout on SBCL, would
+wait on for ever, so an abandoned call ends too.  SBCL signals
+DEADLINE-TIMEOUT, which is not an error; the caller is given
 DEADLINE-EXCEEDED, which is."
   (handler-case
       (sb-sys:with-deadline (:seconds seconds)
         (multiple-value-bind (body status)
             (drakma:http-request url :method :post
-                                     :content-type "application/json"
-                                     :content text
-                                     :accept "application/json"
-                                     :additional-headers headers
-                                     :external-format-out :utf-8
-                                     :force-binary t :redirect nil
-                                     :verify :required
-                                     :connection-timeout (min seconds +connect-seconds+))
+                                 :content-type content-type
+                                 :content content
+                                 :accept accept
+                                 :additional-headers headers
+                                 :external-format-out :utf-8
+                                 :force-binary t :redirect nil
+                                 :verify :required
+                                 :connection-timeout (min seconds +connect-seconds+))
           (values status (if body (sb-ext:octets-to-string body :external-format :utf-8) ""))))
     (sb-sys:deadline-timeout ()
       (error 'deadline-exceeded))))
 
-(defun answer-from-network (url text headers seconds)
+(defun answer-from-network (url content content-type accept headers seconds)
   "Values the status and the body's text of the call, or NIL, a message and
 what the trace shows when no answer came."
   (if (not (provider-call-capacity-p))
       (values nil "ble ikke spurt: for mange kall til andre systemer pågår" "full")
-      (handler-case (call-with-time-limit (lambda () (post-over-network url text headers seconds))
-                                          seconds)
+      (handler-case (with-request-state (:external-call)
+                      (call-with-time-limit
+                       (lambda ()
+                         (post-over-network url content content-type accept headers seconds))
+                       seconds))
         (deadline-exceeded ()
           (let ((whole (ceiling seconds)))
             (values nil (format nil "svarte ikke innen ~d ~:[sekunder~;sekund~]" whole (= whole 1))
@@ -141,25 +152,51 @@ whether it is JSON."
         (t (handler-case (values (parse-json answer) t)
              (json-parse-failure () (values nil nil))))))
 
+(defun recorded-call (name function)
+  "Call FUNCTION, which makes one call to another system and values the
+status and the answer, or NIL, a message and a detail; record it as the
+:external step NAME in the trace.  Values the status and the answer, or NIL
+and the message."
+  (let ((started (trace-clock-us)))
+    (multiple-value-bind (status answer detail) (funcall function)
+      (note-step :external :name name :source :core
+                 :detail (if status (princ-to-string status) detail)
+                 :started started :duration (- (trace-clock-us) started))
+      (values status answer))))
+
+(defparameter +no-time-message+ "ble ikke spurt: operasjonen har under ett sekund igjen")
+
+(defun http-post (url body &key headers (content-type "application/octet-stream") (timeout 10)
+                             (name (format nil "POST ~a" (shown-url url))))
+  "POST BODY, octets or a text, to URL as CONTENT-TYPE, with HEADERS (an
+alist of strings), for Tun's own ports (spec/outbound.md 5).  Values the
+status and the answer's text, whatever the status; or NIL and a message when
+no answer came within TIMEOUT seconds (and the operation's deadline).  The
+call is the :external step NAME in the trace."
+  (check-call 'http-post url headers timeout)
+  (let ((seconds (seconds-allowed timeout)))
+    (recorded-call name (lambda ()
+                          (if (< seconds 1)
+                              (values nil +no-time-message+ "no time")
+                              (answer-from-network url body content-type "*/*" headers
+                                                   seconds))))))
+
 (defun http-json-post (url body &key headers (timeout 10))
   "POST BODY, a JSON value, to URL with HEADERS (an alist of strings).
 Values the answer's JSON and its status.  Signals REMOTE-FAILURE without an
 answer within TIMEOUT seconds (and the operation's deadline), or for a
 status outside 200 to 299 or a body that is not JSON (spec/outbound.md 1)."
-  (check-call url headers timeout)
+  (check-call 'http-json-post url headers timeout)
   (let ((text (to-json-string body))
         (seconds (seconds-allowed timeout))
-        (handler *http-json-handler*)
-        (started (trace-clock-us)))
-    (multiple-value-bind (status answer detail)
-        (cond ((< seconds 1)
-               (values nil "ble ikke spurt: operasjonen har under ett sekund igjen" "no time"))
-              (handler (answer-from-handler handler url text headers))
-              (t (with-request-state (:external-call)
-                   (answer-from-network url text headers seconds))))
-      (note-step :external :name (format nil "POST ~a" (shown-url url)) :source :core
-                           :detail (if status (princ-to-string status) detail)
-                           :started started :duration (- (trace-clock-us) started))
+        (handler *http-json-handler*))
+    (multiple-value-bind (status answer)
+        (recorded-call (format nil "POST ~a" (shown-url url))
+                       (lambda ()
+                         (cond ((< seconds 1) (values nil +no-time-message+ "no time"))
+                               (handler (answer-from-handler handler url text headers))
+                               (t (answer-from-network url text "application/json"
+                                                       "application/json" headers seconds)))))
       (when (null status)
         (remote-failure url nil nil "~a" answer))
       (multiple-value-bind (json parsed) (answer-json answer)

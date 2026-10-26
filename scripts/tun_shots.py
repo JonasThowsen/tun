@@ -35,7 +35,8 @@ def main(argv):
     out.mkdir(parents=True, exist_ok=True)
     shots = []
     with sync_playwright() as playwright:
-        browser = playwright.chromium.launch()
+        # The whole browser, headless, as the checks use (tun_check.py).
+        browser = playwright.chromium.launch(channel="chromium")
         contexts = {name: browser.new_context(**options) for name, options in SIZES.items()}
         for name, context in contexts.items():
             if actor:

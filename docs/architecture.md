@@ -33,6 +33,8 @@ src/platform/      workflows (on jobs), platform tools, introspection, live defi
 src/auth/          accounts, sign-in providers, access tokens, sessions, setup (spec/auth.md)
 src/mail/          sending mail: the mail record, its delivery job, the log and Resend
                    adapters (spec/mail.md)
+src/push/          push notifications: subscriptions, notify-push, the delivery job, Web Push
+                   encryption and VAPID (spec/push.md)
 src/agent/         MCP JSON-RPC and the HTTP server
 src/web/           HTML renderer, the design system (ui/), the generated UI built from it,
                    and login and /access pages
@@ -142,7 +144,9 @@ with the icon its registration names. A page for someone not logged in
 without the menu. A client that declares `(:web-app ...)` can be
 installed as an app: every page links its manifest and icons, and a
 service worker keeps the stylesheet and scripts and shows an offline
-page, never a signed-in page (`spec/ui.md` §4.2).
+page, never a signed-in page (`spec/ui.md` §4.2). It also shows the
+notifications Tun pushes to the devices where people turned them on
+(`spec/push.md`).
 
 The screens are generated from the registry. A list is a `table` of the
 fields that name and place a record (its name or id, status, the records it
@@ -176,6 +180,7 @@ precedence order. The full API is in `client-api.md`. In short:
 | Configuration | `define-setting`, typed, with durable per-tenant values, or read from the environment with `:env` |
 | Call another system's API | `http-json-post`, in a read; `remote-failure` when it gives no usable answer |
 | Install as an app | `(:web-app :icons "icons/" ...)` in `define-application`: manifest, icons, service worker |
+| Notify people's phones | `ui:push-switch` on a page, and `notify-push` in an operation (installable clients) |
 
 Seams exist where a module needs the client's answer inside the operation,
 before it saves. An `:after` method could only patch the record afterwards.
@@ -261,6 +266,10 @@ handed makes the request fail.
   that sends nothing) and retries temporary failures with growing
   delays. Every attempt carries the mail's id as the idempotency key
   (`spec/mail.md`).
+- **Push notifications are queued the same way** (`spec/push.md`):
+  `notify-push` enqueues a job per device in the caller's transaction,
+  and each job encrypts the message for its device and posts it to the
+  browser's push service, retrying as mail does.
 - **External systems sit behind ports with fake adapters.** Accounting and
   the messaging module's customer messages and inbound mail are faked, and
   no external service is called. A port call happens outside any

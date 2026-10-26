@@ -87,6 +87,10 @@
                              (:file "sign-in")
                              (:file "oauth")
                              (:file "tools")))
+               (:module "push"
+                :components ((:file "package")
+                             (:file "crypto")
+                             (:file "push")))
                (:module "agent"
                 :components ((:file "mcp")
                              (:file "http")))
@@ -106,11 +110,13 @@
                                            (:file "feedback")
                                            (:file "interaction")
                                            (:file "board")
+                                           (:file "push")
                                            (:file "layout")
                                            (:file "specimen")))
                              (:file "ui")
                              (:file "access")
-                             (:file "web-app")))
+                             (:file "web-app")
+                             (:file "push")))
                (:file "runtime")
                (:file "public")))
 
@@ -145,6 +151,7 @@
                              (:file "outbound-tests")
                              (:file "web-app-tests")
                              (:file "mail-tests")
+                             (:file "push-tests")
                              (:file "jobs-tests")
                              (:file "schedule-tests")
                              (:file "dashboard-tests")

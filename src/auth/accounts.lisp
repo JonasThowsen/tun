@@ -189,6 +189,15 @@ cookie value, which is not stored, and the session record."
                                          :created-at (now) :last-seen-at (now)))))
     (values cookie session)))
 
+(defgeneric account-disabled (application account)
+  (:method-combination progn)
+  (:documentation "Called in the write that disables ACCOUNT, after its sessions end,
+so the kernel's other parts let go of what belongs to it: push subscriptions
+(spec/push.md 3).  Every method is a PROGN method; the default does nothing.")
+  (:method progn (application account)
+    (declare (ignore application account))
+    nil))
+
 (defun end-account-sessions (account &key except)
   "End every session of ACCOUNT but EXCEPT (a session id), in the caller's write transaction."
   (dolist (session (select 'session :where `(:= "account_id" ,(entity-id account))))
