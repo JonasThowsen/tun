@@ -18,7 +18,8 @@ that may have cost you your context. In Tun, `tun` is `bin/tun`.
 
 ```
 tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
-    [--mode reviewed] [--client ~/coding/tracker] [--after earlier-loop]
+    [--mode reviewed] [--client ~/coding/tracker] [--after earlier-loop] \
+    [--item REF]
 ```
 
 - NAME is short and in English, such as `board-paging`. The title is the
@@ -27,6 +28,8 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
   and show me» is reviewed. Never choose a mode the asker did not.
 - `--client` in Tun: the client the request came from, where the change is
   shown. Without it, the showcase (`checks/showcase/`).
+- `--item`: the request's item in a tracker, its link or its id, when it
+  came from one (§10).
 - Write **Brief** in `loops/NAME.md`: the request in the asker's words,
   quoted, where it came from (a tracker item and its number, a message), and
   anything they said about it since.
@@ -126,3 +129,19 @@ the person.
   reviewer --why "…"`.
 - Two *changes* in a row from a reviewer at one gate pass that gate to the
   person. `tun loop gate` says when this happens.
+
+## 10. With a tracker
+
+When `TUN_TRACKER` is set (`spec/loop.md` §6.1), `tun loop` tells the
+tracker about every step: the loop is an item there, and each gate,
+decision, verify round, link and log line a comment on it. You run the
+loop exactly as above; the tracker follows.
+
+- A person's gate is then also asked on the item, with the text
+  `tun loop gate` printed, so the person can answer from their phone.
+  Wait for the answer there, where they give it, and record it with
+  `tun loop decide` as always, quoting them. The tracker never decides a
+  gate.
+- A line `tracker: … failed` in the log means the tracker missed that
+  event. The loop is not affected; tell the person if they rely on the
+  item, since it may be behind.

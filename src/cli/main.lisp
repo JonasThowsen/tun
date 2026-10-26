@@ -16,6 +16,7 @@
        tun preview stop NAME... | --all
        tun check [NAME...] [--dir DIR]
        tun loop start NAME --title TEXT [--mode MODE] [--client DIR] [--after LOOP]
+                      [--item REF]
        tun loop status [NAME] [--json]
        tun loop gate A|B|C [NAME]
        tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [NAME]
@@ -177,7 +178,7 @@ the first item."
             ((string= command "loop")
              (run-with #'loop-command :flags '("--json")
                                       :options '("--dir" "--title" "--mode" "--client" "--after"
-                                                 "--by" "--why" "--actor" "--scenario")
+                                                 "--item" "--by" "--why" "--actor" "--scenario")
                                       :lists '("--path")))
             (t (refuse "unknown command ~a" command))))))
 

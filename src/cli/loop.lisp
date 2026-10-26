@@ -32,6 +32,17 @@ does not hold."
   (let ((program (uiop:getenv "TUN_PRESSURE")))
     (and (plusp (length program)) program)))
 
+(defvar *tracker-limit* 30
+  "Seconds the tracker may take for one event before it is stopped (spec/loop.md 6.1).")
+
+(defparameter +item-length+ 500
+  "The longest item reference a tracker's answer at start may give.")
+
+(defun tracker-command ()
+  "The tracker the loop is mirrored in: the command TUN_TRACKER names, or NIL."
+  (let ((command (uiop:getenv "TUN_TRACKER")))
+    (and (plusp (length command)) command)))
+
 (defparameter +outside-the-tree+ '("loops" ".build" ".data")
   "What a loop's tree leaves out: its record, and what tun itself writes.")
 
@@ -271,6 +282,89 @@ its name."
             :test #'string=)))
 
 ;;; ------------------------------------------------------------------
+;;; The tracker (spec/loop.md 6.1)
+
+(defun iso-time ()
+  "The time now, ISO 8601 with the zone's offset."
+  (multiple-value-bind (second minute hour day month year weekday dst zone) (get-decoded-time)
+    (declare (ignore weekday))
+    (let ((offset (round (* 60 (- (if dst 1 0) zone)))))
+      (format nil "~d-~2,'0d-~2,'0dT~2,'0d:~2,'0d:~2,'0d~:[-~;+~]~2,'0d:~2,'0d"
+              year month day hour minute second (>= offset 0)
+              (floor (abs offset) 60) (mod (abs offset) 60)))))
+
+(defun tracker-input (record event members)
+  "The JSON the tracker reads for EVENT of RECORD's loop: the members every
+event has, then the event's own MEMBERS."
+  (to-json-string
+   (apply #'jobj "event" event "loop" (record-name record) "title" (record-title record)
+          "mode" (field record "mode") "stage" (stage record)
+          "item" (or (field record "item") :null)
+          "repository" (string-right-trim "/" (namestring (record-top record)))
+          "record" (namestring (record-file record)) "time" (iso-time)
+          members)))
+
+(defun run-tracker (record command event input)
+  "Run the tracker COMMAND for EVENT with INPUT on its standard input, for at
+most *TRACKER-LIMIT* seconds. Return what it printed, or NIL and why it
+failed. Its standard input is a file, so SBCL starts it in a process group
+of its own, and stopping that group stops whatever it started too."
+  (let* ((out (output-directory record))
+         (input-file (merge-pathnames "tracker-input.json" out))
+         (output-file (merge-pathnames "tracker-output.txt" out)))
+    (ensure-directories-exist out)
+    (write-text input-file input)
+    (let ((process (sb-ext:run-program "sh" (list "-c" (format nil "~a \"$@\"" command) "tun-tracker"
+                                                  event (namestring (record-file record)))
+                                       :search t :wait nil :directory (namestring (record-top record))
+                                       :input input-file
+                                       :output output-file :if-output-exists :supersede
+                                       :error (merge-pathnames "tracker.log" out)
+                                       :if-error-exists :append))
+          (deadline (+ (get-internal-real-time) (* *tracker-limit* internal-time-units-per-second))))
+      (unwind-protect
+           (progn
+             (loop while (and (sb-ext:process-alive-p process) (< (get-internal-real-time) deadline))
+                   do (sleep 0.05))
+             (cond ((sb-ext:process-alive-p process)
+                    (sb-ext:process-kill process sb-unix:sigkill :process-group)
+                    (sb-ext:process-wait process)
+                    (values nil (format nil "no answer within ~d s, stopped" *tracker-limit*)))
+                   ((zerop (sb-ext:process-exit-code process))
+                    (read-text output-file))
+                   (t (values nil (format nil "exit ~d" (sb-ext:process-exit-code process))))))
+        (sb-ext:process-close process)
+        (uiop:delete-file-if-exists input-file)
+        (uiop:delete-file-if-exists output-file)))))
+
+(defun tell-tracker (record event &rest members)
+  "Tell the tracker, if there is one, about EVENT of RECORD's loop, once its
+record is saved, with the event's own MEMBERS. Return what the tracker
+printed. A tracker that fails adds a line to the log and nothing else: the
+loop goes on as it would have."
+  (let ((command (tracker-command)))
+    (when command
+      (multiple-value-bind (output failure)
+          (run-tracker record command event (tracker-input record event members))
+        (when failure
+          (add-log record (format nil "tracker: ~a failed: ~a" event failure))
+          (save-record record))
+        output))))
+
+(defun take-item (record output)
+  "Record as RECORD's item the first line of the tracker's OUTPUT that is
+not blank, at start."
+  (let ((line (find-if (lambda (line) (plusp (length line)))
+                       (mapcar (lambda (line) (string-trim '(#\Space #\Tab #\Return) line))
+                               (text-lines (or output ""))))))
+    (cond ((null line))
+          ((> (length line) +item-length+)
+           (add-log record (format nil "tracker: start gave an item of ~d characters, more than ~d; ~
+                                        not taken" (length line) +item-length+)))
+          (t (setf (field record "item") line)))
+    (save-record record)))
+
+;;; ------------------------------------------------------------------
 ;;; Stages and what comes next
 
 (defun gate-stages (gate)
@@ -343,12 +437,15 @@ in a row from a reviewer."
 ;;; ------------------------------------------------------------------
 ;;; start, status, log, resume and finish
 
-(defun start-loop (top name &key title mode client after)
+(defun start-loop (top name &key title mode client after item)
   "tun loop start: write the record of a new loop NAME in TOP."
   (unless (and (stringp name) (cl-ppcre:scan "^[a-z][a-z0-9-]{0,59}$" name))
     (refuse "a loop's name matches [a-z][a-z0-9-]*, not ~s" name))
   (unless (and title (plusp (length (string-trim " " title))))
     (refuse "tun loop start needs --title, the request in a line"))
+  (when (and item (or (zerop (length (string-trim " " item)))
+                      (find-if (lambda (char) (member char '(#\Newline #\Return))) item)))
+    (refuse "--item is one line, a link or an id, not ~s" item))
   (let ((mode (or mode "hands-on"))
         (client (and client (absolute-directory client))))
     (unless (member mode +modes+ :test #'string=)
@@ -364,14 +461,17 @@ in a row from a reviewer."
     (let ((record (make-record top name
                                (format nil "# ~a~%~%- loop: ~a~%- mode: ~a~%- stage: brief~%- base: ~a~%~
                                             ~:[~*~*~;- client: ~a~%- client-base: ~a~%~]~
-                                            ~@[- after: ~a~%~]~
+                                            ~@[- after: ~a~%~]~@[- item: ~a~%~]~
                                             ~%## Brief~%~%## Criteria~%~%## Decisions~%~%## Log~%"
                                        (string-trim " " title) name mode (or (head-commit top) "none")
                                        client (and client (string-right-trim "/" (namestring client)))
                                        (and client (or (head-commit client) "none"))
-                                       after))))
+                                       after (and item (string-trim " " item))))))
       (add-log record (format nil "started, ~a" mode))
       (save-record record)
+      (let ((output (tell-tracker record "start")))
+        (when (and output (null item))
+          (take-item record output)))
       (format t "~&Started the loop ~a in ~a, ~a.~%"
               name (enough-namestring (record-file record) top) mode)
       (print-next record))))
@@ -387,14 +487,16 @@ in a row from a reviewer."
                           (jobj "name" (record-name record) "title" (record-title record)
                                 "file" (namestring (record-file record))
                                 "stage" stage "mode" (field record "mode")
+                                "item" (or (field record "item") :null)
                                 "waiting_for" (if decider (string-downcase decider) :null)
                                 "preview" (or (field record "preview") :null)
                                 "next" (next-step record)
                                 "log" (jarr (mapcar (lambda (line) (subseq line 2)) log)))))
         (progn
-          (format t "~&~a: ~a~%  stage ~a, ~a~@[, preview ~a~]~%~%~{  ~a~%~}"
+          (format t "~&~a: ~a~%  stage ~a, ~a~@[, item ~a~]~@[, preview ~a~]~%~%~{  ~a~%~}"
                   (record-name record) (record-title record) stage (field record "mode")
-                  (field record "preview") (mapcar (lambda (line) (subseq line 2)) log))
+                  (field record "item") (field record "preview")
+                  (mapcar (lambda (line) (subseq line 2)) log))
           (print-next record)))))
 
 (defun log-loop (record text)
@@ -403,6 +505,7 @@ in a row from a reviewer."
     (refuse "tun loop log needs a TEXT"))
   (add-log record (string-trim " " text))
   (save-record record)
+  (tell-tracker record "log" "line" (string-trim " " text))
   (format t "~&Logged in ~a.~%" (record-name record))
   (print-next record))
 
@@ -420,6 +523,7 @@ in a row from a reviewer."
         (field record "failures") nil)
   (add-log record (format nil "resumed (~a): ~a" by why))
   (save-record record)
+  (tell-tracker record "resume" "by" by "why" why)
   (format t "~&The loop ~a is back at build.~%" (record-name record))
   (print-next record))
 
@@ -434,11 +538,14 @@ in a row from a reviewer."
   (require-stage record "finish" '("ship" "deploy"))
   (require-shown-commit record)
   (setf (field record "stage") "done")
-  (add-log record (format nil "finished at ~{~a~^, ~}"
-                          (loop for (directory) in (loop-repositories record)
-                                collect (format nil "~a ~a" (client-name-or-tun directory)
-                                                (git-line directory "rev-parse" "--short" "HEAD")))))
-  (save-record record)
+  (let ((commits (loop for (directory) in (loop-repositories record)
+                       collect (list (client-name-or-tun directory)
+                                     (git-line directory "rev-parse" "--short" "HEAD")))))
+    (add-log record (format nil "finished at ~{~{~a ~a~}~^, ~}" commits))
+    (save-record record)
+    (tell-tracker record "finish"
+                  "commits" (jarr (loop for (repository revision) in commits
+                                        collect (jobj "repository" repository "revision" revision)))))
   (format t "~&The loop ~a is done.~%" (record-name record))
   (print-next record))
 
@@ -541,6 +648,8 @@ the file LOG; true when it passed."
                    (field record "failures") nil)
              (add-log record (format nil "verify ~d: passed ~{~a~^, ~}" round (mapcar #'first results)))))
       (save-record record)
+      (tell-tracker record "verify" "round" round "passed" (null failed)
+                    "steps" (jarr (mapcar #'first results)) "failed" (jarr failed))
       (print-next record)
       (when failed
         (fail-step "verify round ~d failed: ~{~a~^, ~}" round failed)))))
@@ -611,6 +720,8 @@ and a report."
         (add-log record (format nil "shown at ~a (~{~a~^, ~})" (jget preview "url")
                                 (mapcar (lambda (shot) (jget shot "path")) shots)))
         (save-record record)
+        (tell-tracker record "show" "preview" (jget preview "url")
+                      "paths" (jarr (mapcar (lambda (shot) (jget shot "path")) shots)))
         (print-preview preview)
         (format t "~&~%Report and screenshots: ~a~%" (namestring out))
         (print-next record)))))
@@ -677,7 +788,9 @@ RECORD's loop on."
     (declare (ignore from waiting what))
     (setf (field record "stage") (if (string= decision "approve") approved changed))
     (add-log record (format nil "gate ~a: ~a (~a)~@[: ~a~]" gate decision by why) reasons)
-    (save-record record)))
+    (save-record record)
+    (tell-tracker record "decide" "gate" gate "decision" decision "by" by
+                  "why" (or why :null) "reasons" (or reasons :null))))
 
 (defun reviewer-verdict (answer)
   "The verdict ANSWER ends on, \"approve\" or \"changes\", and the reasons before it."
@@ -707,26 +820,30 @@ input, and record its verdict."
       (record-decision record gate verdict "reviewer" nil reasons)
       (format t "~&The reviewer answered ~a.~%~%~a~%" verdict reasons))))
 
-(defun print-person-request (record gate)
-  (let ((preview (field record "preview")))
-    (format t "~&Gate ~a waits for the person. Tell them, in your own words:~%~%  ~
-               «~a» is ready for gate ~a, ~a.~%"
-            gate (record-title record) gate (sixth (assoc gate +gates+ :test #'string=)))
+(defun person-message (record gate)
+  "What the person is to be told at GATE of RECORD's loop."
+  (with-output-to-string (out)
+    (format out "«~a» is ready for gate ~a, ~a.~%"
+            (record-title record) gate (sixth (assoc gate +gates+ :test #'string=)))
     (cond ((string= gate "A")
-           (format t "~%  The criteria:~%~{  ~a~%~}~%  The change so far:~%~{    ~a~%~}"
+           (format out "~%The criteria:~%~{~a~%~}~%The change so far:~%~{  ~a~%~}"
                    (remove "" (record-section record "Criteria") :test #'string=)
                    (text-lines (string-right-trim '(#\Newline) (loop-diff record :stat t)))))
           ((string= gate "B")
-           (format t "~%  Open ~a, and sign in with the links in ~a.~%"
-                   preview (namestring (output-directory record "show/report.md"))))
+           (format out "~%Open ~a, and sign in with the links in ~a.~%"
+                   (field record "preview") (namestring (output-directory record "show/report.md"))))
           (t
-           (format t "~%  What is deployed: ~{~a~^, ~}.~%"
+           (format out "~%What is deployed: ~{~a~^, ~}.~%"
                    (loop for (directory) in (loop-repositories record)
                          collect (format nil "~a ~a" (client-name-or-tun directory)
-                                         (git-line directory "rev-parse" "--short" "HEAD"))))))
-    (format t "~%Wait for their answer, then record it, quoting them:~%  ~
-               ~a loop decide ~a approve|changes --by WHO --why \"…\"~%"
-            (tun-command) gate)))
+                                         (git-line directory "rev-parse" "--short" "HEAD"))))))))
+
+(defun print-person-request (gate message)
+  (format t "~&Gate ~a waits for the person. Tell them, in your own words:~%~%~{  ~a~%~}"
+          gate (text-lines (string-right-trim '(#\Newline) message)))
+  (format t "~%Wait for their answer, then record it, quoting them:~%  ~
+             ~a loop decide ~a approve|changes --by WHO --why \"…\"~%"
+          (tun-command) gate))
 
 (defun print-reviewer-request (gate packet)
   (format t "~&Gate ~a goes to a reviewer, and TUN_REVIEWER names no command to run one. ~
@@ -750,8 +867,13 @@ input, and record its verdict."
       (add-log record (format nil "gate ~a asked of ~:[a reviewer~;the person~]"
                               gate (eq decider :person)))
       (save-record record)
-      (format t "~&The packet for gate ~a: ~a~%~%" gate (namestring packet))
-      (cond ((eq decider :person) (print-person-request record gate))
+      (let ((message (and (eq decider :person) (person-message record gate))))
+        (tell-tracker record "gate" "gate" gate "decider" (string-downcase decider)
+                      "message" (or message :null))
+        (format t "~&The packet for gate ~a: ~a~%~%" gate (namestring packet))
+        (when message
+          (print-person-request gate message)))
+      (cond ((eq decider :person))
             ((plusp (length command)) (run-reviewer record gate packet command))
             (t (print-reviewer-request gate packet)))
       (print-next record))))
@@ -776,7 +898,7 @@ input, and record its verdict."
 ;;; ------------------------------------------------------------------
 ;;; tun loop
 
-(defun loop-command (arguments &key dir title mode client after by why actor scenario path json)
+(defun loop-command (arguments &key dir title mode client after item by why actor scenario path json)
   "tun loop (spec/loop.md 6)."
   (let ((top (repository-top (absolute-directory (or dir "."))))
         (subcommand (first arguments))
@@ -791,7 +913,8 @@ input, and record its verdict."
             ((string= subcommand "start")
              (unless (= 1 (length arguments))
                (refuse "tun loop start takes one NAME"))
-             (start-loop top (first arguments) :title title :mode mode :client client :after after))
+             (start-loop top (first arguments) :title title :mode mode :client client :after after
+                                              :item item))
             ((and (string= subcommand "status") (null arguments)
                   (notany (lambda (name) (string/= "done" (stage (read-record top name))))
                           (record-names top)))

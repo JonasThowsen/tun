@@ -1,8 +1,9 @@
 ;;;; tests/loop-tests.lisp -- the feature loop (spec/loop.md): its record,
 ;;;; who decides a gate, a reviewer's verdict, the tree that leaves the
-;;;; record out, and a loop from start to finish in a repository of its own
-;;;; whose bin/test passes or fails on demand. `tun loop show` starts a
-;;;; preview, so it is run by hand, not here.
+;;;; record out, a loop from start to finish in a repository of its own
+;;;; whose bin/test passes or fails on demand, and the same loop mirrored in
+;;;; a stand-in tracker. `tun loop show` starts a preview, so it is run by
+;;;; hand, not here.
 
 (in-package #:tun.tests)
 
@@ -182,5 +183,211 @@
                  (is (probe-file (merge-pathnames ".build/loop/paging/gate-B-1/diff.patch" directory)))
                  (is (search "pages.lisp" (uiop:read-file-string
                                            (merge-pathnames ".build/loop/paging/gate-B-1/diff.patch"
-                                                            directory)))))
+                                                            directory))))
+                 (is (not (search "tracker:" (uiop:read-file-string
+                                              (merge-pathnames "loops/paging.md" directory))))
+                     "without TUN_TRACKER, no tracker")
+                 (is (not (probe-file (merge-pathnames ".build/loop/paging/tracker.log" directory)))))
             (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore)))))))
+
+;;; The tracker (spec/loop.md 6.1)
+
+(defun demo-repository (directory)
+  "A repository in DIRECTORY whose bin/test fails while a file fail exists."
+  (ensure-directories-exist directory)
+  (git-in directory "init" "--quiet")
+  (write-file-in directory "demo.asd" "(defsystem \"demo\")")
+  (write-file-in directory "bin/test" (format nil "#!/bin/sh~%test ! -e fail~%") :program t)
+  (git-in directory "add" "--all")
+  (git-in directory "commit" "--quiet" "-m" "demo"))
+
+(defun with-criteria (directory name)
+  "Give the record NAME in DIRECTORY a criterion, as an agent writes one."
+  (let ((file (merge-pathnames (format nil "loops/~a.md" name) directory)))
+    (write-file-in directory (format nil "loops/~a.md" name)
+                   (cl-ppcre:regex-replace "## Criteria\\n" (uiop:read-file-string file)
+                                           (format nil "## Criteria~%~%1. Et kort.~%")))))
+
+(defun as-shown (directory name)
+  "What tun loop show records, without its preview."
+  (let* ((file (merge-pathnames (format nil "loops/~a.md" name) directory))
+         (text (uiop:read-file-string file)))
+    (write-file-in directory (format nil "loops/~a.md" name)
+                   (tun.cli:set-text-field
+                    (tun.cli:set-text-field (tun.cli:set-text-field text "stage" "shown")
+                                            "shown" (tun.cli:text-field text "verified"))
+                    "preview" "https://preview.example/paging"))))
+
+(defun tracker-calls (file)
+  "The calls a stand-in tracker wrote to FILE, each (event record input)."
+  (if (probe-file file)
+      (mapcar (lambda (line)
+                (destructuring-bind (event record json) (cl-ppcre:split " " line :limit 3)
+                  (list event record (parse-json json))))
+              (remove "" (uiop:read-file-lines file) :test #'string=))
+      '()))
+
+(test a-loop-is-mirrored-in-the-tracker-event-by-event
+  (let* ((root (cli-scratch-directory))
+         (directory (merge-pathnames "repository/" root))
+         (dir (namestring directory))
+         (calls (merge-pathnames "calls" root))
+         (tracker (write-file-in root "tracker.sh"
+                                 (format nil "#!/bin/sh~%test \"$1\" = --quiet && shift~%~
+                                              { printf '%s %s ' \"$1\" \"$2\"; cat; echo; } >> '~a'~%~
+                                              test \"$1\" = start && printf '\\n  https://tracker.example/items/7  \\n'~%~
+                                              exit 0~%"
+                                         (namestring calls))
+                                 :program t))
+         (reviewer (write-file-in root "reviewer.sh"
+                                  (format nil "#!/bin/sh~%cat > /dev/null~%echo 'Kriteriene er oppfylt.'~%~
+                                               echo~%echo 'VERDICT: approve'~%")
+                                  :program t)))
+    (labels ((tun (&rest arguments)
+               (apply #'run-tun "loop" (append arguments (list "--dir" dir))))
+             (expect (wanted &rest arguments)
+               (multiple-value-bind (status output) (apply #'tun arguments)
+                 (is (= wanted status) "tun loop ~{~a~^ ~}: ~a" arguments output)
+                 output)))
+      (with-environment-variable ("TUN_WORKTREE" (namestring (asdf:system-source-directory "tun")))
+        (with-environment-variable ("TUN_REVIEWER" (namestring reviewer))
+          (with-environment-variable ("TUN_TRACKER" (format nil "'~a' --quiet" (namestring tracker)))
+            (unwind-protect
+                 (progn
+                   (demo-repository directory)
+                   (expect 0 "start" "paging" "--title" "Kort bytter kolonne" "--mode" "reviewed")
+                   (is (search "item https://tracker.example/items/7"
+                               (expect 0 "status" "paging"))
+                       "the tracker's first line that is not blank is the item")
+                   (expect 2 "start" "paging" "--title" "x")
+                   (expect 1 "gate" "A")
+                   (with-criteria directory "paging")
+                   (expect 0 "gate" "A")
+                   (write-file-in directory "fail" "")
+                   (dotimes (round 5)
+                     (expect 1 "verify"))
+                   (expect 0 "resume" "--by" "jonas" "--why" "«prøv igjen»")
+                   (delete-file (merge-pathnames "fail" directory))
+                   (expect 0 "verify")
+                   (as-shown directory "paging")
+                   (expect 0 "log" "an agent's line")
+                   (expect 0 "gate" "B")
+                   (git-in directory "add" "--all")
+                   (git-in directory "commit" "--quiet" "-m" "the change")
+                   (expect 0 "gate" "C")
+                   (expect 0 "decide" "C" "approve" "--by" "jonas" "--why" "«kjør»")
+                   (expect 0 "finish")
+                   (let* ((calls (tracker-calls calls))
+                          (record (namestring (merge-pathnames "loops/paging.md" directory))))
+                     (is (equal '("start" "gate" "decide" "verify" "verify" "verify" "verify" "verify"
+                                  "resume" "verify" "log" "gate" "decide" "gate" "decide" "finish")
+                                (mapcar #'first calls))
+                         "each event once, and none for a refused step")
+                     (is (every (lambda (call) (equal record (second call))) calls))
+                     (flet ((input (event &optional (n 0))
+                              (third (nth n (remove event calls :key #'first :test-not #'string=))))
+                            (member-of (event key &optional (n 0))
+                              (jget (third (nth n (remove event calls :key #'first :test-not #'string=)))
+                                    key)))
+                       (let ((start (input "start")))
+                         (is (equal "paging" (jget start "loop")))
+                         (is (equal "Kort bytter kolonne" (jget start "title")))
+                         (is (equal "reviewed" (jget start "mode")))
+                         (is (equal "brief" (jget start "stage")))
+                         (is (json-null-p (jget start "item")) "the item comes from the answer")
+                         (is (equal (string-right-trim "/" dir) (jget start "repository")))
+                         (is (cl-ppcre:scan "^\\d{4}-\\d\\d-\\d\\dT\\d\\d:\\d\\d:\\d\\d[+-]\\d\\d:\\d\\d$"
+                                            (jget start "time"))))
+                       (is (equal "https://tracker.example/items/7" (member-of "finish" "item"))
+                           "later events carry the item")
+                       (is (equal "reviewer" (member-of "gate" "decider")))
+                       (is (json-null-p (member-of "gate" "message")) "a reviewer is told nothing")
+                       (is (equal "approve" (member-of "decide" "decision")))
+                       (is (equal "reviewer" (member-of "decide" "by")))
+                       (is (json-null-p (member-of "decide" "why")))
+                       (is (search "Kriteriene er oppfylt." (member-of "decide" "reasons")))
+                       (is (equal 1 (member-of "verify" "round")))
+                       (is (null (member-of "verify" "passed")))
+                       (is (equalp #("test") (member-of "verify" "failed")))
+                       (is (equalp #("test") (member-of "verify" "steps")))
+                       (is (equal "stuck" (member-of "verify" "stage" 4)))
+                       (is (eq t (member-of "verify" "passed" 5)))
+                       (is (equalp #() (member-of "verify" "failed" 5)))
+                       (is (equal "«prøv igjen»" (member-of "resume" "why")))
+                       (is (equal "an agent's line" (member-of "log" "line")))
+                       (is (equal "C" (member-of "gate" "gate" 2)))
+                       (is (equal "person" (member-of "gate" "decider" 2)))
+                       (is (eql 0 (search "«Kort bytter kolonne» is ready for gate C"
+                                          (member-of "gate" "message" 2)))
+                           "the person's gate carries what they are to be told")
+                       (is (equal "«kjør»" (member-of "decide" "why" 2)))
+                       (let ((commit (aref (member-of "finish" "commits") 0)))
+                         (is (equal "demo" (jget commit "repository")))
+                         (is (equal (string-trim '(#\Newline) (git-in directory "rev-parse" "--short" "HEAD"))
+                                    (jget commit "revision"))))
+                       (is (equal "done" (member-of "finish" "stage"))))))
+              (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))))
+
+(test a-tracker-that-fails-or-hangs-leaves-a-line-and-the-loop-goes-on
+  (let* ((root (cli-scratch-directory))
+         (directory (merge-pathnames "repository/" root))
+         (dir (namestring directory))
+         (failing (write-file-in root "failing.sh"
+                                 (format nil "#!/bin/sh~%cat > /dev/null~%echo https://tracker.example/1~%~
+                                              echo 'the tracker is down' >&2~%exit 3~%")
+                                 :program t))
+         (child (merge-pathnames "child" root))
+         (hanging (write-file-in root "hanging.sh"
+                                 (format nil "#!/bin/sh~%sleep 30 &~%echo $! > '~a'~%sleep 30~%"
+                                         (namestring child))
+                                 :program t))
+         (long (write-file-in root "long.sh"
+                              (format nil "#!/bin/sh~%cat > /dev/null~%printf '%0600d\\n' 0~%")
+                              :program t)))
+    (labels ((tun (&rest arguments)
+               (apply #'run-tun "loop" (append arguments (list "--dir" dir))))
+             (log-text (name)
+               (uiop:read-file-string (merge-pathnames (format nil "loops/~a.md" name) directory))))
+      (with-environment-variable ("TUN_WORKTREE" (namestring (asdf:system-source-directory "tun")))
+        (unwind-protect
+             (progn
+               (demo-repository directory)
+               (with-environment-variable ("TUN_TRACKER" (namestring failing))
+                 (is (= 0 (tun "start" "down" "--title" "x")) "the step goes on")
+                 (is (= 0 (tun "log" "a line" "down")))
+                 (let ((text (log-text "down")))
+                   (is (search "tracker: start failed: exit 3" text))
+                   (is (search "tracker: log failed: exit 3" text))
+                   (is (search "a line" text) "the log line is kept")
+                   (is (null (tun.cli:text-field text "item")) "a failed answer is not read")
+                   (is (= 2 (cl-ppcre:count-matches "tracker:" text)) "a failure line sends no event of its own"))
+                 (is (search "the tracker is down"
+                             (uiop:read-file-string
+                              (merge-pathnames ".build/loop/down/tracker.log" directory)))))
+               (with-environment-variable ("TUN_TRACKER" (namestring hanging))
+                 (let ((tun.cli:*tracker-limit* 1)
+                       (started (get-internal-real-time)))
+                   (is (= 0 (tun "start" "slow" "--title" "x")))
+                   (is (< (- (get-internal-real-time) started) (* 10 internal-time-units-per-second))
+                       "stopped at the limit")
+                   (is (search "tracker: start failed: no answer within 1 s, stopped" (log-text "slow")))
+                   (let ((pid (parse-integer (uiop:read-file-string child) :junk-allowed t)))
+                     (is (loop repeat 40
+                               thereis (let ((status (probe-file (format nil "/proc/~d/status" pid))))
+                                         (or (null status)
+                                             (search "State:	Z" (uiop:read-file-string status))))
+                               do (sleep 0.05))
+                         "what the tracker started is stopped with it"))))
+               (with-environment-variable ("TUN_TRACKER" (namestring long))
+                 (is (= 0 (tun "start" "long" "--title" "x")))
+                 (is (null (tun.cli:text-field (log-text "long") "item")))
+                 (is (search "more than 500; not taken" (log-text "long"))))
+               (with-environment-variable ("TUN_TRACKER" (namestring failing))
+                 (is (= 0 (tun "start" "given" "--title" "x" "--item" "OPS-12")))
+                 (is (equal "OPS-12" (tun.cli:text-field (log-text "given") "item"))
+                     "with --item, the tracker's answer is not read")
+                 (is (equal "OPS-12" (jget (parse-json (nth-value 1 (tun "status" "given" "--json")))
+                                           "item"))))
+               (is (= 2 (tun "start" "broken" "--title" "x" "--item" (format nil "a~%b"))))
+               (is (= 2 (tun "start" "empty" "--title" "x" "--item" " "))))
+          (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))

@@ -1,7 +1,7 @@
 # The feature loop
 
 Status: v1, built 2026-10-24, core 1.13.0: the hands-on and reviewed
-modes. It is built
+modes; the tracker (§6.1), core 1.17.0. It is built
 on previews and checks (`preview.md`).
 
 ## 1. What it is
@@ -135,7 +135,8 @@ the Tun worktree until Tun is pushed.
   revision the loop started from, and the diffs are taken from it. The
   other fields are `client` and `client-base`, `after` (the loop this one
   answers), `verified` and `shown` (the trees that passed and were shown,
-  §6), `preview`, and `failures` (failed verify rounds in a row).
+  §6), `preview`, `failures` (failed verify rounds in a row), and `item`,
+  the loop's item in a tracker (§6.1).
 - **Brief, Criteria and Decisions** are the agent's. They hold the request
   in the asker's words and where it came from; the criteria, numbered, each
   naming the check or test that shows it once there is one; and the choices
@@ -153,7 +154,7 @@ What it produces, such as logs, packets and screenshots, goes to
 
 ```
 tun loop start NAME --title TEXT [--mode hands-on|reviewed|autonomous]
-                    [--client DIR] [--after LOOP]
+                    [--client DIR] [--after LOOP] [--item REF]
 tun loop status [NAME] [--json]
 tun loop gate A|B|C [NAME]
 tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [NAME]
@@ -196,7 +197,8 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
 `--why`.
 
 - **`start`** writes the record (§5) from the current revision and moves
-  to `brief`. The mode is hands-on unless given.
+  to `brief`. The mode is hands-on unless given. `--item` records REF as
+  the field `item`; a REF with a line break, or empty, is a usage error.
 - **`verify`** runs, from the top of the repository:
   - in Tun: `bin/build`, `bin/test` and `bin/check`. When the
     environment variable `TUN_PRESSURE` names a program, a load and
@@ -232,13 +234,60 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
 - **`log`** adds a line of the agent's to the log.
 - **`finish`** needs the committed tree to be the shown one, and moves to
   `done`.
-- **`status`** prints the title, stage, mode, who decides the next gate,
-  the next step and the last lines of the log. With `--json`, it prints
-  the same as an object. Without NAME and an open loop, it says so and
-  exits 0 (`null` with `--json`).
+- **`status`** prints the title, stage, mode, item, who decides the next
+  gate, the next step and the last lines of the log. With `--json`, it
+  prints the same as an object. Without NAME and an open loop, it says so
+  and exits 0 (`null` with `--json`).
 
 A step out of order, or a gate whose precondition does not hold, exits 1
 and says what comes next. A usage error exits 2.
+
+### 6.1 The tracker
+
+A loop can be mirrored in a tracker the work already goes through, such
+as an issue tracker: the loop is an item there, its stage the item's
+status, and each event a comment. A person then answers their gate on the
+item, from their phone, where they read their items anyway. The record
+stays the truth; the tracker is a mirror.
+
+- **`TUN_TRACKER`** names a command, run as `sh -c` runs it, as
+  `TUN_REVIEWER` is. Without it, nothing of this section happens.
+- After each event, once the record is saved, `tun loop` runs it in the
+  repository's top directory as `COMMAND EVENT RECORD`: EVENT is `start`,
+  `gate`, `decide`, `verify`, `show`, `log`, `resume` or `finish`, and
+  RECORD the record's absolute path.
+- **Its standard input** is one JSON object. Every event has these
+  members, all strings except `item`, which is a string or `null`:
+  `event`; `loop`, the NAME; `title`; `mode`; `stage`, after the event;
+  `item`; `repository`, the top directory's absolute path; `record`, the
+  record's absolute path; and `time`, ISO 8601 with the zone's offset,
+  such as `2026-10-26T14:05:09+01:00`. Each event adds:
+
+  | Event | Members |
+  |---|---|
+  | `start` | none |
+  | `gate` | `gate`, `"A"`, `"B"` or `"C"`; `decider`, `"person"` or `"reviewer"`; `message`, the text `tun loop gate` prints for the person to be told, as one string with its line breaks, or `null` when a reviewer decides |
+  | `decide` | `gate`; `decision`, `"approve"` or `"changes"`; `by`, a string; `why`, a string or `null`; `reasons`, the reviewer's reasons as one string, or `null` |
+  | `verify` | `round`, an integer from 1; `passed`, a boolean; `steps`, the round's steps, and `failed`, those that failed, each an array of the names verify prints, such as `"build"`, `"test"`, `"check"`, `"pressure"` and `"client-check"` |
+  | `show` | `preview`, the link, a string; `paths`, an array of strings |
+  | `log` | `line`, a string |
+  | `resume` | `by`, a string; `why`, a string |
+  | `finish` | `commits`, an array of objects `{"repository": NAME, "revision": SHORT}`, NAME `"tun"` or the client's |
+
+  A gate a reviewer decides is a `gate` event, then a `decide` event. A
+  step refused, such as one out of order, sends no event, and neither does
+  the log line of a failed tracker (below).
+- **At `start` without `--item`,** when the command exits 0 within the
+  time limit, the first line it printed that is not blank becomes the
+  field `item`, so the later events carry it. A line of more than 500
+  characters is not taken, and the log says so. Otherwise what the command
+  prints is not read.
+- **It may fail without stopping the loop.** A command that exits other
+  than 0, or has not finished after 30 seconds and is stopped, adds a line
+  `tracker: EVENT failed: …` to the log, saying the exit status or the
+  time limit, and the step goes on and exits as it would have. What the
+  command writes to its standard error is added to
+  `.build/loop/NAME/tracker.log`.
 
 ## 7. Evidence
 
@@ -247,6 +296,9 @@ and says what comes next. A usage error exits 2.
   - who decides each gate in each mode, including after two requests
     for changes from a reviewer in a row;
   - a reviewer's verdict is the last `VERDICT:` line;
+  - a stand-in tracker gets each event with its fields, gives the item at
+    start, and a tracker that fails or hangs adds a line to the log while
+    the loop goes on;
   - the tree leaves out the record and `.build/`, and git's own index is
     untouched;
   - a loop runs in a repository of its own from start to finish, with a
@@ -269,9 +321,8 @@ and says what comes next. A usage error exits 2.
    request.
 3. The reviewer's instructions (`docs/review.md`), `TUN_REVIEWER`, and the
    reviewed mode. Built 2026-10-24.
-4. The loop's state in a tracker the work already goes through. Each loop
-   would be an item, its stage the item's status, and each gate decision
-   a comment by whoever decided. A person would then approve from their
-   phone in the tracker, where they already read their items.
+4. The loop's state in a tracker the work already goes through (§6.1):
+   `TUN_TRACKER` and `--item`. Built 2026-10-26; the adapter for a given
+   tracker is the tracker's side.
 5. Starting loops without a person: a session per item, started when an
    item reaches a status, within limits on how many run at once.
