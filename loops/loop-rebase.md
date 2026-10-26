@@ -2,7 +2,7 @@
 
 - loop: loop-rebase
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: f45cb27261d8947efb9081879c8a53628f7ebca3
 - verified: 7174b8ede924b5fd5a805be6df04f081cc79ed0a
 - shown: 7174b8ede924b5fd5a805be6df04f081cc79ed0a
@@ -74,3 +74,4 @@ loop's): «yes, do that».
 - 2026-10-26 21:39  shown (/)
 - 2026-10-26 21:39  gate B asked of a reviewer
 - 2026-10-26 21:42  gate B: approve (reviewer): the three earlier points met; each criterion has a failing-without test; loop suite 230/230; verify 4 green
+- 2026-10-26 21:42  finished at tun ea4a649
