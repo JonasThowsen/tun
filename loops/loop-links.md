@@ -2,7 +2,7 @@
 
 - loop: loop-links
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: 581e0cbe7c57bfeb673c3376d767371867587279
 - verified: 2c8679a5c3ef0f4b834ba56e16625b34616860a2
 - shown: 2c8679a5c3ef0f4b834ba56e16625b34616860a2
@@ -60,3 +60,4 @@ shown», he answered «Yes, as a short loop first».
 - 2026-10-26 20:00  shown (/)
 - 2026-10-26 20:00  gate B asked of a reviewer
 - 2026-10-26 20:02  gate B: approve (reviewer): criteria 1-5 met and tested (172/172, test-cli by hand); no link in the record; the regex matches only tun loop's own show lines
+- 2026-10-26 20:02  finished at tun 8391b54
