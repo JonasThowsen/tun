@@ -15,8 +15,8 @@ by what it does, not by what it says about itself.
 - `diff.patch`: every change since the loop began, the client's too.
 - At gates B and C: `verify.txt` (each step and whether it passed), the
   browser checks' results in `checks/`, and screenshots at phone (390×844)
-  and desktop (1280×800) widths in `shots/`. The preview's link is in the
-  record; you may open it when you can reach it.
+  and desktop (1280×800) widths in `shots/`. The preview's link is in
+  `link`; you may open it when you can reach it.
 
 Read only the packet, and the repositories the diff names if you can reach
 them. Change nothing.

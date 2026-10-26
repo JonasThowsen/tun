@@ -140,7 +140,15 @@ new field goes after the last one."
                          (and (string= letter gate) (list decision by)))
         when decision collect decision))
 
+(defun without-links (text)
+  "TEXT, a record's, without the links an older tun loop wrote into it: the
+field preview and the link in a log line `shown at LINK (...)`. A shared
+preview's link names the machine it runs on, and the record is committed."
+  (cl-ppcre:regex-replace-all "(?m)^(- \\S+ \\S+  shown) at \\S+ \\("
+                              (set-text-field text "preview" nil) "\\1 ("))
+
 (defun save-record (record)
+  (setf (record-text record) (without-links (record-text record)))
   (write-text (record-file record) (record-text record)))
 
 (defun repository-top (directory)
@@ -489,13 +497,13 @@ in a row from a reviewer."
                                 "stage" stage "mode" (field record "mode")
                                 "item" (or (field record "item") :null)
                                 "waiting_for" (if decider (string-downcase decider) :null)
-                                "preview" (or (field record "preview") :null)
+                                "preview" (or (preview-link record) :null)
                                 "next" (next-step record)
                                 "log" (jarr (mapcar (lambda (line) (subseq line 2)) log)))))
         (progn
           (format t "~&~a: ~a~%  stage ~a, ~a~@[, item ~a~]~@[, preview ~a~]~%~%~{  ~a~%~}"
                   (record-name record) (record-title record) stage (field record "mode")
-                  (field record "item") (field record "preview")
+                  (field record "item") (preview-link record)
                   (mapcar (lambda (line) (subseq line 2)) log))
           (print-next record)))))
 
@@ -714,17 +722,28 @@ and a report."
                                             (let ((errors (coerce (jget shot "errors") 'list)))
                                               (and errors (format nil "~{~a~^; ~}" errors)))))
                                     shots)))
-        (setf (field record "stage") "shown"
-              (field record "shown") tree
-              (field record "preview") (jget preview "url"))
-        (add-log record (format nil "shown at ~a (~{~a~^, ~})" (jget preview "url")
-                                (mapcar (lambda (shot) (jget shot "path")) shots)))
-        (save-record record)
-        (tell-tracker record "show" "preview" (jget preview "url")
-                      "paths" (jarr (mapcar (lambda (shot) (jget shot "path")) shots)))
+        (record-shown record tree (jget preview "url")
+                      (mapcar (lambda (shot) (jget shot "path")) shots))
         (print-preview preview)
         (format t "~&~%Report and screenshots: ~a~%" (namestring out))
         (print-next record)))))
+
+(defun preview-link (record)
+  "The link of RECORD's loop's shared preview, from the last show, or NIL."
+  (let ((file (output-directory record "show/link")))
+    (and (probe-file file) (string-trim '(#\Newline #\Space) (read-text file)))))
+
+(defun record-shown (record tree link paths)
+  "Record that TREE was shown at the preview LINK, at PATHS. The link goes to
+.build/loop/NAME/show/link, not into the record (spec/loop.md 5)."
+  (let ((file (output-directory record "show/link")))
+    (ensure-directories-exist file)
+    (write-text file (format nil "~a~%" link)))
+  (setf (field record "stage") "shown"
+        (field record "shown") tree)
+  (add-log record (format nil "shown (~{~a~^, ~})" paths))
+  (save-record record)
+  (tell-tracker record "show" "preview" link "paths" (jarr paths)))
 
 ;;; ------------------------------------------------------------------
 ;;; Gates
@@ -778,7 +797,10 @@ its directory."
             (copy-files "*.json" results checks)
             (copy-files "*.png" results checks)))
         (ensure-directories-exist shots)
-        (copy-files "*.*" (output-directory record "show/") shots)))
+        (copy-files "*.*" (output-directory record "show/") shots)
+        (let ((link (preview-link record)))
+          (when link
+            (write-text (merge-pathnames "link" packet) (format nil "~a~%" link))))))
     packet))
 
 (defun record-decision (record gate decision by why &optional reasons)
@@ -831,7 +853,7 @@ input, and record its verdict."
                    (text-lines (string-right-trim '(#\Newline) (loop-diff record :stat t)))))
           ((string= gate "B")
            (format out "~%Open ~a, and sign in with the links in ~a.~%"
-                   (field record "preview") (namestring (output-directory record "show/report.md"))))
+                   (preview-link record) (namestring (output-directory record "show/report.md"))))
           (t
            (format out "~%What is deployed: ~{~a~^, ~}.~%"
                    (loop for (directory) in (loop-repositories record)

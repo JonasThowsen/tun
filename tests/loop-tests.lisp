@@ -209,14 +209,13 @@
                                            (format nil "## Criteria~%~%1. Et kort.~%")))))
 
 (defun as-shown (directory name)
-  "What tun loop show records, without its preview."
-  (let* ((file (merge-pathnames (format nil "loops/~a.md" name) directory))
-         (text (uiop:read-file-string file)))
-    (write-file-in directory (format nil "loops/~a.md" name)
-                   (tun.cli:set-text-field
-                    (tun.cli:set-text-field (tun.cli:set-text-field text "stage" "shown")
-                                            "shown" (tun.cli:text-field text "verified"))
-                    "preview" "https://preview.example/paging"))))
+  "What tun loop show records once its preview runs, without the preview."
+  (let ((record (tun.cli:read-record directory name)))
+    (tun.cli:record-shown record (tun.cli:text-field (uiop:read-file-string
+                                                      (merge-pathnames (format nil "loops/~a.md" name)
+                                                                       directory))
+                                                     "verified")
+                          "https://preview.example/paging" '("/saker" "/saker/1"))))
 
 (defun tracker-calls (file)
   "The calls a stand-in tracker wrote to FILE, each (event record input)."
@@ -280,7 +279,7 @@
                    (let* ((calls (tracker-calls calls))
                           (record (namestring (merge-pathnames "loops/paging.md" directory))))
                      (is (equal '("start" "gate" "decide" "verify" "verify" "verify" "verify" "verify"
-                                  "resume" "verify" "log" "gate" "decide" "gate" "decide" "finish")
+                                  "resume" "verify" "show" "log" "gate" "decide" "gate" "decide" "finish")
                                 (mapcar #'first calls))
                          "each event once, and none for a refused step")
                      (is (every (lambda (call) (equal record (second call))) calls))
@@ -314,6 +313,9 @@
                        (is (eq t (member-of "verify" "passed" 5)))
                        (is (equalp #() (member-of "verify" "failed" 5)))
                        (is (equal "«prøv igjen»" (member-of "resume" "why")))
+                       (is (equal "https://preview.example/paging" (member-of "show" "preview"))
+                           "the tracker gets the link")
+                       (is (equalp #("/saker" "/saker/1") (member-of "show" "paths")))
                        (is (equal "an agent's line" (member-of "log" "line")))
                        (is (equal "C" (member-of "gate" "gate" 2)))
                        (is (equal "person" (member-of "gate" "decider" 2)))
@@ -391,3 +393,56 @@
                (is (= 2 (tun "start" "broken" "--title" "x" "--item" (format nil "a~%b"))))
                (is (= 2 (tun "start" "empty" "--title" "x" "--item" " "))))
           (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))
+
+;;; The preview's link stays out of the record (spec/loop.md 5)
+
+(test a-shown-loop-keeps-its-preview-link-out-of-the-record
+  (let* ((root (cli-scratch-directory))
+         (directory (merge-pathnames "repository/" root))
+         (dir (namestring directory))
+         (file (merge-pathnames "loops/paging.md" directory)))
+    (labels ((tun (&rest arguments)
+               (apply #'run-tun "loop" (append arguments (list "--dir" dir)))))
+      (with-environment-variable ("TUN_WORKTREE" (namestring (asdf:system-source-directory "tun")))
+        (with-environment-variable ("TUN_TRACKER" nil)
+          (with-environment-variable ("TUN_REVIEWER" nil)
+            (unwind-protect
+                 (progn
+                   (demo-repository directory)
+                   (tun "start" "paging" "--title" "Kort bytter kolonne" "--mode" "hands-on")
+                   (is (json-null-p (jget (parse-json (nth-value 1 (tun "status" "--json"))) "preview"))
+                       "no link before a show")
+                   (with-criteria directory "paging")
+                   (tun "gate" "A")
+                   (tun "decide" "A" "approve" "--by" "jonas")
+                   (tun "verify")
+                   (as-shown directory "paging")
+                   (let ((text (uiop:read-file-string file)))
+                     (is (null (tun.cli:text-field text "preview")))
+                     (is (not (search "preview.example" text)) "no link anywhere in the record")
+                     (is (search "shown (/saker, /saker/1)" text)))
+                   (is (equal (format nil "https://preview.example/paging~%")
+                              (uiop:read-file-string
+                               (merge-pathnames ".build/loop/paging/show/link" directory))))
+                   (is (equal "https://preview.example/paging"
+                              (jget (parse-json (nth-value 1 (tun "status" "--json"))) "preview")))
+                   (multiple-value-bind (status output) (tun "gate" "B")
+                     (is (= 0 status))
+                     (is (search "Open https://preview.example/paging" output)
+                         "the person is told the link"))
+                   (is (equal (format nil "https://preview.example/paging~%")
+                              (uiop:read-file-string
+                               (merge-pathnames ".build/loop/paging/gate-B-1/link" directory)))
+                       "the packet carries it")
+                   (is (not (search "preview.example" (uiop:read-file-string file)))))
+              (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))))
+
+(test saving-a-record-takes-out-an-older-tun-loops-links
+  (let ((text (format nil "# x~%~%- loop: x~%- stage: shown~%- preview: https://box.example:4204~%~%~
+                           ## Log~%~%- 2026-10-26 16:23  shown at https://box.example:4204 (/, /a)~%~
+                           - 2026-10-26 16:24  an agent's line: shown at noon (x)~%")))
+    (let ((clean (tun.cli:without-links text)))
+      (is (null (tun.cli:text-field clean "preview")))
+      (is (search "- 2026-10-26 16:23  shown (/, /a)" clean))
+      (is (not (search "box.example" clean)))
+      (is (search "an agent's line: shown at noon (x)" clean) "only tun loop's own show lines"))))

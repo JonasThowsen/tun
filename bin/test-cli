@@ -342,6 +342,9 @@ loop decide A approve --by test-cli --why "«ja»" >/dev/null || fail "tun loop 
 loop verify >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop verify"; }
 grep -q "ok    check" "$work/loop.log" || { cat "$work/loop.log" >&2; fail "verify ran no checks"; }
 loop show --path / >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop show"; }
+[ -s "$client/.build/loop/home-list/show/link" ] || fail "tun loop show kept no link"
+! grep -q -e '^- preview:' -e 'shown at' "$client/loops/home-list.md" \
+  || fail "the record names the preview's link"
 for shot in phone-root desktop-root; do
   [ -s "$client/.build/loop/home-list/show/$shot.png" ] || fail "no $shot screenshot"
 done

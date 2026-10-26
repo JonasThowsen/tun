@@ -135,16 +135,22 @@ the Tun worktree until Tun is pushed.
   revision the loop started from, and the diffs are taken from it. The
   other fields are `client` and `client-base`, `after` (the loop this one
   answers), `verified` and `shown` (the trees that passed and were shown,
-  §6), `preview`, `failures` (failed verify rounds in a row), and `item`,
-  the loop's item in a tracker (§6.1).
+  §6), `failures` (failed verify rounds in a row), and `item`, the loop's
+  item in a tracker (§6.1).
+- **No machine's address is in it.** The record is committed, and the
+  repository may be public, so the link of a shared preview, which names
+  the machine it runs on and its tailnet, is kept in
+  `.build/loop/NAME/show/link` instead. `status`, the person's gate and
+  the packet read it from there. Saving a record takes out a `preview`
+  field and a link in a `shown at LINK (…)` line of an older `tun loop`.
 - **Brief, Criteria and Decisions** are the agent's. They hold the request
   in the asker's words and where it came from; the criteria, numbered, each
   naming the check or test that shows it once there is one; and the choices
   made without the asker, with why.
 - **Log** is `tun loop`'s, one line per event: a gate asked, a decision with
   who and why (a reviewer's reasons indented under it), a verify round
-  with what failed, a show with its link, and the agent's own lines
-  (`tun loop log`), such as a push or a deploy.
+  with what failed, a show with the paths it shows, and the agent's own
+  lines (`tun loop log`), such as a push or a deploy.
 
 `tun loop` reads and writes the record and nothing else in the repository.
 What it produces, such as logs, packets and screenshots, goes to
@@ -221,21 +227,24 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   as ACTOR (default the scenario's first actor). It writes
   `.build/loop/NAME/show/report.md`: the title, the link and sign-in
   links, the revision, the files changed since `base`, the verification,
-  and the screenshots.
+  and the screenshots; and the link alone to `.build/loop/NAME/show/link`.
+  The log's line is `shown (PATH, …)`.
 - **`gate X`** checks the gate's precondition, writes the packet
   `.build/loop/NAME/gate-X-N/`, and asks the one who decides (§4). The
   preconditions are: for A, a criterion; for B, the shown tree; for C, a
   commit whose tree is the shown one. The packet is self-contained:
   `README.md` (the reviewer's instructions and what this gate decides),
   `loop.md` (the record), `diff.patch` (from `base`, the client's too) and,
-  at B and C, `verify.txt`, the checks' results and the screenshots.
+  at B and C, `verify.txt`, the checks' results, the screenshots and
+  `link`, the preview's link.
 - **`decide`** records the decision of the gate the loop waits at.
 - **`resume`** records the person's go-ahead after `stuck`.
 - **`log`** adds a line of the agent's to the log.
 - **`finish`** needs the committed tree to be the shown one, and moves to
   `done`.
-- **`status`** prints the title, stage, mode, item, who decides the next
-  gate, the next step and the last lines of the log. With `--json`, it
+- **`status`** prints the title, stage, mode, item, the preview's link
+  from the last show (`"preview"` in `--json`, `null` before one), who
+  decides the next gate, the next step and the last lines of the log. With `--json`, it
   prints the same as an object. Without NAME and an open loop, it says so
   and exits 0 (`null` with `--json`).
 
@@ -296,6 +305,10 @@ stays the truth; the tracker is a mirror.
   - who decides each gate in each mode, including after two requests
     for changes from a reviewer in a row;
   - a reviewer's verdict is the last `VERDICT:` line;
+  - what `show` records leaves the preview's link out of the record, in
+    `.build/loop/NAME/show/link`, where gate B's text, `status` and the
+    packet read it; a record of an older `tun loop` loses its link when
+    saved;
   - a stand-in tracker gets each event with its fields, gives the item at
     start, and a tracker that fails or hangs adds a line to the log while
     the loop goes on;
@@ -307,7 +320,8 @@ stays the truth; the tracker is a mirror.
     `finish` refused until the shown tree is committed.
 - `bin/test-cli`: in a client made by `tun new`, a loop runs from start to
   finish, hands-on. Its steps are: gate A refused without criteria; verify
-  with `bin/test` and `tun check`; `show` with screenshots at both widths;
+  with `bin/test` and `tun check`; `show` with screenshots at both widths,
+  the link in `.build/loop/NAME/show/link` and none in the record;
   gate B; and `finish` refused until the shown tree is committed.
 - By hand, 2026-10-24: in a copy of a client, `show` of `/saker` on the Tun
   worktree, shared on the tailnet, and gate B through a stand-in

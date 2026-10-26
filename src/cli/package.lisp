@@ -19,4 +19,4 @@
            #:preview-name #:server-command #:share-command #:unshare-command #:state-directory
            #:check-files #:check-scenario #:worktree-branch
            #:make-record #:text-field #:set-text-field #:gate-decider #:reviewer-verdict
-           #:repository-tree #:*tracker-limit*))
+           #:repository-tree #:*tracker-limit* #:without-links #:record-shown #:read-record))
