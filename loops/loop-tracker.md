@@ -2,7 +2,7 @@
 
 - loop: loop-tracker
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: 3522fe69d113239ff0ade0c62b0e3fe38ddaa143
 - verified: 845f7e4402367db8db045f6298d849ba2d100338
 - shown: 845f7e4402367db8db045f6298d849ba2d100338
@@ -85,3 +85,4 @@ Jonas's condition: the parts in Tun know nothing of the client that asked.
 - 2026-10-26 16:23  shown (/)
 - 2026-10-26 16:23  gate B asked of a reviewer
 - 2026-10-26 16:26  gate B: approve (reviewer): criteria 1-5 met and tested (156/156), spec and versions agree; show event and person gates at A/B untested but simple
+- 2026-10-26 16:26  finished at tun e7570bd
