@@ -167,6 +167,7 @@ tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [NAME]
 tun loop verify [NAME]
 tun loop show [NAME] [--path PATH]... [--actor ACTOR] [--scenario S]
 tun loop resume --by WHO --why TEXT [NAME]
+tun loop rebase [--onto REV] [--client-onto REV] [NAME]
 tun loop log TEXT [NAME]
 tun loop finish [NAME]
 ```
@@ -191,10 +192,10 @@ With a client, both repositories' trees count.
 | `gate-a` | waiting for A | approve → `build`; changes → `brief` |
 | `build` | building | `verify`: passes → `verified`; fails → `build`, five in a row → `stuck` |
 | `stuck` | five verify rounds failed in a row | `resume` (the person's go-ahead) → `build` |
-| `verified` | the tree passed | `show` → `shown`; a changed tree → `verify` again |
-| `shown` | the verified tree is at a shared preview | `gate B` → `gate-b` |
+| `verified` | the tree passed | `show` → `shown`; a changed tree → `verify` again; `rebase` → `build` |
+| `shown` | the verified tree is at a shared preview | `gate B` → `gate-b`; `rebase` → `build` |
 | `gate-b` | waiting for B | approve → `ship`; changes → `build` |
-| `ship` | committing and pushing | `gate C` → `gate-c`; `finish` when nothing is deployed |
+| `ship` | committing and pushing | `gate C` → `gate-c`; `finish` when nothing is deployed; `rebase` → `build` |
 | `gate-c` | waiting for C | approve → `deploy`; changes → `build` |
 | `deploy` | deploying | `finish` → `done` |
 
@@ -239,6 +240,20 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   `link`, the preview's link.
 - **`decide`** records the decision of the gate the loop waits at.
 - **`resume`** records the person's go-ahead after `stuck`.
+- **`rebase`** moves the loop's base after the repository moved under it:
+  a merge of newer work, a rebase, or a rewritten history. It sets `base`
+  to `--onto`'s commit, by default the commit checked out, and with a
+  client `client-base` to `--client-onto`'s, by default the client's
+  checked-out commit, and logs the old and the new of each. The loop's
+  tree may now differ from the one verified, and gate B has to speak for
+  the new base, so a loop at `verified`, `shown` or `ship` goes back to
+  `build`: verify, show and gate B again. At `brief` and `build` the stage
+  stays. It runs at those five stages and refuses at any other, exit 1.
+  It also refuses, exit 1, when a repository that had a change since its
+  old base would have none since its new one: that is a loop whose work is
+  already committed on the new base, and `--onto` or `--client-onto` then
+  names the commit the work builds on. A REV that is not a commit is a
+  usage error.
 - **`log`** adds a line of the agent's to the log.
 - **`finish`** needs the committed tree to be the shown one, and moves to
   `done`.
@@ -263,7 +278,7 @@ stays the truth; the tracker is a mirror.
   `TUN_REVIEWER` is. Without it, nothing of this section happens.
 - After each event, once the record is saved, `tun loop` runs it in the
   repository's top directory as `COMMAND EVENT RECORD`: EVENT is `start`,
-  `gate`, `decide`, `verify`, `show`, `log`, `resume` or `finish`, and
+  `gate`, `decide`, `verify`, `show`, `log`, `resume`, `rebase` or `finish`, and
   RECORD the record's absolute path.
 - **Its standard input** is one JSON object. Every event has these
   members, all strings except `item`, which is a string or `null`:
@@ -281,6 +296,7 @@ stays the truth; the tracker is a mirror.
   | `show` | `preview`, the link, a string; `paths`, an array of strings |
   | `log` | `line`, a string |
   | `resume` | `by`, a string; `why`, a string |
+  | `rebase` | `from_stage`, the stage before; `bases`, an array of objects `{"repository": NAME, "old": REV, "new": REV}` for each of the loop's repositories, NAME `"tun"` or the client's, REV a full revision or `"none"` |
   | `finish` | `commits`, an array of objects `{"repository": NAME, "revision": SHORT}`, NAME `"tun"` or the client's |
 
   A gate a reviewer decides is a `gate` event, then a `decide` event. A
@@ -305,6 +321,10 @@ stays the truth; the tracker is a mirror.
   - who decides each gate in each mode, including after two requests
     for changes from a reviewer in a row;
   - a reviewer's verdict is the last `VERDICT:` line;
+  - `rebase` moves `base` and `client-base` to the checked-out commits or
+    `--onto` and `--client-onto`, sends a loop past build back to it, tells
+    the tracker, and refuses at a gate and when a repository's change
+    would vanish;
   - what `show` records leaves the preview's link out of the record, in
     `.build/loop/NAME/show/link`, where gate B's text, `status` and the
     packet read it; a record of an older `tun loop` loses its link when

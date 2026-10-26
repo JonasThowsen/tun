@@ -23,6 +23,7 @@
        tun loop verify|finish [NAME]
        tun loop show [NAME] [--path PATH]... [--actor ACTOR] [--scenario NAME]
        tun loop resume --by WHO --why TEXT [NAME]
+       tun loop rebase [--onto REV] [--client-onto REV] [NAME]
        tun loop log TEXT [NAME]
   (every tun loop command also takes --dir DIR)"
   "The command lines tun accepts, printed for help and after a usage error.")
@@ -178,7 +179,8 @@ the first item."
             ((string= command "loop")
              (run-with #'loop-command :flags '("--json")
                                       :options '("--dir" "--title" "--mode" "--client" "--after"
-                                                 "--item" "--by" "--why" "--actor" "--scenario")
+                                                 "--item" "--by" "--why" "--actor" "--scenario"
+                                                 "--onto" "--client-onto")
                                       :lists '("--path")))
             (t (refuse "unknown command ~a" command))))))
 

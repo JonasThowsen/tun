@@ -561,6 +561,64 @@ in a row from a reviewer."
   (if (tun-repository-p directory) "tun" (client-name directory)))
 
 ;;; ------------------------------------------------------------------
+;;; rebase
+
+(defun commit-of (directory revision)
+  "REVISION's commit in the repository DIRECTORY, or NIL when it names none."
+  (git-line directory "rev-parse" "--verify" "--quiet" (format nil "~a^{commit}" revision)))
+
+(defun changed-since-p (directory base)
+  "Whether the working tree of DIRECTORY differs from BASE, a commit or
+\"none\", outside +OUTSIDE-THE-TREE+. A BASE git no longer has counts as
+changed."
+  (handler-case (string/= (repository-tree directory (base-tree base)) (repository-tree directory))
+    (step-failed () t)))
+
+(defun rebase-loop (record &key onto client-onto)
+  "tun loop rebase: move the loop's base after its repository moved under it,
+to ONTO's commit or the one checked out, and the client's to CLIENT-ONTO's or
+its checked-out one (spec/loop.md 6)."
+  (let ((from (stage record)))
+    (require-stage record "rebase" '("brief" "build" "verified" "shown" "ship"))
+    (when (and client-onto (null (record-client record)))
+      (refuse "--client-onto is for a loop with a client"))
+    (let ((moves (loop for (directory old) in (loop-repositories record)
+                       for revision in (list onto client-onto)
+                       collect (list directory old
+                                     (if revision
+                                         (or (commit-of directory revision)
+                                             (refuse "~a is not a commit in ~a"
+                                                     revision (namestring directory)))
+                                         (or (head-commit directory)
+                                             (fail-step "~a has no commit yet"
+                                                        (namestring directory))))))))
+      (loop for (directory old new) in moves
+            for option in '("--onto" "--client-onto")
+            when (and (changed-since-p directory old) (not (changed-since-p directory new)))
+              do (fail-step "~a has no change since ~a, though it had one since the loop's base: ~
+                             its work is committed there. Name the commit the work builds on: ~
+                             ~a loop rebase ~a REV"
+                            (client-name-or-tun directory) (subseq new 0 7) (tun-command) option))
+      (setf (field record "base") (third (first moves)))
+      (when (second moves)
+        (setf (field record "client-base") (third (second moves))))
+      (when (member from '("verified" "shown" "ship") :test #'string=)
+        (setf (field record "stage") "build"))
+      (add-log record (format nil "rebased: ~{~a ~a → ~a~^, ~}"
+                              (loop for (directory old new) in moves
+                                    append (list (client-name-or-tun directory)
+                                                 (if (string= old "none") old (subseq old 0 (min 7 (length old))))
+                                                 (subseq new 0 7)))))
+      (save-record record)
+      (tell-tracker record "rebase" "from_stage" from
+                    "bases" (jarr (loop for (directory old new) in moves
+                                        collect (jobj "repository" (client-name-or-tun directory)
+                                                      "old" old "new" new))))
+      (format t "~&The loop ~a's base is ~a~:[~;, and it is back at build~].~%"
+              (record-name record) (subseq (third (first moves)) 0 7) (string/= from (stage record)))
+      (print-next record))))
+
+;;; ------------------------------------------------------------------
 ;;; verify
 
 (defun round-number (record prefix)
@@ -920,7 +978,8 @@ input, and record its verdict."
 ;;; ------------------------------------------------------------------
 ;;; tun loop
 
-(defun loop-command (arguments &key dir title mode client after item by why actor scenario path json)
+(defun loop-command (arguments &key dir title mode client after item by why actor scenario path json
+                                     onto client-onto)
   "tun loop (spec/loop.md 6)."
   (let ((top (repository-top (absolute-directory (or dir "."))))
         (subcommand (first arguments))
@@ -931,7 +990,7 @@ input, and record its verdict."
              (find-record top (first arguments))))
       (cond ((null subcommand)
              (refuse "tun loop needs a command: start, status, gate, decide, verify, show, ~
-                      resume, log or finish"))
+                      resume, rebase, log or finish"))
             ((string= subcommand "start")
              (unless (= 1 (length arguments))
                (refuse "tun loop start takes one NAME"))
@@ -951,6 +1010,8 @@ input, and record its verdict."
             ((string= subcommand "show")
              (show-loop (named-record) :paths path :actor actor :scenario scenario))
             ((string= subcommand "resume") (resume-loop (named-record) :by by :why why))
+            ((string= subcommand "rebase")
+             (rebase-loop (named-record) :onto onto :client-onto client-onto))
             ((string= subcommand "finish") (finish-loop (named-record)))
             ((string= subcommand "log")
              (when (null arguments)

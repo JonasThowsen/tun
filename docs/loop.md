@@ -81,6 +81,14 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
   what fails and what you tried, and wait. Their go-ahead, with whatever
   they decide, is `tun loop resume --by jonas --why "…"`.
 
+- When the repository moved under the loop, because you merged newer
+  work, rebased or the history was rewritten, run `tun loop rebase`. The
+  packets' diffs are taken from the base, and without it a reviewer sees
+  the other work as yours. With your work uncommitted, the commit checked
+  out is the new base. With any of it committed, name the commit it
+  builds on: `--onto origin/main`, and `--client-onto` for a client. A
+  loop past build goes back to it; verify, show and ask gate B again.
+
 ## 6. Show and gate B
 
 - `tun loop show --path /saker [--path /saker/12] [--actor employee:kari]`
