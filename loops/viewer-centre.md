@@ -2,7 +2,7 @@
 
 - loop: viewer-centre
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: 12ab0ec7187f415d033dd5fe3ce8e9b06ccf28af
 - verified: b09094d03e1b6cbb53766040a01d504bc21e39e6
 - shown: b09094d03e1b6cbb53766040a01d504bc21e39e6
@@ -55,3 +55,4 @@ Jonas asked for the attachments feature this belongs to (core 1.20.0).
 - 2026-10-27 20:50  shown (/vedlegg)
 - 2026-10-27 20:50  gate B asked of a reviewer
 - 2026-10-27 20:53  gate B: approve (reviewer): the guard reads only a rule's own declarations and fails without either dialog's margin; the viewer is centred at both widths
+- 2026-10-27 20:53  finished at tun c0c8949
