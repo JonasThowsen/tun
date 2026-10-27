@@ -1,7 +1,7 @@
 # Files attached to records
 
 Status: v1, built 2026-10-26, core 1.20.0; `attachments-of` and files in a
-dialog, core 1.21.0. How a record carries files,
+dialog, core 1.21.0; the viewer centred, core 1.21.1. How a record carries files,
 such as a screenshot on a reported issue: which records may, which files
 are taken and what is stripped from them, how a person attaches them in
 a form (choosing, dragging, pasting), how an agent attaches them through
@@ -592,8 +592,9 @@ A record's files (`ui.md` §6, Data), from `attachments_list`:
 - A file's link is neither boosted nor preloaded by htmx (`ui.md` §4.1):
   a file is not a page.
 - Without JavaScript, an image's link opens the image itself, full size.
-  With it, a click opens a dialog with the whole image, as large as the
-  window allows and never larger than its own size, its name, a link
+  With it, a click opens a dialog in the middle of the window with the
+  whole image, as large as the window allows and never larger than its
+  own size, its name, a link
   «Åpne original» to its path, and «Lukk»; Escape closes it too.
 - With no items it shows EMPTY («Ingen vedlegg» when omitted).
 - The tiles wrap in rows, three or more to a row on a phone, without

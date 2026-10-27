@@ -9,6 +9,21 @@ sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import _files  # noqa: E402
 
 
+CENTRED = """(d) => {
+  const r = d.getBoundingClientRect();
+  const left = r.left, right = window.innerWidth - r.right;
+  const top = r.top, bottom = window.innerHeight - r.bottom;
+  return Math.abs(left - right) <= 2 && Math.abs(top - bottom) <= 2;
+}"""
+
+
+def centred(dialog):
+    """Whether DIALOG, open, has the same gap on its left and right, and on
+    its top and bottom, give or take 2 px."""
+    dialog.locator(".tun-attachments-full").evaluate("(img) => img.decode()")
+    return dialog.evaluate(CENTRED)
+
+
 def run(t):
     page = t.phone()
     page.sign_in("employee:anna")
@@ -23,8 +38,8 @@ def run(t):
     page.locator(".tun-attachments-image").click()
     dialog = page.locator(".tun-attachments-dialog")
     t.check(dialog.evaluate("(d) => d.open"), "a click opens the dialog")
+    t.check(centred(dialog), "in the middle of the window")
     full = dialog.locator(".tun-attachments-full")
-    full.evaluate("(img) => img.decode()")
     t.check(full.evaluate("(img) => img.naturalWidth") == 640, "showing the whole image")
     t.check(dialog.get_by_role("link", name="Åpne original").get_attribute("href").endswith(url),
             "«Åpne original» links to the file")
@@ -36,3 +51,10 @@ def run(t):
     t.check("kvittering.pdf" in page.locator(".tun-attachments").inner_text(), "with its name")
     t.check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"),
             "the page does not scroll sideways")
+    desktop = t.desktop()
+    desktop.sign_in("employee:anna")
+    _files.card_page(desktop, "Eksport til regnskap")
+    desktop.locator(".tun-attachments-image").click()
+    viewer = desktop.locator(".tun-attachments-dialog")
+    t.check(viewer.evaluate("(d) => d.open"), "on a computer too, a click opens it")
+    t.check(centred(viewer), "in the middle of the window, not at its corner")

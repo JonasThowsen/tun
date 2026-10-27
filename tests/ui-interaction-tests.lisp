@@ -293,3 +293,65 @@
   (is (search "data-tun-dialog-shortcut=\"/\""
               (tun.html:render-html (tun.ui:dialog (:id "x" :title "X" :shortcut "/")))))
   (is (search "dialog[data-tun-dialog-shortcut]" (tun.ui:script))))
+
+;;; Every <dialog> keeps a margin: the reset sets it to 0, and a modal dialog
+;;; is centred by its auto margins (spec/files.md 6.3).
+
+(defun dialog-classes (markup)
+  "The classes of every <dialog> in MARKUP."
+  (let ((classes '()))
+    (labels ((walk (node)
+               (when (consp node)
+                 (when (and (eq (first node) :dialog) (consp (second node))
+                            (eq (first (second node)) :@))
+                   (let ((class (getf (rest (second node)) :class)))
+                     (when class
+                       (dolist (one (cl-ppcre:split "\\s+" class))
+                         (pushnew one classes :test #'string=)))))
+                 (mapc #'walk node))))
+      (walk markup))
+    classes))
+
+(defun class-blocks (css class)
+  "The rule's own declarations, for each CSS rule in CSS whose selector names
+CLASS: its body without the rules nested in it, so a margin set on one of
+its descendants does not count as its own."
+  (let ((blocks '()))
+    (loop for (nil end) on (cl-ppcre:all-matches
+                            (format nil "\\.~a(?![\\w-])[^{};]*\\{" (cl-ppcre:quote-meta-chars class))
+                            css)
+            by #'cddr
+          do (let ((depth 1) (at end) (own (make-string-output-stream)))
+               (loop while (and (< at (length css)) (plusp depth))
+                     do (let ((char (char css at)))
+                          (case char
+                            (#\{ (incf depth))
+                            (#\} (decf depth))
+                            (t (when (= depth 1) (write-char char own)))))
+                        (incf at))
+               (push (get-output-stream-string own) blocks)))
+    blocks))
+
+(test every-dialog-a-component-renders-sets-its-margin
+  (let* ((css (format nil "~{~a~%~}" (mapcar #'tun.ui:component-css (tun.ui:all-components))))
+         (image (let ((item (make-hash-table :test 'equal)))
+                  (setf (gethash "id" item) "fil_bilde" (gethash "filename" item) "bilde.png"
+                        (gethash "content_type" item) "image/png" (gethash "size" item) 1024
+                        (gethash "width" item) 640 (gethash "height" item) 400)
+                  item))
+         ;; The examples, and attachments with an image, which its examples
+         ;; leave out: the specimen cannot serve one.
+         (classes (remove-duplicates
+                   (append (dialog-classes (tun.ui:attachments (:items (list image))))
+                           (loop for component in (tun.ui:all-components)
+                                 append (loop for (nil nil thunk) in (tun.ui:component-examples
+                                                                      component)
+                                              append (dialog-classes (funcall thunk)))))
+                   :test #'string=)))
+    (dolist (known '("tun-dialog" "tun-attachments-dialog"))
+      (is (member known classes :test #'string=) "the examples render a ~a" known))
+    (dolist (class classes)
+      (is (some (lambda (body) (cl-ppcre:scan "(^|[;{\\s])margin\\s*:" body))
+                (class-blocks css class))
+          "the <dialog> with class ~a sets no margin, so the reset leaves it in the corner"
+          class))))

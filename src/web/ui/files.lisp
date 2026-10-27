@@ -389,6 +389,9 @@ henter det først når det vises.")
   }
   & .tun-attachments-empty { margin: 0; color: var(--muted-foreground); font-size: var(--text-sm); }
   & .tun-attachments-dialog {
+    /* The reset takes every margin away; a modal dialog is centred by its
+       auto margins (spec/files.md 6.3). */
+    margin: auto;
     max-width: calc(100vw - var(--spacing) * 4);
     max-height: calc(100dvh - var(--spacing) * 4);
     padding: calc(var(--spacing) * 3);
