@@ -2,7 +2,7 @@
 
 - loop: html-mail
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: 3b16f24030fb81b5e70bcf7a1f2dca2282de3ce0
 - verified: 6c58bd36e7ee30e4a4d5d0bd32ee43c348a5cadd
 - shown: 6c58bd36e7ee30e4a4d5d0bd32ee43c348a5cadd
@@ -214,3 +214,4 @@ The contract is `spec/mail.md` §2 and the new §2.1.
 - 2026-10-27 21:22  shown (/e-post)
 - 2026-10-27 21:22  gate B asked of a reviewer
 - 2026-10-27 21:29  gate B: approve (reviewer): the earlier points fixed and re-attacked; escaping, allow-lists, links, styles, odd nodes and the sandbox hold; the merge kept the viewer fix
+- 2026-10-27 21:29  finished at tun a90ae84
