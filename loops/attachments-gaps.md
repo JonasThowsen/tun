@@ -2,7 +2,7 @@
 
 - loop: attachments-gaps
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: 62e7632430f790e88dba67ce0bb32d142e6326ff
 - verified: 131008e784bbbc9c411ba34a23f4c589864d2837
 - shown: 131008e784bbbc9c411ba34a23f4c589864d2837
@@ -80,3 +80,4 @@ form Tun makes, and the files of a record in its own operations.
 - 2026-10-27 19:04  shown (/vedlegg)
 - 2026-10-27 19:04  gate B asked of a reviewer
 - 2026-10-27 19:09  gate B: approve (reviewer): the three tests each fail without what they guard (mutation-checked); criteria 1-5 met; files 375/375 on Postgres
+- 2026-10-27 19:09  finished at tun 166bf0b
