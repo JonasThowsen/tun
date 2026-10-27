@@ -136,9 +136,11 @@ previews it sees are its own."
           (let ((preview (aref (parse-json output) 0)))
             (is (equal "acme-main" (jget preview "name")))
             (is (eq nil (jget preview "running")) "its process has ended")))
+        (write-claim 4299 pid)
         (multiple-value-bind (status output) (run-tun "preview" "stop" "acme-main")
           (is (= 0 status))
           (is (search "Stopped acme-main." output)))
+        (is (null (probe-file (tun.cli:claim-file 4299))) "its port's claim is removed")
         (is (null (uiop:directory-exists-p data)) "its database is removed")
         (is (null (directory (merge-pathnames "*.json" (tun.cli:state-directory))))
             "and its file")))))
@@ -178,3 +180,143 @@ previews it sees are its own."
              (is (equal "many-cards" (tun.cli:check-scenario (merge-pathnames "checks/board.py" directory))))
              (is (equal "default" (tun.cli:check-scenario (merge-pathnames "checks/home.py" directory)))))
         (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)))))
+
+;;; ------------------------------------------------------------------
+;;; Claiming the port (spec/preview.md 2, «The port»)
+
+(defun write-claim (port holder)
+  "Make HOLDER, a process id or any text, the claim of PORT, as another
+tun or a broken file would leave it."
+  (let ((file (tun.cli:claim-file port)))
+    (ensure-directories-exist file)
+    (with-open-file (out file :direction :output :if-exists :supersede)
+      (princ holder out))))
+
+(defun claim-text (port)
+  (let ((file (tun.cli:claim-file port)))
+    (and (probe-file file) (string-trim '(#\Newline) (uiop:read-file-string file)))))
+
+(defun own-pid () (princ-to-string (sb-posix:getpid)))
+
+(defun ended-process ()
+  "The id of a process that has ended."
+  (let ((process (uiop:launch-program '("true"))))
+    (uiop:wait-process process)
+    (uiop:process-info-pid process)))
+
+(defun call-with-live-process (function)
+  "Call FUNCTION with the id of a process that runs until it returns."
+  (let ((process (uiop:launch-program '("sleep" "60"))))
+    (unwind-protect (funcall function (uiop:process-info-pid process))
+      (uiop:terminate-process process :urgent t)
+      (uiop:wait-process process))))
+
+(defun free-preview-ports (count)
+  "The first COUNT ports from 4200 that nothing on this machine listens on."
+  (loop for port from 4200 below 4300
+        when (tun.cli:port-free-p port) collect port into ports
+        until (= count (length ports))
+        finally (return ports)))
+
+(defun ports-files ()
+  "The names of the files in ports/."
+  (sort (mapcar #'file-namestring (directory (merge-pathnames "*.*" (tun.cli:ports-directory))))
+        #'string<))
+
+(defun fake-client ()
+  "A directory with a client's .asd whose system does not load."
+  (let ((directory (cli-scratch-directory)))
+    (ensure-directories-exist directory)
+    (with-open-file (out (merge-pathnames "fakeclient.asd" directory) :direction :output)
+      (write-string "(defsystem \"fakeclient\" :components ((:file \"missing\")))" out))
+    directory))
+
+(test starts-at-the-same-moment-claim-different-ports
+  (with-state-home
+    (lambda ()
+      (let* ((go nil)
+             (threads (loop repeat 8
+                            collect (sb-thread:make-thread
+                                     (lambda ()
+                                       (loop until go do (sleep 0.001))
+                                       (tun.cli:claim-port :taken '())))))
+             (ports (progn (setf go t) (mapcar #'sb-thread:join-thread threads))))
+        (is (= 8 (length (remove-duplicates ports))) "eight different ports: ~a" ports)
+        (is (every (lambda (port) (equal (own-pid) (claim-text port))) ports)
+            "each claimed by this process")))))
+
+(test a-stale-claim-is-taken-over-and-a-held-one-skipped
+  (with-state-home
+    (lambda ()
+      (destructuring-bind (first second third) (free-preview-ports 3)
+        (write-claim first (ended-process))
+        (is (= first (tun.cli:claim-port :taken '())) "a stale claim is taken over")
+        (is (equal (own-pid) (claim-text first)))
+        (tun.cli:release-claim first (list (sb-posix:getpid)))
+        (is (null (claim-text first)))
+        (call-with-live-process
+         (lambda (pid)
+           (write-claim first pid)
+           (write-claim second "ikke en prosess")
+           (is (= third (tun.cli:claim-port :taken '()))
+               "one a running process holds, and one that cannot be read, are skipped")
+           (let ((client (namestring (fake-client))))
+             (multiple-value-bind (status output)
+                 (run-tun "preview" "--dir" client "--no-share" "--port" (princ-to-string first))
+               (is (= 1 status) "~a" output)
+               (is (search (format nil "claimed by process ~d" pid) output) "~a" output))
+             (multiple-value-bind (status output)
+                 (run-tun "preview" "--dir" client "--no-share" "--port" (princ-to-string second))
+               (is (= 1 status) "~a" output)
+               (is (search (namestring (tun.cli:claim-file second)) output) "~a" output))
+             (is (equal (princ-to-string pid) (claim-text first)) "and they are left as they were")
+             (is (equal "ikke en prosess" (claim-text second))))))))))
+
+(test a-claim-is-handed-over-whole
+  (with-state-home
+    (lambda ()
+      (let ((port (tun.cli:claim-port :taken '())))
+        (call-with-live-process
+         (lambda (server)
+           (tun.cli:hand-over-claim port (sb-posix:getpid) server)
+           (is (equal (princ-to-string server) (claim-text port)) "the server holds it now")
+           (is (equal (list (princ-to-string port) "lock") (ports-files))
+               "renamed into place, nothing else left")
+           (tun.cli:hand-over-claim port (sb-posix:getpid) 1)
+           (is (equal (princ-to-string server) (claim-text port))
+               "only its holder hands it over")))))))
+
+(test a-restart-keeps-its-port
+  (with-state-home
+    (lambda ()
+      (let ((port (first (free-preview-ports 1))))
+        (call-with-live-process
+         (lambda (old-server)
+           (write-claim port old-server)
+           (is (= port (tun.cli:claim-port :port port :replacing old-server))
+               "the restart takes the claim of the server it replaces")
+           (is (equal (own-pid) (claim-text port)))
+           (tun.cli:release-claim port (list old-server))
+           (is (equal (own-pid) (claim-text port)) "stopping the old server leaves it")
+           (is (/= port (tun.cli:claim-port :taken '()))
+               "and a start meanwhile gets another port")))))))
+
+(test a-start-that-fails-leaves-no-claim
+  (with-state-home
+    (lambda ()
+      (let ((client (namestring (fake-client)))
+            (port (first (free-preview-ports 1))))
+        (let ((listener (usocket:socket-listen "127.0.0.1" port :reuse-address t)))
+          (unwind-protect
+               (multiple-value-bind (status output)
+                   (run-tun "preview" "--dir" client "--no-share" "--port" (princ-to-string port))
+                 (is (= 1 status) "~a" output)
+                 (is (search "something already listens" output) "~a" output))
+            (usocket:socket-close listener)))
+        (is (equal '("lock") (ports-files)) "a port something listens on")
+        (multiple-value-bind (status output) (run-tun "preview" "--dir" client "--no-share")
+          (is (= 1 status) "~a" output)
+          (is (search "stopped before it answered" output) "~a" output))
+        (is (equal '("lock") (ports-files)) "a server that exits before it answers")
+        (is (null (directory (merge-pathnames "*.json" (tun.cli:state-directory))))
+            "and no preview's file")))))

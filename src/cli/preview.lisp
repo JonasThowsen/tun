@@ -98,13 +98,108 @@ moments ago do not count, as the server binds with SO_REUSEADDR too."
            (sb-bsd-sockets:socket-error () nil))
       (sb-bsd-sockets:socket-close socket))))
 
+;;; ------------------------------------------------------------------
+;;; Claiming the port (spec/preview.md 2, «The port»).  A port is chosen and
+;;; claimed under one lock, so two starts at once never take the same one:
+;;; the claim is a file naming the process that holds it, written whole and
+;;; renamed into place, and a claim whose process has ended is stale.
+
+(defun ports-directory ()
+  (merge-pathnames "ports/" (state-directory)))
+
+(defun claim-file (port)
+  (merge-pathnames (princ-to-string port) (ports-directory)))
+
+(sb-alien:define-alien-routine ("flock" %flock) sb-alien:int
+  (fd sb-alien:int) (operation sb-alien:int))
+
+(defconstant +lock-exclusive+ 2 "flock's LOCK_EX.")
+
+(defun call-with-ports-lock (function)
+  "Call FUNCTION holding the exclusive lock on ports/lock.  flock's lock
+belongs to the open file, so it excludes another thread as it does another
+process, and a process that dies holding it lets it go."
+  (let ((lock (merge-pathnames "lock" (ports-directory))))
+    (ensure-directories-exist lock)
+    (let ((fd (sb-posix:open (namestring lock) (logior sb-posix:o-rdwr sb-posix:o-creat) #o644)))
+      (unwind-protect
+           (progn
+             (loop until (zerop (%flock fd +lock-exclusive+))
+                   unless (= (sb-alien:get-errno) sb-posix:eintr)
+                     do (fail-step "cannot lock ~a" (namestring lock)))
+             (funcall function))
+        (sb-posix:close fd)))))
+
+(defmacro with-ports-lock (() &body body)
+  `(call-with-ports-lock (lambda () ,@body)))
+
+(defun claim-holder (port)
+  "Who holds PORT's claim: NIL for no claim, a process id, or :UNREADABLE
+for a claim that does not name one."
+  (let ((file (claim-file port)))
+    (when (probe-file file)
+      ;; Called under the lock, so the claim does not go away meanwhile; one
+      ;; that cannot be read is answered as unreadable.
+      (let* ((text (string-trim '(#\Space #\Newline)
+                                (handler-case (read-text file) (error () ""))))
+             (pid (and (plusp (length text)) (every #'digit-char-p text)
+                       (parse-integer text))))
+        (if (and pid (plusp pid)) pid :unreadable)))))
+
+(defun claim-taken-p (holder)
+  "True when a claim of HOLDER keeps its port from another start: one held
+by a running process, or one that cannot be read, whose holder tun cannot
+tell."
+  (or (eq holder :unreadable)
+      (and (integerp holder) (process-alive-p holder))))
+
+(defun write-claim (port pid)
+  "Make PID the holder of PORT's claim: written to a file of its own, then
+renamed onto the claim, so no one ever reads half of one."
+  (let ((file (claim-file port))
+        (new (merge-pathnames (format nil "~d.~d.new" port (sb-posix:getpid)) (ports-directory))))
+    (write-text new (princ-to-string pid))
+    (sb-posix:rename (namestring new) (namestring file))))
+
 (defun choose-port (taken)
-  "The first port from +FIRST-PORT+ that no preview in TAKEN has and nothing
-listens on."
+  "The first port from +FIRST-PORT+ that no preview in TAKEN has, whose
+claim is not taken and that nothing listens on.  Called under the lock."
   (loop for port from +first-port+ below (+ +first-port+ 100)
-        when (and (not (member port taken)) (port-free-p port))
+        when (and (not (member port taken))
+                  (not (claim-taken-p (claim-holder port)))
+                  (port-free-p port))
           return port
         finally (fail-step "no free port from ~d to ~d" +first-port+ (+ +first-port+ 99))))
+
+(defun claim-port (&key port taken replacing)
+  "Claim a port for this process and return it: PORT, or the first free one
+that no preview in TAKEN has.  PORT's claim may be held by REPLACING, the
+server of the preview a restart replaces.  A claim of PORT held by another
+running process, or one that cannot be read, refuses it."
+  (with-ports-lock ()
+    (let ((port (or port (choose-port taken))))
+      (let ((holder (claim-holder port)))
+        (cond ((eq holder :unreadable)
+               (fail-step "port ~d has a claim tun cannot read, ~a; remove it if no preview ~
+                           runs there" port (namestring (claim-file port))))
+              ((and (claim-taken-p holder) (not (eql holder replacing))
+                    (/= holder (sb-posix:getpid)))
+               (fail-step "port ~d is claimed by process ~d, another preview" port holder))))
+      (write-claim port (sb-posix:getpid))
+      port)))
+
+(defun hand-over-claim (port from to)
+  "Make TO, the preview's server, the holder of PORT's claim that FROM holds."
+  (with-ports-lock ()
+    (when (eql (claim-holder port) from)
+      (write-claim port to))))
+
+(defun release-claim (port holders)
+  "Remove PORT's claim when one of HOLDERS, process ids, holds it: never
+another's, who may have taken over a stale one since."
+  (with-ports-lock ()
+    (when (member (claim-holder port) holders)
+      (delete-file (claim-file port)))))
 
 (defun tailnet-host ()
   "This machine's name on its tailnet, such as HOST.TAILNET.ts.net,
@@ -304,9 +399,10 @@ link for each of its actors."
 
 (defun stop-preview (preview)
   "Stop PREVIEW: its server, its Postgres and its share, and remove its
-database and its file."
+database, its file and its server's claim of its port."
   (let ((data (uiop:ensure-directory-pathname (jget preview "data"))))
     (stop-process (jget preview "pid"))
+    (release-claim (jget preview "port") (list (jget preview "pid")))
     (stop-database data)
     (uiop:delete-directory-tree (socket-directory (jget preview "port"))
                                 :validate (lambda (path) (search "/tun-preview-" (namestring path)))
@@ -335,50 +431,62 @@ its own."
                (preview-running-p running))
       (refuse "~a is already a preview of ~a; stop it first with tun preview stop ~a"
               name (jget running "directory") name))
-    (when running
-      (stop-preview running))
-    (let* ((port (cond (port (parse-integer port))
-                       (running (jget running "port"))
-                       (t (choose-port (mapcar (lambda (preview) (jget preview "port"))
-                                               (previews))))))
+    (let* ((self (sb-posix:getpid))
+           ;; A restart takes over the claim of the server it replaces, so it
+           ;; keeps the port and no other start takes it in between.
+           (port (claim-port :port (cond (port (parse-integer port))
+                                         (running (jget running "port")))
+                             :taken (mapcar (lambda (preview) (jget preview "port")) (previews))
+                             :replacing (and running (jget running "pid"))))
            (host (and share (tailnet-host)))
            (local-url (format nil "http://127.0.0.1:~d" port))
            (url (if host (format nil "https://~a:~d" host port) local-url))
            (data (or data (data-directory directory)))
            (log (merge-pathnames "server.log" data))
-           (report (merge-pathnames "report.json" data)))
-      (unless (port-free-p port)
-        (fail-step "something already listens on port ~d" port))
-      (uiop:delete-directory-tree data :validate #'preview-data-p
-                                       :if-does-not-exist :ignore)
-      (let* ((database (start-database data (socket-directory port)))
-             (pid (start-server (server-command client directory worktree
-                                                (list* "--port" (princ-to-string port)
-                                                       "--db" database
-                                                       "--claimed-identity"
-                                                       "--public-url" url
-                                                       "--preview-report" (namestring report)
-                                                       (and scenario (list "--scenario" scenario))))
-                                log))
-             (preview (jobj "name" name "client" client
-                            "directory" (namestring directory)
-                            "branch" (or (worktree-branch directory) "")
-                            "revision" (worktree-revision directory)
-                            "tun" (tun-description worktree)
-                            "port" port "pid" pid
-                            "url" url "local_url" local-url "shared" (and host t)
-                            "data" (namestring data) "log" (namestring log)
-                            "started" (local-time-string))))
-        (ensure-directories-exist (state-directory))
-        (write-text (state-file name) (to-json-string preview))
-        (handler-bind ((step-failed (lambda (condition)
-                                      (declare (ignore condition))
-                                      (stop-preview preview))))
-          (wait-until-ready port pid log)
-          (when host (share port)))
-        (record-scenario preview report)
-        (write-text (state-file name) (to-json-string preview))
-        preview))))
+           (report (merge-pathnames "report.json" data))
+           (pid nil)
+           (started nil))
+      (unwind-protect
+           (progn
+             (when running
+               (stop-preview running))
+             (unless (port-free-p port)
+               (fail-step "something already listens on port ~d" port))
+             (uiop:delete-directory-tree data :validate #'preview-data-p
+                                              :if-does-not-exist :ignore)
+             (let* ((database (start-database data (socket-directory port)))
+                    (flags (list* "--port" (princ-to-string port)
+                                  "--db" database
+                                  "--claimed-identity"
+                                  "--public-url" url
+                                  "--preview-report" (namestring report)
+                                  (and scenario (list "--scenario" scenario)))))
+               (setf pid (start-server (server-command client directory worktree flags) log))
+               (hand-over-claim port self pid)
+               (let ((preview (jobj "name" name "client" client
+                                    "directory" (namestring directory)
+                                    "branch" (or (worktree-branch directory) "")
+                                    "revision" (worktree-revision directory)
+                                    "tun" (tun-description worktree)
+                                    "port" port "pid" pid
+                                    "url" url "local_url" local-url "shared" (and host t)
+                                    "data" (namestring data) "log" (namestring log)
+                                    "started" (local-time-string))))
+                 (ensure-directories-exist (state-directory))
+                 (write-text (state-file name) (to-json-string preview))
+                 (handler-bind ((step-failed (lambda (condition)
+                                               (declare (ignore condition))
+                                               (stop-preview preview))))
+                   (wait-until-ready port pid log)
+                   (when host (share port)))
+                 (record-scenario preview report)
+                 (write-text (state-file name) (to-json-string preview))
+                 (setf started t)
+                 preview)))
+        ;; A start that fails leaves no claim, whether tun or the server
+        ;; held it when it failed.
+        (unless started
+          (release-claim port (remove nil (list self pid))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; tun preview

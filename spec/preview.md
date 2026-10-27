@@ -70,7 +70,8 @@ that started it, until it is stopped.
    deployment reads from its SOPS file are not in it, so a call to
    another system fails unless the scenario installs a fake answer with
    `*http-json-handler*` (`outbound.md`). It listens on `127.0.0.1`
-   only, on port N or the first free port from 4200.
+   only, on port N or the first free port from 4200, which it has
+   claimed before anything uses it (below).
 4. **The scenario.** NAME, or `default` when the client defines one, makes
    its records once the server has opened its database and before it
    listens (§3). A NAME the client does not define stops the server,
@@ -97,6 +98,38 @@ that started it, until it is stopped.
 A server that stops before it answers, or does not answer within 180
 seconds (a first compile included), is stopped and removed, and `tun`
 prints the end of its log (exit 1).
+
+**The port.** Two previews, or two `tun check` runs, that one user
+starts at the same moment in two checkouts never get the same port, as
+the port is claimed before its database or its server uses it. Claims
+are per user, in that user's state directory: another user's preview is
+seen only once its server listens, so two users starting at the same
+moment can still meet.
+
+- Every claim is a file `$XDG_STATE_HOME/tun/previews/ports/PORT` holding
+  the process id of its holder: the `tun` that starts the preview, then
+  the preview's server once it runs. A claim whose process has ended is
+  stale. A claim that cannot be read as a process id is held, never
+  stale: `tun` cannot tell whose it is.
+- Every claim is written whole, to a file of its own that is then
+  renamed onto `ports/PORT`, so no one reads half of one; the hand-over
+  from `tun` to the server is written the same way.
+- A port is chosen, claimed and handed over while `tun` holds an
+  exclusive lock on `ports/lock` (`flock`), which it holds for that
+  only; a `tun` that dies holding it releases it with its process. The
+  port is the first from 4200 that no preview's file names, that no claim
+  holds but a stale one, and that nothing listens on. A stale claim is
+  taken over.
+- With `--port N`, N is claimed the same way: a claim of N held by a
+  running process, or one that cannot be read, refuses it (exit 1),
+  naming the process or the file.
+- A second start of a running preview («Again», above) takes its claim over from
+  the server it replaces, before stopping that server, so it keeps its
+  port and no other start can take the port in between.
+- The claim is removed when the preview stops, and when its start fails,
+  a server that exits before it answers included. When its server dies
+  later, the claim is stale, and the next start that wants the port
+  takes it over.
 
 **Listing and stopping.** Every preview has a file,
 `$XDG_STATE_HOME/tun/previews/NAME.json` (`~/.local/state/…` without
@@ -222,8 +255,13 @@ with paging and autoscroll, and dragging with a mouse.
   description; its actors checked when compiled; a preview's name from a
   branch; the `tailscale serve` commands, never Funnel; the server's
   command on a pinned Tun and on a worktree; `list` with a process that
-  has ended, `stop` removing the database and the file; the checks
-  found and their scenarios; and refusals with their exit statuses.
+  has ended, `stop` removing the database, the file and the port's
+  claim; starts at the same moment claiming different ports, a stale
+  claim taken over, a live or unreadable one skipped, `--port` refused
+  while another process holds its claim, the claim handed to a new
+  process whole, a restart keeping its port, and no claim left by a
+  start whose server exits before it answers; the checks found and their scenarios;
+  and refusals with their exit statuses.
 - `bin/test-cli`: after `tun new`, a scenario with a customer. `tun
   preview` answers `/health`, offers the scenario's sign-in link and has
   its customer; a second start keeps the port and begins from a fresh

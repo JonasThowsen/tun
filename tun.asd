@@ -25,6 +25,7 @@
   :components ((:module "core"
                 :components ((:file "package")
                              (:file "util")
+                             (:file "counts")
                              (:file "json")
                              (:file "conditions")
                              (:file "rank")

@@ -1,8 +1,8 @@
 # Where {{name}} runs: nixploy targets (github:JonasThowsen/nixploy), each
 # deployed with `nixploy deploy --target NAME`. Tun fills in the image, the
-# host network, PORT, PUBLIC_URL (from web.domain) and the health check
-# ($TUN_SOURCE/spec/deploy.md); a target names its host, its domain, two
-# free ports and its secrets.
+# host network, PORT, PUBLIC_URL (from web.domain), TRUSTED_PROXY (Caddy on
+# the host) and the health check ($TUN_SOURCE/spec/deploy.md); a target
+# names its host, its domain, two free ports and its secrets.
 {
   # production = {
   #   ip = "203.0.113.10";

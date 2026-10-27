@@ -11,7 +11,8 @@
            #:upload-admission #:upload-refusal #:signed-in-p #:*posted-files*
            #:*large-body-bytes* #:*multipart-body-bytes* #:*large-body-places*
            #:*large-body-seconds* #:*small-body-seconds* #:*header-seconds*
-           #:*place-body-bytes*))
+           #:*place-body-bytes* #:*connections-per-address* #:*requests-per-address*
+           #:parse-ip-address #:address-key))
 
 (in-package #:tun.http)
 
@@ -152,7 +153,15 @@ the deadline their first byte set: a sender that trickles them is answered
                  :documentation "--max-inflight: requests processed at once; the rest get 503 at once.")
    (inflight :initform (list 0) :reader acceptor-inflight-cell)
    (large-bodies :initform (list 0) :reader acceptor-large-bodies-cell
-                 :documentation "Requests with a body over *MAX-BODY-BYTES* being answered."))
+                 :documentation "Requests with a body over *MAX-BODY-BYTES* being answered.")
+   (trusted-proxy :initarg :trusted-proxy :initform nil :reader acceptor-trusted-proxy
+                  :documentation "--trusted-proxy as an address's octets, or NIL: the peer
+whose X-Forwarded-For names the client (core.md 7.5).")
+   (connections :initform (make-key-counts "connections") :reader acceptor-connections
+                :documentation "Open connections by the address of a peer that is not the proxy.")
+   (proxied-requests :initform (make-key-counts "proxied requests")
+                     :reader acceptor-proxied-requests
+                     :documentation "Requests in progress through the proxy, by client address."))
   (:default-initargs :access-log-destination nil))
 
 (defun inflight (acceptor) (car (acceptor-inflight-cell acceptor)))
@@ -173,13 +182,184 @@ error -32001."
 
 (defun call-bounded (acceptor function)
   "Run FUNCTION if fewer than MAX-INFLIGHT requests are being processed, else
-shed.  A call that waits leaves the count while it waits (*IN-FLIGHT-CELL*,
+shed.  A call that waits leaves the count while it waits (*WAITING-LEAVES*,
 spec/waiting.md 1)."
   (let ((cell (acceptor-inflight-cell acceptor)))
     (if (>= (sb-ext:atomic-incf (car cell)) (acceptor-max-inflight acceptor))
         (progn (sb-ext:atomic-decf (car cell)) (shed))
-        (unwind-protect (let ((*in-flight-cell* cell)) (funcall function))
+        (unwind-protect
+             (let ((*waiting-leaves* (cons (lambda (phase)
+                                             (if (eq phase :leave)
+                                                 (sb-ext:atomic-decf (car cell))
+                                                 (sb-ext:atomic-incf (car cell))))
+                                           *waiting-leaves*)))
+               (funcall function))
           (sb-ext:atomic-decf (car cell))))))
+
+;;; ------------------------------------------------------------------
+;;; What one client address holds (core.md 7.5).  A connection from any
+;;; peer but the trusted proxy counts against the peer's address while it is
+;;; open; a request through the proxy counts against the client the proxy
+;;; names while it is answered.  Addresses are octet vectors, as usocket
+;;; gives them; a count's key is text.
+
+(defparameter *connections-per-address* 64
+  "Connections one address, not the trusted proxy's, may have open at once.")
+
+(defparameter *requests-per-address* 16
+  "Requests through the trusted proxy one client may have in progress at once.")
+
+(defun parse-ipv4 (text)
+  "TEXT, an IPv4 address in dotted decimal, as four octets, or NIL."
+  (let ((parts (uiop:split-string text :separator ".")))
+    (when (and (= 4 (length parts))
+               (every (lambda (part)
+                        (and (<= 1 (length part) 3) (every #'digit-char-p part)
+                             (<= (parse-integer part) 255)))
+                      parts))
+      (map '(vector (unsigned-byte 8)) #'parse-integer parts))))
+
+(defun parse-ipv6 (text)
+  "TEXT, an IPv6 address, as sixteen octets, or NIL.  An IPv4 address may end
+it, as in ::ffff:203.0.113.7."
+  (let* ((colon (position #\: text :from-end t))
+         (tail (and colon (find #\. text) (parse-ipv4 (subseq text (1+ colon)))))
+         (text (if tail
+                   (format nil "~a~x:~x" (subseq text 0 (1+ colon))
+                           (+ (* 256 (aref tail 0)) (aref tail 1))
+                           (+ (* 256 (aref tail 2)) (aref tail 3)))
+                   text)))
+    (when (and colon
+               (<= 2 (length text) 39)
+               (every (lambda (c) (or (digit-char-p c 16) (char= c #\:))) text)
+               (every (lambda (group) (<= (length group) 4))
+                      (uiop:split-string text :separator ":"))
+               (<= (count-substrings "::" text) 1))
+      ;; usocket's parser takes what the checks above leave, and signals on
+      ;; the rest, such as too many groups: that is an answer, not an error.
+      (handler-case (usocket:ipv6-host-to-vector text)
+        (error () nil)))))
+
+(defun count-substrings (part text)
+  (loop for start = 0 then (1+ found)
+        for found = (search part text :start2 start)
+        while found
+        count t))
+
+(defun parse-ip-address (text)
+  "TEXT, an IPv4 or IPv6 address, as its octets (4 or 16 of them), or NIL
+when it is not one."
+  (let ((text (string-trim " " text)))
+    (or (parse-ipv4 text) (parse-ipv6 text))))
+
+(defun ipv4-mapped-p (octets)
+  "True for an IPv6 address that writes an IPv4 one, ::ffff:a.b.c.d."
+  (and (= 16 (length octets))
+       (every #'zerop (subseq octets 0 10))
+       (= 255 (aref octets 10) (aref octets 11))))
+
+(defun plain-address (octets)
+  "OCTETS as the address they name: an IPv4 address written as IPv6 as its
+four octets, any other address as it is."
+  (if (ipv4-mapped-p octets) (subseq octets 12) octets))
+
+(defun address-key (octets)
+  "The text OCTETS, an address, count under: an IPv4 address itself, an IPv6
+one its first 64 bits, the network one subscriber is commonly given."
+  (let ((address (plain-address octets)))
+    (if (= 4 (length address))
+        (format nil "~{~d~^.~}" (coerce address 'list))
+        (format nil "~{~(~x~)~^:~}::/64"
+                (loop for i below 8 by 2
+                      collect (+ (* 256 (aref address i)) (aref address (1+ i))))))))
+
+(defun trusted-proxy-p (acceptor octets)
+  "True when OCTETS, a peer's address, are ACCEPTOR's trusted proxy's."
+  (let ((proxy (acceptor-trusted-proxy acceptor)))
+    (and proxy octets (equalp proxy (plain-address octets)))))
+
+(defun forwarded-address ()
+  "The address the last entry of this request's X-Forwarded-For names, the
+one the proxy wrote, as octets, or NIL without one."
+  (let ((header (hunchentoot:header-in* :x-forwarded-for)))
+    (and header
+         (parse-ip-address (subseq header (1+ (or (position #\, header :from-end t) -1)))))))
+
+(defun request-client (acceptor)
+  "This request's client key, and whether it came through the trusted proxy:
+then the address the proxy names, or the proxy's own without one; else its
+peer's."
+  (let ((peer (parse-ip-address (hunchentoot:remote-addr*))))
+    (cond ((null peer) (values nil nil))
+          ((trusted-proxy-p acceptor peer)
+           (values (address-key (or (forwarded-address) peer)) t))
+          (t (values (address-key peer) nil)))))
+
+(defun call-as-client (acceptor function)
+  "Call FUNCTION for this request's client: its waits count for it, and
+through the trusted proxy it takes one of the client's
+*REQUESTS-PER-ADDRESS* until the answer, leaving it while it waits.  With
+none left, shed at once."
+  (multiple-value-bind (client proxied) (request-client acceptor)
+    (let ((*wait-client* client)
+          (counts (acceptor-proxied-requests acceptor)))
+      (cond ((not proxied) (funcall function))
+            ((take-count counts client *requests-per-address*)
+             (unwind-protect
+                  (let ((*waiting-leaves*
+                          (cons (lambda (phase)
+                                  ;; Back over the bound or not: a finished
+                                  ;; wait is never refused its answer.
+                                  (if (eq phase :leave)
+                                      (give-back-count counts client)
+                                      (take-count counts client nil)))
+                                *waiting-leaves*)))
+                    (funcall function))
+               (give-back-count counts client)))
+            (t (shed))))))
+
+(defun socket-peer (socket)
+  "The address SOCKET's peer has, as octets, or NIL when the connection has
+ended already."
+  (handler-case (usocket:get-peer-address socket)
+    (error () nil)))
+
+(defparameter +address-refusal+
+  (sb-ext:string-to-octets
+   (format nil "HTTP/1.1 503 Service Unavailable~c~cRetry-After: 1~c~cConnection: close~c~c~
+                Content-Length: 0~c~c~c~c"
+           #\Return #\Newline #\Return #\Newline #\Return #\Newline #\Return #\Newline
+           #\Return #\Newline)
+   :external-format :latin-1)
+  "The answer to a connection past its address's *CONNECTIONS-PER-ADDRESS*.")
+
+(defun refuse-connection (socket)
+  "Answer 503 on SOCKET, whose address has its connections, and close it.
+What the caller has sent so far, at most *MAX-HEADER-BYTES*, is read and
+dropped first, as closing with it unread would reset the connection and
+could lose the answer; nothing waits for more, so a refused connection
+never holds its thread."
+  (let ((stream (usocket:socket-stream socket)))
+    ;; The caller may be gone: the connection ends either way.
+    (ignore-errors
+     (write-sequence +address-refusal+ stream)
+     (finish-output stream)
+     (loop repeat *max-header-bytes*
+           while (listen stream)
+           do (read-byte stream nil)))
+    (ignore-errors (usocket:socket-close socket))))
+
+(defmethod hunchentoot:process-connection :around ((acceptor tun-acceptor) socket)
+  ;; Counted and given back in this one extent, so no way a connection
+  ;; ends can leave its count behind.
+  (let* ((peer (socket-peer socket))
+         (address (and peer (not (trusted-proxy-p acceptor peer)) (address-key peer)))
+         (counts (acceptor-connections acceptor)))
+    (cond ((null address) (call-next-method))
+          ((take-count counts address *connections-per-address*)
+           (unwind-protect (call-next-method)
+             (give-back-count counts address)))
+          (t (refuse-connection socket)))))
 
 (defun octets (string) (sb-ext:string-to-octets string :external-format :utf-8))
 
@@ -828,7 +1008,8 @@ be reset, and the client could lose the answer it was sent."
     (setf (hunchentoot:header-out "X-Tun-Request-Id") *request-id*)
     ;; Hunchentoot handles ERROR; a stack or heap exhaustion while handling
     ;; must also end as a 500 for this request, not reach the debugger.
-    (prog1 (handler-case (dispatch-request acceptor request)
+    (prog1 (handler-case (call-as-client acceptor
+                                         (lambda () (dispatch-request acceptor request)))
              (serious-condition (c)
                ;; Reporting must not fail the answer: the condition may not print.
                (ignore-errors (format *error-output* "~&;; tun http: ~a while handling ~a: ~a~%"
@@ -1195,12 +1376,22 @@ sender holds a request's place for a bounded time."
   "Connection threads Hunchentoot may run. Well above --max-inflight, so excess
 requests reach our JSON 503 instead of Hunchentoot's own plain 503.")
 
-(defun start-server (application &key (port 8080) (address "127.0.0.1") (max-inflight 64))
+(defun start-server (application &key (port 8080) (address "127.0.0.1") (max-inflight 64)
+                                      trusted-proxy)
+  "Serve APPLICATION on ADDRESS:PORT; the acceptor.  TRUSTED-PROXY, an IP
+address as text or NIL, is the proxy whose X-Forwarded-For names the client
+(core.md 7.5, spec/deploy.md 1)."
   ;; Forms and query strings arrive without a charset; read them as UTF-8.
   (setf hunchentoot:*hunchentoot-default-external-format* (flex:make-external-format :utf-8 :eol-style :lf))
   (let ((acceptor (make-instance 'tun-acceptor :application application
                                                :port port :address address
                                                :max-inflight max-inflight
+                                               :trusted-proxy
+                                               (and trusted-proxy
+                                                    (plain-address
+                                                     (or (parse-ip-address trusted-proxy)
+                                                         (error "~s is not an IP address"
+                                                                trusted-proxy))))
                                                :listen-backlog 1024
                                                :taskmaster (make-instance 'hunchentoot:one-thread-per-connection-taskmaster
                                                                           :max-thread-count *max-threads*

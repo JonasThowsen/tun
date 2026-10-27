@@ -52,6 +52,28 @@
 (tun.jobs:define-job mail-queue-job () (:queue :mail)
   nil)
 
+(defvar *carried* nil "The arguments CARRYING-JOB and EARLY-JOB last ran with.")
+
+(tun.jobs:define-job carrying-job ((text :type string) (mail :type email) (count :type integer)
+                                   (amount :type (decimal :scale 2)) (flag :type boolean)
+                                   (kind :type (enum "a" "b")) (day :type date)
+                                   (moment :type timestamp) (ref :type id) (data :type json)
+                                   (names :type (list-of string)))
+    ()
+  (setf *carried* (list text mail count amount flag kind day moment ref data names)))
+
+;; Defined before the entity whose field it reuses: a (:field ...) argument
+;; is checked when an application opens (spec/jobs.md 2).
+(tun.jobs:define-job early-job ((:field late-holder title)) ()
+  (setf *carried* (list title)))
+
+(define-entity late-line (:embedded t :json-name "late_line" :label "Linje")
+  ((title :type string :required t :label "Tittel")))
+
+(define-entity late-holder (:label "Holder" :id-prefix "lh" :table "test_late_holders")
+  ((title :type string :label "Tittel")
+   (lines :type (list-of late-line) :label "Linjer")))
+
 (tun.jobs:define-job yielding-job () ()
   (push :yielded *job-calls*)
   (tun.jobs:snooze-job 0))
@@ -328,3 +350,75 @@
       (is (null (call-ok-items "jobs_list" "state" "queued")))
       (call-ok "jobs_retry" "admin:root" "id" id)
       (is (= 1 (length (call-ok-items "jobs_list" "kind" "mark_job" "queue" "default")))))))
+
+;;; ------------------------------------------------------------------
+;;; What a job can carry (spec/jobs.md 2)
+
+(defun expansion-refusal (form)
+  "The message of the error expanding FORM signals, or NIL."
+  (handler-case (progn (macroexpand-1 form) nil)
+    (error (condition) (princ-to-string condition))))
+
+(test a-job-refuses-an-argument-it-cannot-carry-when-it-is-defined
+  (dolist (type '(files (files :max 3) (list-of files)))
+    (let ((message (expansion-refusal `(tun.jobs:define-job shots-job ((shots :type ,type)) ()))))
+      (is (and message (search "SHOTS-JOB" message) (search "shots" message)
+               (search "record's id" message))
+          "~s: ~a" type message)))
+  (let ((message (expansion-refusal '(tun.jobs:define-job lines-job
+                                      ((lines :type (list-of late-line))) ()))))
+    (is (and message (search "LINES-JOB" message) (search "never records" message)
+             (search "late-line records' ids" message))
+        "a list of records: ~a" message))
+  (is (null (expansion-refusal '(tun.jobs:define-job names-job
+                                  ((names :type (list-of string))) ())))
+      "a list of values is carried"))
+
+(defun opening-refusal (job-form)
+  "Load JOB-FORM, a define-job, then open an application: the message it is
+refused with, or NIL.  The job is removed again, as it would keep every
+other application from opening."
+  (let ((name (second job-form)))
+    (eval job-form)
+    (unwind-protect
+         (handler-case (progn (with-test-app ()) nil)
+           (error (condition) (princ-to-string condition)))
+      (remhash (tun.jobs:job-definition-kind (tun.jobs:find-job-definition name))
+               tun.jobs::*job-definitions*))))
+
+(test a-jobs-reused-field-is-checked-when-an-application-opens
+  (let ((message (opening-refusal '(tun.jobs:define-job lines-later-job
+                                    ((:field late-holder lines)) ()))))
+    (is (and message (search "lines_later_job" message) (search "lines" message)
+             (search "LATE-HOLDER" message) (search "never records" message))
+        "a field a job cannot carry, of an entity defined after the job: ~a" message))
+  (let ((message (opening-refusal '(tun.jobs:define-job no-entity-job
+                                    ((:field no-such-entity title)) ()))))
+    (is (and message (search "no_entity_job" message) (search "NO-SUCH-ENTITY" message)
+             (search "is not an entity" message))
+        "an entity that does not exist: ~a" message))
+  (let ((message (opening-refusal '(tun.jobs:define-job no-field-job
+                                    ((:field late-holder colour)) ()))))
+    (is (and message (search "no_field_job" message) (search "has no field colour" message))
+        "a field that does not exist: ~a" message))
+  (with-test-app ()
+    (setf *carried* nil)
+    (is (eq :succeeded (perform-job 'early-job :title "Først jobben, så posten")))
+    (is (equal '("Først jobben, så posten") *carried*)
+        "a job loaded before its entity, with a field it carries, opens and runs")))
+
+(test a-job-carries-every-other-type
+  (with-test-app ()
+    (setf *carried* nil)
+    (let ((data (jobj "a" 1)))
+      (is (eq :succeeded (perform-job 'carrying-job :text "tekst" :mail "kari@example.no"
+                                                    :count 3 :amount 3/2 :flag t :kind "b"
+                                                    :day "2026-10-27" :moment 3970000000
+                                                    :ref "cus_1" :data data
+                                                    :names '("a" "b"))))
+      (destructuring-bind (&optional text mail count amount flag kind day moment ref json names)
+          *carried*
+        (is (equal '("tekst" "kari@example.no" 3 3/2 t "b" "2026-10-27" 3970000000 "cus_1")
+                   (list text mail count amount flag kind day moment ref)))
+        (is (equal 1 (and (hash-table-p json) (jget json "a"))))
+        (is (equal '("a" "b") names))))))

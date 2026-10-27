@@ -41,9 +41,17 @@ returns when the question is answered, or when its time is up.
 - The operation's deadline (`--deadline-ms`) holds for its work, not for
   its waiting: each FORM runs under it, and the work after `await` gets
   a whole one.
-- While it waits, a call does not count against `--max-inflight`. At most
-  256 calls wait at once in a process; one more is refused with
-  `unavailable` before it waits.
+- While it waits, a call does not count against `--max-inflight`, nor
+  against the requests its client may have in progress through the
+  proxy (`core.md` §7.5). At most 256 calls wait at once in a process;
+  one more is refused with `unavailable` before it waits.
+- At most 32 of them wait for one client: over HTTP, the address the
+  client is counted under (`core.md` §7.5), the one the trusted proxy
+  names or else the peer's. One more for that client is refused the same
+  way, with `unavailable` before it waits, «32 kall venter allerede fra
+  samme adresse; prøv igjen om litt», while other clients' waits are
+  taken. A call made inside the process, with no client, is held to the
+  256 alone.
 - A wait is retained as one request, with the time it took.
 
 ## 2. Over MCP

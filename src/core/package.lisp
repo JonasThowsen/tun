@@ -30,7 +30,8 @@
    #:field-type #:type-name #:type-json-schema #:coerce-input #:type->json #:type->db #:db->type
    #:type-sql #:type-lisp-type #:parse-field-type #:string-type #:email-type #:integer-type
    #:boolean-type #:enum-type #:enum-values #:date-type #:timestamp-type #:id-type #:id-references
-   #:json-type #:list-type #:list-element #:input-error #:collecting-input-errors #:*input-errors*
+   #:json-type #:list-type #:list-element #:list-element-entity-p #:input-error
+   #:collecting-input-errors #:*input-errors*
    #:files-type #:files-max #:files-type-p #:files #:recorded-value #:shown-name
    #:long-number-text-p #:+most-number-text+
    #:email #:enum #:date #:timestamp #:id #:list-of #:json
@@ -121,7 +122,8 @@
    #:visible-operations #:operation-input #:make-input #:input-arguments #:input-value
    #:input-provided-p #:input-draft #:input-request-key #:operation-result #:current-operation-tool
    #:*input* #:*operation* #:operation-input-schema
-   #:parameter-json-name #:parameter-type #:parameter-required-p #:parameter-label
+   #:parameter-json-name #:parameter-type #:parameter-entity-field #:parameter-required-p
+   #:parameter-label
    #:parameter-text #:parameter-name #:parameter-keyword #:parameter-default #:parse-parameter-spec
    #:check-operation-methods
    #:operation-location #:method-owner-name #:method-source #:traced-protocol
@@ -132,8 +134,11 @@
    #:*request-id* #:*inside-operation* #:with-audit-scope #:write-system-audit #:on-rollback #:on-commit
    ;; waiting for a change (spec/waiting.md)
    #:application-instructions
-   #:await #:call-awaiting #:*await-limit* #:*await-heartbeat* #:*in-flight-cell*
-   #:+await-max-seconds+ #:+await-heartbeat-seconds+ #:*max-waiting* #:waiting-count
+   #:await #:call-awaiting #:*await-limit* #:*await-heartbeat* #:*waiting-leaves*
+   #:*wait-client* #:+await-max-seconds+ #:+await-heartbeat-seconds+ #:*max-waiting*
+   #:*max-waiting-per-client* #:waiting-count #:client-waiting-count
+   ;; counts by key (core.md 7.5)
+   #:key-counts #:make-key-counts #:take-count #:give-back-count #:key-count
    #:write-audit #:defer-audit #:audit-entry-request-id
    ;; registry
    #:define-workflow #:workflow-kind #:workflow-kind-name #:workflow-kind-label #:workflow-kind-function

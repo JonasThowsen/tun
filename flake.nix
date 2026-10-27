@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "1.22.0";
+      coreVersion = "1.23.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -267,6 +267,8 @@
         web.healthPath = "/health";
       } (lib.optionalAttrs (target ? web.domain) {
         run.environment.PUBLIC_URL = "https://${target.web.domain}";
+        # Caddy on the host reaches the slot from the loopback (core.md 7.5).
+        run.environment.TRUSTED_PROXY = "127.0.0.1";
       })) target;
 
       # This revision's own modules, as a client's flake pins them

@@ -4,7 +4,7 @@
 (defpackage #:tun.runtime
   (:use #:cl #:tun.core)
   (:export #:open-application #:close-application #:start-scheduler #:stop-scheduler #:main
-           #:server-port #:*server-application*))
+           #:server-port #:server-trusted-proxy #:*server-application*))
 
 (in-package #:tun.runtime)
 
@@ -50,7 +50,7 @@ path made absolute against the working directory."
   "Make an instance of the application CLASS with the store DB names (see
 MAKE-STORE), migrate the store, check every record policy and query against
 it, verify that every operation's methods respect the OPERATION method
-combination, and restore the virtual clock in test mode."
+combination and that every job can carry its arguments, and restore the virtual clock in test mode."
   (let* ((store (or store (make-store db)))
          (clock (if test-clock
                     (make-instance 'test-clock :now (parse-rfc3339 +test-clock-start+))
@@ -67,6 +67,7 @@ combination, and restore the virtual clock in test mode."
             (make-instance (if test-clock 'tun.push:log-push-service 'tun.push:web-push-service))))
     (check-core-integrity)
     (check-entity-registry)
+    (tun.jobs:check-job-definitions)
     (check-operation-methods)
     (check-enabled-modules app)
     (tun.web:check-http-route-conflicts)
@@ -283,6 +284,15 @@ neither is given, and NIL and T when the one given is not a URL."
           ((public-url-p text) (string-right-trim "/" text))
           (t (values nil t)))))
 
+(defun server-trusted-proxy (argv)
+  "The trusted proxy's address --trusted-proxy in ARGV names, else the
+TRUSTED_PROXY environment variable (spec/deploy.md 1).  Values NIL when
+neither is given, and NIL and T when the one given is not an IP address."
+  (let ((text (or (argument argv "--trusted-proxy") (uiop:getenv "TRUSTED_PROXY"))))
+    (cond ((zerop (length text)) nil)
+          ((tun.http:parse-ip-address text) (string-trim " " text))
+          (t (values nil t)))))
+
 (defun check-mail (application-class claimed name)
   "Say what keeps the mail provider APPLICATION-CLASS names from working
 (spec/mail.md 1).  An authenticated server cannot start without it (exit
@@ -341,12 +351,13 @@ running image (core.md §8.2).  Debug-only; unlike eval it is not read-only."
       (return-from start-repl nil))
     (funcall create-server :port port :interface "127.0.0.1" :dont-close t :style :spawn)))
 
-(defun start-listening (app &key port address max-inflight (name "tun")
+(defun start-listening (app &key port address max-inflight trusted-proxy (name "tun")
                                 (exit (lambda (code) (sb-ext:exit :code code))))
   "Bind PORT on ADDRESS and serve APP; the acceptor.  When the socket cannot
 be bound, say so on standard error and EXIT with code 1 (core.md §7.7):
 the caller logs \"listening\" only after this returns."
-  (handler-case (tun.http:start-server app :port port :address address :max-inflight max-inflight)
+  (handler-case (tun.http:start-server app :port port :address address :max-inflight max-inflight
+                                           :trusted-proxy trusted-proxy)
     (error (e)
       (format *error-output* "~&~a: cannot listen on ~a:~d: ~a~%" name address port e)
       (finish-output *error-output*)
@@ -357,7 +368,8 @@ the caller logs \"listening\" only after this returns."
 [--address A] [--deadline-ms N] [--max-inflight N] [--tick-ms N]
 [--debug-tools] [--fake-accounting-latency-ms N] [--sqlite-synchronous full|normal]
 [--group-commit N] [--gc-nursery-mb N] [--allow-eval] [--repl-port N]
-[--request-history N] [--claimed-identity] [--public-url URL] [--log json|none].
+[--request-history N] [--claimed-identity] [--public-url URL] [--trusted-proxy ADDRESS]
+[--log json|none].
 --log json, the default, writes a JSON line per request to standard output
 (spec/errors.md 6).  The fake accounting adapter's latency defaults to
 FAKE_ACCOUNTING_LATENCY_MS from the environment (0 when unset).  Runs until
@@ -365,7 +377,9 @@ terminated.  Without --db, the DATABASE_URL environment variable names the
 database (spec/store.md); without --port, PORT names the port, else 8080.
 --claimed-identity takes the actor a request claims (spec/auth.md 1), for
 tests, previews and local development only.  Without --public-url,
-PUBLIC_URL names where people reach the server (spec/deploy.md 1).
+PUBLIC_URL names where people reach the server, and without
+--trusted-proxy, TRUSTED_PROXY the proxy whose X-Forwarded-For names the
+client (spec/deploy.md 1).
 BEFORE-SERVING, when given, is called with the open application before the
 server listens, so what it does is done before /health answers: a preview
 makes its scenario's records there (spec/preview.md 3)."
@@ -414,7 +428,13 @@ makes its scenario's records there (spec/preview.md 3)."
                           (format *error-output* "~a: --public-url or PUBLIC_URL is not an ~
                                                   http or https URL~%" name)
                           (sb-ext:exit :code 2))
-                        url)))
+                        url))
+          (trusted-proxy (multiple-value-bind (proxy invalid) (server-trusted-proxy argv)
+                           (when invalid
+                             (format *error-output* "~a: --trusted-proxy or TRUSTED_PROXY is not ~
+                                                     an IP address~%" name)
+                             (sb-ext:exit :code 2))
+                           proxy)))
       (setf *deadline-ms* (number "--deadline-ms" 10000)
             *request-history-size* history)
       (when nursery-mb
@@ -445,7 +465,7 @@ makes its scenario's records there (spec/preview.md 3)."
                          (when latency-ms
                            (setf (tun.accounting.fake:fake-latency-ms (application-accounting app)) latency-ms))
                          (start-listening app :port port :address address :max-inflight max-inflight
-                                              :name name))))
+                                              :trusted-proxy trusted-proxy :name name))))
         (unless test-clock (start-scheduler app :interval (/ tick-ms 1000.0)))
         (setf *server-application* app)
         (when repl-port (start-repl repl-port))
@@ -457,13 +477,14 @@ makes its scenario's records there (spec/preview.md 3)."
                    deadline ~d ms, max in-flight ~d~:[~;, debug tools~]~
                    ~:[~2*~;; sqlite synchronous ~(~a~), group commit ~d~]; ~
                    gc nursery ~d MB~:[~;; eval~]~@[; REPL (Swank) on 127.0.0.1:~d~]~
+                   ~@[; trusted proxy ~a~]~
                    ~:[~;; CLAIMED IDENTITY: requests choose their own actor~])~%"
                 name address port (store-description (application-store app)) test-clock
                 *deadline-ms* max-inflight (application-debug-tools-p app)
                 (typep (application-store app) 'tun.store.sqlite:sqlite-store)
                 synchronous group-commit
                 (floor (sb-ext:bytes-consed-between-gcs) (* 1024 1024))
-                (application-allow-eval-p app) repl-port (claimed-identity-p app))
+                (application-allow-eval-p app) repl-port trusted-proxy (claimed-identity-p app))
         (unless (claimed-identity-p app)
           (tun.auth:announce-setup app))
         (finish-output)

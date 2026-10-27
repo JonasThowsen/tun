@@ -663,6 +663,64 @@ and, from a call to another system, at most 300 characters of its detail.
 reading and dropping the rest of the body the client declared, for at most
 2 seconds, so a client still sending it can read the answer.
 
+**Per client address.** The server runs at most 1 024 connection
+threads, and a connection holds one while its headers come, for up to 30
+seconds, so a caller that keeps connecting could otherwise hold them all.
+The server counts what each client address holds and refuses the rest at
+once:
+
+- **A connection** from any peer but the trusted proxy (`deploy.md` §1,
+  `--trusted-proxy`) counts against the peer's address from when it is
+  accepted until it ends, the time it is kept alive between requests
+  included. With 64 open from one address, the next is answered
+  `503 Service Unavailable` with `Retry-After: 1` and `Connection: close`
+  at once, without reading its request, and closed. What it has already
+  sent by then, up to 32 KiB (the headers' budget), is read and dropped
+  first, without waiting for more, so that closing does not reset the
+  connection and the caller can read the 503; a refused connection never
+  holds its thread waiting. Other addresses are served as before.
+- **A request through the trusted proxy** counts against the client the
+  proxy names: the last address in `X-Forwarded-For`, the one the proxy
+  wrote. It counts from when its headers are read until its answer is
+  sent, so an upload counts while its body comes and a download while
+  its file is sent; the proxy's connections themselves are not counted.
+  With 16 being answered for one client, the next is answered as an
+  overloaded server answers (§7.2), at once, its body unread and its
+  connection ended. A request from the proxy without `X-Forwarded-For`,
+  or whose last entry is not an IP address, counts against the proxy's
+  own address.
+- **A call that waits** (`waiting.md` §1) through the proxy leaves its
+  client's count while it waits, as it leaves `--max-inflight`, and
+  comes back to it, over the bound or not, when the wait ends: agents or
+  an office behind one address may hold many waits. The work before and
+  after the wait counts. A call that waits on a direct connection keeps
+  its connection, which counts as any other.
+- **Waits have a bound of their own per client:** at most 32 of the 256
+  calls that may wait at once in a process (`waiting.md` §1) wait for one
+  client, the address it is counted under above (the one the proxy names
+  through the trusted proxy, the peer's otherwise). One more for that
+  client is refused before it waits, as a wait past the process's bound
+  is, while other clients' waits are taken.
+- `X-Forwarded-For` is read from the trusted proxy only. From any other
+  peer, and on a server without `--trusted-proxy`, it is ignored, so a
+  caller cannot choose the address it is counted under.
+- An IPv6 address counts by its first 64 bits, the smallest network
+  commonly given to one subscriber or site; one who holds a larger
+  network (a /56 or a /48) has that many /64s, so this bounds one
+  network, not one holder. An IPv4 address written as IPv6
+  (`::ffff:203.0.113.7`) counts as that IPv4 address.
+
+Through the proxy a request is work in progress, as the proxy itself
+keeps the connections a browser holds open; its bound, a quarter of the
+64 requests answered at once (§7.2), keeps one client from taking the
+server's capacity. Most requests are answered in milliseconds, so 16 at
+once is what dozens of people behind one office address reach only
+with long transfers, and of those the server takes at most four bodies
+over 256 KiB at once from everyone together (above). A connection counted directly
+may be idle between requests, and on a developer's machine the browser,
+the tests, the checks and a load suite share one address, so its bound
+is higher.
+
 **The memory budget.** With every limit reached at once, the server stays
 within its default heap of 2 GiB (`--dynamic-space-size 2048`). Each line
 is measured by the test that names it, in `tests/hostile-tests.lisp`,
@@ -679,7 +737,7 @@ less.
 | Files being checked | in the request above | one file at a time, its output one buffer of its size | — | — | the line above |
 | A file being sent | in the 64 | 1 MiB a part | — | — | `thirty-two-fetches-of-a-large-file-fit-the-default-heap` |
 | The request history | 1 000 records | 54 KiB of text, 53.6 MiB for a thousand | 64 KiB of text | 96 MiB | `hostile-text-in-every-record-field-is-kept-clipped` |
-| Connections reading their headers | 1 024 threads | 141 MiB for a thousand with 32 KiB of headers each | 192 KiB | 192 MiB | `a-thousand-connections-in-their-headers-fit-the-budget` |
+| Connections reading their headers | 1 024 threads, from 16 addresses or more | 141 MiB for a thousand with 32 KiB of headers each, from 20 addresses | 192 KiB | 192 MiB | `a-thousand-connections-in-their-headers-fit-the-budget` |
 | **Total** | | | | **1 604 MiB of 2 048** | |
 
 With every limit reached at once, 60 small requests and 8 large ones three
@@ -710,7 +768,11 @@ application is open.
 
 These properties are measured against a running tenant under load, with the
 real clock, `--debug-tools --tick-ms 500 --deadline-ms 10000 --max-inflight
-64`, three runs each, judged on the median. The load suite itself belongs
+64`, three runs each, judged on the median. The suite reaches the server
+directly, without a trusted proxy, so its connections are counted by
+address (§7.5): P6's 256 workers come from eight loopback addresses
+(`127.0.0.2` to `127.0.0.9`, 32 each), so they meet `--max-inflight` and
+not the bound of 64 per address. The load suite itself belongs
 with a client, outside this repository; `tun loop verify` runs it when
 `TUN_PRESSURE` names it (`loop.md` §6).
 
@@ -721,7 +783,7 @@ with a client, outside this repository; `tun loop verify` runs it when
 | P3 Heavy requests | 4 workers `debug_burn 2000` beside 16 readers | read p99 ≤ 500 ms |
 | P4 Deadline | 4 × `debug_burn 60000` and 4 × `debug_sleep 60000` beside 16 readers | each ends `deadline_exceeded` within 11 s, audited; read p99 ≤ 500 ms; a viewer's `debug_burn` is `forbidden` in < 100 ms |
 | P5 Stalled accounting | the fake port answers after 5 s; invoices sent beside other writes | other writes p99 ≤ 1000 ms; each invoice sent with one port call |
-| P6 Overload | 256 workers for 10 s, then 50 reads | nothing slower than 30 s; no 5xx but 503; the 50 reads each < 100 ms |
+| P6 Overload | 256 workers from 8 addresses for 10 s, then 50 reads | nothing slower than 30 s; no 5xx but 503; the 50 reads each < 100 ms |
 | P7 Kill under load | SIGKILL during a storm, restart on the same database | ledgers consistent, no duplicate invoice, no workflow run twice; reads served within 5 s |
 
 ## 8. Introspection

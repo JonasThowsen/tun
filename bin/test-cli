@@ -250,7 +250,10 @@ echo "$target" | python3 -c 'import json, sys
 t = json.load(sys.stdin)
 assert t["image"] == "docker" and t["run"]["network"] == "host", t
 assert t["run"]["environment"]["PORT"] == "{port}" and t["web"]["healthPath"] == "/health", t
-assert t["web"]["domain"] == "demo.example.com", t' || fail "the example target: $target"
+assert t["web"]["domain"] == "demo.example.com", t
+env = t["run"]["environment"]
+assert env["PUBLIC_URL"] == "https://demo.example.com" and env["TRUSTED_PROXY"] == "127.0.0.1", t' \
+  || fail "the example target: $target"
 cp "$work/deploy.nix" "$client/deploy.nix"
 git -C "$client" add deploy.nix
 
@@ -308,7 +311,9 @@ preview list | grep -q "^$preview_name *running" || fail "tun preview list does 
 preview stop "$preview_name" >/dev/null || fail "tun preview stop"
 curl -sf "$preview_url/health" >/dev/null && fail "the preview still answers after stop"
 [ -e "$client/.data/preview" ] && fail "stop left the preview's database"
-[ -n "$(ls -A "$work/state/tun/previews" 2>/dev/null)" ] && fail "stop left the preview's file"
+compgen -G "$work/state/tun/previews/*.json" >/dev/null && fail "stop left the preview's file"
+[ "$(ls -A "$work/state/tun/previews/ports" 2>/dev/null)" = lock ] \
+  || fail "stop left the port's claim: $(ls -A "$work/state/tun/previews/ports")"
 
 step "tun check: a check passes, a broken one fails (spec/preview.md 4)"
 mkdir -p "$client/checks"

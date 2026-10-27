@@ -8,10 +8,11 @@
 ;;;; Only the body of a :WAIT operation, which runs outside a transaction,
 ;;;; may wait.
 ;;;;
-;;;; A transport adapts a wait to its connection through three specials:
+;;;; A transport adapts a wait to its connection through four specials:
 ;;;; *AWAIT-LIMIT* holds a wait to what the connection survives,
 ;;;; *AWAIT-HEARTBEAT* is called while it waits, so MCP can send progress,
-;;;; and *IN-FLIGHT-CELL* is the request count a parked call leaves.
+;;;; *WAITING-LEAVES* are the counts a parked call leaves while it waits,
+;;;; and *WAIT-CLIENT* is the client its wait counts for.
 
 (in-package #:tun.core)
 
@@ -24,7 +25,13 @@ process on the same database commits reaches it within this.")
 (defparameter +await-heartbeat-seconds+ 25 "How often *AWAIT-HEARTBEAT* is called.")
 (defparameter *max-waiting* 256 "How many calls may wait at once in this process.")
 
+(defparameter *max-waiting-per-client* 32
+  "How many of the *MAX-WAITING* may wait at once for one client (core.md 7.5).")
+
 (defvar *waiting* (list 0) "How many calls wait now, in a cell for SB-EXT:ATOMIC-INCF.")
+
+(defvar *client-waits* (make-key-counts "client waits")
+  "How many calls wait now for each client, by its *WAIT-CLIENT* key.")
 
 (defvar *await-limit* +await-max-seconds+
   "The longest a wait lasts in this request: the transport lowers it to what
@@ -34,10 +41,17 @@ its connection survives.")
   "NIL, or a function of the seconds waited so far, called every
 +AWAIT-HEARTBEAT-SECONDS+ while a call waits: MCP sends progress with it.")
 
-(defvar *in-flight-cell* nil
-  "The cell counting the HTTP requests in flight, while one is being
-handled: a waiting call leaves the count, so waits do not use up
---max-inflight.")
+(defvar *waiting-leaves* '()
+  "What a call leaves while it waits, as its transport counts it: a list of
+functions, each called with :LEAVE when the call starts waiting and with
+:RETURN when it stops.  HTTP adds one for the requests in flight, so waits
+do not use up --max-inflight, and one for its client's requests in
+progress through the proxy (core.md 7.5).")
+
+(defvar *wait-client* nil
+  "The client a call that waits counts for, the key HTTP counts the caller
+under (core.md 7.5); NIL for a call made inside the process, which only
+*MAX-WAITING* bounds.")
 
 (defmacro await ((&key seconds (until '#'identity)) &body form)
   "Evaluate FORM in a read transaction of its own until UNTIL, a function of
@@ -80,20 +94,33 @@ in the body of a :WAIT operation (spec/waiting.md 1)."
 
 (defun call-parked (seconds function)
   "Run FUNCTION, a wait of at most SECONDS, as a parked call: counted among
-the waiting, not the requests in flight, and with a deadline that lasts the
-wait and then a whole one for the work after it."
+the waiting, in the process and for its client, and out of what
+*WAITING-LEAVES* count, with a deadline that lasts the wait and then a
+whole one for the work after it.  Refused with unavailable, before it
+waits, past *MAX-WAITING* or its client's *MAX-WAITING-PER-CLIENT*."
   (when (>= (sb-ext:atomic-incf (car *waiting*)) *max-waiting*)
     (sb-ext:atomic-decf (car *waiting*))
     (fail :unavailable "~d kall venter allerede; prøv igjen om litt" *max-waiting*))
-  (when *in-flight-cell*
-    (sb-ext:atomic-decf (car *in-flight-cell*)))
-  (move-deadline (+ (* 1000 seconds) *deadline-ms*))
-  (unwind-protect (funcall function)
-    (when *in-flight-cell*
-      (sb-ext:atomic-incf (car *in-flight-cell*)))
-    (sb-ext:atomic-decf (car *waiting*))
-    (move-deadline *deadline-ms*)))
+  (let ((client *wait-client*))
+    (when (and client (not (take-count *client-waits* client *max-waiting-per-client*)))
+      (sb-ext:atomic-decf (car *waiting*))
+      (fail :unavailable "~d kall venter allerede fra samme adresse; prøv igjen om litt"
+            *max-waiting-per-client*))
+    (dolist (leave *waiting-leaves*)
+      (funcall leave :leave))
+    (move-deadline (+ (* 1000 seconds) *deadline-ms*))
+    (unwind-protect (funcall function)
+      (dolist (leave *waiting-leaves*)
+        (funcall leave :return))
+      (when client
+        (give-back-count *client-waits* client))
+      (sb-ext:atomic-decf (car *waiting*))
+      (move-deadline *deadline-ms*))))
 
 (defun waiting-count ()
   "How many calls wait now in this process."
   (car *waiting*))
+
+(defun client-waiting-count (client)
+  "How many calls wait now for CLIENT, a *WAIT-CLIENT* key."
+  (key-count *client-waits* client))

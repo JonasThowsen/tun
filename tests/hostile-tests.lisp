@@ -194,13 +194,20 @@ body, as (KIND NAME STATUSES FUNCTION)."
              (is (subsetp answers statuses) "~a: answered ~s" name answers))
     (is-true alive "the server is still up")))
 
-(defun request-thread (name statuses function)
-  "A thread that makes FUNCTION's request; joined, it gives (NAME STATUSES
-STATUS), STATUS :RESET when the connection ended before an answer came."
+(defun request-thread (name statuses function &optional from)
+  "A thread that makes FUNCTION's request, from the address FROM when it is
+given; joined, it gives (NAME STATUSES STATUS), STATUS :RESET when the
+connection ended before an answer came."
   (sb-thread:make-thread
    (lambda ()
-     (list name statuses (handler-case (funcall function)
-                           (error () :reset))))))
+     (let ((*request-from* from))
+       (list name statuses (handler-case (funcall function)
+                             (error () :reset)))))))
+
+(defun loopback-address (i count)
+  "The Ith of COUNT loopback addresses from 127.0.0.2: callers that many
+addresses apart, each under its own bound of connections (core.md 7.5)."
+  (format nil "127.0.0.~d" (+ 2 (mod i count))))
 
 (test hostile-callers-at-every-limit-at-once-keep-the-server-up
   (multiple-value-bind (results alive)
@@ -212,17 +219,22 @@ STATUS), STATUS :RESET when the connection ended before an answer came."
           (let ((answers
                   ;; Each round sixty with a small body and eight with a
                   ;; large one at once: past the 64 answered at once and the
-                  ;; four large places.
+                  ;; four large places.  They come from eight addresses, so
+                  ;; that those limits are reached and not one address's.
                   (loop repeat 3
                         append (mapcar #'sb-thread:join-thread
                                        (append
                                         (loop for i below 60
                                               collect (apply #'request-thread
-                                                             (nth (mod i (length small)) small)))
+                                                             (append
+                                                              (nth (mod i (length small)) small)
+                                                              (list (loopback-address i 8)))))
                                         (loop for i below 8
                                               collect (apply #'request-thread
-                                                             (rest (nth (mod i (length large))
-                                                                        large)))))))))
+                                                             (append
+                                                              (rest (nth (mod i (length large))
+                                                                         large))
+                                                              (list (loopback-address i 8))))))))))
             (list answers (heap-number port "heap_peak") start (live-heap port)))))
     (destructuring-bind (&optional answers peak start after) results
       (is (and start (< start (* 128 +mib+))) "the image at rest holds at most 128 MiB: ~a" start)
@@ -342,7 +354,8 @@ fits, ASCII and astral, and a long error message."
 
 (test a-thousand-connections-in-their-headers-fit-the-budget
   ;; Each sends a request line and headers just under the 32 KiB budget and
-  ;; never ends them.
+  ;; never ends them, fifty from each of twenty addresses: past what one
+  ;; address may hold (core.md 7.5).
   (multiple-value-bind (results alive)
       (with-default-heap-server (port)
         (let* ((head (sb-ext:string-to-octets
@@ -356,14 +369,13 @@ fits, ASCII and astral, and a long error message."
           (unwind-protect
                (progn
                  (dotimes (i 1000)
-                   (let ((socket (usocket:socket-connect "127.0.0.1" port
-                                                         :element-type '(unsigned-byte 8))))
+                   (let ((socket (connect-from (loopback-address i 20) port)))
                      (push socket sockets)
-                     (write-sequence head (usocket:socket-stream socket))
-                     (finish-output (usocket:socket-stream socket))))
+                     (write-sequence head socket)
+                     (finish-output socket)))
                  (sleep 2)
                  (list (length head) start (live-heap port)))
-            (mapc #'usocket:socket-close sockets))))
+            (close-all sockets))))
     (destructuring-bind (&optional length start during) results
       (is (and length (< (* 31 1024) length (* 32 1024))) "each just under the budget")
       (is (and start during (< (- during start) (* 192 +mib+)))
@@ -717,3 +729,271 @@ back within SECONDS and whether the connection ended."
           "the upload has a place")
       (dolist (thread tricklers)
         (is (search " 413" (sb-thread:join-thread thread)) "each trickler refused at once")))))
+
+;;; ------------------------------------------------------------------
+;;; What one client address holds (core.md §7.5): connections counted by
+;;; their peer, requests and waits through the trusted proxy by the client
+;;; it names.  Loopback addresses stand for clients: a socket bound to
+;;; 127.0.0.2 reaches the server on 127.0.0.1 from that address.
+
+(defmacro with-address-server ((port acceptor &key trusted-proxy) &body body)
+  "Run BODY with *APP* served on PORT by ACCEPTOR, with claimed identity and
+TRUSTED-PROXY.  BODY closes the connections it holds, so the server stops
+without waiting for them."
+  `(with-test-app (:identity :claimed)
+     (let* ((,port (free-port))
+            (,acceptor (tun.http:start-server *app* :port ,port :trusted-proxy ,trusted-proxy)))
+       (unwind-protect (progn ,@body)
+         (tun.http:stop-server ,acceptor)))))
+
+(defun send-text (stream text)
+  (write-sequence (sb-ext:string-to-octets text :external-format :latin-1) stream)
+  (finish-output stream))
+
+(defun request-head (method path &rest headers)
+  "A request line and HEADERS, ended, with Host and Connection: close."
+  (apply #'crlf (format nil "~a ~a HTTP/1.1" method path) "Host: x" "Connection: close"
+         (append headers (list ""))))
+
+(defun answer-head (stream &optional (seconds 3))
+  "The status line and headers STREAM is answered within SECONDS, as text,
+or :TIMEOUT, or :RESET when the connection ended first."
+  (let ((octets (make-array 0 :element-type '(unsigned-byte 8) :adjustable t :fill-pointer t)))
+    (handler-case
+        (sb-sys:with-deadline (:seconds seconds)
+          (loop for byte = (read-byte stream nil nil)
+                while byte
+                do (vector-push-extend byte octets)
+                until (and (>= (length octets) 4)
+                           (equalp (subseq octets (- (length octets) 4)) #(13 10 13 10))))
+          (if (plusp (length octets))
+              (sb-ext:octets-to-string octets :external-format :latin-1)
+              :reset))
+      (sb-sys:deadline-timeout () :timeout)
+      (error () :reset))))
+
+(defun head-status (head)
+  "The status of an answer's HEAD, or HEAD itself when it is not text."
+  (if (stringp head)
+      (parse-integer head :start 9 :end 12 :junk-allowed t)
+      head))
+
+(defun status-from (address port head &optional (seconds 3))
+  "Send HEAD, a request, from ADDRESS; the status it is answered."
+  (let ((socket (connect-from address port)))
+    (unwind-protect
+         (progn (send-text socket head)
+                (head-status (answer-head socket seconds)))
+      (close socket))))
+
+(defun health-from (address port &rest headers)
+  "The status /health is answered from ADDRESS with HEADERS."
+  (status-from address port (apply #'request-head "GET" "/health" headers)))
+
+(defun holding-headers (address port)
+  "A connection from ADDRESS whose request line has come and its headers
+never end."
+  (let ((socket (connect-from address port)))
+    (send-text socket (crlf "GET /health HTTP/1.1" "Host: x"))
+    socket))
+
+(defun holding-body (address port &rest headers)
+  "A connection from ADDRESS whose request's headers have come and its body
+never ends."
+  (let ((socket (connect-from address port)))
+    (send-text socket (concatenate 'string
+                                   (apply #'request-head "POST" "/mcp"
+                                          "Content-Type: application/json"
+                                          "Content-Length: 100" headers)
+                                   "{"))
+    socket))
+
+(defun answered-p (stream)
+  "True when something has come back on STREAM."
+  (listen stream))
+
+(defun eventually (function &optional (seconds 5))
+  "True once FUNCTION is, within SECONDS."
+  (loop with end = (+ (get-internal-real-time) (* seconds internal-time-units-per-second))
+        thereis (funcall function)
+        while (< (get-internal-real-time) end)
+        do (sleep 0.02)))
+
+(defun close-all (streams)
+  (dolist (stream streams)
+    ;; A connection the server ended already: closing it is all that is left.
+    (ignore-errors (close stream))))
+
+(defun holds (counts key number)
+  "True once KEY holds NUMBER in COUNTS, within five seconds."
+  (eventually (lambda () (= number (key-count counts key)))))
+
+(test an-address-holds-at-most-64-connections-while-others-are-served
+  (with-address-server (port acceptor)
+    (let ((counts (tun.http::acceptor-connections acceptor))
+          (held '()))
+      (unwind-protect
+           (progn
+             (dotimes (i tun.http:*connections-per-address*)
+               (push (holding-headers "127.0.0.2" port) held))
+             (is-true (holds counts "127.0.0.2" 64) "64 held in their headers")
+             (let* ((socket (connect-from "127.0.0.2" port))
+                    (head (answer-head socket)))
+               (close socket)
+               (is (eql 503 (head-status head)) "the 65th is refused before it sends: ~s" head)
+               (is (and (stringp head) (search "Retry-After: 1" head)))
+               (is (and (stringp head) (search "Connection: close" head))))
+             (dotimes (i 3)
+               (is (eql 503 (health-from "127.0.0.2" port "X-Forwarded-For: 203.0.113.9"))
+                   "a 65th that has sent its request, naming another address, reads the 503"))
+             (is (eql 200 (health-from "127.0.0.3" port)) "another address is served")
+             (close (pop held))
+             (is-true (holds counts "127.0.0.2" 63))
+             (is (eql 200 (health-from "127.0.0.2" port)) "and the first again once one ends"))
+        (close-all held)))))
+
+(test x-forwarded-for-is-read-from-the-trusted-proxy-only
+  (with-address-server (port acceptor :trusted-proxy "127.0.0.1")
+    (let ((held '()))
+      (unwind-protect
+           (progn
+             (dotimes (i 17)
+               (push (holding-body "127.0.0.2" port "X-Forwarded-For: 203.0.113.7") held))
+             (is-true (holds (tun.http::acceptor-connections acceptor) "127.0.0.2" 17))
+             (sleep 0.5)
+             (is (notany #'answered-p held) "all 17 held, none refused")
+             (is (= 0 (key-count (tun.http::acceptor-proxied-requests acceptor) "203.0.113.7"))
+                 "counted as 127.0.0.2's connections, not as the client's requests"))
+        (close-all held)))))
+
+(test a-client-through-the-proxy-has-at-most-16-requests-in-progress
+  (with-address-server (port acceptor :trusted-proxy "127.0.0.1")
+    (let ((counts (tun.http::acceptor-proxied-requests acceptor))
+          (held '())
+          (idle '()))
+      (unwind-protect
+           (progn
+             (dotimes (i tun.http:*requests-per-address*)
+               (push (holding-body "127.0.0.1" port "X-Forwarded-For: 203.0.113.7") held))
+             (is-true (holds counts "203.0.113.7" 16) "16 held while their bodies come")
+             (let* ((socket (holding-body "127.0.0.1" port "X-Forwarded-For: 203.0.113.7"))
+                    (head (answer-head socket)))
+               (close socket)
+               (is (eql 503 (head-status head)) "the 17th is refused at once: ~s" head)
+               (is (and (stringp head) (search "Retry-After: 1" head))))
+             (is (eql 200 (health-from "127.0.0.1" port "X-Forwarded-For: 203.0.113.8"))
+                 "another client is served")
+             (is (eql 200 (health-from "127.0.0.1" port
+                                       "X-Forwarded-For: 203.0.113.7, 198.51.100.1"))
+                 "the last entry is the client")
+             (dotimes (i 70)
+               (push (connect-from "127.0.0.1" port) idle))
+             (send-text (first idle) (request-head "GET" "/health"))
+             (is (eql 200 (head-status (answer-head (first idle))))
+                 "the proxy's own connections are not counted")
+             (close-all held)
+             (setf held '())
+             (is-true (holds counts "203.0.113.7" 0))
+             (is (eql 200 (health-from "127.0.0.1" port "X-Forwarded-For: 203.0.113.7"))
+                 "and the client is served again once its requests end"))
+        (close-all held)
+        (close-all idle)))))
+
+(test a-request-through-the-proxy-naming-no-client-counts-as-the-proxys
+  (with-address-server (port acceptor :trusted-proxy "127.0.0.1")
+    (let ((counts (tun.http::acceptor-proxied-requests acceptor))
+          (held '()))
+      (unwind-protect
+           (progn
+             (dotimes (i 8)
+               (push (holding-body "127.0.0.1" port) held)
+               (push (holding-body "127.0.0.1" port "X-Forwarded-For: unknown") held))
+             (is-true (holds counts "127.0.0.1" 16)
+                      "without X-Forwarded-For, or with no address in it")
+             (let ((socket (holding-body "127.0.0.1" port)))
+               (is (eql 503 (head-status (answer-head socket))))
+               (close socket))
+             (is (eql 200 (health-from "127.0.0.1" port "X-Forwarded-For: 203.0.113.8"))))
+        (close-all held)))))
+
+(test the-address-a-client-counts-under
+  (flet ((key (text) (tun.http:address-key (tun.http:parse-ip-address text))))
+    (is (equal "203.0.113.7" (key "203.0.113.7")))
+    (is (equal "203.0.113.7" (key "::ffff:203.0.113.7")) "IPv4 written as IPv6")
+    (is (equal (key "2001:db8:1:2::5") (key "2001:db8:1:2:ffff::1")) "one /64")
+    (is (string/= (key "2001:db8:1:2::5") (key "2001:db8:1:3::1")) "another /64")
+    (is (equal "2001:db8:1:2::/64" (key "2001:DB8:1:2::5")))
+    (dolist (text '("" "unknown" "203.0.113" "256.1.1.1" "203.0.113.7:80" "1:::2" "12345::1"
+                    "[2001:db8::1]" "2001:db8::1::2"))
+      (is (null (tun.http:parse-ip-address text)) "~s is not an address" text))))
+
+(defun waits-for (port client &key (seconds 6))
+  "A thread that waits SECONDS through the proxy for CLIENT on a new
+widget; joined, it gives the call's status and the JSON-RPC result's
+text."
+  (let ((id (new-widget))
+        (app *app*))
+    (sb-thread:make-thread
+     (lambda ()
+       (let ((*app* app))
+         (multiple-value-bind (status body)
+             (post-octets port "/mcp" (tools-call-text "widgets_await_archived"
+                                                       (jobj "id" id "seconds" seconds))
+                          :headers `(("X-Tun-Actor" . "employee:anna")
+                                     ("X-Forwarded-For" . ,client)))
+           (list status body)))))))
+
+(test waits-leave-their-clients-requests-in-progress
+  (with-address-server (port acceptor :trusted-proxy "127.0.0.1")
+    (let ((waits (loop for i below 20
+                       collect (prog1 (waits-for port "203.0.113.7")
+                                 (eventually (lambda () (= (1+ i) (client-waiting-count
+                                                                   "203.0.113.7"))))))))
+      (is (= 20 (client-waiting-count "203.0.113.7")) "20 waiting for one client")
+      (is (eql 200 (post-octets port "/mcp" (tools-call-text "registry_describe" (jobj))
+                                :headers '(("X-Tun-Actor" . "viewer:vera")
+                                           ("X-Forwarded-For" . "203.0.113.7"))))
+          "and an ordinary call for that client is answered")
+      (dolist (answer (mapcar #'sb-thread:join-thread waits))
+        (is (eql 200 (first answer)))
+        (is (search "aktiv" (second answer)) "each wait answered when it ends")))))
+
+(test a-client-has-at-most-32-calls-waiting
+  (with-address-server (port acceptor :trusted-proxy "127.0.0.1")
+    (let ((waits (loop for i below tun.core:*max-waiting-per-client*
+                       collect (prog1 (waits-for port "203.0.113.7")
+                                 (eventually (lambda () (= (1+ i) (client-waiting-count
+                                                                   "203.0.113.7"))))))))
+      (is (= 32 (client-waiting-count "203.0.113.7")))
+      (let* ((start (get-internal-real-time))
+             (answer (sb-thread:join-thread (waits-for port "203.0.113.7"))))
+        (is (< (elapsed-since start) 2) "the 33rd is refused before it waits")
+        (is (search "unavailable" (second answer)) "~a" (second answer))
+        (is (search "32 kall venter allerede fra samme adresse" (second answer))))
+      (let ((other (waits-for port "203.0.113.8")))
+        (is-true (eventually (lambda () (= 1 (client-waiting-count "203.0.113.8"))))
+                 "another client's wait is taken")
+        (push other waits))
+      (dolist (answer (mapcar #'sb-thread:join-thread waits))
+        (is (eql 200 (first answer)))))))
+
+(test a-refused-connection-drops-what-it-was-sent-before-it-closes
+  ;; The request has arrived when the refusal is made, as it may have when a
+  ;; connection is refused: read and dropped, so the connection ends with
+  ;; the answer and a clean close, not a reset that can lose the answer.
+  (let* ((listener (usocket:socket-listen "127.0.0.1" 0 :reuse-address t
+                                                        :element-type '(unsigned-byte 8)))
+         (client (connect-from "127.0.0.2" (usocket:get-local-port listener)))
+         (server (usocket:socket-accept listener)))
+    (unwind-protect
+         (progn
+           (send-text client (request-head "GET" "/health"
+                                           (format nil "X-Fyll: ~a" (ascii-text 8000))))
+           (sleep 0.2)
+           (tun.http::refuse-connection server)
+           (is (eql 503 (head-status (answer-head client))))
+           (is (eq :end (handler-case (if (read-byte client nil nil) :more :end)
+                          (error () :reset)))
+               "and the connection ends cleanly"))
+      (close-all (list client))
+      (usocket:socket-close listener))))

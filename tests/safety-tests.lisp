@@ -234,12 +234,38 @@ NIL, and the blank line after them, as octets."
                                         line-end)))
                    (list (format nil "--~a--~a" boundary line-end))))))
 
+(defvar *request-from* nil
+  "NIL, or the loopback address, such as 127.0.0.2, POST-OCTETS connects
+from: the server counts connections by address (core.md 7.5).")
+
+(defun connect-from (address port)
+  "A binary stream connected to 127.0.0.1:PORT from ADDRESS, a loopback
+address such as 127.0.0.2; closing it ends the connection.  usocket's
+:LOCAL-HOST connects to the local address instead of the remote one, so
+this binds and connects with sb-bsd-sockets itself."
+  (let ((socket (make-instance 'sb-bsd-sockets:inet-socket :type :stream :protocol :tcp)))
+    (handler-bind ((error (lambda (condition)
+                            (declare (ignore condition))
+                            (sb-bsd-sockets:socket-close socket))))
+      (sb-bsd-sockets:socket-bind socket (sb-bsd-sockets:make-inet-address address) 0)
+      (sb-bsd-sockets:socket-connect socket #(127 0 0 1) port)
+      (sb-bsd-sockets:socket-make-stream socket :input t :output t
+                                                :element-type '(unsigned-byte 8)
+                                                :buffering :full))))
+
+(defun stream-from (address port)
+  "A stream to 127.0.0.1:PORT from ADDRESS, as DRAKMA:HTTP-REQUEST takes one."
+  (flex:make-flexi-stream (chunga:make-chunked-stream (connect-from address port))
+                          :external-format :latin-1))
+
 (defun post-octets (port path octets &key (content-type "application/json") headers)
-  "POST OCTETS to PATH; values the status, the body as text and the headers."
+  "POST OCTETS to PATH, from *REQUEST-FROM* when it is set; values the
+status, the body as text and the headers."
   (multiple-value-bind (body status response-headers)
-      (drakma:http-request (format nil "http://127.0.0.1:~d~a" port path)
-                           :method :post :content octets :content-type content-type
-                           :additional-headers headers :redirect nil :force-binary t)
+      (apply #'drakma:http-request (format nil "http://127.0.0.1:~d~a" port path)
+             :method :post :content octets :content-type content-type
+             :additional-headers headers :redirect nil :force-binary t
+             (and *request-from* (list :stream (stream-from *request-from* port) :close t)))
     (values status (if body (sb-ext:octets-to-string body :external-format :utf-8) "")
             response-headers)))
 

@@ -17,6 +17,8 @@
            #:add-application-modules #:module-input-url
            #:update-client #:tun-inputs #:git-head-location
            #:preview-name #:server-command #:share-command #:unshare-command #:state-directory
+           #:port-free-p #:claim-port #:hand-over-claim #:release-claim #:claim-file
+           #:ports-directory
            #:check-files #:check-scenario #:worktree-branch
            #:make-record #:text-field #:set-text-field #:gate-decider #:reviewer-verdict
            #:repository-tree #:*tracker-limit* #:without-links #:record-shown #:read-record #:loop-diff))

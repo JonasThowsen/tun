@@ -21,6 +21,7 @@
            #:job-definition #:find-job-definition #:job-definitions #:job-definition-name
            #:job-definition-kind #:job-definition-parameters #:job-definition-queue #:job-definition-max-attempts
            #:job-definition-transaction-p #:job-definition-after-crash #:backoff-seconds
+           #:check-job-definitions
            #:job-process #:job-process-lock-key #:process-id #:open-job-process #:close-job-process #:tend-jobs #:run-due-jobs
            #:rescue-orphaned-jobs #:run-job-now #:start-waking
            #:jobs-list #:jobs-get #:jobs-retry #:jobs-cancel
@@ -124,6 +125,58 @@ definition of a kind is refused, only the same function may define it again
   (and (eq key :backoff)
        (not (and (listp value) (every #'integerp value)))))
 
+(defun uncarried-type-reason (type)
+  "Why a job cannot carry an argument of TYPE, a field type, or NIL when it
+can: a job stores its arguments as JSON and takes ids and values, never
+files or records (spec/jobs.md 2)."
+  (cond ((files-type-p type)
+         (format nil "a job cannot carry files; attach them to a record in the operation ~
+                      and pass the record's id"))
+        ((not (typep type 'list-type)) nil)
+        ((list-element-entity-p type)
+         (format nil "a job takes ids and values, never records; pass the ~(~a~) records' ids, ~
+                      or a json argument" (list-element type)))
+        (t (uncarried-type-reason (list-element type)))))
+
+(defun parameter-spec-name (spec)
+  "The variable SPEC, an argument's spec, binds in the job's body: its name,
+or the field's for (:FIELD ENTITY NAME)."
+  (if (eq (first spec) :field) (third spec) (first spec)))
+
+(defun check-job-parameter-spec (name spec)
+  "Refuse SPEC, an argument of the job NAME, when its declared type is one a
+job cannot carry.  An argument that reuses an entity's field is checked
+when an application opens (CHECK-JOB-DEFINITIONS): the entity may not be
+defined yet."
+  (unless (eq (first spec) :field)
+    (let* ((designator (getf (rest spec) :type 'string))
+           (reason (uncarried-type-reason (parse-field-type designator))))
+      (when reason
+        (error "define-job ~s: argument ~(~a~) is ~s: ~a"
+               name (parameter-spec-name spec) designator reason)))))
+
+(defun check-job-definitions ()
+  "Refuse, as an application opens, a job with an argument (:FIELD ENTITY
+NAME) whose entity or field does not exist, or whose field's type a job
+cannot carry (spec/jobs.md 2)."
+  (dolist (definition (job-definitions))
+    (dolist (parameter (job-definition-parameters definition))
+      (let ((reference (parameter-entity-field parameter)))
+        (when reference
+          (destructuring-bind (entity json-name) reference
+            (let* ((class (find-entity-class entity nil))
+                   (field (and class (find-field class json-name)))
+                   (reason (and field (uncarried-type-reason (field-type field)))))
+              (flet ((refuse (control &rest arguments)
+                       (extension-error "Job ~a (~s): argument ~a reuses ~s's field ~a, ~?"
+                                        (job-definition-kind definition)
+                                        (job-definition-name definition)
+                                        (parameter-json-name parameter) entity json-name
+                                        control arguments)))
+                (cond ((null class) (refuse "but ~s is not an entity" entity))
+                      ((null field) (refuse "but ~s has no field ~a" entity json-name))
+                      (reason (refuse "~a" reason)))))))))))
+
 (defmacro define-job (name (&rest parameters) (&rest options) &body body)
   "Define the job kind NAME (spec/jobs.md 2).  PARAMETERS are its arguments,
 written as an operation's inputs, bound as variables in BODY.  OPTIONS:
@@ -139,9 +192,11 @@ the attempt."
     (when unknown
       (error "define-job ~s: unknown option~p ~{~s~^, ~}; the options are ~{~s~^, ~}"
              name (length unknown) unknown +job-options+)))
+  (dolist (spec parameters)
+    (check-job-parameter-spec name spec))
   `(progn
-     (defun ,name (&key ,@(mapcar #'first parameters))
-       (declare (ignorable ,@(mapcar #'first parameters)))
+     (defun ,name (&key ,@(mapcar #'parameter-spec-name parameters))
+       (declare (ignorable ,@(mapcar #'parameter-spec-name parameters)))
        ,@body)
      (register-job-definition
       (make-job-definition ',name ',parameters

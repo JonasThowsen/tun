@@ -156,7 +156,7 @@ other's MCP tools, with a token, behind a port.
 |---|---|---|
 | Browser headers | HSTS, `Referrer-Policy` on public pages | `Content-Security-Policy`, `X-Content-Type-Options`, `frame-ancestors` on every page |
 | CSRF | `Sec-Fetch-Site` / `Origin` check, `SameSite=Lax` | A token as well (a known limit in `docs/architecture.md`) |
-| Rate limits | login, per email and process | A general limit per account and per address, behind the proxy's forwarded address |
+| Rate limits | login, per email and process; connections, requests in progress and waits held per client address, by the trusted proxy's forwarded address (`spec/core.md` §7.5) | A limit of requests over time per account and per address |
 | Personal data (GDPR) | customer erasure and trace erasure in the orders module | Fields marked personal; an export of everything about one person; erasure and retention as core features. A selling point to Norwegian businesses, and a duty |
 | Encrypted fields | none | Encryption at rest for the few fields that need it (AshCloak); later |
 

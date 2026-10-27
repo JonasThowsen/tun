@@ -203,7 +203,8 @@ An operation takes files through a parameter of the type `files`:
 
 - `(files :max N)`, N from 1 to 10, default 10, is for operation
   parameters only; a stored field of the type is refused when the entity
-  is compiled. An absent or empty list is no files.
+  is compiled, and a job's argument of it when the job is (`jobs.md`
+  §2). An absent or empty list is no files.
 - **Over MCP and `/api`**, the value is an array of objects, each
   `{"filename": "skjermbilde.png", "data": "iVBORw0KGgo…"}`: `filename` a
   string of at most 255 characters, and `data` the file's bytes in base64

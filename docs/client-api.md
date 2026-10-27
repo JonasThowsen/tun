@@ -651,7 +651,10 @@ if the operation commits.
 ```
 
 - A job takes ids and values, not records: read the record when the job
-  runs. It runs as `system:job`, each attempt in a request of its own.
+  runs. `define-job` refuses an argument of type `files`, or a `list-of`
+  an entity, when it is compiled; attach the files in the operation and
+  pass the record's id. It runs as `system:job`, each attempt in a
+  request of its own.
 - By default the body and the job's completion commit together, so work
   that only writes records happens once. With `:transaction nil` the
   body runs outside a transaction, for calls to other systems: it may run

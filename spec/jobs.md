@@ -49,6 +49,17 @@ core's, and a client declares the work and never writes the loop.
   They are checked when the job is enqueued and stored as JSON, so a job
   takes ids and values, never records: the record is read when the job
   runs, as it is then.
+- So `define-job` refuses, when it is compiled, an argument of a type a
+  job cannot carry: `(files ...)` (`files.md` §4.1), alone or in a
+  `list-of`, and a `list-of` an embedded entity. The message names the
+  job and the argument and says what to pass instead: attach the files to
+  a record in the operation and pass the record's id; pass ids or a
+  `json` argument instead of records. An argument that reuses an
+  entity's field, `(:field ENTITY NAME)`, takes the field's type, and the
+  entity may be defined after the job, so it is checked when an
+  application opens: one such argument whose field's type a job cannot
+  carry, or whose entity or field does not exist, keeps it from opening,
+  with a message naming the job, the argument and the entity.
 - An argument given as NIL is not stored: a job reads it as absent, so a
   boolean argument means «yes» when given and «no» when left out.
 - The body runs as the actor `system:job`, in its own request: its own

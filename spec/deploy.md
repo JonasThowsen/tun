@@ -29,6 +29,13 @@ needs, from the environment:
     header, such as the host's health checks, are answered as before.
 - It listens on `127.0.0.1` unless `--address` says otherwise, so a host
   shares it only through a proxy on the same machine.
+- `--trusted-proxy ADDRESS`, else `TRUSTED_PROXY`: the IP address the
+  proxy in front of the server connects from, such as `127.0.0.1`. A
+  value that is not an IPv4 or IPv6 address is refused at start (exit 2).
+  A request from that address is counted against the client the proxy
+  names in `X-Forwarded-For`, and a connection from any other address
+  against its own (`core.md` §7.5). Without it, as in development, tests
+  and previews, every peer is a client and `X-Forwarded-For` is not read.
 - `GET /health` answers 200 once the application is open.
 - It opens the database and applies pending migrations before it listens.
   Two processes may share a database while one slot replaces the other
@@ -57,10 +64,26 @@ target. Tun fills in, unless the target sets them:
 | `run.network` | `"host"`, so the server reaches a database on the host's loopback |
 | `run.environment.PORT` | `"{port}"`, the slot nixploy starts |
 | `run.environment.PUBLIC_URL` | `"https://"` and `web.domain`, when the target has one |
+| `run.environment.TRUSTED_PROXY` | `"127.0.0.1"`, the address Caddy on the host connects from, when the target has `web.domain` |
 | `web.healthPath` | `"/health"` |
 
 A target names the rest: the host (`ip`, `user`, `identityFile`), the
 domain and two free ports (`web.domain`, `web.slots`), and its secrets.
+
+**Caddy and callers that hold connections.** nixploy writes the target's
+route into Caddy, a reverse proxy to the slot on `127.0.0.1`, and nothing
+in it limits connections per address. It need not: Caddy reads a
+request's line and headers itself before it sends the request on, so a
+caller who sends them slowly, or keeps connecting, holds Caddy's
+connections and not the server's threads. Caddy ends `X-Forwarded-For`
+with the address the request came from (and drops what the caller sent
+there, unless told to trust other proxies), so its last entry is
+Caddy's. What reaches the server through Caddy is counted by that
+address (`core.md` §7.5); `TRUSTED_PROXY` tells the server that Caddy is
+the peer to read it from. A CDN or another proxy in front of Caddy would
+make its own addresses the clients, and every caller behind it would
+share their counts, unless Caddy were told to trust it
+(`trusted_proxies`), which the route nixploy writes does not do.
 `tun new` writes a `deploy.nix` with no targets and an example of one.
 
 The database URL is a secret: a SOPS-encrypted dotenv file with
@@ -150,4 +173,8 @@ the options of §4, loads the dump into a new database owned by another
 role that is not a superuser, runs the image on that database, and checks
 that the account is there, that `/health` answers, that the token still
 works and that the log has no setup line. Last, it checks that the
-client's `nixploy` output evaluates with a target from `deploy.nix`.
+client's `nixploy` output evaluates with a target from `deploy.nix`, and
+that a target with a domain gets `PUBLIC_URL` and `TRUSTED_PROXY`.
+`tests/cli-tests.lisp` checks how the server reads `--trusted-proxy` and
+`TRUSTED_PROXY`, and `tests/hostile-tests.lisp` what it counts by
+address (`core.md` §7.5).

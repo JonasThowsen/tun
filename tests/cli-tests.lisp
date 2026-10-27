@@ -207,6 +207,27 @@ revision) of PINS. Returns the text of the flake.lock."
           (sb-posix:setenv "PORT" saved 1)
           (sb-posix:unsetenv "PORT")))))
 
+(test the-trusted-proxy-is-the-flag-else-trusted-proxy-and-an-ip-address
+  (let ((saved (uiop:getenv "TRUSTED_PROXY")))
+    (unwind-protect
+         (progn
+           (sb-posix:unsetenv "TRUSTED_PROXY")
+           (is (equal '(nil) (multiple-value-list (tun.runtime:server-trusted-proxy '())))
+               "none: every peer is a client")
+           (is (equal "127.0.0.1" (tun.runtime:server-trusted-proxy
+                                   '("--trusted-proxy" "127.0.0.1"))))
+           (sb-posix:setenv "TRUSTED_PROXY" "::1" 1)
+           (is (equal "::1" (tun.runtime:server-trusted-proxy '())))
+           (is (equal "10.0.0.5" (tun.runtime:server-trusted-proxy
+                                  '("--trusted-proxy" "10.0.0.5"))))
+           (dolist (value '("localhost" "127.0.0" "caddy:80" "1.2.3.4/32"))
+             (sb-posix:setenv "TRUSTED_PROXY" value 1)
+             (is (equal '(nil t) (multiple-value-list (tun.runtime:server-trusted-proxy '())))
+                 "~s is refused" value)))
+      (if saved
+          (sb-posix:setenv "TRUSTED_PROXY" saved 1)
+          (sb-posix:unsetenv "TRUSTED_PROXY")))))
+
 (test tun-new-refuses-before-writing-anything
   (let ((directory (cli-scratch-directory)))
     (signals tun.cli:usage-error (tun.cli:create-client "acme" '("no_such_module")
