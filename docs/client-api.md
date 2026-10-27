@@ -417,10 +417,16 @@ see its record. An operation takes files through a parameter of type
   item)
 ```
 
+In its own operations a client reads a record's files with
+`(attachments-of record)`, the attachment objects `attachments_list`
+gives, or `(attachments-of records)` for many records of one entity at
+once, a hash table by id (`spec/files.md` §4.2).
+
 An agent sends each file as `{"filename", "data"}`, base64, and adds files
 to a record later with `attachments_add`; `attachments_list` lists them and
 `attachments_remove` removes one (its attacher or an admin). On a page,
-`ui:file-input` in a form with `:enctype "multipart/form-data"` lets a
+`ui:file-input` in a form with `:enctype "multipart/form-data"`, or in a
+`ui:dialog` with `:action`, which sets it by itself, lets a
 person choose, drop or paste files; the posted FORM holds them under the
 field's name, ready for `web-call`. `ui:attachments` shows a record's
 files from `attachments_list` as thumbnails that open the whole image:

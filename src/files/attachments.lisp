@@ -279,6 +279,42 @@ name, in the order they were added."
   (select 'attachment :where `(:and (:= "entity" ,entity-name) (:= "record_id" ,record-id))
           :order-by '(("seq" :asc))))
 
+(defun attachments-of (records)
+  "The files of RECORDS, as attachment objects (spec/files.md 4.2): for a
+record, a list in the order added; for a list of records of one entity, an
+EQUAL hash table from each record's id to its list. The records are read
+again by id as *ACTOR*, in one select, so a record the record policy or
+ENTITY-READABLE-P keeps from the caller has none, also when the caller's
+code read it as the system actor."
+  (check-type records (or entity list))
+  (let* ((batch (listp records))
+         (list (if batch records (list records)))
+         (classes (remove-duplicates (mapcar #'class-of list)))
+         (table (make-hash-table :test 'equal)))
+    (when (rest classes)
+      (error "attachments-of takes records of one entity, not of ~{~a~^ and ~}"
+             (mapcar #'class-name classes)))
+    (let ((class (first classes)))
+      (when class
+        (unless (taking-class (entity-json-name class))
+          (error "~a takes no files" (class-name class)))
+        (dolist (record list)
+          (unless (entity-id record)
+            (error "attachments-of takes stored records; this ~a has no id" (class-name class)))
+          (setf (gethash (entity-id record) table) '()))
+        (let ((visible (loop for record in (select (class-name class)
+                                                   :where `(:in "id" ,(mapcar #'entity-id list)))
+                             when (entity-readable-p record *actor*)
+                               collect (entity-id record))))
+          (when visible
+            (dolist (attachment (select 'attachment
+                                        :where `(:and (:= "entity" ,(entity-json-name class))
+                                                      (:in "record_id" ,visible))
+                                        :order-by '(("seq" :desc))))
+              (push (attachment-json attachment)
+                    (gethash (attachment-record-id attachment) table)))))))
+    (if batch table (gethash (entity-id records) table))))
+
 (defun taking-class (entity-name)
   "The entity class ENTITY-NAME, a JSON name, names when it takes files, else NIL."
   (let ((class (and (stringp entity-name) (find-entity-by-json-name entity-name))))

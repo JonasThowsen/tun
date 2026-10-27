@@ -374,9 +374,22 @@ forhandlinger. Verneting er tingretten der oppdraget ble utført."))
                                                                        (list shortcut)))))
                       attributes)
               ,@(if action
-                    `((:form (:@ :class "tun-dialog-form" :method ,method :action ,action)
+                    `((:form ,(attrs (list :class "tun-dialog-form" :method method :action action
+                                           :enctype (when (holds-file-input-p content)
+                                                      "multipart/form-data")))
                              ,@content))
                     content))))
+
+(defun holds-file-input-p (markup)
+  "Whether MARKUP, a node or a list of them, holds an <input type=\"file\"> at
+any depth, so the form around it must post files (spec/files.md 6.4). Markup
+inside a raw HTML string is not looked into."
+  (and (consp markup)
+       (or (and (eq (first markup) :input)
+                (consp (second markup))
+                (eq (first (second markup)) :@)
+                (equal (getf (rest (second markup)) :type) "file"))
+           (some #'holds-file-input-p markup))))
 
 ;;; ------------------------------------------------------------------
 ;;; dropdown-menu

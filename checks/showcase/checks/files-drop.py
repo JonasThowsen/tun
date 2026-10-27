@@ -8,7 +8,7 @@ import sys
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import _files  # noqa: E402
 
-ZONE = "[data-tun-file-input]"
+ZONE = ".tun-card [data-tun-file-input]"
 
 
 def run(t):

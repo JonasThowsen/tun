@@ -67,6 +67,26 @@
     (is (string= "dismissible" (node-attribute dialog :data-tun-dialog)))
     (is (null (node-attribute dialog :role)) "a plain dialog keeps the role of <dialog>")))
 
+(test a-dialog-with-a-file-field-posts-files
+  (flet ((enctype (markup)
+           (node-attribute (first (nodes-with :class "tun-dialog-form" markup)) :enctype)))
+    (is (string= "multipart/form-data"
+                 (enctype (tun.ui:dialog (:id "vedlegg" :title "Legg ved" :action "/saker/1/filer")
+                            (tun.ui:stack (:gap :md)
+                              (tun.ui:file-input (:label "Filer" :name "filer"))))))
+        "a file-input at any depth")
+    (is (string= "multipart/form-data"
+                 (enctype (tun.ui:dialog (:id "vedlegg" :title "Legg ved" :action "/saker/1/filer")
+                            '(:div (:p (:input (:@ :type "file" :name "filer")))))))
+        "and one written by hand")
+    (is (null (enctype (tun.ui:dialog (:id "ny" :title "Ny" :action "/saker")
+                         (tun.ui:text-input (:label "Tittel" :name "title")))))
+        "no file field, no enctype")
+    (is (null (nodes-with :class "tun-dialog-form"
+                          (tun.ui:dialog (:id "ny" :title "Ny")
+                            (tun.ui:file-input (:label "Filer" :name "filer")))))
+        "without :action there is no form")))
+
 (test a-dialog-has-a-labelled-close-button-that-names-it
   (let* ((markup (tun.ui:dialog (:id "ny-kunde" :title "Ny kunde")))
          (close (first (nodes-with :command "close" markup))))

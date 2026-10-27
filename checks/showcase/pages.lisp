@@ -69,7 +69,16 @@ the input NAME or one of its items, or NIL."
         (files (jget (web-call "attachments_list" (jobj "entity" "card" "record_id" id)) "items")))
     (values status (jget card "title")
             (list (ui:card (:title "Vedlegg")
-                    (ui:attachments (:items files)))
+                    (ui:attachments (:items files))
+                    (ui:button (:variant :outline :icon :upload
+                                :attributes (list :command "show-modal" :commandfor "legg-ved"))
+                               "Legg ved i et vindu"))
+                  ;; The same files posted from a dialog, whose form takes them
+                  ;; without being told to (spec/files.md 6.4).
+                  (ui:dialog (:id "legg-ved" :title "Legg ved filer"
+                              :action (format nil "/saker/~a/filer" id)
+                              :footer (list (ui:button (:type "submit") "Legg ved")))
+                    (ui:file-input (:label "Filer" :name "filer")))
                   (ui:card (:title "Legg ved")
                     (files-form id :error error))
                   `(:p ,id)

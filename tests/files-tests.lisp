@@ -42,6 +42,20 @@
 (define-entity plain-note (:label "Notat uten filer" :id-prefix "pnt" :table "test_plain_notes")
   ((title :type (string :min 1 :max 200) :required t)))
 
+;;; Records only an admin reads, without a record policy: entity-readable-p
+;;; keeps them from others.
+(define-entity admin-note (:label "Adminnotat" :id-prefix "ant" :table "test_admin_notes"
+                                  :attachments t)
+  ((title :type (string :min 1 :max 200) :required t)))
+
+(define-operation admin-notes-create ((:draft admin-note))
+    (:entity admin-note :kind :create :policy :admin :title "Nytt adminnotat")
+  (insert admin-note))
+
+(define-operation admin-notes-get ((id :type (id admin-note) :required t))
+    (:entity admin-note :kind :read :policy :admin :title "Adminnotat")
+  (fetch! 'admin-note id))
+
 ;;; Each employee's own records (spec/store.md 6), on Postgres.
 (define-entity own-note (:label "Eget notat" :id-prefix "ont" :table "test_own_notes"
                                 :attachments t
@@ -1339,3 +1353,88 @@ octets put in, at places RANDOM-STATE chooses."
             (call "For mye" escaped "x" filler "y" filler "z" filler)
           (is (= 413 status) "more than 2 MiB besides the files' data")
           (is (search "Utenom filenes innhold" (to-json-string json))))))))
+
+;;; attachments-of, a record's files in a client's own operation (spec/files.md 4.2)
+
+(test attachments-of-gives-a-records-files-as-the-tool-does
+  (with-test-app ()
+    (let* ((one (jget (call-ok "file_notes_create" "employee:anna" "title" "En") "id"))
+           (two (jget (call-ok "file_notes_create" "employee:anna" "title" "To") "id"))
+           (none (jget (call-ok "file_notes_create" "employee:anna" "title" "Ingen") "id")))
+      (add-file "employee:anna" "file_note" one "a.png")
+      (add-file "employee:anna" "file_note" one "b.pdf" (fixture "kvittering.pdf"))
+      (add-file "employee:anna" "file_note" two "c.png")
+      (let ((listed (coerce (jget (call-ok "attachments_list" "viewer:vera" "entity" "file_note"
+                                           "record_id" one)
+                                  "items")
+                            'list)))
+        (with-application (*app*)
+          (with-actor ((make-actor :viewer "vera"))
+            (with-transaction (:read)
+              (let ((records (mapcar (lambda (id) (fetch 'file-note id)) (list one two none))))
+                (is (equal (mapcar #'to-json-string listed)
+                           (mapcar #'to-json-string (tun:attachments-of (first records))))
+                    "the same objects as attachments_list, in the order added, through TUN")
+                (let ((table (tun.files:attachments-of records)))
+                  (is (equal '("a.png" "b.pdf") (mapcar (lambda (a) (jget a "filename"))
+                                                        (gethash one table))))
+                  (is (equal '("c.png") (mapcar (lambda (a) (jget a "filename"))
+                                                (gethash two table))))
+                  (is (equal '() (gethash none table)))
+                  (is (= 3 (hash-table-count table))))
+                (is (= 0 (hash-table-count (tun.files:attachments-of '()))) "an empty list, an empty table")
+                (signals error (tun.files:attachments-of (make-instance 'file-note :title "Ulagret")))
+                (signals error (tun.files:attachments-of (list (first records)
+                                                     (make-instance 'locked-note :title "Annen")))))))))
+      (with-application (*app*)
+        (with-actor ((system-actor "test"))
+          (with-transaction (:write)
+            (let ((plain (insert (make-instance 'plain-note :title "Uten filer"))))
+              (signals error (tun.files:attachments-of plain))
+              (signals error (tun.files:attachments-of (list plain))))))))))
+
+(test attachments-of-reads-the-records-again-as-the-caller
+  (with-postgres-app ()
+    (let ((karis (jget (call-ok "own_notes_create" "employee:kari" "title" "Karis") "id")))
+      (add-file "employee:kari" "own_note" karis)
+      (with-application (*app*)
+        (with-transaction (:read)
+          (let ((record (with-actor ((system-actor "test")) (fetch 'own-note karis))))
+            (with-actor ((make-actor :employee "ola"))
+              (is (null (tun.files:attachments-of record))
+                  "read as the system actor, still not Ola's to see")
+              (is (equal '() (gethash karis (tun.files:attachments-of (list record))))))
+            (with-actor ((make-actor :employee "kari"))
+              (is (= 1 (length (tun.files:attachments-of record))) "Kari's own"))))))))
+
+(test attachments-of-gives-nothing-of-a-record-the-caller-may-not-read
+  (with-test-app ()
+    (let ((id (jget (call-ok "admin_notes_create" "admin:ada" "title" "Bare for admin") "id")))
+      (add-file "admin:ada" "admin_note" id)
+      (with-application (*app*)
+        (with-transaction (:read)
+          (let ((record (with-actor ((system-actor "test")) (fetch 'admin-note id))))
+            (with-actor ((make-actor :employee "anna"))
+              (is (null (tun:attachments-of record))
+                  "no read operation admits an employee: entity-readable-p keeps it")
+              (is (equal '() (gethash id (tun:attachments-of (list record))))))
+            (with-actor ((make-actor :admin "ada"))
+              (is (= 1 (length (tun:attachments-of record)))))))))))
+
+(test attachments-of-reads-a-batch-with-two-statements
+  (with-postgres-app ()
+    (let ((ids (loop for title in '("En" "To" "Tre" "Fire" "Fem")
+                     collect (jget (call-ok "own_notes_create" "employee:kari" "title" title) "id"))))
+      (dolist (id ids)
+        (add-file "employee:kari" "own_note" id))
+      (with-application (*app*)
+        (with-actor ((make-actor :employee "kari"))
+          (let ((records (with-transaction (:read)
+                           (mapcar (lambda (id) (fetch 'own-note id)) ids))))
+            (with-request-record (:force-new t)
+              (with-transaction (:read)
+                (let* ((before (request-store-statements *request-record*))
+                       (table (tun:attachments-of records)))
+                  (is (= 5 (count-if (lambda (id) (= 1 (length (gethash id table)))) ids)))
+                  (is (= 2 (- (request-store-statements *request-record*) before))
+                      "two statements for five records, not one per record"))))))))))

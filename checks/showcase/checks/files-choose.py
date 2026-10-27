@@ -13,7 +13,7 @@ def run(t):
     page = t.phone()
     page.sign_in("employee:anna")
     href = _files.card_page(page, "Varsel på e-post")
-    control = page.locator("input[type=file][name=filer]")
+    control = page.locator(".tun-card input[type=file][name=filer]")
     control.set_input_files([_files.path("skjermbilde.png"), _files.path("foto.jpg"),
                              _files.path("kvittering.pdf")])
     t.check(_files.listed(page) == ["skjermbilde.png", "foto.jpg", "kvittering.pdf"],

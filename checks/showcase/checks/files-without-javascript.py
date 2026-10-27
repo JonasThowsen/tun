@@ -12,9 +12,9 @@ def run(t):
     page = t.phone(javascript=False)
     page.sign_in("employee:anna")
     _files.card_page(page, "Sak nummer 3")
-    t.check(page.locator("[data-tun-file-input-drop]").is_hidden(),
+    t.check(page.locator(".tun-card [data-tun-file-input-drop]").is_hidden(),
             "no promise of dragging and pasting without a script")
-    page.locator("input[type=file][name=filer]").set_input_files(_files.path("foto.jpg"))
+    page.locator(".tun-card input[type=file][name=filer]").set_input_files(_files.path("foto.jpg"))
     with page.expect_navigation():
         page.get_by_role("button", name="Legg ved", exact=True).click()
     t.check(_files.attached(page) == ["foto.jpg"], f"the file is attached: {_files.attached(page)}")

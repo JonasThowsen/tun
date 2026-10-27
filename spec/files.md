@@ -1,6 +1,7 @@
 # Files attached to records
 
-Status: v1, built 2026-10-26, core 1.20.0. How a record carries files,
+Status: v1, built 2026-10-26, core 1.20.0; `attachments-of` and files in a
+dialog, core 1.21.0. How a record carries files,
 such as a screenshot on a reported issue: which records may, which files
 are taken and what is stripped from them, how a person attaches them in
 a form (choosing, dragging, pasting), how an agent attaches them through
@@ -280,6 +281,17 @@ An operation takes files through a parameter of the type `files`:
   that attached it, as the audit records it,
   and `url` the path `/files/ID`, at the public URL when the server has
   one (`deploy.md` §1).
+- **In a client's operation,** `(attachments-of RECORDS)` gives the
+  files of stored records of one entity that takes files, as attachment
+  objects, without a tool call: for a record, a list in the order added;
+  for a list of records, an `equal` hash table from each record's id to
+  its list, read with two queries however many records there are. The
+  records are read again by id as `*actor*`, so a record the record policy
+  does not admit to the caller, or one that is not `entity-readable-p` for
+  them, has none, as with `attachments_list`, also when the caller's code
+  read it as the system actor. A record of an entity that takes no files,
+  one never stored, or a list of records of more than one entity, signal
+  an error.
 
 ### 4.3 Request size
 
@@ -590,7 +602,10 @@ A record's files (`ui.md` §6, Data), from `attachments_list`:
 ### 6.4 Generated forms
 
 An operation with a `files` parameter gets a `file-input` for it in its
-generated form, and the form gets `enctype="multipart/form-data"`.
+generated form, and the form gets `enctype="multipart/form-data"`. So does
+a `dialog` with `:action` whose content holds an `<input type="file">` at
+any depth, a `file-input`'s or one written by hand: its form posts the
+files as any other.
 
 ## 7. Not yet
 
@@ -641,6 +656,10 @@ generated form, and the form gets `enctype="multipart/form-data"`.
     each with its message; a page's handle refused over MCP;
   - the limits per file, per call and per record, nothing stored when one
     file is refused or the record is full;
+  - `attachments-of`: the tool's objects in the order added, for a record
+    and for a batch by id, its errors, and none for a record its record
+    policy keeps from the caller although the code read it as the system
+    actor (on Postgres);
   - the tools: policies, the entity's `:policy`, `not_found` for a
     record the caller may not see (on Postgres, with a record policy) and
     for a file of an entity no longer defined or no longer taking files,
@@ -688,11 +707,14 @@ generated form, and the form gets `enctype="multipart/form-data"`.
   eight at once beside sixty small requests, three times over.
 - `tests/ui-forms-tests.lisp`, `tests/ui-data-tests.lisp`: `file-input`
   and `attachments` render as §6 says, in extension output too; a
-  generated form with a `files` parameter.
+  generated form with a `files` parameter. `tests/ui-interaction-tests.lisp`:
+  a `dialog` with a file field, at any depth or written by hand, posts
+  files (§6.4); without one, or without `:action`, it does not.
 - `tests/web-tests.lisp`: a page receives files as §6.2 says, and passes
   them to an operation; a refused file answers the page with the error
   at the field.
 - `checks/showcase/checks/`: attaching by choosing files, by dropping
   them and by pasting a screenshot (its name by the rule of §6.1), with
   the list, its previews and «Fjern»; a form without JavaScript; a
-  thumbnail opening the whole image in a dialog; a PDF's tile.
+  thumbnail opening the whole image in a dialog; a PDF's tile; files
+  attached from a dialog (`files-in-a-dialog.py`).
