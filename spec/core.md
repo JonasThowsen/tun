@@ -17,6 +17,7 @@ it instead of repeating it:
 | Recorded errors and log lines | `errors.md` |
 | Mail | `mail.md` |
 | Waiting calls | `waiting.md` |
+| Files attached to records | `files.md` |
 | The generated UI and the design system | `ui.md` |
 | A business module's own entities, tools and rules | `modules/NAME/README.md` |
 
@@ -547,10 +548,144 @@ alone.
 
 ### 7.5 Bounded inputs
 
-Before authentication, the server caps the request line and headers (64 KiB
+Before authentication, the server caps the request line and headers (32 KiB
 and 100 lines), the body (2 MiB), JSON depth (64), string length (1 MiB) and
 numeric literal length (64 characters). Each cap answers with an error at
-once, not after reading on.
+once, not after reading on. Requests that carry files, from an
+authenticated caller, have larger bounds, stated in `files.md` §4.3.
+
+**A body's length.** A `Content-Length` that is not plain digits (a sign,
+spaces, a second value, which Hunchentoot joins to the first with a comma)
+is answered 400 before the body is read. A chunked body, and a `POST`
+without `Content-Length`, are answered 411.
+
+**Anonymous callers send at most 256 KiB.** A body over 256 KiB from a
+caller Tun does not know before reading it is answered 413 and its
+connection ended, unread, on every path, public pages and `/login`
+included: a known caller has a token or, with claimed identity, an
+`X-Tun-Actor` on `/mcp` and `/api`, the right secret on a JSON port with
+`:authorize`, and a signed-in person's session on a page. A page's post is
+told «Uten å være logget inn kan du sende høyst 256 KB.»
+
+**Large bodies take a place.** Every body over 256 KiB, of any kind (JSON
+to `/mcp` and `/api`, a plain form, a multipart post, anything else), takes
+one of four places before it is read, and holds it until its answer is
+sent. With the four taken it
+is answered 503 with `Retry-After: 1` at once, unread (as the error
+document on `/api`, a JSON-RPC error `-32001` on `/mcp`, a page for a
+page's multipart post). So at most 4 bodies over 256 KiB and, with
+`--max-inflight`, 64 requests in all are being answered at once.
+
+**Deadlines.** A request line and its headers must arrive within 30
+seconds of their first byte. A body is read before anything else is done
+with the request (a body declared to a path that answers without one, such
+as `/health` or the redirect to HTTPS, is dropped for at most 2 seconds and
+its connection ended), and must arrive within 30 seconds when it is at most
+256 KiB, and within 120 seconds when it has a place. One that comes too
+slowly, or stops coming (the connection's read timeout, 20 seconds
+without a byte), is answered 408 and its connection ended, and the
+request's slot and place are freed: a sender that trickles holds one for
+a bounded time.
+
+**JSON values.** A request's JSON holds at most 10 000 values, counted as
+its brackets, commas and colons outside strings, in the same pass that
+checks number lengths, before anything is parsed. More is answered 413
+with «Forespørselen har for mange JSON-verdier (høyst 10 000).», on `/mcp`
+as the JSON-RPC error `-32600`.
+
+**Numbers.** The same pass holds a caller's numbers (what
+`parse-request-json` reads: `/mcp`, `/api`, JSON ports and a form's JSON
+fields) to what Tun takes as input, before the parser sees them:
+
+| A number with | Is answered |
+|---|---|
+| more than 19 significant digits (an integer of 64 bits has 19, a double needs 17) | «Et tall kan ha høyst 19 sifre.» |
+| an exponent of more than 4 digits, a magnitude over 1.7976931348623157e308, or one under 2.2250738585072014e-308 other than 0 (a subnormal double) | «Et tall må være 0, eller mellom 2.2250738585072014e-308 og 1.7976931348623157e308, med eller uten minus.» |
+
+Each is answered 400 `invalid_json`, on `/mcp` the JSON-RPC error
+`-32700`, at once: past these the parser works in big integers, in time
+that grows with the square of the exponent (`1e99999999` took minutes) or
+several kilobytes a number. A caller's number is at most 64 characters.
+JSON Tun wrote itself (a json field, a receipt) and answers from other
+systems are never held to these: only an exponent of more than 4 digits,
+which Tun never writes, and a literal over 1 000 characters are refused
+there. Tun writes a number that is not a whole one of modest size in its
+shortest form (`1.5e300`), never digit by digit.
+
+A posted integer or decimal field of a generated form longer than 40
+characters is passed on as text, never parsed, and refused as invalid
+input: «er for langt for et tall: høyst 40 tegn».
+
+**JSON ports.** A port of `register-json-endpoint` (such as the inbox's
+`/inbound/mail`) that names an `:authorize` function checks the
+`X-Tun-Inbound-Secret` header with it before the body is parsed; a wrong
+secret is answered 403 and the body never parsed. A port answers JSON of
+more than 10 000 values 413, and a number out of range 400. JSON is parsed from the body's octets as
+they came, never from a copy of them as text, and a string of ASCII
+characters only is kept one octet a character.
+
+**Plain forms.** A plain form's post (`application/x-www-form-urlencoded`),
+to any page and from anyone, is read by Tun from the bounded body, never by
+Hunchentoot: at most 1 000 fields, counted before any is decoded, each
+name at most 1 KiB and value at most 1 MiB. Each name and value is decoded
+once, straight from the body's octets into one string made at its length:
+`+` a space, `%XX` an octet, the octets UTF-8 with each invalid sequence
+one U+FFFD. More is answered 413 with a page: «Skjemaet har for mange felt
+(høyst 1 000).» or «Et felt i skjemaet er for langt.».
+
+**Request records.** A request's record (§8.1) keeps what a caller sent
+only as text it has clipped, each field to its bound, in UTF-8 octets:
+
+| Field | At most |
+|---|---|
+| the tool, the JSON-RPC method, or the page's method and path | 256 octets |
+| the actor, the credential, the error's code and type | 256 octets each |
+| the error's message | 4 096 octets |
+| the backtrace's frame names | 8 192 octets |
+| the input | 48 KiB |
+| all of it | 64 KiB |
+
+A field cut short ends in `…`, cut at a character's boundary. The record's
+slots are typed to these bounds, and every writer clips what it is given,
+so no field can hold more. The input is only what the operation declares
+(its parameters, and a draft's fields), never a key it does not know,
+written as JSON straight into its octets; a value that does not fit in
+what is left is kept as «[utelatt: posten holder høyst 48 KB av input]»,
+and is not written out first. Without an operation a record keeps no
+input. `introspect_request` parses the input when asked. An error repeats
+at most 100 characters of a name the caller sent («Ukjent verktøy: …»,
+«Ukjent metode: …» among them), and lists at most 20 unknown names,
+counting the rest. A step of the trace keeps a name from the definitions
+and, from a call to another system, at most 300 characters of its detail.
+
+**Connections.** Every answer given before a body is read, the 400, 408,
+411, 413 and 503 among them, ends its connection (`files.md` §4.3), after
+reading and dropping the rest of the body the client declared, for at most
+2 seconds, so a client still sending it can read the answer.
+
+**The memory budget.** With every limit reached at once, the server stays
+within its default heap of 2 GiB (`--dynamic-space-size 2048`). Each line
+is measured by the test that names it, in `tests/hostile-tests.lisp`,
+against a server in a process of its own with that heap. What a request
+costs is everything the server allocates while answering it alone, at its
+costliest (a hostile caller's body at the bound); what it holds at once is
+less.
+
+| Line | At once | Each, measured | Each, allowed | Total allowed | Test |
+|---|---|---|---|---|---|
+| The image and its data at rest | 1 | 102 MiB live | 128 MiB | 128 MiB | `hostile-callers-at-every-limit-at-once-keep-the-server-up` |
+| Requests with a body up to 256 KiB, and without one | 64 | 7.5 MiB (the first fault of its kind whose message is 256 KiB; 4.6 MiB after); 3.9 MiB (JSON at the value bound); 1.5 MiB (9 900 numbers at a double's edge) | 8 MiB | 512 MiB | `each-kind-of-request-costs-at-most-its-line-of-the-budget` |
+| Requests with a body over 256 KiB, in a place | 4 | JSON, 2 MiB: 14.3 MiB, of 9 990 numbers of 64 characters: 1.9 MiB; a form, 2 MiB: 10.1 MiB; files as JSON, 16 MiB: 57.3 MiB; a multipart post, 26 MiB: 121 MiB | 16, 12, 72, 169 MiB | 676 MiB | `each-kind-of-request-costs-at-most-its-line-of-the-budget` |
+| Files being checked | in the request above | one file at a time, its output one buffer of its size | — | — | the line above |
+| A file being sent | in the 64 | 1 MiB a part | — | — | `thirty-two-fetches-of-a-large-file-fit-the-default-heap` |
+| The request history | 1 000 records | 54 KiB of text, 53.6 MiB for a thousand | 64 KiB of text | 96 MiB | `hostile-text-in-every-record-field-is-kept-clipped` |
+| Connections reading their headers | 1 024 threads | 141 MiB for a thousand with 32 KiB of headers each | 192 KiB | 192 MiB | `a-thousand-connections-in-their-headers-fit-the-budget` |
+| **Total** | | | | **1 604 MiB of 2 048** | |
+
+With every limit reached at once, 60 small requests and 8 large ones three
+times over, from anonymous callers, viewers and employees on every path,
+the heap measured at its highest, garbage included, was 264 MiB; the test
+holds it under the total, and the live heap after them at what it was.
 
 ### 7.6 Scheduler and debug tools
 

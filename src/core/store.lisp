@@ -95,6 +95,30 @@ record policy and STORE cannot apply it (spec/store.md 6.7)."
   (declare (ignore id))
   (check-record-policy-store store class-name))
 
+(defgeneric store-write-content (store id octets)
+  (:documentation "Store OCTETS, a file's content, under ID in the current write
+transaction (spec/files.md 5.1).  A file's content never changes once written.")
+  (:method ((store store) id octets)
+    (declare (ignore id octets))
+    (error "Files need the Postgres store; this application runs on ~a"
+           (store-description store))))
+
+(defgeneric store-read-content (store id start length)
+  (:documentation "At most LENGTH octets of the content stored under ID, from octet
+START, in the current transaction: a vector shorter than LENGTH at the end,
+empty past it, and NIL when there is no content under ID.")
+  (:method ((store store) id start length)
+    (declare (ignore id start length))
+    (error "Files need the Postgres store; this application runs on ~a"
+           (store-description store))))
+
+(defgeneric store-delete-content (store id)
+  (:documentation "Delete the content stored under ID, in the current write transaction.")
+  (:method ((store store) id)
+    (declare (ignore id))
+    (error "Files need the Postgres store; this application runs on ~a"
+           (store-description store))))
+
 (defgeneric store-claim-presence (store key)
   (:documentation "Take the presence KEY, an integer from 0 below 2^31, and hold it for as
 long as this process keeps STORE open, so other processes can tell it runs

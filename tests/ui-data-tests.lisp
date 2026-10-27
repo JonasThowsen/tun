@@ -369,3 +369,37 @@ aria-current=\"page\", in any order."
       (is (search "page(box, sideways)" script) "a finger pages a column at a time")
       (is (search "Math.min(rect.right, window.innerWidth)" script)
           "counting the edge where the screen cuts the box off"))))
+
+;;; ------------------------------------------------------------------
+;;; A record's files (spec/files.md 6.3)
+
+(defun attachment-item (&rest keys-and-values)
+  (apply #'jobj keys-and-values))
+
+(test attachments-show-thumbnails-and-tiles
+  (flet ((items ()
+           (list (attachment-item "id" "fil_a" "filename" "skjerm.png"
+                                  "content_type" "image/png" "size" 15571
+                                  "width" 640 "height" 400)
+                 (attachment-item "id" "fil_b" "filename" "kvittering.pdf"
+                                  "content_type" "application/pdf" "size" 48211
+                                  "width" :null "height" :null))))
+    (let ((html (tun.html:render-html (tun.ui:attachments (:items (items))))))
+      (is (tag-with-p html "a" "href=\"/files/fil_a\""))
+      (is (cl-ppcre:scan (concatenate 'string "<img src=\"/files/fil_a\" alt=\"skjerm.png\" "
+                                      "loading=\"lazy\" decoding=\"async\" "
+                                      "width=\"640\" height=\"400\">")
+                         html))
+      (is (cl-ppcre:scan "<a class=\"tun-attachments-file\" href=\"/files/fil_b\" download>" html))
+      (is (search "kvittering.pdf" html))
+      (is (search "48 kB" html))
+      (is (search "<dialog" html) "a dialog for the whole image")
+      (is (search "Åpne original" html))
+      (is (search "hx-boost:inherited=\"false\"" html) "a thumbnail's link is not boosted")
+      (is (search "data-tun-preload=\"off\"" html))
+      (is (equal html (tun.html:render-html
+                       (tun.html:untrusted (tun.ui:attachments (:items (items))))))
+          "the same in extension output")))
+  (let ((html (tun.html:render-html (tun.ui:attachments (:items '())))))
+    (is (search "Ingen vedlegg" html))
+    (is (not (search "<dialog" html)))))

@@ -17,7 +17,9 @@
   ((tables :initform (make-hash-table :test 'eq) :reader memory-tables)
    (seq :initform 0 :accessor memory-seq)
    (lock :initform (sb-thread:make-mutex :name "memory store") :reader memory-lock)
-   (undo :initform '() :accessor memory-undo)))
+   (undo :initform '() :accessor memory-undo)
+   (contents :initform (make-hash-table :test 'equal) :reader memory-contents
+             :documentation "Files' content by attachment id (spec/files.md 5.1).")))
 
 (defmethod store-description ((store memory-store)) "memory")
 (defmethod store-open ((store memory-store)) store)
@@ -182,6 +184,34 @@
     (when limit (setf entries (subseq entries 0 (min limit (length entries)))))
     (mapcar (lambda (e) (row->entity class-name (car e) (cdr e))) entries)))
 
+;;; Files' content (spec/files.md 5.1), kept apart from the rows as the
+;;; Postgres store keeps it in a table of its own.
+
+(defmethod store-write-content ((store memory-store) id octets)
+  (assert-writable)
+  (let ((contents (memory-contents store)))
+    (multiple-value-bind (old present) (gethash id contents)
+      (setf (gethash id contents) (copy-seq octets))
+      (log-undo store (lambda ()
+                        (if present
+                            (setf (gethash id contents) old)
+                            (remhash id contents))))))
+  id)
+
+(defmethod store-read-content ((store memory-store) id start length)
+  (let ((octets (gethash id (memory-contents store))))
+    (and octets
+         (subseq octets (min start (length octets)) (min (+ start length) (length octets))))))
+
+(defmethod store-delete-content ((store memory-store) id)
+  (assert-writable)
+  (let ((contents (memory-contents store)))
+    (multiple-value-bind (old present) (gethash id contents)
+      (when present
+        (remhash id contents)
+        (log-undo store (lambda () (setf (gethash id contents) old))))))
+  t)
+
 ;;; Each store call is one "store" step of the current request (core.md §8.2);
 ;;; there is no SQL, so the step names the operation and the entity.
 
@@ -199,5 +229,11 @@
   (format nil "DELETE ~(~a~) ~a" class-name id))
 (define-traced-store-call store-find ((store memory-store) class-name id)
   (format nil "FIND ~(~a~) ~a" class-name id))
+(define-traced-store-call store-write-content ((store memory-store) id octets)
+  (progn octets (format nil "WRITE CONTENT ~a" id)))
+(define-traced-store-call store-read-content ((store memory-store) id start length)
+  (format nil "READ CONTENT ~a ~d ~d" id start length))
+(define-traced-store-call store-delete-content ((store memory-store) id)
+  (format nil "DELETE CONTENT ~a" id))
 (define-traced-store-call store-select ((store memory-store) class-name &key where order-by limit offset)
   (progn where order-by limit offset (format nil "SELECT ~(~a~)" class-name)))

@@ -7,17 +7,36 @@
   (:use #:cl #:tun.core)
   (:export #:start-server #:stop-server #:server-port #:tun-acceptor #:acceptor-application
            #:dispatch-web #:register-json-endpoint #:same-origin-p #:header-utf-8
-           #:https-request-p #:public-url))
+           #:https-request-p #:public-url #:mcp-caller #:close-after-answer
+           #:upload-admission #:upload-refusal #:signed-in-p #:*posted-files*
+           #:*large-body-bytes* #:*multipart-body-bytes* #:*large-body-places*
+           #:*large-body-seconds* #:*small-body-seconds* #:*header-seconds*
+           #:*place-body-bytes*))
 
 (in-package #:tun.http)
 
 (declaim (optimize (safety 3) (debug 2)))
 
 (defparameter *max-body-bytes* (* 2 1024 1024))
-(defparameter *max-header-bytes* (* 64 1024)
-  "Budget for the request line plus all header lines of one request.")
+(defparameter *max-header-bytes* (* 32 1024)
+  "Budget for the request line plus all header lines of one request: kept as
+text while it is read, about four times as much heap (core.md §7.5).")
 (defparameter *max-header-lines* 100
   "Most lines (request line + headers) one request may send before its body.")
+
+;;; Bodies that carry files (spec/files.md 4.3).
+(defparameter *large-body-bytes* (* 16 1024 1024)
+  "The largest body to /mcp, or to /api for a tool that takes files.")
+(defparameter *multipart-body-bytes* (* 26 1024 1024)
+  "The largest multipart/form-data body to a page.")
+(defparameter *large-body-places* 4
+  "How many requests with a body over *MAX-BODY-BYTES* are answered at once.")
+(defparameter *large-body-seconds* 120
+  "How long a body over *PLACE-BODY-BYTES* has to arrive, from when it is read.")
+(defparameter *small-body-seconds* 30
+  "How long a body of at most *PLACE-BODY-BYTES* has to arrive, from when it is read.")
+(defparameter *header-seconds* 30
+  "How long a request line and its headers have to arrive, from their first byte.")
 
 ;;; ------------------------------------------------------------------
 ;;; Bounded connection streams.  Hunchentoot and Chunga read the request line
@@ -30,37 +49,82 @@
 (define-condition request-too-large (error) ()
   (:report "Request line or headers exceed the size limit"))
 
+(define-condition request-too-slow (error) ()
+  (:report "Request line or headers did not arrive in time"))
+
 (defclass bounded-stream (sb-gray:fundamental-binary-input-stream sb-gray:fundamental-binary-output-stream)
   ((inner :initarg :inner :reader bounded-inner)
    (used :initform 0 :accessor bounded-used)
    (limit :initform *max-header-bytes* :accessor bounded-limit)
    (lines :initform 0 :accessor bounded-lines
-          :documentation "Line feeds seen while still in the header phase (NIL once the body may be read).")))
+          :documentation "Line feeds seen while still in the header phase (NIL once the
+body may be read).")
+   (close-after :initform nil :accessor bounded-close-after
+                :documentation "True when the connection ends after the answer being made.")
+   (header-deadline :initform nil :accessor bounded-header-deadline
+                    :documentation "When the request line and headers being read must
+have arrived, in internal real time; NIL before their first byte.")
+   (unread :initform 0 :accessor bounded-unread
+           :documentation "How many octets of a body left unread may still come
+before the connection ends.")))
 
-(defun bounded-overflow (stream)
+(defun answer-and-drop (stream status condition)
+  "Answer STATUS (431 or 408) on STREAM before a request's headers are read,
+with no body, and signal CONDITION, which ends the connection."
+  ;; The client may be gone; the connection ends either way.
   (ignore-errors
    (write-sequence (sb-ext:string-to-octets
-                    (format nil "HTTP/1.1 431 Request Header Fields Too Large~c~cConnection: close~c~cX-Tun-Request-Id: ~a~c~cContent-Length: 0~c~c~c~c"
+                    (format nil "HTTP/1.1 ~d ~a~c~cConnection: close~c~cX-Tun-Request-Id: ~a~c~c~
+                                 Content-Length: 0~c~c~c~c"
+                            status (if (= status 431)
+                                       "Request Header Fields Too Large"
+                                       "Request Timeout")
                             #\Return #\Newline #\Return #\Newline (new-id "req") #\Return #\Newline
                             #\Return #\Newline #\Return #\Newline)
                     :external-format :latin-1)
                    (bounded-inner stream))
    (finish-output (bounded-inner stream)))
-  (error 'request-too-large))
+  (error condition))
+
+(defun bounded-overflow (stream)
+  (answer-and-drop stream 431 'request-too-large))
 
 (defmethod stream-element-type ((stream bounded-stream)) '(unsigned-byte 8))
 (defmethod open-stream-p ((stream bounded-stream)) (open-stream-p (bounded-inner stream)))
 (defmethod close ((stream bounded-stream) &key abort) (close (bounded-inner stream) :abort abort))
 
+(defun header-timeout (stream)
+  "Answer 408 on STREAM, whose request line and headers did not arrive in
+*HEADER-SECONDS*, and end its connection."
+  (answer-and-drop stream 408 'request-too-slow))
+
+(defun read-header-byte (stream)
+  "The next byte of the request line or headers on STREAM, or :EOF, read by
+the deadline their first byte set: a sender that trickles them is answered
+408.  A byte already at hand is read without a deadline."
+  (let ((inner (bounded-inner stream))
+        (deadline (bounded-header-deadline stream)))
+    (cond ((or (null deadline) (listen inner)) (read-byte inner nil :eof))
+          (t (let ((left (/ (- deadline (get-internal-real-time)) internal-time-units-per-second)))
+               (when (<= left 0) (header-timeout stream))
+               (handler-case (sb-sys:with-deadline (:seconds left) (read-byte inner nil :eof))
+                 (sb-sys:deadline-timeout () (header-timeout stream))))))))
+
 (defmethod sb-gray:stream-read-byte ((stream bounded-stream))
   (when (>= (bounded-used stream) (bounded-limit stream))
     (bounded-overflow stream))
-  (let ((byte (read-byte (bounded-inner stream) nil :eof)))
+  (let ((byte (if (bounded-lines stream)
+                  (read-header-byte stream)
+                  (read-byte (bounded-inner stream) nil :eof))))
     (unless (eq byte :eof)
       (incf (bounded-used stream))
-      (when (and (eql byte 10) (bounded-lines stream)
-                 (> (incf (bounded-lines stream)) *max-header-lines*))
-        (bounded-overflow stream)))
+      (when (bounded-lines stream)
+        ;; The first byte of a request starts the clock for its headers.
+        (unless (bounded-header-deadline stream)
+          (setf (bounded-header-deadline stream)
+                (+ (get-internal-real-time) (* *header-seconds* internal-time-units-per-second))))
+        (when (and (eql byte 10) (> (incf (bounded-lines stream)) *max-header-lines*))
+          (bounded-overflow stream))))
     byte))
 
 (defmethod sb-gray:stream-read-sequence ((stream bounded-stream) sequence &optional (start 0) end)
@@ -86,14 +150,18 @@
   ((application :initarg :application :reader acceptor-application)
    (max-inflight :initarg :max-inflight :initform 64 :reader acceptor-max-inflight
                  :documentation "--max-inflight: requests processed at once; the rest get 503 at once.")
-   (inflight :initform (list 0) :reader acceptor-inflight-cell))
+   (inflight :initform (list 0) :reader acceptor-inflight-cell)
+   (large-bodies :initform (list 0) :reader acceptor-large-bodies-cell
+                 :documentation "Requests with a body over *MAX-BODY-BYTES* being answered."))
   (:default-initargs :access-log-destination nil))
 
 (defun inflight (acceptor) (car (acceptor-inflight-cell acceptor)))
 
 (defun shed ()
-  "503 at once: Retry-After 1 and the error overbelastet, as the API's error
-document on /api/, else as a JSON-RPC error -32001."
+  "503 at once, without reading the body: Retry-After 1 and the error
+overbelastet, as the API's error document on /api/, else as a JSON-RPC
+error -32001."
+  (refuse-body 503)
   (setf (hunchentoot:return-code*) 503
         (hunchentoot:header-out "Retry-After") "1"
         (hunchentoot:content-type*) "application/json; charset=utf-8")
@@ -115,11 +183,10 @@ spec/waiting.md 1)."
 
 (defun octets (string) (sb-ext:string-to-octets string :external-format :utf-8))
 
-(defun request-body-string ()
-  (let ((raw (hunchentoot:raw-post-data :force-binary t)))
-    (cond ((null raw) "")
-          (t (handler-case (sb-ext:octets-to-string raw :external-format :utf-8)
-               (error () "<invalid utf-8>"))))))
+(defun request-body-octets ()
+  "This request's body, read as octets: JSON is parsed from them as they are."
+  (or (hunchentoot:raw-post-data :force-binary t)
+      (make-array 0 :element-type '(unsigned-byte 8))))
 
 (defun header-utf-8 (name)
   "Header NAME decoded as UTF-8.  Hunchentoot reads header bytes as Latin-1;
@@ -134,26 +201,150 @@ like viewer:besøkende arrives intact.  Invalid UTF-8 is left as read."
               value)
         (error () value)))))
 
-(defun body-length-problem (method)
-  "An HTTP status when the request body must be refused, else NIL: 411 for
-any Transfer-Encoding (chunked bodies would be read without bound) and for a
-POST without Content-Length, 413 for a Content-Length above *MAX-BODY-BYTES*."
-  (let* ((header (hunchentoot:header-in* :content-length))
-         (length (and header (parse-integer header :junk-allowed t))))
-    (cond ((hunchentoot:header-in* :transfer-encoding) 411)
-          ((and length (> length *max-body-bytes*)) 413)
-          ((and (eq method :post) (null length)) 411)
-          (t nil))))
+(defun content-length ()
+  "This request's Content-Length: NIL without one, :INVALID when it is not
+plain digits (Hunchentoot joins repeated headers with commas, so several
+values are not), else its value."
+  (let ((header (hunchentoot:header-in* :content-length)))
+    (cond ((null header) nil)
+          ((or (zerop (length header)) (notevery (lambda (c) (char<= #\0 c #\9)) header)) :invalid)
+          ;; Longer than any bound: no need to read every digit.
+          ((> (length header) 15) most-positive-fixnum)
+          (t (parse-integer header)))))
+
+(defun multipart-request-p ()
+  "True for a multipart/form-data request: a form that may carry files."
+  (let ((type (hunchentoot:header-in* :content-type)))
+    (and type (string-prefix-p "multipart/form-data" (string-downcase (trim type))))))
+
+(defgeneric upload-admission (acceptor path)
+  (:documentation "Whether this request's session lets it post files to PATH
+(spec/files.md 4.3): :ADMITTED, :REFUSED when the page at PATH does not
+admit the person's role, :NO-SESSION without a signed-in person, or
+:CROSS-ORIGIN for a post another site's page sent.  The web UI decides;
+without it no one may.")
+  (:method (acceptor path)
+    (declare (ignore acceptor path))
+    :no-session))
+
+(defgeneric upload-refusal (acceptor status message)
+  (:documentation "The answer's body when a page's post is refused with STATUS
+and MESSAGE before its body is read, or when its parts cannot be read: the
+web UI answers a page.  The default answers MESSAGE as text.")
+  (:method (acceptor status message)
+    (declare (ignore acceptor status))
+    (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
+    message))
+
+(defun files-caller-p (acceptor tool &optional (actor (mcp-caller acceptor)))
+  "True when ACTOR, this request's caller, may send a body that carries files:
+TOOL, a tool's name, takes files and admits the caller's role, or, with TOOL
+NIL (/mcp), some tool that takes files does."
+  (let ((application (acceptor-application acceptor)))
+    (and actor
+         (some (lambda (op)
+                 (and op (tun.files:operation-takes-files-p op)
+                      (operation-visible-p op application)
+                      (actor-permits-p actor (operation-policy op))))
+               (if tool (list (find-operation-by-tool tool)) (all-operations)))
+         t)))
+
+(defun web-post-path-p (path)
+  "True for a POST to a page: not /mcp or /api, which take JSON."
+  (not (or (string= path "/mcp") (string-prefix-p "/api/" path))))
+
+(defparameter +cross-origin-refused+ "Skjemaet kom fra et annet nettsted og ble avvist."
+  "What a page's multipart post another site sent is told.")
+
+(defparameter *place-body-bytes* (* 256 1024)
+  "A body over this takes one of the *LARGE-BODY-PLACES* before it is read:
+what reading and parsing a body costs grows with it (core.md §7.5).")
+
+(defparameter +anonymous-large-refused+
+  "Uten å være logget inn kan du sende høyst 256 KB."
+  "Why a body over *PLACE-BODY-BYTES* from no known caller is refused.")
+
+(defgeneric signed-in-p (acceptor)
+  (:documentation "True when this request carries the session of a signed-in
+person (or, with claimed identity, a claimed actor).  The web UI decides;
+without it no one is.")
+  (:method (acceptor)
+    (declare (ignore acceptor))
+    nil))
+
+(defun body-decision (acceptor path method)
+  "Values the most octets this request's body may have; the status it is
+refused with before the body is read, or NIL; for a page's post the
+refusal's message when it is not the status's usual one; and whether the
+request takes one of the *LARGE-BODY-PLACES* (core.md §7.5, spec/files.md
+4.3).  It refuses 400 for a Content-Length that is not plain digits, 411
+for any Transfer-Encoding (chunked bodies would be read without bound) and
+for a POST without Content-Length, 401 or 403 for a multipart post another
+site sent or without a person who may send files there, and 413 for a body
+over its bound, or over *PLACE-BODY-BYTES* from a caller with no session,
+token or port secret (KNOWN-CALLER-P).  Every body over *PLACE-BODY-BYTES*
+takes a place."
+  (let* ((length (content-length))
+         (placed (and (integerp length) (> length *place-body-bytes*))))
+    (cond ((eq length :invalid) (values 0 400))
+          ((hunchentoot:header-in* :transfer-encoding) (values 0 411))
+          ((and (eq method :post) (null length)) (values 0 411))
+          ((null length) (values 0 nil))
+          ((and (eq method :post) (multipart-request-p) (web-post-path-p path))
+           (let ((admission (upload-admission acceptor path)))
+             (cond ((eq admission :cross-origin) (values 0 403 +cross-origin-refused+))
+                   ((eq admission :no-session) (values 0 401))
+                   ((<= length *max-body-bytes*) (values *max-body-bytes* nil nil placed))
+                   ((eq admission :refused) (values 0 403))
+                   ((> length *multipart-body-bytes*) (values 0 413))
+                   (t (values *multipart-body-bytes* nil nil t)))))
+          ((and placed (not (known-caller-p acceptor path)))
+           (values 0 413 +anonymous-large-refused+))
+          ((<= length *max-body-bytes*) (values *max-body-bytes* nil nil placed))
+          ((and (eq method :post) (<= length *large-body-bytes*)
+                (or (and (string= path "/mcp") (files-caller-p acceptor nil))
+                    (and (string-prefix-p "/api/" path) (files-caller-p acceptor (subseq path 5)))))
+           (values *large-body-bytes* nil nil t))
+          (t (values 0 413)))))
+
+(defun large-body-p ()
+  "True when this request's body is over the usual bound: one that carries files."
+  (let ((length (content-length)))
+    (and length (> length *max-body-bytes*))))
+
+(defun close-after-answer (&optional (unread 0))
+  "End this request's connection once its answer is sent, whatever the
+client asked: what it sends next, such as an unread body, is never read as
+another request.  Hunchentoot decides keep-alive only as it sends the
+headers, so the connection's stream carries the decision to
+RESET-CONNECTION-STREAM, which ends the connection after the answer, and
+first drops up to UNREAD octets of a body the client may still be sending."
+  (setf hunchentoot::*close-hunchentoot-stream* t)
+  (unless hunchentoot::*headers-sent*
+    (setf (hunchentoot:header-out :connection) "close"))
+  (let ((stream (connection-stream (hunchentoot::content-stream hunchentoot:*request*))))
+    (when stream
+      (setf (bounded-close-after stream) t
+            (bounded-unread stream) unread))))
+
+(defun connection-stream (stream)
+  "The connection's BOUNDED-STREAM under STREAM, which may be it or the
+chunked stream Hunchentoot puts over it for a chunked body; NIL when it is
+neither."
+  (typecase stream
+    (bounded-stream stream)
+    (chunga:chunked-stream (connection-stream (chunga:chunked-stream-stream stream)))
+    (t nil)))
 
 (defun refuse-body (status)
-  "Answer STATUS without reading the body.  Hunchentoot's SEND-RESPONSE
-otherwise reads the whole declared body (allocating it) before replying, on
-any path; marking it consumed and closing the connection avoids that."
+  "Answer STATUS without reading the body, and end the connection after it.
+Hunchentoot's SEND-RESPONSE otherwise reads the whole declared body
+(allocating it) before replying, on any path, and keep-alive would read the
+unread body as the next request; marking it consumed and closing the
+connection avoids both."
   (setf (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data) t
-        hunchentoot::*close-hunchentoot-stream* t
-        hunchentoot::*finish-processing-socket* t
-        (hunchentoot:header-out :connection) "close"
         (hunchentoot:return-code*) status)
+  (close-after-answer (let ((length (content-length))) (if (integerp length) length 0)))
   "")
 
 (defun bearer-token ()
@@ -299,6 +490,133 @@ returned, or NIL when the stream already holds the answer."
                    (write-event stream (format nil "event: message~%data: ~a~%~%" text)))
                  nil))))))
 
+;;; A body that may carry files (spec/files.md 4.3), from a caller who may
+;;; send them: it is parsed with the long strings a file's data needs, and
+;;; refused unless that data is the only long string in it, keys included.
+
+(defparameter +usual-string-length+ 1048576
+  "The longest string anywhere but in a file's data (core.md §7.5).")
+
+(defun short-string-p (string)
+  "True when STRING is no longer than +USUAL-STRING-LENGTH+ and is not a
+file's data set aside, which was."
+  (and (<= (length string) +usual-string-length+)
+       (not (tun.files:set-aside-p string))))
+
+(defun short-json-p (json)
+  "True when no string in JSON, value or key, is longer than +USUAL-STRING-LENGTH+."
+  (cond ((stringp json) (short-string-p json))
+        ((hash-table-p json)
+         (loop for key being the hash-keys of json using (hash-value value)
+               always (and (short-string-p key) (short-json-p value))))
+        ((vectorp json) (every #'short-json-p json))
+        (t t)))
+
+(defun short-except-p (object long-key)
+  "True when OBJECT, a JSON object, has no long string but under LONG-KEY."
+  (loop for key being the hash-keys of object using (hash-value value)
+        always (and (short-string-p key)
+                    (or (equal key long-key) (short-json-p value)))))
+
+(defun short-file-p (file)
+  "True when FILE, one item of a FILES value, has no long string but a
+string under data."
+  (if (hash-table-p file)
+      (loop for key being the hash-keys of file using (hash-value value)
+            always (and (short-string-p key)
+                        (or (and (equal key "data") (stringp value)) (short-json-p value))))
+      (short-json-p file)))
+
+(defun only-file-data-long-p (arguments op)
+  "True when no string in ARGUMENTS, OP's, is long but a file's data in one
+of OP's parameters of type FILES."
+  (loop for key being the hash-keys of arguments using (hash-value value)
+        for parameter = (find key (operation-parameters op) :key #'parameter-json-name
+                                                            :test #'string=)
+        always (and (short-string-p key)
+                    (if (and parameter (tun.files:files-parameter-p parameter) (vectorp value))
+                        (every #'short-file-p value)
+                        (short-json-p value)))))
+
+(defun parse-file-json (body)
+  "Values BODY, its files' data set aside, parsed, and :PARSED; or NIL and
+:NOT-JSON, or NIL and :TOO-MANY when it holds more values than a request
+may."
+  (handler-case (values (parse-request-json body) :parsed)
+    (json-too-many-values () (values nil :too-many))
+    (json-parse-failure () (values nil :not-json))))
+
+(defun call-with-file-data-set-aside (function)
+  "Call FUNCTION with this request's body, each long string in it a file's
+data set aside (TUN.FILES:SET-ASIDE-FILE-DATA) for the call to read; or
+with NIL when what is left is longer than *MAX-BODY-BYTES*, which is all a
+body may hold besides its files' data."
+  (let* ((tun.files:*set-aside* (make-hash-table :test 'equal))
+         (rest (tun.files:set-aside-file-data (request-body-octets))))
+    (funcall function (and (<= (length rest) *max-body-bytes*) rest))))
+
+(defparameter +rest-too-long+ "Utenom filenes innhold kan en forespørsel være høyst 2 MB."
+  "Why a body is refused when what it holds besides its files' data is over 2 MiB.")
+
+(defparameter +large-body-refused+ "Over 2 MB tas bare imot for et verktøy som tar filer."
+  "Why a body over 2 MiB that does not call a tool that takes files is refused.")
+
+(defparameter +long-string-refused+ "Bare innholdet i en fil kan være lengre enn 1 MB."
+  "Why a body with a long string that is not a file's data is refused.")
+
+(defun files-call-refusal (request)
+  "Why REQUEST, a /mcp body parsed by PARSE-FILE-JSON, is refused, or NIL:
+a body over 2 MiB must be one tools/call of a tool that takes files, and no
+string in it but its files' data may be long."
+  (let* ((params (and (hash-table-p request) (jget request "params")))
+         (name (and (hash-table-p params) (jget params "name")))
+         (op (and (stringp name) (find-operation-by-tool name)))
+         (arguments (and op (jget params "arguments")))
+         (files-call (and (equal (jget request "method") "tools/call")
+                          op (tun.files:operation-takes-files-p op) (hash-table-p arguments))))
+    (cond ((and (large-body-p) (not files-call)) +large-body-refused+)
+          ((short-json-p request) nil)
+          ((and files-call
+                (short-except-p request "params")
+                (short-except-p params "arguments")
+                (only-file-data-long-p arguments op))
+           nil)
+          (t +long-string-refused+))))
+
+(defun refuse-files-call (application message)
+  "Answer a /mcp body FILES-CALL-REFUSAL refuses: 413, with the JSON-RPC
+error -32600 and MESSAGE, retained as a rejected request."
+  (with-request-record (:id *request-id* :kind :mcp :tool "mcp" :input (jobj)
+                        :application application
+                        :at (let ((*application* application)) (now)))
+    (set-request-outcome *request-record* "rejected" :code :invalid-input :message message))
+  (setf (hunchentoot:return-code*) 413
+        (hunchentoot:content-type*) "application/json; charset=utf-8")
+  (octets (to-json-string (jobj "jsonrpc" "2.0" "id" :null
+                                "error" (jobj "code" -32600 "message" message)))))
+
+(defun answer-mcp (acceptor actor credential body &optional (parsed nil parsed-p))
+  "Answer BODY, a /mcp request's octets, as ACTOR; with PARSED, its JSON
+already parsed, never parsed again."
+  (let ((application (acceptor-application acceptor)))
+    (multiple-value-bind (status json session text)
+        (flet ((handle ()
+                 (if parsed-p
+                     (tun.mcp:handle-mcp application actor body :credential credential
+                                                                :parsed parsed)
+                     (tun.mcp:handle-mcp application actor body :credential credential))))
+          (if (accepts-event-stream-p)
+              (call-streaming #'handle)
+              (let ((*await-limit* +plain-wait-seconds+)) (handle))))
+      (cond ((null status) nil)         ; streamed
+            (t (setf (hunchentoot:return-code*) status)
+               (when session (setf (hunchentoot:header-out "Mcp-Session-Id") session))
+               (cond (json
+                      (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
+                      (octets text))
+                     (t (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
+                        "")))))))
+
 (defun serve-mcp (acceptor)
   (let ((application (acceptor-application acceptor)))
     (when (foreign-origin)
@@ -308,23 +626,24 @@ returned, or NIL when the stream already holds the answer."
                                (foreign-origin)))))
     (multiple-value-bind (actor credential) (mcp-caller acceptor)
       (multiple-value-bind (status code message authenticate) (caller-refusal acceptor credential)
-        (if status
-            (refuse-caller application :mcp "mcp" status code message authenticate)
-            (multiple-value-bind (status json session text)
-                (flet ((handle ()
-                         (tun.mcp:handle-mcp application actor (request-body-string)
-                                             :credential credential)))
-                  (if (accepts-event-stream-p)
-                      (call-streaming #'handle)
-                      (let ((*await-limit* +plain-wait-seconds+)) (handle))))
-              (cond ((null status) nil)   ; streamed
-                    (t (setf (hunchentoot:return-code*) status)
-                       (when session (setf (hunchentoot:header-out "Mcp-Session-Id") session))
-                       (cond (json
-                              (setf (hunchentoot:content-type*) "application/json; charset=utf-8")
-                              (octets text))
-                             (t (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
-                                ""))))))))))
+        (cond (status
+               (refuse-caller application :mcp "mcp" status code message authenticate))
+              ((files-caller-p acceptor nil actor)
+               ;; A caller who may send files: a file's data may be long.
+               (call-with-file-data-set-aside
+                (lambda (body)
+                  (multiple-value-bind (request outcome)
+                      (if body (parse-file-json body) (values nil :too-long))
+                    (let ((refusal (case outcome
+                                     (:too-long +rest-too-long+)
+                                     (:too-many tun.mcp:+too-many-values+)
+                                     (:parsed (files-call-refusal request))
+                                     (t (and (large-body-p) +large-body-refused+)))))
+                      (cond (refusal (refuse-files-call application refusal))
+                            ((eq outcome :parsed)
+                             (answer-mcp acceptor actor credential body request))
+                            (t (answer-mcp acceptor actor credential body))))))))
+              (t (answer-mcp acceptor actor credential (request-body-octets))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The HTTP API (spec/api.md): POST /api/TOOL calls one tool, its body the
@@ -345,38 +664,67 @@ request that outcome when no operation gave it one."
   (api-answer status (jobj "error" (jobj "code" code "message" message))))
 
 (defun api-arguments (body)
-  "The arguments a request's BODY holds, a JSON object; {} for an empty body.
-NIL when it is not an object."
-  (if (zerop (length (string-trim '(#\Space #\Tab #\Return #\Newline) body)))
+  "The arguments a request's BODY, its octets, holds, a JSON object; {} for
+an empty body.  NIL when it is not an object, :TOO-MANY when it holds more
+values than a request may, or the JSON-NUMBER-OUT-OF-RANGE refusal of a
+number in it (core.md §7.5)."
+  (if (every (lambda (octet) (member octet '(32 9 13 10))) body)
       (jobj)
-      (let ((json (handler-case (parse-json body) (json-parse-failure () nil))))
-        (and (hash-table-p json) json))))
+      (let ((json (handler-case (parse-request-json body)
+                    (json-too-many-values () :too-many)
+                    (json-number-out-of-range (refusal) refusal)
+                    (json-parse-failure () nil))))
+        (and (or (hash-table-p json) (eq json :too-many) (typep json 'json-number-out-of-range))
+             json))))
 
 (defun call-api (application actor credential tool)
   "Call TOOL as ACTOR with the request body's arguments, retained as a
-request of kind api that the operation takes over."
+request of kind api that the operation takes over.  For a tool that takes
+files, from a caller it admits, the files' data is set aside before the
+body is parsed, and the body refused when anything else is long
+(spec/files.md 4.3)."
   (let ((*credential* credential))
     (with-request-record (:id *request-id* :kind :api :claimable t :application application
                           :at (let ((*application* application)) (now))
                           :actor (actor-string actor) :credential credential
                           :tool tool :input (jobj))
-      (let ((arguments (api-arguments (request-body-string))))
-        (if (null arguments)
-            (api-failure 400 "invalid_json" "Innholdet må være ett JSON-objekt: verktøyets argumenter")
-            (progn
-              (setf (request-input *request-record*) (recorded-input (make-input arguments)))
-              (handler-case
-                  (api-answer 200 (call-tool tool arguments :application application :actor actor))
-                (operation-error (e)
-                  (api-answer (error-status (operation-error-code e)) (operation-error-json e)))
-                (unknown-tool ()
-                  (api-failure 404 "unknown_tool" (format nil "Ukjent verktøy: ~a" tool)))
-                ;; SERIOUS-CONDITION, as on /mcp: a stack or heap exhaustion
-                ;; fails this request alone.
-                (serious-condition (e)
-                  (ignore-errors (format *error-output* "~&;; tun api: internal ~a in ~a: ~a~%"
-                                         (type-of e) tool e))
-                  (api-failure 500 "internal_error" "Intern feil")))))))))
+      (let* ((op (find-operation-by-tool tool))
+             (files (and op (tun.files:operation-takes-files-p op)
+                         (actor-permits-p actor (operation-policy op)))))
+        (if files
+            (call-with-file-data-set-aside
+             (lambda (body)
+               (if body
+                   (answer-api application actor tool op t (api-arguments body))
+                   (api-failure 413 "invalid_input" +rest-too-long+))))
+            (answer-api application actor tool op nil (api-arguments (request-body-octets))))))))
+
+(defun answer-api (application actor tool op files arguments)
+  "Answer the call of TOOL, OP's, as ACTOR with ARGUMENTS, what API-ARGUMENTS
+made of the body; FILES when the body may carry files."
+  (cond
+    ((null arguments)
+     (api-failure 400 "invalid_json" "Innholdet må være ett JSON-objekt: verktøyets argumenter"))
+    ((eq arguments :too-many)
+     (api-failure 413 "invalid_input" tun.mcp:+too-many-values+))
+    ((typep arguments 'json-number-out-of-range)
+     (api-failure 400 "invalid_json" (json-number-message arguments)))
+    ((and files (not (only-file-data-long-p arguments op)))
+     (api-failure 413 "invalid_input" +long-string-refused+))
+    (t
+     (setf (request-input *request-record*) (recorded-input (make-input arguments) op))
+     (handler-case
+         (api-answer 200 (call-tool tool arguments :application application :actor actor))
+       (operation-error (e)
+         (api-answer (error-status (operation-error-code e)) (operation-error-json e)))
+       (unknown-tool ()
+         (api-failure 404 "unknown_tool" (format nil "Ukjent verktøy: ~a" (shown-name tool))))
+       ;; SERIOUS-CONDITION, as on /mcp: a stack or heap exhaustion fails
+       ;; this request alone.
+       (serious-condition (e)
+         (ignore-errors (format *error-output* "~&;; tun api: internal ~a in ~a: ~a~%"
+                                (type-of e) tool e))
+         (api-failure 500 "internal_error" "Intern feil"))))))
 
 (defun serve-api (acceptor tool)
   "POST /api/TOOL (spec/api.md): who calls is decided as on /mcp."
@@ -426,12 +774,40 @@ and readable from any page; 404 without a WorkOS strategy."
 (defmethod hunchentoot:initialize-connection-stream ((acceptor tun-acceptor) stream)
   (make-instance 'bounded-stream :inner (call-next-method)))
 
+(defparameter *drain-seconds* 2
+  "How long the rest of a refused body is read and dropped before its
+connection closes.")
+
+(defun drain-unread (stream)
+  "Read and drop the rest of a body left unread on STREAM, a BOUNDED-STREAM:
+its BOUNDED-UNREAD octets, at most *MULTIPART-BODY-BYTES*, for at most
+*DRAIN-SECONDS*.  Closed while the client still sends, the connection would
+be reset, and the client could lose the answer it was sent."
+  (let ((buffer (make-array (min 65536 (max 1 (bounded-unread stream)))
+                            :element-type '(unsigned-byte 8)))
+        (left (min (bounded-unread stream) *multipart-body-bytes*)))
+    (handler-case
+        (sb-sys:with-deadline (:seconds *drain-seconds*)
+          (loop for read = (if (plusp left)
+                               (read-sequence buffer (bounded-inner stream)
+                                              :end (min left (length buffer)))
+                               0)
+                while (plusp read)
+                do (decf left read)))
+      ((or error sb-sys:deadline-timeout) () nil))))
+
 (defmethod hunchentoot:reset-connection-stream ((acceptor tun-acceptor) stream)
-  (let ((stream (call-next-method)))
-    (when (typep stream 'bounded-stream)
-      (setf (bounded-used stream) 0
-            (bounded-lines stream) 0
-            (bounded-limit stream) *max-header-bytes*))
+  (let* ((stream (call-next-method))
+         (bounded (connection-stream stream)))
+    (cond ((null bounded))
+          ((bounded-close-after bounded)
+           ;; CLOSE-AFTER-ANSWER: Hunchentoot's loop ends here and closes.
+           (drain-unread bounded)
+           (setf hunchentoot::*finish-processing-socket* t))
+          (t (setf (bounded-used bounded) 0
+                   (bounded-lines bounded) 0
+                   (bounded-header-deadline bounded) nil
+                   (bounded-limit bounded) *max-header-bytes*)))
     stream))
 
 (defun allow-body (length)
@@ -452,12 +828,25 @@ and readable from any page; 404 without a WorkOS strategy."
     (setf (hunchentoot:header-out "X-Tun-Request-Id") *request-id*)
     ;; Hunchentoot handles ERROR; a stack or heap exhaustion while handling
     ;; must also end as a 500 for this request, not reach the debugger.
-    (handler-case (dispatch-request acceptor request)
-      (serious-condition (c)
-        (ignore-errors (format *error-output* "~&;; tun http: ~a while handling ~a: ~a~%"
-                               (type-of c) (hunchentoot:script-name request) c))
-        (setf (hunchentoot:return-code*) 500)
-        ""))))
+    (prog1 (handler-case (dispatch-request acceptor request)
+             (serious-condition (c)
+               ;; Reporting must not fail the answer: the condition may not print.
+               (ignore-errors (format *error-output* "~&;; tun http: ~a while handling ~a: ~a~%"
+                                      (type-of c) (hunchentoot:script-name request) c))
+               (setf (hunchentoot:return-code*) 500)
+               ""))
+      (leave-unread-body))))
+
+(defun leave-unread-body ()
+  "When this request declared a body that nothing read, such as a post to
+/health or one sent to HTTPS, end the connection after the answer instead:
+Hunchentoot would otherwise read the body before it answers, with no
+deadline but its read timeout (core.md §7.5)."
+  (let ((length (content-length)))
+    (when (and (integerp length) (plusp length)
+               (null (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data)))
+      (setf (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data) t)
+      (close-after-answer length))))
 
 (defun https-request-p ()
   "True when the browser reached us over HTTPS, directly or through the proxy."
@@ -483,55 +872,287 @@ redirect's location, or NIL."
                   (string-equal (hunchentoot:header-in* :x-forwarded-proto) "http"))
              (public-url acceptor (hunchentoot:request-uri*)))))))
 
+(defparameter +upload-refusals+
+  '((400 . "Skjemaet kom ikke riktig fram. Prøv igjen.")
+    (401 . "Du må være logget inn for å sende filer. Logg inn og prøv igjen.")
+    (403 . "Denne siden er ikke for deg, så den tar ikke imot filer fra deg.")
+    (413 . "Skjemaet er for stort: høyst 25 MB med filer om gangen.")
+    (503 . "Serveren tar imot mange filer akkurat nå. Prøv igjen om et øyeblikk."))
+  "What a page's multipart post refused before its body is read is told.")
+
+(defun refuse-request (acceptor status &optional message)
+  "Answer STATUS without reading the body: to a page's multipart post, or a
+page's post refused with MESSAGE, a page that says why (UPLOAD-REFUSAL),
+with MESSAGE or the status's own."
+  (refuse-body status)
+  (when (= status 503)
+    (setf (hunchentoot:header-out "Retry-After") "1"))
+  (if (and (web-post-path-p (hunchentoot:script-name*)) (or (multipart-request-p) message))
+      (upload-refusal acceptor status (or message (cdr (assoc status +upload-refusals+))))
+      ""))
+
 (defun dispatch-request (acceptor request)
   (let* ((path (hunchentoot:script-name request))
          (method (hunchentoot:request-method request))
          (upgrade (https-upgrade acceptor method)))
-    (cond ((body-length-problem method)        ; first: before anything reads the body
-           (refuse-body (body-length-problem method)))
-          ((string= path "/health")
-           (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
-           "ok")
-          (upgrade
-           (setf (hunchentoot:return-code*) 301
-                 (hunchentoot:header-out :location) upgrade)
-           "")
-          (t (call-bounded acceptor (lambda () (dispatch-bounded acceptor request)))))))
+    (multiple-value-bind (bound refusal message placed) (body-decision acceptor path method)
+      (cond (refusal                    ; first: before anything reads the body
+             (refuse-request acceptor refusal message))
+            ((string= path "/health")
+             (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
+             "ok")
+            (upgrade
+             (setf (hunchentoot:return-code*) 301
+                   (hunchentoot:header-out :location) upgrade)
+             "")
+            (t (call-bounded acceptor
+                             (lambda () (dispatch-bounded acceptor request bound placed))))))))
 
-(defvar *json-endpoints* (make-hash-table :test 'equal))
-(defun register-json-endpoint (path handler)
+(defvar *json-endpoints* (make-hash-table :test 'equal)
+  "Path -> (HANDLER . AUTHORIZE) of each JSON port REGISTER-JSON-ENDPOINT made.")
+
+(defun register-json-endpoint (path handler &key authorize)
+  "Serve POST PATH with HANDLER, a function of the body's JSON and the
+X-Tun-Inbound-Secret header's value that values a status and a JSON
+answer.  AUTHORIZE, when given, is a function of that secret, called before
+the body is parsed: NIL answers 403 and the body is never parsed."
   (when (gethash path *json-endpoints*) (extension-error "HTTP endpoint ~a is already registered" path))
-  (setf (gethash path *json-endpoints*) handler))
-(defun serve-json-endpoint (acceptor handler)
-  (handler-case
-      (with-application ((acceptor-application acceptor))
-        (let ((body (parse-json (hunchentoot:raw-post-data :force-text t))))
-          (multiple-value-bind (status result)
-              (funcall handler body
-                (let ((header (hunchentoot:header-in* "X-Tun-Inbound-Secret")))
-                  (when header
-                    (handler-case
-                        (sb-ext:octets-to-string (sb-ext:string-to-octets header :external-format :latin-1)
-                                                :external-format :utf-8)
-                      (error () nil)))))
-            (setf (hunchentoot:return-code*) status (hunchentoot:content-type*) "application/json; charset=utf-8")
-            (to-json-string result))))
-    (operation-error (error)
-      (setf (hunchentoot:return-code*) 422 (hunchentoot:content-type*) "application/json; charset=utf-8")
-      (to-json-string (operation-error-json error)))
-    (error ()
-      (setf (hunchentoot:return-code*) 422 (hunchentoot:content-type*) "application/json; charset=utf-8")
-      (to-json-string (jobj "error" (jobj "code" "invalid_input" "message" "Ugyldig JSON"))))))
+  (setf (gethash path *json-endpoints*) (cons handler authorize)))
 
-(defun dispatch-bounded (acceptor request)
+(defun inbound-secret ()
+  "The X-Tun-Inbound-Secret header as UTF-8, or NIL."
+  (let ((header (hunchentoot:header-in* "X-Tun-Inbound-Secret")))
+    (when header
+      (handler-case
+          (sb-ext:octets-to-string (sb-ext:string-to-octets header :external-format :latin-1)
+                                   :external-format :utf-8)
+        (error () nil)))))
+
+(defun serve-json-endpoint (acceptor endpoint)
+  "Answer a POST to ENDPOINT, (HANDLER . AUTHORIZE) of REGISTER-JSON-ENDPOINT."
+  (destructuring-bind (handler . authorize) endpoint
+    (flet ((answer (status json)
+             (setf (hunchentoot:return-code*) status
+                   (hunchentoot:content-type*) "application/json; charset=utf-8")
+             (to-json-string json)))
+      (handler-case
+          (with-application ((acceptor-application acceptor))
+            (let ((secret (inbound-secret)))
+              (if (and authorize (not (funcall authorize secret)))
+                  (answer 403 (jobj "error" (jobj "code" "forbidden"
+                                                  "message" "Ugyldig hemmelighet")))
+                  (multiple-value-call #'answer
+                    (funcall handler (parse-request-json (request-body-octets)) secret)))))
+        (operation-error (error)
+          (answer 422 (operation-error-json error)))
+        (json-number-out-of-range (refusal)
+          (answer 400 (jobj "error" (jobj "code" "invalid_json"
+                                          "message" (json-number-message refusal)))))
+        (json-too-many-values ()
+          (answer 413 (jobj "error" (jobj "code" "invalid_input"
+                                          "message" tun.mcp:+too-many-values+))))
+        (error ()
+          (answer 422 (jobj "error" (jobj "code" "invalid_input" "message" "Ugyldig JSON"))))))))
+
+(defun known-caller-p (acceptor path)
+  "True when this request to PATH comes from a caller Tun knows before its
+body is read: on /mcp and /api a token (or a claimed actor), on a JSON
+port with :AUTHORIZE its secret, elsewhere a signed-in person's session
+(SIGNED-IN-P).  Only such a caller may send a body over *PLACE-BODY-BYTES*
+(core.md §7.5)."
+  (let ((endpoint (gethash path *json-endpoints*)))
+    (cond ((or (string= path "/mcp") (string-prefix-p "/api/" path))
+           (and (mcp-caller acceptor) t))
+          (endpoint
+           (and (cdr endpoint)
+                (handler-case (with-application ((acceptor-application acceptor))
+                                (funcall (cdr endpoint) (inbound-secret)))
+                  (error () nil))
+                t))
+          (t (signed-in-p acceptor)))))
+
+(defun call-with-large-place (acceptor function)
+  "Call FUNCTION holding one of the *LARGE-BODY-PLACES* until it returns: the
+place is taken before the body is read and kept while the request is
+answered (spec/files.md 4.3).  With every place taken, answer 503 without
+reading the body."
+  (let ((cell (acceptor-large-bodies-cell acceptor)))
+    (if (> (sb-ext:atomic-incf (car cell)) (1- *large-body-places*))
+        (progn (sb-ext:atomic-decf (car cell))
+               (if (web-post-path-p (hunchentoot:script-name*))
+                   (refuse-request acceptor 503)
+                   ;; As the error document on /api, a JSON-RPC error on /mcp.
+                   (shed)))
+        (unwind-protect (funcall function)
+          (sb-ext:atomic-decf (car cell))))))
+
+(defun read-body-in-time (seconds)
+  "Read this request's body within SECONDS; NIL when it did not arrive in
+time, whether it came too slowly or stopped coming, which the connection's
+read timeout ends.  Hunchentoot keeps what was read for RAW-POST-DATA.
+SBCL's deadline ends only a blocking read of the connection, so nothing
+else is unwound."
+  (handler-case (sb-sys:with-deadline (:seconds seconds)
+                  (hunchentoot:raw-post-data :force-binary t)
+                  t)
+    ((or sb-sys:deadline-timeout sb-sys:io-timeout) () nil)))
+
+(defvar *posted-files* '()
+  "While a page's multipart post is answered: its parts with a file, as
+(NAME FILENAME HANDLE) in order, each HANDLE in TUN.FILES:*UPLOADS*.")
+
+(defun call-with-posted-form (acceptor function)
+  "Call FUNCTION with this multipart post's parts read (spec/files.md 4.3):
+its text parts as Hunchentoot's post parameters, its files in *POSTED-FILES*.
+A post Tun does not read is answered with a page that says why."
+  (handler-case
+      (multiple-value-bind (texts files)
+          (let ((body (or (hunchentoot:raw-post-data :force-binary t)
+                          (make-array 0 :element-type '(unsigned-byte 8)))))
+            ;; Marked as read and its parts given as the post parameters, so
+            ;; Hunchentoot never parses the body itself, which would write
+            ;; every file to a temporary file.
+            (setf (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data) t)
+            (tun.files:parse-multipart
+             body (tun.files:multipart-boundary (hunchentoot:header-in* :content-type))))
+        (setf (slot-value hunchentoot:*request* 'hunchentoot::post-parameters) texts)
+        (let* ((tun.files:*uploads* (make-hash-table :test 'equal))
+               (*posted-files* (loop for (name filename octets) in files
+                                     collect (list name filename
+                                                   (tun.files:register-upload filename octets)))))
+          (funcall function)))
+    (tun.files:multipart-refused (refusal)
+      (setf (hunchentoot:return-code*) (tun.files:multipart-refused-status refusal))
+      (upload-refusal acceptor (tun.files:multipart-refused-status refusal)
+                      (tun.files:multipart-refused-message refusal)))))
+
+(defparameter +most-form-pairs+ 1000 "The most fields a urlencoded post has.")
+(defparameter +most-form-name+ 1024 "The longest name of a urlencoded post's field.")
+(defparameter +most-form-value+ (* 1024 1024) "The longest value of a urlencoded post's field.")
+
+(defun urlencoded-request-p ()
+  "True for an application/x-www-form-urlencoded request: a plain form."
+  (let ((type (hunchentoot:header-in* :content-type)))
+    (and type (string-prefix-p "application/x-www-form-urlencoded" (string-downcase (trim type))))))
+
+(defun walk-form-text (octets start end emit)
+  "Call EMIT with each character's code that OCTETS from START to END encode
+in a urlencoded form: + is a space, %XX an octet, and the octets UTF-8,
+each invalid sequence one U+FFFD.  Nothing is made on the way."
+  (let ((i start))
+    (labels ((hex (index) (digit-char-p (code-char (aref octets index)) 16))
+             (next ()
+               ;; The next octet, or NIL at the end.
+               (when (< i end)
+                 (let ((octet (aref octets i)))
+                   (cond ((= octet 43) (incf i) 32)
+                         ((and (= octet 37) (<= (+ i 3) end) (hex (+ i 1)) (hex (+ i 2)))
+                          (prog1 (+ (* 16 (hex (+ i 1))) (hex (+ i 2))) (incf i 3)))
+                         (t (incf i) octet)))))
+             (continuation ()
+               ;; The next octet's six bits when it continues a sequence, else
+               ;; NIL with nothing consumed.
+               (let ((mark i) (octet (next)))
+                 (if (and octet (= (logand octet #xC0) #x80))
+                     (logand octet #x3F)
+                     (progn (setf i mark) nil)))))
+      (loop for octet = (next)
+            while octet
+            do (funcall emit
+                        (multiple-value-bind (more least code)
+                            (cond ((< octet #x80) (values 0 0 octet))
+                                  ((= (logand octet #xE0) #xC0) (values 1 #x80 (logand octet #x1F)))
+                                  ((= (logand octet #xF0) #xE0)
+                                   (values 2 #x800 (logand octet #x0F)))
+                                  ((= (logand octet #xF8) #xF0)
+                                   (values 3 #x10000 (logand octet #x07)))
+                                  (t (values nil 0 0)))
+                          (block sequence
+                            (unless more (return-from sequence #xFFFD))
+                            (dotimes (k more)
+                              (let ((bits (continuation)))
+                                (unless bits (return-from sequence #xFFFD))
+                                (setf code (logior (ash code 6) bits))))
+                            ;; Overlong, past Unicode, or a surrogate.
+                            (if (or (< code least) (> code #x10FFFF) (<= #xD800 code #xDFFF))
+                                #xFFFD
+                                code))))))))
+
+(defun form-decode (octets start end most)
+  "The text OCTETS from START to END encode in a urlencoded form, as one
+string made once at its length (WALK-FORM-TEXT); NIL when it is longer
+than MOST characters."
+  (let ((length 0))
+    (walk-form-text octets start end (lambda (code) (declare (ignore code)) (incf length)))
+    (when (<= length most)
+      (let ((text (make-string length)) (at 0))
+        (walk-form-text octets start end
+                        (lambda (code) (setf (schar text at) (code-char code)) (incf at)))
+        text))))
+
+(defun form-pairs (octets)
+  "The fields of OCTETS, a urlencoded body, as (NAME . VALUE) in order (core.md
+§7.5).  Counted before anything is made of them: more than
++MOST-FORM-PAIRS+ fields, or a name or value past its bound, signals
+TUN.FILES:MULTIPART-REFUSED with 413."
+  (flet ((refuse (message) (error 'tun.files:multipart-refused :status 413 :message message)))
+    (when (> (1+ (count 38 octets)) +most-form-pairs+)
+      (refuse (format nil "Skjemaet har for mange felt (høyst ~,,' :d)." +most-form-pairs+)))
+    (loop for start = 0 then (1+ end)
+          for end = (or (position 38 octets :start start) (length octets))
+          for equals = (or (position 61 octets :start start :end end) end)
+          ;; A name or value percent-encoded is at most three times as long.
+          when (or (> (- equals start) (* 3 +most-form-name+))
+                   (> (- end equals) (* 3 +most-form-value+)))
+            do (refuse "Et felt i skjemaet er for langt.")
+          when (< start end)
+            collect (let ((name (form-decode octets start equals +most-form-name+))
+                          (value (form-decode octets (min end (1+ equals)) end +most-form-value+)))
+                      (unless (and name value)
+                        (refuse "Et felt i skjemaet er for langt."))
+                      (cons name value))
+          while (< end (length octets)))))
+
+(defun call-with-form-pairs (acceptor function)
+  "Call FUNCTION with this urlencoded post's fields read by Tun, within their
+bounds, as Hunchentoot's post parameters: Hunchentoot never parses the body
+itself, which would make a table of any number of pairs.  A post past the
+bounds is answered with a page that says why."
+  (handler-case
+      (let ((pairs (form-pairs (or (hunchentoot:raw-post-data :force-binary t)
+                                   (make-array 0 :element-type '(unsigned-byte 8))))))
+        (setf (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data) t
+              (slot-value hunchentoot:*request* 'hunchentoot::post-parameters) pairs)
+        (funcall function))
+    (tun.files:multipart-refused (refusal)
+      (setf (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data) t)
+      (setf (hunchentoot:return-code*) (tun.files:multipart-refused-status refusal))
+      (upload-refusal acceptor (tun.files:multipart-refused-status refusal)
+                      (tun.files:multipart-refused-message refusal)))))
+
+(defun dispatch-bounded (acceptor request bound placed)
+  "Answer REQUEST, its body at most BOUND octets; PLACED, holding one of the
+large-body places from before its body is read until it is answered.  A
+body is read first, within *SMALL-BODY-SECONDS*, or *LARGE-BODY-SECONDS*
+when PLACED, and answered 408 when it does not arrive in time, so a slow
+sender holds a request's place for a bounded time."
+  (let ((length (content-length)))
+    (when (and length (<= length bound))
+      (allow-body length))
+    (flet ((read-then-dispatch (seconds)
+             (if (read-body-in-time seconds)
+                 (dispatch-read acceptor request)
+                 (refuse-body 408))))
+      (cond (placed
+             (call-with-large-place acceptor
+                                    (lambda () (read-then-dispatch *large-body-seconds*))))
+            ((and length (plusp length)) (read-then-dispatch *small-body-seconds*))
+            (t (dispatch-read acceptor request))))))
+
+(defun dispatch-read (acceptor request)
   (let ((path (hunchentoot:script-name request))
         (method (hunchentoot:request-method request)))
-    (let ((length (hunchentoot:header-in* :content-length)))
-      (when (and length (not (body-length-problem method)))
-        (allow-body (or (parse-integer length :junk-allowed t) 0))))
-    (cond ((body-length-problem method)
-           (refuse-body (body-length-problem method)))
-          ((string= path "/mcp")
+    (cond ((string= path "/mcp")
            (if (eq method :post)
                (serve-mcp acceptor)
                (progn (setf (hunchentoot:return-code*) 405
@@ -550,13 +1171,25 @@ redirect's location, or NIL."
            (serve-well-known acceptor path))
           ((and (eq method :post) (gethash path *json-endpoints*))
            (serve-json-endpoint acceptor (gethash path *json-endpoints*)))
-          ((with-request-record (:id *request-id* :kind :web
-                                 :tool (format nil "web:~a ~a" method path)
-                                 :application (acceptor-application acceptor)
-                                 :at (let ((*application* (acceptor-application acceptor))) (now)))
-             (dispatch-web acceptor method path)))
-          (t (setf (hunchentoot:return-code*) 404)
-             ""))))
+          ((and (eq method :post) (multipart-request-p))
+           (call-with-posted-form acceptor (lambda () (page-or-not-found acceptor method path))))
+          ((and (eq method :post) (urlencoded-request-p))
+           (call-with-form-pairs acceptor (lambda () (page-or-not-found acceptor method path))))
+          (t (page-or-not-found acceptor method path)))))
+
+(defun page-or-not-found (acceptor method path)
+  "Answer METHOD on PATH through the web UI, or 404 when no page takes it."
+  (or (dispatch-page acceptor method path)
+      (progn (setf (hunchentoot:return-code*) 404)
+             "")))
+
+(defun dispatch-page (acceptor method path)
+  "Answer METHOD on PATH through the web UI (DISPATCH-WEB), or NIL."
+  (with-request-record (:id *request-id* :kind :web
+                        :tool (format nil "web:~a ~a" method path)
+                        :application (acceptor-application acceptor)
+                        :at (let ((*application* (acceptor-application acceptor))) (now)))
+    (dispatch-web acceptor method path)))
 
 (defparameter *max-threads* 1024
   "Connection threads Hunchentoot may run. Well above --max-inflight, so excess

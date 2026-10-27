@@ -12,9 +12,10 @@ What a check gets:
 
     t.phone(), t.desktop()     a page at 390x844 with touch, or 1280x800
                                with a mouse, each with its own cookies;
-                               both take another width and height, and
+                               both take another width and height,
                                permissions (["notifications"]) and
-                               user_agent for the page's browser
+                               user_agent for the page's browser, and
+                               javascript=False for a browser without it
     page.sign_in(actor)        sign in as "employee:anna" (claimed identity)
     page.goto(path)
     page.card(title), page.column(key)
@@ -171,13 +172,15 @@ class Run:
         self.page = wrapped
         return wrapped
 
-    def phone(self, width=390, height=844, permissions=None, user_agent=None):
+    def phone(self, width=390, height=844, permissions=None, user_agent=None, javascript=True):
         return self._new_page(True, permissions, viewport={"width": width, "height": height},
                               has_touch=True, is_mobile=True, device_scale_factor=2,
+                              java_script_enabled=javascript,
                               **({"user_agent": user_agent} if user_agent else {}))
 
-    def desktop(self, width=1280, height=800, permissions=None, user_agent=None):
+    def desktop(self, width=1280, height=800, permissions=None, user_agent=None, javascript=True):
         return self._new_page(False, permissions, viewport={"width": width, "height": height},
+                              java_script_enabled=javascript,
                               **({"user_agent": user_agent} if user_agent else {}))
 
     def check(self, condition, text):

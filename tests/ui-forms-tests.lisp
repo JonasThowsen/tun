@@ -156,3 +156,47 @@
     (is (search "<a href=\"#kunde-epost\">Skriv inn e-posten</a>" page))
     (is (search "For å gå videre må du rette opp følgende feil:" page)))
   (is (search "focus" (tun.ui:component-script (tun.ui:find-component "error-summary")))))
+
+;;; ------------------------------------------------------------------
+;;; The file control (spec/files.md 6.1)
+
+(test a-file-input-is-a-labelled-file-control-in-a-drop-zone
+  (flet ((control ()
+           (tun.ui:file-input (:label "Skjermbilder" :name "filer" :id "filer"
+                               :hint "Opptil 10 MB."
+                               :error "«a.txt»: Filtypen er ikke tillatt."))))
+    (let ((page (forms-html (control))))
+      (is (equal "filer" (forms-attribute page "label" "for")))
+      (is (equal "file" (forms-attribute page "input" "type")))
+      (is (equal "filer" (forms-attribute page "input" "name")))
+      (is (search " multiple" page))
+      (is (equal "image/png,image/jpeg,image/webp,image/gif,application/pdf"
+                 (forms-attribute page "input" "accept")))
+      (is (equal "filer-hint filer-error" (forms-attribute page "input" "aria-describedby")))
+      (is (equal "true" (forms-attribute page "input" "aria-invalid")))
+      (is (forms-in-order-p page "data-tun-file-input" "<input" "data-tun-file-input-list"))
+      (is (search "Dra filer hit, eller lim inn et skjermbilde." page))
+      (is (equal page (forms-html (tun.html:untrusted (control))))
+          "the same in extension output")))
+  (is (not (search " multiple" (forms-html (tun.ui:file-input (:label "Kvittering" :max 1)))))
+      "one file only")
+  (is (search "enctype=\"multipart/form-data\""
+              (forms-html (tun.html:untrusted
+                           '(:form (:@ :method "post" :enctype "multipart/form-data")))))
+      "a form's enctype passes in extension output"))
+
+(test a-generated-form-takes-files
+  (with-test-app ()
+    (with-application (*app*)
+      (let ((tun.web::*web-app* *app*)
+            (*actor* (parse-actor "employee:anna")))
+        (flet ((form-of (operation)
+                 (forms-html (tun.web::operation-form (find-operation operation) "/notater"))))
+          (let ((page (form-of 'file-notes-create)))
+            (is (search "enctype=\"multipart/form-data\"" page))
+            (is (search "data-tun-file-input" page))
+            (is (cl-ppcre:scan (concatenate 'string "<input class=\"tun-file-input-control\" "
+                                            "type=\"file\" name=\"screenshots\"")
+                               page)))
+          (let ((page (form-of 'file-notes-get)))
+            (is (not (search "enctype" page)) "a form without files is not multipart")))))))

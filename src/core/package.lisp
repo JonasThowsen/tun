@@ -14,7 +14,11 @@
    #:last-sunday #:summer-time-p #:oslo-offset #:local-date-of #:local-time-of #:local-today
    ;; json
    #:jobj #:jarr #:json-bool #:jget #:jkeys #:json-null-p #:json-object-p #:json-array-p
-   #:parse-json #:json-parse-failure #:write-json #:to-json-string #:canonical-json-hash #:json-copy
+   #:parse-json #:json-parse-failure #:*max-json-string-length*
+   #:parse-request-json #:json-too-many-values #:+max-request-json-values+ #:write-json
+   #:to-json-string #:canonical-json-hash #:json-copy
+   #:json-number-out-of-range #:json-number-message #:+number-out-of-range+
+   #:+number-too-many-digits+
    ;; conditions
    #:error-code #:operation-error #:operation-error-code #:operation-error-message
    #:operation-error-fields #:operation-error-details #:fail #:fail-with-details #:fail-fields
@@ -27,6 +31,8 @@
    #:type-sql #:type-lisp-type #:parse-field-type #:string-type #:email-type #:integer-type
    #:boolean-type #:enum-type #:enum-values #:date-type #:timestamp-type #:id-type #:id-references
    #:json-type #:list-type #:list-element #:input-error #:collecting-input-errors #:*input-errors*
+   #:files-type #:files-max #:files-type-p #:files #:recorded-value #:shown-name
+   #:long-number-text-p #:+most-number-text+
    #:email #:enum #:date #:timestamp #:id #:list-of #:json
    ;; entities
    #:entity-class #:entity #:stored-entity #:entity-id #:define-entity #:extend-entity
@@ -36,7 +42,8 @@
    #:field-input-p #:field-stored-p #:field-source #:field-value #:field-secret-p #:field-json-value
    #:entity-registry-conflicts #:check-entity-registry #:table-owner
    #:entity-json-name #:entity-label #:entity-table #:entity-id-prefix #:entity-embedded-p
-   #:entity-internal-p #:entity-source #:entity-rules #:entity-computed-fields #:entity-extensions
+   #:entity-internal-p #:entity-attachments #:entity-source #:entity-rules
+   #:entity-computed-fields #:entity-extensions
    #:entity-indexes #:entity-unique #:entity-rollback-check #:entity-record-rollback-checks #:add-rollback-check #:entity-revisioned-p #:entity-location #:field-location
    #:rule-name #:rule-field #:rule-message #:rule-source #:rule-location #:rule-function
    #:computed-field-location #:computed-field-function
@@ -53,7 +60,9 @@
    #:redact-request-traces #:in-flight-requests #:finished-requests #:request->json #:request-summary->json
    #:request-id #:request-tool #:request-actor #:request-credential #:request-outcome #:request-total-us #:request-at
    #:request-state #:request-started-us #:request-error-code #:request-elapsed-us #:request-kind
-   #:request-steps #:request-claimed #:request-input #:request-policy-required #:trace-step-kind #:trace-step-name #:trace-step-source #:trace-step-order
+   #:request-steps #:request-claimed #:request-input #:request-input-json
+   #:request-policy-required #:trace-step-kind #:trace-step-name #:trace-step-source
+   #:trace-step-order
    #:trace-step-detail #:*request-history-size* #:capture-backtrace
    #:request-finished #:request-application #:request-error-type #:request-error-message
    #:request-backtrace #:request-store-statements #:*stored-diagnostics-redactors*
@@ -71,6 +80,7 @@
    #:with-transaction #:call-in-transaction #:assert-writable #:insert #:save #:delete-entity #:fetch #:fetch!
    #:select #:select-one #:lock-row #:where-field #:where-value->db #:read-only-violation
    #:store-describe-schema #:store-write-queue-depth #:store-runs-queries-p #:store-query
+   #:store-write-content #:store-read-content #:store-delete-content
    ;; queries (spec/store.md 5)
    #:define-query #:query-name #:query-parameters #:query-returns #:query-description
    #:query-source #:query-module #:query-location #:find-query #:all-queries #:run-query
@@ -97,7 +107,8 @@
    ;; system entities
    #:audit-entry #:audit-entry-at #:audit-entry-actor #:audit-entry-tool #:audit-entry-outcome
    #:audit-entry-entity-type #:audit-entry-entity-id #:audit-entry-request-key #:audit-entry-error-code
-   #:audit-entry-reason #:audit-entry-credential #:audit-as #:*audit-actor* #:*audit-reason* #:reject #:reject-as #:input-null-p
+   #:audit-entry-reason #:audit-entry-credential #:audit-as #:audit-target #:*audit-actor*
+   #:*audit-reason* #:reject #:reject-as #:input-null-p
    #:decimal #:decimal-type #:json-number->rational #:round-decimal #:quantity-json #:format-quantity #:format-kroner
    #:receipt #:confirmation #:setting #:read-setting #:write-setting
    ;; operations

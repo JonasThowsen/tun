@@ -4,7 +4,8 @@ Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
 (§4.1, §8.1) and the board (§6.1), 2026-10-21; installing as an app
 (§4.2), 2026-10-22; ordering a board's cards within a column (§6.1),
 2026-10-26, core 1.18.0; push notifications in the service worker and
-`push-switch` (`push.md`), 2026-10-26, core 1.19.0. How every Tun
+`push-switch` (`push.md`), 2026-10-26, core 1.19.0; `file-input` and
+`attachments` (`files.md`), 2026-10-26, core 1.20.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -302,11 +303,14 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Group (file in `src/web/ui/`) | Components |
 |---|---|
 | Handlinger (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
-| Skjema (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1) |
-| Data (`data`, `board`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board` |
+| Skjema (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
+| Data (`data`, `board`, `files`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments` |
 | Tilbakemelding (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaksjon (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Oppsett og navigasjon (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
+
+`file-input` and `attachments`, a record's files, are specified in
+`files.md` §6.
 
 `dialog` with `:shortcut` opens on that key from anywhere on the page;
 Ctrl is Cmd on a Mac, and a key without Ctrl is left to a field being
@@ -539,7 +543,8 @@ form of `field`s with an `error-summary`, a confirmation is a
      it out of the menu.
   2. NAME is a function of the request. METHOD is `:get` or `:post`, PATH
      the parts after the prefix (`/saker/sak_1` gives `("sak_1")`), FORM
-     and QUERY the posted and the query parameters as JSON objects.
+     and QUERY the posted and the query parameters as JSON objects. A
+     post's files arrive in FORM as `files.md` §6.2 says.
   3. It returns `(values STATUS TITLE BODY)`, BODY a list of components
      shown under a page header with TITLE, and may add a fourth value, a
      plist of the header's `:description`, `:actions` and

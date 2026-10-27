@@ -160,7 +160,11 @@ and the message."
   (let ((started (trace-clock-us)))
     (multiple-value-bind (status answer detail) (funcall function)
       (note-step :external :name name :source :core
-                 :detail (if status (princ-to-string status) detail)
+                 ;; What the other system answered is clipped as the trace shows it.
+                 :detail (cond (status (princ-to-string status))
+                               ((and (stringp detail) (> (length detail) 300))
+                                (concatenate 'string (subseq detail 0 300) "…"))
+                               (t detail))
                  :started started :duration (- (trace-clock-us) started))
       (values status answer))))
 

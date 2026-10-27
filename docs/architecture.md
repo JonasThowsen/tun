@@ -35,6 +35,8 @@ src/mail/          sending mail: the mail record, its delivery job, the log and 
                    adapters (spec/mail.md)
 src/push/          push notifications: subscriptions, notify-push, the delivery job, Web Push
                    encryption and VAPID (spec/push.md)
+src/files/         files attached to records: types by their bytes, metadata taken out, a
+                   page's multipart post, the attachment tools and the sweep (spec/files.md)
 src/agent/         MCP JSON-RPC and the HTTP server
 src/web/           HTML renderer, the design system (ui/), the generated UI built from it,
                    and login and /access pages
@@ -181,6 +183,7 @@ precedence order. The full API is in `client-api.md`. In short:
 | Call another system's API | `http-json-post`, in a read; `remote-failure` when it gives no usable answer |
 | Install as an app | `(:web-app :icons "icons/" ...)` in `define-application`: manifest, icons, service worker |
 | Notify people's phones | `ui:push-switch` on a page, and `notify-push` in an operation (installable clients) |
+| Files on a record | `:attachments` on the entity, a `files` parameter and `attach-files`; `ui:file-input` and `ui:attachments` |
 
 Seams exist where a module needs the client's answer inside the operation,
 before it saves. An `:after` method could only patch the record afterwards.
@@ -270,6 +273,11 @@ handed makes the request fail.
   `notify-push` enqueues a job per device in the caller's transaction,
   and each job encrypts the message for its device and posts it to the
   browser's push service, retrying as mail does.
+- **Files are kept with their records** (`spec/files.md`): a file's
+  content is a `BYTEA` row in the tenant's Postgres database, written and
+  deleted in its record's transaction, so a dump holds both. Each fetch
+  of `/files/ID` reads the record as the caller, so its record policy
+  decides who sees the file.
 - **External systems sit behind ports with fake adapters.** Accounting and
   the messaging module's customer messages and inbound mail are faked, and
   no external service is called. A port call happens outside any
@@ -283,7 +291,7 @@ handed makes the request fail.
 | Deadlines | Every operation and workflow run gets `--deadline-ms`. Cooperative checks unwind at store access and in loops. A watchdog interrupts code that never checks. |
 | Backpressure | Above `--max-inflight` requests, the server answers 503 at once. Nothing queues. |
 | Fault isolation | A `serious-condition` fails only its own request or workflow run. |
-| Bounded input | Headers, body size, JSON depth, string length and number length are capped before parsing. |
+| Bounded input | Headers, body size, JSON depth, values, string length and number length are capped before parsing; every body over 256 KiB takes one of four places; a body that carries files may be larger only for a caller who may send them; request records keep a caller's text clipped, 64 KiB a record; the memory budget of `spec/core.md` §7.5 adds it up (`spec/files.md` §4.3). |
 
 ## Introspection and live code
 

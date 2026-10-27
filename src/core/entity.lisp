@@ -31,6 +31,10 @@
    (indexes :initform nil :accessor entity-indexes)
    (unique :initform nil :accessor entity-unique)
    (rules :initform nil :accessor entity-rules)
+   (attachments :initform nil :accessor entity-attachments
+                :documentation "Whether the entity's records take files (spec/files.md 1): NIL,
+or a property list of :MAX, the most files one record holds, and :POLICY, the
+least role that may add them.")
    (record-policy :initform nil :accessor entity-record-policy
                   :documentation "Which records each role reaches (spec/store.md 6): a list of
 (ROLE TEXT PARTS), TEXT being T for every record or the condition's SQL text,
@@ -185,6 +189,10 @@ each extension's fields in registration order."
       spec
     (check-written-text (format nil "Field ~(~a~) of ~(~a~)" name entity) :label label)
     (check-written-text (format nil "Field ~(~a~) of ~(~a~)" name entity) :description description)
+    (when (files-type-p (parse-field-type type))
+      (error "Field ~(~a~) of ~(~a~): files are attached to a record (spec/files.md 1), ~
+              not stored in a field; (files ...) is for an operation's parameters"
+             name entity))
     (let ((lisp-type (type-lisp-type (parse-field-type type))))
       `(,name :initarg ,(intern (symbol-name name) :keyword)
               :accessor ,(symbolicate entity "-" name)
@@ -237,17 +245,42 @@ spec/store.md 6 refuses."
         (error "~s: a record policy may use ~{:~a~^ and ~}, not :~a"
                entity +record-policy-parameters+ (second part))))))
 
+(defparameter +attachment-policies+ '(:employee :admin)
+  "The roles an entity's :ATTACHMENTS may name as the least that adds files.")
+
+(defun parse-attachments-option (entity option)
+  "OPTION, the :ATTACHMENTS of ENTITY, as ENTITY-ATTACHMENTS keeps it: NIL or
+(:MAX N :POLICY ROLE) with the defaults filled in (spec/files.md 1).
+Signals an error for anything else."
+  (flet ((refuse ()
+           (error "~s: :attachments is t or (:max N :policy ROLE), N from 1 to 100 and ROLE ~
+                   ~{~s~^ or ~}, not ~s" entity +attachment-policies+ option)))
+    (cond ((null option) nil)
+          ((eq option t) (list :max 20 :policy :employee))
+          ((not (and (listp option) (evenp (length option)))) (refuse))
+          (t (destructuring-bind (&key (max 20) (policy :employee) &allow-other-keys) option
+               (unless (and (null (set-difference (loop for key in option by #'cddr collect key)
+                                                  '(:max :policy)))
+                            (typep max '(integer 1 100))
+                            (member policy +attachment-policies+))
+                 (refuse))
+               (list :max max :policy policy))))))
+
 (defmacro define-entity (name (&key json-name label table id-prefix embedded internal
-                                    indexes unique revisioned rollback-check record-policy)
+                                    indexes unique revisioned rollback-check record-policy
+                                    attachments)
                          &body (fields))
   "Define entity NAME: a DEFCLASS with metaclass ENTITY-CLASS plus registration.
 FIELDS are (field-name &key type required label description input stored secret initform
 json-name).
 ROLLBACK-CHECK names a function of one record for the rollback preflight
 (see ENTITY-ROLLBACK-CHECK).  RECORD-POLICY is a list of (ROLE CONDITION):
-which records each role reads and writes (spec/store.md 6)."
+which records each role reads and writes (spec/store.md 6).  ATTACHMENTS,
+T or (:MAX N :POLICY ROLE), lets its records take files (spec/files.md 1)."
   (when (and embedded record-policy)
     (error "~s is embedded; only a stored entity has a record policy" name))
+  (when (and embedded attachments)
+    (error "~s is embedded; only a stored entity takes files" name))
   (let ((source (current-definition-source))
         (module (current-definition-module))
         (location (current-source-location))
@@ -270,7 +303,8 @@ which records each role reads and writes (spec/store.md 6)."
                         :indexes ',indexes
                         :unique ',unique
                         :rollback-check ',rollback-check
-                        :record-policy ',(parse-record-policy name record-policy *package*))
+                        :record-policy ',(parse-record-policy name record-policy *package*)
+                        :attachments ',(parse-attachments-option name attachments))
        ',name)))
 
 (defun add-rollback-check (entity-name function &key older-lacks)
@@ -338,7 +372,7 @@ refuses to start on any)."
 
 (defun register-entity (name &key json-name label table id-prefix embedded internal revisioned
                              source (module "core") location indexes unique rollback-check
-                             record-policy)
+                             record-policy attachments)
   (let ((claims (entity-claims name json-name table id-prefix embedded)))
     (when claims
       (extension-error "Entity ~s (~a) is refused: ~{~a~^; ~}" name module claims)))
@@ -356,7 +390,8 @@ refuses to start on any)."
           (entity-indexes class) indexes
           (entity-unique class) unique
           (entity-rollback-check class) rollback-check
-          (entity-record-policy class) record-policy)
+          (entity-record-policy class) record-policy
+          (entity-attachments class) attachments)
     ;; Re-evaluating DEFCLASS resets the direct superclasses; put registered
     ;; extensions back so a reload of core keeps client fields.
     (reapply-entity-extensions class)
@@ -605,10 +640,11 @@ and in registry_describe."
     (if (not (hash-table-p object))
         (input-error (if (string= path "") "input" path) "må være et objekt")
         (progn
-          (dolist (key (jkeys object))
-            (unless (or (find key fields :key #'field-json-name :test #'string=)
-                        (member key allowed-extra :test #'string=))
-              (input-error (join-path path key) "er ikke et kjent felt")))
+          (unknown-names-errors
+           path (remove-if (lambda (key)
+                             (or (find key fields :key #'field-json-name :test #'string=)
+                                 (member key allowed-extra :test #'string=)))
+                           (jkeys object)))
           (dolist (field fields)
             (let ((field-path (join-path path (field-json-name field))))
               (multiple-value-bind (value present) (jget object (field-json-name field))

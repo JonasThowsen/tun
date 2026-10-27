@@ -447,3 +447,54 @@
         (is (search "id=\"test-sok\"" other) "and the extras are on Tun's own pages too"))
       (is (not (search "test-sok" (nth-value 1 (web-request port "/login"))))
           "but not for someone not logged in"))))
+
+;;; ------------------------------------------------------------------
+;;; A page's files (spec/files.md 6.2)
+
+(test a-page-receives-the-files-of-a-multipart-post
+  (with-files-page ()
+    (with-test-server (port)
+      (let ((png (fixture "skjermbilde.png")))
+        (post-form port "/filprove" (list (list "title" "Med skjermbilde")
+                                          (list "filer" "skjerm.png" png)
+                                          (list "filer" "" (bytes))))
+        (is (equal "Med skjermbilde" (jget *page-seen* "title")))
+        (let ((files (coerce (jget *page-seen* "filer") 'list)))
+          (is (= 1 (length files)) "a part with no file is left out")
+          (is (equal "skjerm.png" (jget (first files) "filename")))
+          (is (string-prefix-p "upl_" (jget (first files) "upload"))))
+        (with-application (*app*)
+          (with-actor ((system-actor "test"))
+            (is (= 1 (length (with-transaction (:read) (select 'tun.files:attachment))))
+                "web-call attached the file")))
+        (multiple-value-bind (status text)
+            (post-form port "/filprove" (list (list "title" "Feil")
+                                              (list "filer" "notat.png" (bytes "tekst"))))
+          (is (= 422 status))
+          (is (search "«notat.png»: Filtypen er ikke tillatt." text)))))))
+
+(test a-refused-file-shows-at-its-field-and-in-the-summary
+  (let* ((op (find-operation 'file-notes-create))
+         (field (jobj "field" "screenshots[0]"
+                      "message" "«notat.png»: Filtypen er ikke tillatt."))
+         (error-json (jobj "error" (jobj "code" "invalid_input" "message" "Ugyldig input"
+                                         "fields" (jarr (list field)))))
+         (page (tun.html:render-html
+                (tun.web::operation-form op "/notater" :error-json error-json))))
+    (is (search "tun-error-summary" page))
+    (is (search "tun-field-error" page))
+    (is (>= (count-matches "«notat\\.png»: Filtypen er ikke tillatt" page) 2)
+        "at the field and in the summary")))
+
+(test a-page-calls-record-keeps-no-file-and-no-handle
+  (with-files-page ()
+    (with-test-server (port)
+      (let ((png (bytes (fixture "skjermbilde.png") (make-array (* 2 +mib+) :initial-element 0))))
+        (post-form port "/filprove" (list (list "title" "Med fil") (list "filer" "skjerm.png" png)))
+        (let ((record (find "web:POST /filprove" (finished-requests) :key #'request-tool
+                                                                     :test #'equal)))
+          (is-true record)
+          (is (notany (lambda (s) (search "upl_" s)) (record-strings record)) "no handle")
+          (is (< (reduce #'max (mapcar #'length (record-strings record)) :initial-value 0)
+                 +mib+)
+              "nothing of the file"))))))

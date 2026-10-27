@@ -88,12 +88,24 @@ names the entity its type references."
       (values (and (operation-entity op) (entity-json-name (find-entity-class (operation-entity op))))
               nil))))
 
+(defvar *audit-target* nil
+  "Set by an operation's body (AUDIT-TARGET) to the record its call is about,
+as (ENTITY-TYPE . ENTITY-ID), when neither its result nor its input names it.")
+
+(defun audit-target (entity-type entity-id)
+  "Inside a mutating operation: audit this call as being about the record
+ENTITY-ID of ENTITY-TYPE, an entity's JSON name, such as the record a file
+is attached to."
+  (setf *audit-target* (cons entity-type entity-id)))
+
 (defun audit-subject (op input result)
-  "Values entity-type and entity-id for an audit entry: the stored entity a
-successful call returned, else the target its input names."
-  (if (typep result 'stored-entity)
-      (values (entity-json-name (class-of result)) (entity-id result))
-      (input-target op input)))
+  "Values entity-type and entity-id for an audit entry: the record the body
+named with AUDIT-TARGET, else the stored entity a successful call returned,
+else the target its input names."
+  (cond (*audit-target* (values (car *audit-target*) (cdr *audit-target*)))
+        ((typep result 'stored-entity)
+         (values (entity-json-name (class-of result)) (entity-id result)))
+        (t (input-target op input))))
 
 (defun raw-request-key (input)
   (let ((key (jget (input-arguments input) "request_key")))
@@ -296,24 +308,70 @@ request_key, and the target's revision."
 ;;; ------------------------------------------------------------------
 ;;; RUN-OPERATION
 
-(defun recorded-input (input)
-  "INPUT's arguments as given, minus confirmation_token and request_key, with
-\"***\" for a secret (core.md §8.2)."
-  (let ((args (input-arguments input)) (copy (jobj)))
-    (when (hash-table-p args)
-      (maphash (lambda (k v)
-                 (unless (member k '("confirmation_token" "request_key") :test #'string=)
-                   (setf (gethash k copy) v)))
-               args))
-    (when (and (equal (current-operation-tool) "settings_set")
-               (secret-setting-p (jget args "key")))
-      (setf (gethash "value" copy) "***"))
-    (when *operation*
-      (dolist (parameter (operation-parameters *operation*))
-        (when (and (parameter-secret-p parameter)
-                   (nth-value 1 (gethash (parameter-json-name parameter) copy)))
-          (setf (gethash (parameter-json-name parameter) copy) "***"))))
-    copy))
+(defgeneric recorded-value (type value)
+  (:documentation "What a request's record keeps of VALUE, the JSON given for a
+parameter of TYPE: VALUE itself, unless the type says otherwise (a file is
+kept as its name and size, spec/files.md 4.1).")
+  (:method (type value)
+    (declare (ignore type))
+    value))
+
+(defun declared-input-names (op)
+  "The input names OP declares: its parameters, and a draft's entity fields."
+  (append (mapcar #'parameter-json-name (operation-parameters op))
+          (and (operation-draft-p op)
+               (mapcar #'field-json-name
+                       (entity-input-fields (find-entity-class (operation-entity op)))))))
+
+(defun recorded-input-value (op args name value)
+  "VALUE, the input NAME in ARGS of OP, as a request's record keeps it:
+\"***\" for a secret, else as RECORDED-VALUE keeps it."
+  (let ((parameter (find name (operation-parameters op)
+                         :key #'parameter-json-name :test #'string=)))
+    (cond ((and parameter (parameter-secret-p parameter)) "***")
+          ((and (equal (operation-tool op) "settings_set") (equal name "value")
+                (secret-setting-p (jget args "key")))
+           "***")
+          (parameter (recorded-value (parameter-type parameter) value))
+          (t value))))
+
+(defun recorded-input (input &optional (op *operation*))
+  "INPUT's arguments as given to OP, as a request's record keeps them
+(core.md §8.2, §7.5): the JSON text, in UTF-8 octets, of only the inputs OP
+declares, never confirmation_token, request_key or a key OP does not know;
+\"***\" for a secret; each value as RECORDED-VALUE keeps it; and at most
++MOST-RECORDED-INPUT+ octets, a value that does not fit in what is left
+replaced by +INPUT-LEFT-OUT+.  The text is written straight into its
+octets and a value stops being written once it cannot fit, so recording
+costs what the record keeps, however large the input.  Without OP, {}."
+  (let ((args (input-arguments input))
+        ;; One octet stays free for the closing brace.
+        (recorder (make-recorder (1- +most-recorded-input+) :abort t))
+        (first t))
+    (write-char #\{ recorder)
+    (when (and op (hash-table-p args))
+      (dolist (name (declared-input-names op))
+        (multiple-value-bind (value present) (gethash name args)
+          (when present
+            (let ((mark (fill-pointer (recorder-octets recorder))))
+              (flet ((write-member (value)
+                       (recorded-fits-p recorder
+                                        (lambda ()
+                                          (unless first (write-char #\, recorder))
+                                          (write-json-string name recorder)
+                                          (write-char #\: recorder)
+                                          (write-json value recorder)))))
+                (unless (write-member (recorded-input-value op args name value))
+                  (setf (fill-pointer (recorder-octets recorder)) mark
+                        (recorder-full recorder) nil)
+                  (unless (write-member +input-left-out+)
+                    (setf (fill-pointer (recorder-octets recorder)) mark
+                          (recorder-full recorder) nil)
+                    (return))))
+              (setf first nil))))))
+    (incf (recorder-most recorder))
+    (write-char #\} recorder)
+    (recorder-result recorder)))
 
 (defun condition-text (condition)
   (or (ignore-errors (princ-to-string condition)) (string-downcase (symbol-name (type-of condition)))))
@@ -474,6 +532,7 @@ own, after the commit."
         (present-result
          op
          (let* ((deferred nil)
+                (*audit-target* nil)
                 (*audit-actor* nil)
                 (*audit-reason* nil)
                 (*shown-once* '())

@@ -18,6 +18,7 @@ behaviour, and run the suites before calling work done.
 | `push.md` | Push notifications to an installed app: turning them on per device, `notify-push`, delivery with retries, Web Push encryption and VAPID, the service worker. |
 | `jobs.md` | Background jobs with retries, unique jobs, queues, crash recovery, schedules in Norwegian time, and triggers that run a job for each record meeting a condition. |
 | `errors.md` | Errors and logs: faults grouped by cause and kept in the store, a mail when a new one appears, a JSON log line per request, and the dashboard's «Feil» and «Logg». |
+| `files.md` | Files attached to records: which entities take them, the types decided by their bytes, metadata taken out, the `files` type and the attachment tools, request size, storage in Postgres, who may fetch a file, and the form control and thumbnails. |
 | `ui.md` | The design system: tokens, components, generated screens, a client's own pages, installing as an app. |
 | `tooling.md` | Development tooling: indentation, the editor REPL, the agent REPL and lint. |
 | `feedback.md` | Draft, not built: reporting from any page of a client into the supplier's tracker, the first link between Tun systems. |

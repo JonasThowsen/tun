@@ -394,6 +394,45 @@ queue, retried as mail is; a device that is gone is forgotten. Tun makes
 and keeps its own key; there is nothing to configure. A deployed tenant
 needs an `https` `PUBLIC_URL`, which Apple's push service asks for.
 
+### Files on a record
+
+A record takes files, such as screenshots on an issue, when its entity
+says so (`spec/files.md`): `:attachments t`, or `(:max 20 :policy
+:admin)` for at most 20 files that only admins add. Tun stores them in the
+tenant's database with the record, decides each file's type from its
+bytes (PNG, JPEG, WebP, GIF or PDF, up to 10 MB), takes out what a photo
+says about where it was taken, and serves a file only to those who may
+see its record. An operation takes files through a parameter of type
+`files` and attaches them in its own transaction:
+
+```lisp
+(define-entity item (:id-prefix "itm" :label "Sak" :attachments t)
+  ((title :type (string :min 1 :max 200) :required t :label "Tittel")))
+
+(define-operation items-create ((:draft item)
+                                (screenshots :type (files :max 5) :label "Skjermbilder"))
+    (:entity item :kind :create :policy :employee :title "Meld en sak")
+  (insert item)
+  (attach-files item screenshots)
+  item)
+```
+
+An agent sends each file as `{"filename", "data"}`, base64, and adds files
+to a record later with `attachments_add`; `attachments_list` lists them and
+`attachments_remove` removes one (its attacher or an admin). On a page,
+`ui:file-input` in a form with `:enctype "multipart/form-data"` lets a
+person choose, drop or paste files; the posted FORM holds them under the
+field's name, ready for `web-call`. `ui:attachments` shows a record's
+files from `attachments_list` as thumbnails that open the whole image:
+
+```lisp
+(ui:file-input (:label "Skjermbilder" :name "filer"))
+(web-call "items_create" (jobj "title" (jget form "title") "screenshots" (jget form "filer")))
+(ui:attachments (:items (jget (web-call "attachments_list"
+                                        (jobj "entity" "item" "record_id" id))
+                              "items")))
+```
+
 ## The HTTP API
 
 Another system calls a tool with one request, `POST /api/TOOL`, its body

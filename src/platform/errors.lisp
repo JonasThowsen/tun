@@ -130,7 +130,7 @@ when it opened.  Returns the error."
     (setf (error-group-error-type group) (request-error-type record)
           (error-group-message group) (clipped (request-error-message record))
           (error-group-tool group) (clipped (request-tool record) 200)
-          (error-group-backtrace group) (jarr (or (request-backtrace record) '()))
+          (error-group-backtrace group) (jarr (request-backtrace record))
           (error-group-request-id group) (request-id record)
           (error-group-last-seen-at group) at)
     (incf (error-group-count group))

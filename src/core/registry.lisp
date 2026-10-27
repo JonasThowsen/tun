@@ -254,6 +254,12 @@ messaging module is enabled; otherwise do nothing.  Returns the message or NIL."
     ;; their shape.
     (when (entity-record-policy class)
       (setf (gethash "record_policy" object) (describe-record-policy class)))
+    (setf (gethash "attachments" object)
+          (let ((option (entity-attachments class)))
+            (if option
+                (jobj "max" (getf option :max)
+                      "policy" (string-downcase (symbol-name (getf option :policy))))
+                :null)))
     object))
 
 (defun describe-entity-definition (class)

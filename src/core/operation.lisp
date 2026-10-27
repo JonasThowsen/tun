@@ -279,10 +279,11 @@ Signals invalid_input listing every problem."
               (setf (input-draft input)
                     (input->entity (operation-entity op) args ""
                                    :allowed-extra (append meta param-names)))
-              (dolist (key (jkeys args))
-                (unless (or (member key param-names :test #'string=)
-                            (member key meta :test #'string=))
-                  (input-error key "er ikke et kjent felt")))))
+              (unknown-names-errors
+               "" (remove-if (lambda (key)
+                               (or (member key param-names :test #'string=)
+                                   (member key meta :test #'string=)))
+                             (jkeys args)))))
         (dolist (p params)
           (multiple-value-bind (value present) (jget args (parameter-json-name p))
             (when (and present (json-null-p value))

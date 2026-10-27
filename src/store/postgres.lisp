@@ -712,6 +712,7 @@ client's own migrations."
    store
    (lambda ()
      (ensure-schema-history)
+     (ensure-contents-table)
      ;; Two passes, as on SQLite: the kernel's and the modules' tables and
      ;; columns in dependency order, then the client's (tun-platform.md 2.6
      ;; and 2.7).
@@ -734,6 +735,37 @@ client's own migrations."
                    (create-indexes class)))))))))
    :write)
   store)
+
+;;; ------------------------------------------------------------------
+;;; Files' content (spec/files.md 5.1): a table of its own, so a record's
+;;; list of files never reads their bytes, written in the record's
+;;; transaction.  Read a part at a time, so no answer holds a whole file.
+
+(defparameter +contents-table-sql+
+  "CREATE TABLE \"attachment_contents\" (\"id\" TEXT COLLATE \"C\" PRIMARY KEY,
+                                         \"content\" BYTEA NOT NULL)")
+
+(defun ensure-contents-table ()
+  (unless (existing-columns "attachment_contents")
+    (ddl +contents-table-sql+ :name "create_attachment_contents")))
+
+(defmethod store-write-content ((store postgres-store) id octets)
+  (assert-writable)
+  (exec "INSERT INTO \"attachment_contents\" (\"id\", \"content\") VALUES ($1, $2)"
+        id (coerce octets '(simple-array (unsigned-byte 8) (*))))
+  id)
+
+(defmethod store-read-content ((store postgres-store) id start length)
+  ;; substring counts from 1.
+  (let ((row (first (query "SELECT substring(\"content\" FROM $2 FOR $3)
+                            FROM \"attachment_contents\" WHERE \"id\" = $1"
+                           id (1+ start) length))))
+    (and row (first row))))
+
+(defmethod store-delete-content ((store postgres-store) id)
+  (assert-writable)
+  (exec "DELETE FROM \"attachment_contents\" WHERE \"id\" = $1" id)
+  t)
 
 ;;; ------------------------------------------------------------------
 ;;; Tooling

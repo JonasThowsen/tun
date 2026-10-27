@@ -9,6 +9,7 @@
 (defpackage #:tun.mcp
   (:use #:cl #:tun.core)
   (:export #:handle-mcp #:+protocol-version+ #:*server-info* #:+missing-actor-message+
+           #:+too-many-values+
            #:*progress-token* #:progress-notification))
 
 (in-package #:tun.mcp)
@@ -81,22 +82,26 @@ params._meta, or NIL: where a waiting call's progress goes (spec/waiting.md 2)."
                               (and (or (stringp token) (integerp token)) token))))
       (handler-case (tool-result (call-tool name arguments :application application :actor actor) nil)
         (operation-error (e) (tool-result (operation-error-json e) t))
-        (unknown-tool () (rpc-fail -32602 "Ukjent verktøy: ~a" name))))))
+        (unknown-tool () (rpc-fail -32602 "Ukjent verktøy: ~a" (shown-name name)))))))
 
 (defun dispatch (application actor method params)
+  ;; The record clips the method or tool's name as it keeps it.
   (when *request-record*
     (setf (request-tool *request-record*)
           (if (and (string= method "tools/call") (stringp (jget params "name"))) (jget params "name") method))
     (let ((arguments (if (string= method "tools/call") (jget params "arguments") params)))
       (when (hash-table-p arguments)
-        (setf (request-input *request-record*) (recorded-input (make-input arguments))))))
+        (setf (request-input *request-record*)
+              (recorded-input (make-input arguments)
+                              (and (string= method "tools/call") (stringp (jget params "name"))
+                                   (find-operation-by-tool (jget params "name"))))))))
   (cond ((string= method "initialize") (handle-initialize application params))
         ((string= method "ping") (jobj))
         ((string= method "tools/list")
          (with-application (application)
            (jobj "tools" (jarr (tool-definitions application)))))
         ((string= method "tools/call") (handle-tools-call application actor params))
-        (t (rpc-fail -32601 "Ukjent metode: ~a" method))))
+        (t (rpc-fail -32601 "Ukjent metode: ~a" (shown-name method)))))
 
 (defun rpc-code-name (code)
   (case code
@@ -120,9 +125,11 @@ an error and the response is a -32603 error instead."
                                          "Intern feil: svaret kan ikke skrives som JSON")))
         (values failure (to-json-string failure))))))
 
-(defun handle-mcp (application actor body &key credential)
-  "Handle one POST /mcp as ACTOR, which the transport established (an ACTOR,
-or NIL when a claimed X-Tun-Actor was missing or malformed) with CREDENTIAL
+(defun handle-mcp (application actor body &key credential (parsed nil parsed-p))
+  "Handle one POST /mcp, BODY its octets or text, as ACTOR, which the transport
+established (an ACTOR, or NIL when a claimed X-Tun-Actor was missing or
+malformed) with CREDENTIAL; with PARSED, the body's JSON the transport has
+already parsed, which is never parsed again
 (spec/auth.md 7).  Returns (values http-status response-json-or-nil
 session-id-or-nil response-text-or-nil).  Every /mcp request is retained
 (core.md §8.1, §8.4): a record is opened here, and the operation a tools/call
@@ -136,7 +143,8 @@ cannot be is that request's error."
                           :actor (and actor (actor-string actor)) :credential credential
                           :tool "mcp" :input (jobj))
       (let ((record *request-record*))
-        (multiple-value-bind (status json session) (%handle-mcp application actor body)
+        (multiple-value-bind (status json session)
+            (%handle-mcp application actor body parsed parsed-p)
           ;; A JSON-RPC error no operation recorded: unknown tool or method, bad JSON, no actor.
           (let ((err (and json (jget json "error"))))
             (when (and err (not (request-outcome record)))
@@ -147,12 +155,25 @@ cannot be is that request's error."
                 (values status json session text))
               (values status nil session nil)))))))
 
-(defun %handle-mcp (application actor body)
-  "Without an actor the body is not parsed at all (the error carries id null)."
+(defparameter +too-many-values+
+  (format nil "Forespørselen har for mange JSON-verdier (høyst ~,,' :d)."
+          +max-request-json-values+)
+  "Why a body with more JSON values than a request may hold is refused (core.md §7.5).")
+
+(defun %handle-mcp (application actor body parsed parsed-p)
+  "Without an actor the body is not parsed at all (the error carries id null).
+With PARSED-P, PARSED is the body's JSON, whatever its kind."
   (unless actor
     (return-from %handle-mcp
       (values 200 (rpc-error-response nil -32000 +missing-actor-message+) nil)))
-  (let ((request (handler-case (parse-json body)
+  (let ((request (handler-case (if parsed-p parsed (parse-request-json body))
+                   (json-too-many-values ()
+                     (return-from %handle-mcp
+                       (values 413 (rpc-error-response nil -32600 +too-many-values+) nil)))
+                   (json-number-out-of-range (refusal)
+                     (return-from %handle-mcp
+                       (values 200 (rpc-error-response nil -32700 (json-number-message refusal))
+                               nil)))
                    (json-parse-failure ()
                      (return-from %handle-mcp
                        (values 200 (rpc-error-response nil -32700 "Ugyldig JSON") nil))))))

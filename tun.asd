@@ -65,7 +65,7 @@
   :pathname "src"
   :description "tun: the client-agnostic kernel."
   :version "1.3.0"
-  :depends-on ("tun/core" "tun/memory" "tun/sqlite" "tun/postgres" "hunchentoot" "flexi-streams"
+  :depends-on ("tun/core" "tun/memory" "tun/sqlite" "tun/postgres" "hunchentoot" "chunga" "flexi-streams"
                "cl-base64" "drakma" "uiop" "swank")
   :serial t
   :components ((:module "ports" :components ((:file "accounting")))
@@ -74,6 +74,8 @@
                                             (:file "runner") (:file "tools")))
                (:module "mail" :components ((:file "mail") (:file "resend")))
                (:module "outbound" :components ((:file "outbound")))
+               (:module "files" :components ((:file "package") (:file "formats") (:file "multipart")
+                                             (:file "attachments")))
                (:module "platform"
                 :components ((:file "live-definitions")
                              (:file "workflows")
@@ -110,13 +112,15 @@
                                            (:file "feedback")
                                            (:file "interaction")
                                            (:file "board")
+                                           (:file "files")
                                            (:file "push")
                                            (:file "layout")
                                            (:file "specimen")))
                              (:file "ui")
                              (:file "access")
                              (:file "web-app")
-                             (:file "push")))
+                             (:file "push")
+                             (:file "files")))
                (:file "runtime")
                (:file "public")))
 
@@ -137,6 +141,8 @@
                              (:file "store-tests")
                              (:file "query-tests")
                              (:file "record-policy-tests")
+                             (:file "files-tests")
+                             (:file "hostile-tests")
                              (:file "module-tests")
                              (:file "module-system-tests")
                              (:file "orders-depth-tests")

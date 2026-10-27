@@ -76,7 +76,7 @@ the listed symbols (the same symbol objects, not copies)."
    #:define-entity #:extend-entity #:define-rule #:define-computed-field #:define-operation
    #:define-workflow #:define-message-template #:define-application #:define-setting #:define-setting-initial-value #:setting-value-at-use
    ;; field type designators (string, integer and boolean are CL's own)
-   #:email #:enum #:date #:timestamp #:id #:list-of #:json
+   #:email #:enum #:date #:timestamp #:id #:list-of #:json #:files
    ;; the application and its context
    #:application #:*application* #:entity #:stored-entity #:entity-id
    #:now #:today #:local-today #:date-add-days #:date-add-months #:date-at #:date-of #:parse-date #:format-date #:format-quantity #:format-kroner
@@ -111,6 +111,9 @@ the listed symbols (the same symbol objects, not copies)."
   ;; Push notifications to an installed app's devices: queued in the
   ;; caller's write, delivered after it commits (spec/push.md)
   (#:tun.push #:notify-push)
+  ;; Files attached to records: the FILES parameter type is above
+  ;; (spec/files.md 4.1)
+  (#:tun.files #:attach-files)
   ;; Calling other systems' JSON APIs, and answering for them in tests
   ;; (spec/outbound.md)
   (#:tun.outbound #:http-json-post #:*http-json-handler*
@@ -129,7 +132,8 @@ the listed symbols (the same symbol objects, not copies)."
 ;;; loads (TUN.CORE:PUBLISH): a client sees exactly the modules it enables.
 
 (setf tun.runtime::*core-packages*
-  '(#:tun #:tun.core #:tun.workflows #:tun.accounting #:tun.accounting.fake #:tun.mail #:tun.push #:tun.outbound #:tun.jobs #:tun.platform #:tun.errors
+  '(#:tun #:tun.core #:tun.workflows #:tun.accounting #:tun.accounting.fake #:tun.mail #:tun.push
+    #:tun.outbound #:tun.files #:tun.jobs #:tun.platform #:tun.errors
     #:tun.introspection #:tun.auth #:tun.mcp #:tun.http #:tun.html #:tun.ui #:tun.web
     #:tun.guarded
     #:tun.runtime #:tun.store.memory #:tun.store.sqlite #:tun.store.postgres #:tun.public-builder))

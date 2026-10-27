@@ -1,6 +1,6 @@
 # inbox
 
-Requires customers, orders and notifications; core >= 1.2.0, < 2.0.
+Requires customers, orders and notifications; core >= 1.20.0, < 2.0.
 `request-defaults` is the client seam returning a draft JSON object or nil.
 `inbox-history` supplies the public per-order/customer inbound history.
 Inbound mail is deduplicated by message reference. A failed draft rolls back
@@ -63,9 +63,10 @@ before stores nothing and returns the first henvendelse with
 
 `POST /inbound/mail` with the header `X-Tun-Inbound-Secret` and the JSON
 input of `inbound_mail_receive`. The header, read as UTF-8, must equal
-`innboks.hemmelighet` (compared in constant time); otherwise 403
-`{"error":{"code":"forbidden","message":"Ugyldig hemmelighet"}}` and nothing
-is stored. A body that is not JSON, or a refused input, is 422 with the
+`innboks.hemmelighet` (compared in constant time), checked before the body
+is parsed; otherwise 403
+`{"error":{"code":"forbidden","message":"Ugyldig hemmelighet"}}`, the body
+is never parsed, and nothing is stored. A body that is not JSON, or a refused input, is 422 with the
 error.
 
 #### 3.3 The contact form

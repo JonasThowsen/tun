@@ -26,6 +26,120 @@
 (defun us->ms (us) (and us (/ (round us 10) 100.0d0)))
 
 ;;; ------------------------------------------------------------------
+;;; Recorded text (core.md §7.5, §8.1).  A record keeps what a caller sent
+;;; -- the tool or method named, the path, the actor, the input, the error
+;;; message -- only as UTF-8 octets written here, each field clipped to its
+;;; bound, so a record costs at most +MOST-RECORD-OCTETS+ of text whatever
+;;; the caller sent.  The record's slots are typed to these bounds: an
+;;; uncapped string cannot be stored in one.
+
+(defparameter +most-recorded-short+ 256
+  "The most octets of a tool, method or path, actor, credential or error type a record keeps.")
+(defparameter +most-recorded-message+ 4096
+  "The most octets of an error's message a record keeps.")
+(defparameter +most-recorded-backtrace+ 8192
+  "The most octets of a backtrace's frame names a record keeps.")
+(defparameter +most-recorded-input+ (* 48 1024)
+  "The most octets of input a record keeps (RECORDED-INPUT).")
+(defparameter +input-left-out+ "[utelatt: posten holder høyst 48 KB av input]"
+  "What a record keeps of an input value past +MOST-RECORDED-INPUT+.")
+
+(defparameter +most-record-octets+ (* 64 1024)
+  "The most octets of text one record keeps: its fields' bounds together.")
+
+(defun recorded-short-p (octets) (<= (length octets) +most-recorded-short+))
+(defun recorded-message-p (octets) (<= (length octets) +most-recorded-message+))
+(defun recorded-backtrace-p (octets) (<= (length octets) +most-recorded-backtrace+))
+(defun recorded-input-p (octets) (<= (length octets) +most-recorded-input+))
+
+(deftype record-octets () '(simple-array (unsigned-byte 8) (*)))
+(deftype recorded-short () '(or null (and record-octets (satisfies recorded-short-p))))
+(deftype recorded-message () '(or null (and record-octets (satisfies recorded-message-p))))
+(deftype recorded-backtrace () '(or null (and record-octets (satisfies recorded-backtrace-p))))
+(deftype recorded-input () '(or null (and record-octets (satisfies recorded-input-p))))
+
+(defun utf-8-length (code)
+  "How many octets the character whose code is CODE takes in UTF-8."
+  (cond ((< code #x80) 1) ((< code #x800) 2) ((< code #x10000) 3) (t 4)))
+
+(defclass recorder (sb-gray:fundamental-character-output-stream)
+  ((octets :initarg :octets :reader recorder-octets)
+   (most :initarg :most :accessor recorder-most)
+   (full :initform nil :accessor recorder-full
+         :documentation "True once a character did not fit: nothing more is kept.")
+   (abort :initarg :abort :initform nil :reader recorder-abort
+          :documentation "When true, a character that does not fit throws to this recorder."))
+  (:documentation "A character stream that keeps what is written to it as UTF-8
+octets, at most MOST of them."))
+
+(defun make-recorder (most &key abort)
+  (make-instance 'recorder :most most :abort abort
+                           :octets (make-array (min most 1024) :element-type '(unsigned-byte 8)
+                                                               :adjustable t :fill-pointer 0)))
+
+(defmethod sb-gray:stream-write-char ((stream recorder) char)
+  (unless (recorder-full stream)
+    (let* ((octets (recorder-octets stream))
+           (code (char-code char))
+           (code (if (<= #xD800 code #xDFFF) #xFFFD code))
+           (length (utf-8-length code)))
+      (cond ((> (+ (fill-pointer octets) length) (recorder-most stream))
+             (setf (recorder-full stream) t)
+             (when (recorder-abort stream) (throw stream nil)))
+            ((= length 1) (vector-push-extend code octets))
+            (t (let ((shift (* 6 (1- length))))
+                 (vector-push-extend (logior (ecase length (2 #xC0) (3 #xE0) (4 #xF0))
+                                             (ash code (- shift)))
+                                     octets)
+                 (loop for s from (- shift 6) downto 0 by 6
+                       do (vector-push-extend (logior #x80 (ldb (byte 6 s) code)) octets)))))))
+  char)
+
+(defmethod sb-gray:stream-write-string ((stream recorder) string &optional (start 0) end)
+  (loop for i from start below (or end (length string))
+        until (recorder-full stream)
+        do (write-char (char string i) stream))
+  string)
+
+(defmethod sb-gray:stream-line-column ((stream recorder)) nil)
+
+(defun recorder-result (recorder)
+  "What RECORDER kept, as a simple octet vector."
+  (coerce (recorder-octets recorder) 'record-octets))
+
+(defun record-text (value most)
+  "VALUE, a string, as a record keeps it: its UTF-8 octets, at most MOST of
+them; clipped at a character, with … at the end, when it is longer.  NIL
+for NIL."
+  (when value
+    (let ((value (if (stringp value) value (princ-to-string value)))
+          (recorder (make-recorder most)))
+      (write-string value recorder)
+      (when (recorder-full recorder)
+        ;; Make room for the … (three octets) at a character's boundary:
+        ;; back over the octets that continue a character (10xxxxxx).
+        ;; AREF reads past the fill pointer, at what was taken back.
+        (let ((octets (recorder-octets recorder)))
+          (setf (fill-pointer octets) (max 0 (- (fill-pointer octets) 3)))
+          (loop while (and (plusp (fill-pointer octets))
+                           (= (logand (aref octets (fill-pointer octets)) #xC0) #x80))
+                do (decf (fill-pointer octets)))
+          (setf (recorder-full recorder) nil)
+          (write-char #\HORIZONTAL_ELLIPSIS recorder)))
+      (recorder-result recorder))))
+
+(defun recorded-fits-p (recorder function)
+  "Call FUNCTION, which writes to RECORDER, a recorder made with :ABORT: true
+when all it wrote fitted, NIL when it stopped at what did not."
+  (catch recorder
+    (funcall function)
+    t))
+
+(defun recorded-string (octets)
+  "The text OCTETS, a field a record keeps, hold; NIL for NIL."
+  (and octets (sb-ext:octets-to-string octets :external-format :utf-8)))
+
+;;; ------------------------------------------------------------------
 ;;; Records and steps
 
 (defparameter *request-history-size* 1000
@@ -36,16 +150,25 @@
   kind name source order started (duration nil) detail)
 
 (defstruct (request-record (:conc-name request-))
-  id at started-us actor credential tool input
+  id at started-us
+  ;; What the caller sent, as recorded text: written only by the accessors
+  ;; below, which clip it (RECORD-TEXT, RECORDED-INPUT).
+  (%actor nil :type recorded-short)
+  (%credential nil :type recorded-short)
+  (%tool nil :type recorded-short)      ; the tool, method or page's path
+  (%input nil :type recorded-input)     ; RECORDED-INPUT's JSON text
   (kind :operation)                     ; :operation, :mcp, :api, :web, :job or :workflow
   application                           ; the application it ran in, when known
-  outcome error-code error-message
-  error-type                            ; the reported condition's type, as text
+  outcome
+  (%error-code nil :type (or symbol recorded-short))
+  (%error-message nil :type recorded-message)
+  (%error-type nil :type recorded-short) ; the reported condition's type
   policy-required actor-role decision
   (steps (make-array 16 :adjustable t :fill-pointer 0))
   (store-statements 0)
   (write-lock-wait-us 0)
-  total-us backtrace
+  total-us
+  (%backtrace nil :type recorded-backtrace) ; frame names, one per line
   (conditions '())                      ; recent (condition . backtrace), newest first
   (backtrace-chosen nil)
   (state :running)                      ; :running, :waiting-write-lock or :external-call
@@ -53,6 +176,77 @@
   (redacted nil)                       ; erasure removes payloads, including later steps
   (claimed t)                           ; NIL: the next top-level operation call owns this record
   (lock (sb-thread:make-mutex :name "request record")))
+
+;;; The fields a caller's text reaches.  Each writer clips what it is given;
+;;; each reader gives back text.
+
+(defmacro define-recorded-field (name slot most)
+  `(progn
+     (defun ,name (record) (recorded-string (,slot record)))
+     (defun (setf ,name) (value record)
+       (setf (,slot record) (record-text value ,most))
+       value)))
+
+(define-recorded-field request-actor request-%actor +most-recorded-short+)
+(define-recorded-field request-credential request-%credential +most-recorded-short+)
+(define-recorded-field request-tool request-%tool +most-recorded-short+)
+(define-recorded-field request-error-type request-%error-type +most-recorded-short+)
+(define-recorded-field request-error-message request-%error-message +most-recorded-message+)
+
+(defun request-error-code (record)
+  (let ((code (request-%error-code record)))
+    (if (symbolp code) code (recorded-string code))))
+
+(defun (setf request-error-code) (code record)
+  (setf (request-%error-code record)
+        (if (symbolp code) code (record-text code +most-recorded-short+)))
+  code)
+
+(defun request-input (record)
+  "RECORD's input as the JSON text's octets RECORDED-INPUT made, or NIL."
+  (request-%input record))
+
+(defun (setf request-input) (input record)
+  "Keep INPUT as RECORD's input: octets RECORDED-INPUT made, or a JSON
+object the kernel made (a job's or a workflow's), recorded within the same
+bound; NIL for none."
+  (setf (request-%input record)
+        (cond ((null input) nil)
+              ((typep input 'record-octets)
+               (if (recorded-input-p input)
+                   input
+                   (recorded-json-object (jobj "_" +input-left-out+))))
+              (t (recorded-json-object input))))
+  input)
+
+(defun recorded-json-object (object)
+  "OBJECT, a JSON object, as a record's input: its JSON text's octets, or
++INPUT-LEFT-OUT+ in its place when the text is over +MOST-RECORDED-INPUT+."
+  (let ((recorder (make-recorder +most-recorded-input+ :abort t)))
+    (if (recorded-fits-p recorder (lambda () (write-json object recorder)))
+        (recorder-result recorder)
+        (recorded-json-object (jobj "_" +input-left-out+)))))
+
+(defun request-backtrace (record)
+  "RECORD's backtrace: the frames' names, innermost first."
+  (let ((text (recorded-string (request-%backtrace record))))
+    (and text (uiop:split-string text :separator '(#\Newline)))))
+
+(defun (setf request-backtrace) (frames record)
+  (setf (request-%backtrace record)
+        (and frames (record-text (format nil "~{~a~^~%~}" frames) +most-recorded-backtrace+)))
+  frames)
+
+(defun request-record-octets (record)
+  "How many octets of text RECORD keeps: never more than +MOST-RECORD-OCTETS+."
+  (+ (length (or (request-%actor record) #()))
+     (length (or (request-%credential record) #()))
+     (length (or (request-%tool record) #()))
+     (length (or (request-%input record) #()))
+     (let ((code (request-%error-code record))) (if (symbolp code) 0 (length code)))
+     (length (or (request-%error-message record) #()))
+     (length (or (request-%error-type record) #()))
+     (length (or (request-%backtrace record) #()))))
 
 (defvar *request-id* nil
   "Identity of the top-level request (one MCP call, one web request, one
@@ -192,6 +386,11 @@ this form would unwind before it is consulted."
         (request-error-code record) code
         (request-error-message record) (if (and message (request-redacted record)) "[slettet]" message)))
 
+(defun request-input-json (record)
+  "RECORD's input as a JSON object: {} when it has none."
+  (let ((input (request-input record)))
+    (if input (parse-json (recorded-string input)) (jobj))))
+
 (defun set-request-policy (record required role decision)
   (unless (request-policy-required record)
     (setf (request-policy-required record) required
@@ -249,7 +448,7 @@ this form would unwind before it is consulted."
 
 (defun redact-request-payload (record)
   "Discard trace payloads without changing identity, outcome or timing; caller holds its lock."
-  (setf (request-redacted record) t (request-input record) (jobj))
+  (setf (request-redacted record) t (request-input record) nil)
   (when (request-error-message record) (setf (request-error-message record) "[slettet]"))
   (loop for step across (request-steps record) do (setf (trace-step-detail step) "[slettet]")))
 
@@ -270,6 +469,9 @@ Diagnostics kept in the store are erased in the same transaction."
         (snapshots nil))
     (labels ((concerns-subject-p (value)
                (cond ((stringp value) (some (lambda (needle) (search needle value :test #'char-equal)) needles))
+                     ;; A recorded input, kept as its JSON text's octets.
+                     ((typep value '(vector (unsigned-byte 8)))
+                      (concerns-subject-p (sb-ext:octets-to-string value :external-format :utf-8)))
                      ((hash-table-p value) (loop for nested being the hash-values of value thereis (concerns-subject-p nested)))
                      ((vectorp value) (some #'concerns-subject-p value))
                      ((consp value) (or (concerns-subject-p (car value)) (concerns-subject-p (cdr value)))))))
@@ -317,9 +519,12 @@ taken over by the first operation called in it."
       (funcall function)
       (let ((record (make-request-record :id (or id (new-id "req")) :at at
                                          :started-us (trace-clock-us)
-                                         :actor actor :credential credential :tool tool :input input
                                          :kind kind :application application
                                          :claimed (not claimable))))
+        (setf (request-actor record) actor
+              (request-credential record) credential
+              (request-tool record) tool
+              (request-input record) input)
         (unwind-protect
              (let ((*request-record* record)
                    (finished nil))
@@ -393,7 +598,7 @@ retire it to the history."
                        "at" (if (request-at record) (format-rfc3339 (request-at record)) :null)
                        "actor" (or (request-actor record) :null)
                        "tool" (or (request-tool record) :null)
-                       "input" (if (request-redacted record) (jobj) (or (request-input record) (jobj)))
+                       "input" (if (request-redacted record) (jobj) (request-input-json record))
                        "outcome" (if running "running" (request-outcome record))
                        "policy" (jobj "required" (or (code-string (request-policy-required record)) :null)
                                       "actor_role" (or (code-string (request-actor-role record)) :null)
@@ -407,7 +612,7 @@ retire it to the history."
             (jobj "code" (code-string (request-error-code record))
                   "message" (if (request-redacted record) "[slettet]" (or (request-error-message record) "")))))
     (when (and (equal (request-outcome record) "error") (not running))
-      (setf (gethash "backtrace" object) (jarr (or (request-backtrace record) '()))))
+      (setf (gethash "backtrace" object) (jarr (request-backtrace record))))
     (when (plusp (request-dropped-steps record))
       (setf (gethash "steps_dropped" object) (request-dropped-steps record)))
     (when (request-credential record)

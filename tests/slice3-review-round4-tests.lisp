@@ -31,7 +31,7 @@
                 (dolist (needle (list name email phone)) (is (not (search needle (to-json-string trace)))))
               (let ((record (find-request id)))
                 (dolist (needle (list name email phone))
-                  (is (not (search needle (to-json-string (request-input record)))))
+                  (is (not (search needle (to-json-string (request-input-json record)))))
                   (is (not (search needle (princ-to-string (map 'list #'trace-step-detail (request-steps record)))))))))
             (multiple-value-bind (replay replay-id)
                 (recorded-review-call "customers_create" "employee:e" "name" name "email" email "phone" phone

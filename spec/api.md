@@ -23,6 +23,8 @@ curl -X POST https://tracker.example.no/api/items_create \
   sends the same `request_key`, and gets the first answer again.
 - A tool that needs confirmation answers its `confirmation_token`; the
   caller confirms with a second call carrying it, as on MCP.
+- A tool that takes files, such as `attachments_add`, takes each as
+  base64 in the body, which may then be up to 16 MiB (`files.md` §4).
 
 ## 2. Who calls
 

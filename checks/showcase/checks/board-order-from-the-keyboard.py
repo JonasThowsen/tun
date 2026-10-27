@@ -27,10 +27,17 @@ def choose(page, title, label):
     page.locator(f"#{trigger(page, title)}").focus()
     page.keyboard.press("Enter")
     page.locator(".tun-dropdown-menu-content:popover-open").wait_for()
+    # Each key press moves focus after it returns: wait until it has moved
+    # into the menu, and on after each arrow, before reading where it is.
+    page.wait_for_function(
+        "document.activeElement.closest('.tun-dropdown-menu-content:popover-open') !== null")
     for _ in range(12):
-        if page.evaluate("document.activeElement.textContent.trim()") == label:
+        focused = page.evaluate("document.activeElement.textContent.trim()")
+        if focused == label:
             break
         page.keyboard.press("ArrowDown")
+        page.wait_for_function("(before) => document.activeElement.textContent.trim() !== before",
+                               arg=focused)
     with page.expect_post("/saker/flytt") as post:
         page.keyboard.press("Enter")
     page.wait_for_timeout(500)

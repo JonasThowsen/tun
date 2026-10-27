@@ -4,7 +4,7 @@
   (:export #:henvendelse #:henvendelse-subject #:henvendelse-body #:henvendelse-from-email
            #:henvendelse-from-name #:request-defaults #:inbox-history #:inbound-mail-receive))
 (in-package #:tun.inbox)
-(define-module inbox (:depends-on customers orders notifications) (:core ">= 1.2.0" "< 2.0")
+(define-module inbox (:depends-on customers orders notifications) (:core ">= 1.20.0" "< 2.0")
   (:on-open repair-inbox-receipts)
   (:documentation "Inbound requests and the client-specific request-defaults seam."))
 (define-setting "innboks.hemmelighet" (:type "secret" :description "Autentiserer innkommende e-post."))
@@ -243,13 +243,16 @@
     (subseq (henvendelse-from-email item) 0 (position #\@ (henvendelse-from-email item)))))
 (publish '(request-text-matches-p request-postcodes request-name))
 (publish '(request-defaults henvendelse henvendelse-subject henvendelse-body henvendelse-from-email henvendelse-from-name))
-(defun receive-inbound-http (body secret)
+(defun inbound-secret-p (secret)
+  "True when SECRET is the inbox's: checked before the body is parsed."
   (let ((expected (with-transaction (:read) (setting-value-at-use "innboks.hemmelighet"))))
-    (unless (and (stringp secret) (constant-time-string= (sha256-hex secret) (sha256-hex expected)))
-      (return-from receive-inbound-http (values 403 (jobj "error" (jobj "code" "forbidden" "message" "Ugyldig hemmelighet")))))
-    (with-actor ((system-actor "inbound"))
-      (values 200 (call-tool "inbound_mail_receive" body)))))
-(tun.web:register-json-endpoint "/inbound/mail" 'receive-inbound-http)
+    (and (stringp secret) (constant-time-string= (sha256-hex secret) (sha256-hex expected)))))
+
+(defun receive-inbound-http (body secret)
+  (declare (ignore secret))
+  (with-actor ((system-actor "inbound"))
+    (values 200 (call-tool "inbound_mail_receive" body))))
+(tun.web:register-json-endpoint "/inbound/mail" 'receive-inbound-http :authorize 'inbound-secret-p)
 
 (defun repair-inbox-receipts ()
   "At startup, redact receipts of erased customers' henvendelser that still

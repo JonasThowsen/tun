@@ -25,10 +25,11 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defun register-json-endpoint (path handler)
+(defun register-json-endpoint (path handler &key authorize)
   "Register a bounded JSON POST port. HANDLER receives JSON and the inbound secret,
-returning status and JSON; it calls the same guarded operations as MCP."
-  (tun.http:register-json-endpoint path handler))
+returning status and JSON; it calls the same guarded operations as MCP.
+AUTHORIZE, a function of the secret, decides before the body is parsed."
+  (tun.http:register-json-endpoint path handler :authorize authorize))
 
 (defparameter +actor-cookie+ "tun_actor")
 (defvar *public-pages* (make-hash-table :test 'equal))
@@ -197,7 +198,8 @@ after it keeps it (spec/ui.md 4.1)."
       (let ((form (jobj)) (query (jobj)))
         (when (eq method :post)
           (dolist (pair (hunchentoot:post-parameters*))
-            (setf (gethash (car pair) form) (cdr pair))))
+            (setf (gethash (car pair) form) (cdr pair)))
+          (add-posted-files form))
         (dolist (pair (hunchentoot:get-parameters*))
           (setf (gethash (car pair) query) (cdr pair)))
         ;; Only the page's own address, as a page: a record's page under it,
@@ -310,13 +312,15 @@ menu, its title linking back to the page itself."
   (let ((routes '(("/mcp" "core MCP") ("/health" "core health") ("/login" "core login")
                   ("/logout" "core login") ("/setup" "core login") ("/auth" "core login")
                   ("/api" "core API") ("/manifest.webmanifest" "core web app")
-                  ("/sw.js" "core web app") ("/offline" "core web app") ("/push" "core push"))))
+                  ("/sw.js" "core web app") ("/offline" "core web app") ("/push" "core push")
+                  ("/files" "core files"))))
     (flet ((add (path owner)
              (push (list (if (string-prefix-p "/" path) path (concatenate 'string "/" path)) owner) routes)))
       (dolist (resource *resources*) (add (resource-path resource) (resource-module resource)))
       (maphash (lambda (path handler) (add path (format nil "public ~a" handler))) *public-pages*)
       (maphash (lambda (path page) (add path (format nil "staff ~a" (staff-page-handler page)))) *staff-pages*)
-      (maphash (lambda (path handler) (add path (format nil "JSON ~a" handler))) tun.http::*json-endpoints*))
+      (maphash (lambda (path endpoint) (add path (format nil "JSON ~a" (car endpoint))))
+               tun.http::*json-endpoints*))
     (loop for rest on routes for left = (first rest)
           do (dolist (right (rest rest))
                (when (or (string-prefix-p (first left) (first right))
@@ -1078,7 +1082,10 @@ REQUIRED marks the control required; OPTIONAL labels it «(valgfritt)»."
                                               :required required))))
            (text (&rest more)
              (ui:text-input* (append common (list :value value :required required) more))))
-      (cond (options
+      (cond ((files-type-p type)
+             (ui:file-input (:label label :name name :id id :hint hint :error error
+                                    :optional optional :max (files-max type))))
+            (options
              ;; The keys before COMMON win: these choices must be made.
              (ui:select* (append (list :options (mapcar (lambda (option)
                                                           (list (car option) (cdr option)))
@@ -1219,7 +1226,10 @@ field.  ID is the card's id; CANCEL a link back without saving."
         (errors (and error-json (field-errors error-json))))
     (ui:card (:title title :description description :heading-level 2 :id id)
              `(:form (:@ :method "post" :action ,action :data-tool ,(operation-tool op)
-                         :novalidate t)
+                         :novalidate t
+                         :enctype ,(when (some (lambda (spec) (files-type-p (spec-type spec)))
+                                               specs)
+                                     "multipart/form-data"))
                      ,(apply #'ui:stack* (list :gap :lg)
                              (when error-json (form-error-summary error-json form-id specs))
                              (append
@@ -1272,6 +1282,7 @@ JSON object of the values that were filled in."
   (let ((type (spec-type spec))
         (raw (posted name params)))
     (cond ((typep type 'boolean-type) (and raw t))
+          ((files-type-p type) (posted-files-json name))
           ((row-list-p type)
            (let ((rows (loop for row below 100
                              for object = (row-value type name row params)
@@ -1284,12 +1295,17 @@ JSON object of the values that were filled in."
            (let ((chosen (posted-all name params)))
              (if chosen (jarr chosen) :absent)))
           ((or (null raw) (zerop (length (trim raw)))) :absent)
+          ;; A number longer than any a field holds goes on as text, for
+          ;; the operation to refuse, and is never parsed.
+          ((and (or (typep type 'integer-type) (typep type 'decimal-type))
+                (long-number-text-p (remove #\Space (trim raw))))
+           raw)
           ((typep type 'integer-type)
            (handler-case (parse-integer (remove #\Space (trim raw))) (error () raw)))
           ((typep type 'decimal-type) (or (parse-decimal raw) raw))
           ((typep type 'json-type)
            ;; Invalid JSON goes on as text, for the operation to refuse.
-           (handler-case (parse-json raw) (error () raw)))
+           (handler-case (parse-request-json raw) (error () raw)))
           (t raw))))
 
 (defun form-arguments (op params)
@@ -1618,6 +1634,9 @@ uncached, so a page rendered before a deploy still gets styles."
                  (or (serve-asset path) (serve-icon path)))
                 ((and (eq method :get) (web-app-path-p path))
                  (serve-web-app path))
+                ((and (member method '(:get :head)) (equal (first parts) "files")
+                      (= 2 (length parts)))
+                 (serve-file acceptor method (second parts)))
                 ((push-path-p path) (serve-push method path))
                 ((and (eq method :get) (stale-assets-p))
                  (setf (hunchentoot:header-out "HX-Redirect") (hunchentoot:request-uri*))
@@ -1712,7 +1731,7 @@ it; for one read from the environment, the variable instead of the form."
                                  (and (not (member (jget item "type") '("string" "secret")
                                                    :test #'equal))
                                       (equal raw "null")))
-                             (handler-case (parse-json raw)
+                             (handler-case (parse-request-json raw)
                                (error () (fail :invalid-input "Ugyldig innstillingsverdi")))
                              raw)))
              (call-tool "settings_set" (jobj "key" key "value" value))

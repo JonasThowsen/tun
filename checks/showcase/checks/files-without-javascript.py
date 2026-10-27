@@ -1,0 +1,20 @@
+"""Without JavaScript, a file chosen in the browser's own control is
+attached when the form is sent (spec/files.md 6.1)."""
+
+import pathlib
+import sys
+
+sys.path.insert(0, str(pathlib.Path(__file__).parent))
+import _files  # noqa: E402
+
+
+def run(t):
+    page = t.phone(javascript=False)
+    page.sign_in("employee:anna")
+    _files.card_page(page, "Sak nummer 3")
+    t.check(page.locator("[data-tun-file-input-drop]").is_hidden(),
+            "no promise of dragging and pasting without a script")
+    page.locator("input[type=file][name=filer]").set_input_files(_files.path("foto.jpg"))
+    with page.expect_navigation():
+        page.get_by_role("button", name="Legg ved", exact=True).click()
+    t.check(_files.attached(page) == ["foto.jpg"], f"the file is attached: {_files.attached(page)}")

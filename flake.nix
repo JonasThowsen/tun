@@ -25,6 +25,7 @@
         com_dot_inuoe_dot_jzon
         flexi-streams
         hunchentoot
+        chunga   # Hunchentoot's chunked streams, unwrapped to end a connection
         ironclad
         sqlite
         cl-postgres   # the Postgres store adapter (spec/store.md)
@@ -83,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "1.19.0";
+      coreVersion = "1.20.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;

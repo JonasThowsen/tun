@@ -1,5 +1,6 @@
 ;;;; cards.lisp -- cards on a board: what the board pages show and move, in
-;;;; an order a person sets within each column (spec/core.md 2.6).
+;;;; an order a person sets within each column (spec/core.md 2.6), each with
+;;;; the files attached to it (spec/files.md).
 
 (in-package #:showcase)
 
@@ -7,7 +8,7 @@
                           ("ferdig" "Ferdig"))
   "The board's columns: each status's key and title.")
 
-(define-entity card (:label "Kort" :id-prefix "krt" :table "cards")
+(define-entity card (:label "Kort" :id-prefix "krt" :table "cards" :attachments (:max 20))
   ((title :type (string :min 1 :max 200) :required t :label "Tittel")
    (status :type (enum "ny" "planlagt" "under_arbeid" "ferdig") :initform "ny" :label "Status")
    (place :type (string :max 1000) :input nil :label "Plass"
@@ -30,11 +31,20 @@ refused."
                        Last den inn på nytt."))
     (rank-between (and above (card-place above)) (and below (card-place (first below))))))
 
-(define-operation cards-create ((:draft card))
+(define-operation cards-create ((:draft card)
+                                (screenshots :type (files :max 10) :label "Skjermbilder"
+                                             :description "Skjermbilder eller andre filer som viser
+saken: PNG, JPEG, WebP, GIF eller PDF."))
     (:entity card :kind :create :policy :employee :title "Nytt kort"
-             :description "Et kort på tavla, sist i sin kolonne.")
+             :description "Et kort på tavla, sist i sin kolonne, med filene som er lagt ved.")
   (setf (card-place card) (place-before card (card-status card) nil))
-  (insert card))
+  (insert card)
+  (attach-files card screenshots)
+  card)
+
+(define-operation cards-get ((id :type (id card) :required t :label "Kort"))
+    (:entity card :kind :read :policy :employee :title "Kort" :description "Ett kort.")
+  (fetch! 'card id))
 
 (define-operation cards-move ((id :type (id card) :required t :label "Kort")
                               (:field card status)

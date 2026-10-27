@@ -171,7 +171,8 @@ ends. A check gets:
 - `t.phone()` and `t.desktop()`: a page at 390×844 with touch, or at
   1280×800 with a mouse, each with its own cookies; both take another
   width and height, `permissions`, such as `["notifications"]`, which
-  the page's browser grants its preview, and `user_agent`;
+  the page's browser grants its preview, `user_agent`, and
+  `javascript=False` for a browser without JavaScript;
 - `page.sign_in(actor)`, `page.goto(path)`, `page.card(title)` (the card
   with exactly that title, not the copy that follows a drag),
   `page.column(key)` and `page.visible_width(selector)`;

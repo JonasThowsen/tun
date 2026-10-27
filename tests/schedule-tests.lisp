@@ -90,8 +90,19 @@ and forget them after: a schedule is the whole image's."
      (dolist (name ',(mapcar #'second definitions))
        (tun.jobs:remove-schedule name))))
 
+(defun core-schedule-jobs ()
+  "How many jobs core's own schedules have made, such as the nightly sweep
+of files (spec/files.md 5.1), which the clock running past it also runs."
+  (with-application (*app*)
+    (with-transaction (:read)
+      (length (select 'tun.jobs:job
+                      :where `(:= "kind" ,(json-name-of 'tun.files:attachments-sweep)))))))
+
 (defun clock-to (text)
-  (jget (call-ok "clock_set" "admin:root" "now" text) "job_attempts"))
+  "Move the test clock to TEXT; how many job attempts that ran, but core's own."
+  (let ((before (core-schedule-jobs)))
+    (- (jget (call-ok "clock_set" "admin:root" "now" text) "job_attempts")
+       (- (core-schedule-jobs) before))))
 
 (test a-schedule-runs-its-job-once-per-occurrence
   ;; The test clock starts at 2026-03-01T09:00Z, a Sunday, 10:00 in Norway.

@@ -20,6 +20,31 @@
   (push (cons path (apply #'format nil control args)) *input-errors*)
   nil)
 
+(defparameter +most-shown-name+ 100
+  "The most characters of a name a caller sent that an error repeats.")
+
+(defparameter +most-unknown-names+ 20
+  "The most unknown names one input's errors list; the rest are counted.")
+
+(defun shown-name (name)
+  "NAME, sent by a caller, as an error repeats it: at most +MOST-SHOWN-NAME+
+characters, then …."
+  (if (> (length name) +most-shown-name+)
+      (concatenate 'string (subseq name 0 +most-shown-name+) "…")
+      name))
+
+(defun unknown-names-errors (prefix names)
+  "Input errors for NAMES, keys under PREFIX that are not known fields: each
+of the first +MOST-UNKNOWN-NAMES+ at its name, cut by SHOWN-NAME, and the
+rest counted under PREFIX."
+  (loop for name in names
+        for i from 0
+        while (< i +most-unknown-names+)
+        do (input-error (join-path prefix (shown-name name)) "er ikke et kjent felt"))
+  (when (> (length names) +most-unknown-names+)
+    (input-error (if (blank-p prefix) "input" prefix) "har ~d ukjente felt til"
+                 (- (length names) +most-unknown-names+))))
+
 (defmacro collecting-input-errors (&body body)
   "Run BODY collecting INPUT-ERRORs; signal invalid_input if any were recorded."
   (let ((result (gensym "RESULT")))
@@ -120,8 +145,18 @@
     (when (< (integer-max type) +max-safe-integer+) (setf (gethash "maximum" schema) (integer-max type)))
     schema))
 
+(defparameter +most-number-text+ 40
+  "The most characters of a number given as text, such as a form's field,
+that is parsed (core.md §7.5): more than any number field holds.")
+
+(defun long-number-text-p (value)
+  "True when VALUE is text too long to be parsed as a number."
+  (and (stringp value) (> (length value) +most-number-text+)))
+
 (defmethod coerce-input ((type integer-type) value path)
-  (cond ((not (integerp value)) (input-error path "må være et heltall"))
+  (cond ((long-number-text-p value)
+         (input-error path "er for langt for et tall: høyst ~d tegn" +most-number-text+))
+        ((not (integerp value)) (input-error path "må være et heltall"))
         ((< value (integer-min type)) (input-error path "må være minst ~d" (integer-min type)))
         ((> value (integer-max type)) (input-error path "kan ikke være større enn ~d" (integer-max type)))
         (t value)))
@@ -189,7 +224,9 @@ binary fraction nearest to it, nor as the simplest rational near it."
 
 (defmethod coerce-input ((type decimal-type) value path)
   (if (not (realp value))
-      (input-error path "må være et tall")
+      (if (long-number-text-p value)
+          (input-error path "er for langt for et tall: høyst ~d tegn" +most-number-text+)
+          (input-error path "må være et tall"))
       (let ((r (json-number->rational value)))
         (if (integerp (* r (expt 10 (decimal-scale type))))
             r
@@ -317,6 +354,25 @@ through a float, which keeps only about seven digits)."
 (defmethod type-lisp-type ((type list-type)) 'list)
 
 ;;; ------------------------------------------------------------------
+;;; Files: an operation parameter that carries uploaded files (spec/files.md
+;;; 4.1).  Only the class is here, so designators parse; decoding, checking
+;;; and stripping a file are in src/files/, which adds the methods.
+
+(defclass files-type (field-type)
+  ((max-files :initarg :max :initform 10 :reader files-max)))
+
+(defmethod initialize-instance :after ((type files-type) &key)
+  (unless (typep (files-max type) '(integer 1 10))
+    (error "(files :max ~s): the most files is an integer from 1 to 10" (files-max type))))
+
+(defmethod type-name ((type files-type)) "files")
+(defmethod type-lisp-type ((type files-type)) 'list)
+
+(defun files-type-p (type)
+  "True when TYPE, a field type, carries files."
+  (typep type 'files-type))
+
+;;; ------------------------------------------------------------------
 ;;; Designator parsing
 
 (defun designator-head (designator)
@@ -339,6 +395,7 @@ packages need not import every type keyword."
             ((string= head "TIMESTAMP") (make 'timestamp-type))
             ((string= head "ID") (make 'id-type :references (first args)))
             ((string= head "JSON") (make 'json-type))
+            ((string= head "FILES") (apply #'make 'files-type args))
             ((string= head "LIST-OF")
              (destructuring-bind (element &rest options) args
                (apply #'make 'list-type
@@ -354,5 +411,6 @@ packages need not import every type keyword."
 (defun embedded-entity-designator-p (symbol)
   "True when SYMBOL is not a scalar type name, i.e. it names an entity class."
   (not (member (symbol-name symbol)
-               '("STRING" "EMAIL" "INTEGER" "DECIMAL" "BOOLEAN" "DATE" "TIMESTAMP" "ID" "JSON")
+               '("STRING" "EMAIL" "INTEGER" "DECIMAL" "BOOLEAN" "DATE" "TIMESTAMP" "ID" "JSON"
+                 "FILES")
                :test #'string=)))

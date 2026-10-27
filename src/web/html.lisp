@@ -38,6 +38,8 @@
     "inputmode" "label" "loading" "low" "maxlength" "minlength" "multiple" "novalidate" "open"
     "optimum" "pattern" "popover" "popovertarget" "popovertargetaction" "readonly" "reversed"
     "rows" "scope" "size" "spellcheck" "src" "start" "tabindex" "width"
+    ;; A form that sends files, a link that downloads one, an image decoded aside.
+    "enctype" "download" "decoding"
     "viewbox" "xmlns" "fill" "stroke" "stroke-width" "stroke-linecap" "stroke-linejoin" "d" "cx"
     "cy" "r" "rx" "ry" "x" "y" "x1" "y1" "x2" "y2" "points" "focusable"))
 
