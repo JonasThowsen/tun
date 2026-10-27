@@ -2,7 +2,7 @@
 
 - loop: attachments
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: bf51a48cdc1fde6dd6aa2fdbc789fe260f876169
 - verified: 750291403154e8b8c3f9eac073b3743d6e4de5b2
 - shown: 750291403154e8b8c3f9eac073b3743d6e4de5b2
@@ -827,3 +827,4 @@ checks in `checks/showcase/checks/`.
 - 2026-10-27 16:59  shown (/vedlegg, /saker/ny, /saker)
 - 2026-10-27 16:59  gate B asked of the person
 - 2026-10-27 17:17  gate B: approve (jonas): «Approve»
+- 2026-10-27 17:18  finished at tun b488943
