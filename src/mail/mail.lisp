@@ -9,15 +9,17 @@
 ;;;; idempotency key, so a retry after a lost answer is not a second mail.
 ;;;;
 ;;;; An adapter is a class with one method, DELIVER-MAIL.  This file has the
-;;;; log adapter, which sends nothing; resend.lisp has Resend's.
+;;;; log adapter, which sends nothing; resend.lisp has Resend's.  html.lisp
+;;;; makes a mail's HTML and text parts from a node tree.
 
 (defpackage #:tun.mail
   (:use #:cl #:tun.core)
   (:import-from #:tun.jobs #:define-job #:enqueue-job #:fail-job #:last-attempt-p)
+  (:import-from #:tun.html #:render-html #:trusted #:node-parts)
   (:export #:mail #:mail-to #:mail-subject #:mail-text #:mail-html #:mail-reply-to #:mail-key
            #:mail-status #:mail-attempts #:mail-job-id #:mail-last-error
            #:mail-provider #:mail-provider-id #:mail-created-at #:mail-sent-at
-           #:send-mail #:+mail-retry-delays+ #:+mail-time-limit+
+           #:send-mail #:render-mail #:+mail-retry-delays+ #:+mail-time-limit+
            #:mail-adapter #:deliver-mail #:provider-name #:log-mail
            #:resend-mail #:resend-endpoint #:resend-from
            #:make-mail-adapter #:mail-problems #:send-queued-mail
@@ -60,16 +62,16 @@ error is collected for COLLECTING-INPUT-ERRORS."
 (defun send-mail (&key to subject text html reply-to key)
   "Queue a mail to TO, inside the current write, and return it: it is sent
 after the write commits, and never when it rolls back (spec/mail.md 2).
-When a mail with KEY exists, return that one and store nothing.  A bad
-argument fails the operation with invalid_input."
+HTML is a node tree, rendered as RENDER-MAIL renders it; without TEXT, the
+text part is made from it.  When a mail with KEY exists, return that one
+and store nothing.  A bad argument fails the operation with invalid_input."
   (let ((mail (collecting-input-errors
-               (make-instance 'mail
-                              :to (mail-argument "to" to :required t)
-                              :subject (mail-argument "subject" subject :required t)
-                              :text (mail-argument "text" text :required t)
-                              :html (mail-argument "html" html)
-                              :reply-to (mail-argument "reply_to" reply-to)
-                              :key (mail-argument "key" key)))))
+               (let ((to (mail-argument "to" to :required t))
+                     (subject (mail-argument "subject" subject :required t)))
+                 (multiple-value-bind (html-part text-part) (checked-parts html subject text)
+                   (make-instance 'mail :to to :subject subject :text text-part :html html-part
+                                        :reply-to (mail-argument "reply_to" reply-to)
+                                        :key (mail-argument "key" key)))))))
     (or (and (mail-key mail)
              (select-one 'mail :where `(:= "key" ,(mail-key mail))))
         (progn

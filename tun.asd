@@ -72,7 +72,9 @@
                (:module "adapters" :components ((:file "fake-accounting")))
                (:module "jobs" :components ((:file "jobs") (:file "cron") (:file "schedules") (:file "triggers")
                                             (:file "runner") (:file "tools")))
-               (:module "mail" :components ((:file "mail") (:file "resend")))
+               ;; HTML as data, before mail: a mail's HTML part is built of it.
+               (:module "html" :pathname "web" :components ((:file "html")))
+               (:module "mail" :components ((:file "mail") (:file "html") (:file "resend")))
                (:module "outbound" :components ((:file "outbound")))
                (:module "files" :components ((:file "package") (:file "formats") (:file "multipart")
                                              (:file "attachments")))
@@ -97,8 +99,7 @@
                 :components ((:file "mcp")
                              (:file "http")))
                (:module "web"
-                :components ((:file "html")
-                             (:module "components"
+                :components ((:module "components"
                               :pathname "ui"
                               :serial t
                               :components ((:file "package")
@@ -157,6 +158,7 @@
                              (:file "outbound-tests")
                              (:file "web-app-tests")
                              (:file "mail-tests")
+                             (:file "mail-html-tests")
                              (:file "push-tests")
                              (:file "jobs-tests")
                              (:file "schedule-tests")

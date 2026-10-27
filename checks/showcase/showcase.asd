@@ -11,6 +11,7 @@
                (:file "cards")
                (:file "pages")
                (:file "notifications")
+               (:file "mail")
                (:file "application")))
 
 (defsystem "showcase/tests"

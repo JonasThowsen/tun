@@ -17,7 +17,7 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +core-version+ "1.21.1"
+(defparameter +core-version+ "1.22.0"
   "The kernel's version.  Modules declare the range they build against; the
 client build (flake.nix, lib.buildClient) and DEFINE-MODULE both refuse a
 module whose range does not contain it.  The first versioned core was 0.1.0.")

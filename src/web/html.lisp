@@ -8,7 +8,7 @@
 
 (defpackage #:tun.html
   (:use #:cl)
-  (:export #:render-html #:escape-html #:trusted #:untrusted))
+  (:export #:render-html #:escape-html #:trusted #:untrusted #:node-parts))
 
 (in-package #:tun.html)
 
@@ -104,6 +104,16 @@ true when every modifier is one of +HTMX-MODIFIERS+."
                       (t (write-char ch out))))))
     (if stream (emit stream) (with-output-to-string (out) (emit out)))))
 
+(defun node-parts (element)
+  "The parts of ELEMENT, a node (:tag [(:@ attribute value ...)] child...):
+values its tag's name in lower case, its attributes as a property list, and
+its children."
+  (let* ((rest (rest element))
+         (attributes-p (and (consp (first rest)) (eq (first (first rest)) :@))))
+    (values (string-downcase (symbol-name (first element)))
+            (and attributes-p (rest (first rest)))
+            (if attributes-p (rest rest) rest))))
+
 (defun render-node (node out)
   (cond ((null node))
         ((stringp node) (escape-html node out))
@@ -115,11 +125,7 @@ true when every modifier is one of +HTMX-MODIFIERS+."
         ((untrusted-html-p node)
          (let ((*untrusted* t)) (render-node (untrusted-html-nodes node) out)))
         ((and (consp node) (keywordp (first node)))
-         (let* ((tag (string-downcase (symbol-name (first node))))
-                (rest (rest node))
-                (attrs (when (and (consp (first rest)) (eq (first (first rest)) :@))
-                         (rest (first rest))))
-                (children (if (and (consp (first rest)) (eq (first (first rest)) :@)) (rest rest) rest)))
+         (multiple-value-bind (tag attrs children) (node-parts node)
            (if (and *untrusted* (not (member tag +safe-elements+ :test #'string=)))
                (escape-html (format nil "[~a fjernet]" tag) out)
                (progn

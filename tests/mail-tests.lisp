@@ -33,7 +33,8 @@ to signal, or :SILENT to answer too late.  Then (:SENT \"ok\").")
                                   (html :type string) (reply-to :type string) (key :type string)
                                   (then-fail :type boolean))
     (:kind :update :policy :employee :title "Send e-post (test)")
-  (let ((mail (tun.mail:send-mail :to to :subject subject :text text :html html
+  ;; A tree cannot travel as JSON: HTML is the text of a paragraph.
+  (let ((mail (tun.mail:send-mail :to to :subject subject :text text :html (and html `(:p ,html))
                                   :reply-to reply-to :key key)))
     (when then-fail
       (fail :conflict "Arbeidet feilet etter at e-posten ble lagt i køen"))
@@ -51,6 +52,10 @@ SCRIPTED-MAIL answering OUTCOMES."
   (jget (apply #'call-ok "mail_test_send" "employee:kari"
                (append arguments '("to" "ola@example.no" "subject" "Hei" "text" "Hei, Ola.")))
         "id"))
+
+(defun framed-html-p (markup html)
+  "True when HTML is a mail's framed document holding MARKUP."
+  (and (stringp html) (eql 0 (search "<!doctype html>" html)) (search markup html) t))
 
 (defun mail-of (id)
   (call-ok "mail_get" "admin:ada" "id" id))
@@ -77,13 +82,13 @@ SCRIPTED-MAIL answering OUTCOMES."
 
 (test a-mail-exists-only-when-its-write-commits
   (with-mail (provider)
-    (let ((id (queue-mail "html" "<p>Hei, Ola.</p>" "reply_to" "kari@example.no")))
+    (let ((id (queue-mail "html" "Hei, Ola." "reply_to" "kari@example.no")))
       (let ((mail (mail-of id)))
         (is (equal "queued" (jget mail "status")))
         (is (equal "ola@example.no" (jget mail "to")))
         (is (equal "Hei" (jget mail "subject")))
         (is (equal "Hei, Ola." (jget mail "text")))
-        (is (equal "<p>Hei, Ola.</p>" (jget mail "html")))
+        (is (framed-html-p "<p>Hei, Ola.</p>" (jget mail "html")))
         (is (equal "kari@example.no" (jget mail "reply_to")))
         (is (= 0 (jget mail "attempts")))))
     (is (equal "conflict" (nth-value 1 (call "mail_test_send" "employee:kari" "to" "per@example.no"
@@ -263,7 +268,7 @@ SCRIPTED-MAIL answering OUTCOMES."
 
 (test only-admins-read-and-retry-mail
   (with-mail (provider)
-    (let ((first (queue-mail "html" "<p>Hei</p>")))
+    (let ((first (queue-mail "html" "Hei")))
       (deliver)
       (let ((second (jget (call-ok "mail_test_send" "employee:kari" "to" "per@example.no"
                                    "subject" "Hallo" "text" "Hallo, Per.")
@@ -284,7 +289,7 @@ SCRIPTED-MAIL answering OUTCOMES."
           (is (equal (list first) (ids "status" "sent")))
           (is (equal (list second) (ids "status" "queued")))
           (is (equal (list second) (ids "to" "per@example.no"))))
-        (is (equal "<p>Hei</p>" (mail-field first "html")))))))
+        (is (framed-html-p "<p>Hei</p>" (mail-field first "html")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The provider an application names (spec/mail.md 1)
@@ -369,7 +374,7 @@ RESEND, a fake Resend serving on a free port."
 
 (test resend-receives-the-mail-with-its-key
   (with-fake-resend (resend)
-    (let ((id (queue-mail "html" "<p>Hei, Ola.</p>" "reply_to" "kari@example.no")))
+    (let ((id (queue-mail "html" "Hei, Ola." "reply_to" "kari@example.no")))
       (is (= 1 (deliver)))
       (let ((mail (mail-of id))
             (request (first (resend-requests resend))))
@@ -385,7 +390,7 @@ RESEND, a fake Resend serving on a free port."
           (is (equalp #("ola@example.no") (jget body "to")))
           (is (equal "Hei" (jget body "subject")))
           (is (equal "Hei, Ola." (jget body "text")))
-          (is (equal "<p>Hei, Ola.</p>" (jget body "html")))
+          (is (framed-html-p "<p>Hei, Ola.</p>" (jget body "html")))
           (is (equal "kari@example.no" (jget body "reply_to"))))))
     (queue-mail "key" "uten-html")
     (deliver)

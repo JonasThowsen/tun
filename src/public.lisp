@@ -104,10 +104,11 @@ the listed symbols (the same symbol objects, not copies)."
    #:render-screen #:section #:json-table #:entity-detail
    #:define-page #:web-call #:error-alert #:timestamp-text #:htmx-request-p #:staff-page-extras
    #:preload-request-p #:decline-preload)
-  ;; Mail: queued in the caller's write, delivered after it commits
-  ;; (spec/mail.md), and whom to send it to (spec/auth.md 2).  A client
+  ;; Mail: queued in the caller's write, delivered after it commits, its
+  ;; HTML a node tree that render-mail also previews (spec/mail.md), and
+  ;; whom to send it to (spec/auth.md 2).  A client
   ;; creates and invites a person with (invoke 'accounts-create ...).
-  (#:tun.mail #:send-mail)
+  (#:tun.mail #:send-mail #:render-mail)
   ;; Push notifications to an installed app's devices: queued in the
   ;; caller's write, delivered after it commits (spec/push.md)
   (#:tun.push #:notify-push)

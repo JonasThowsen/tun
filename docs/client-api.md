@@ -516,9 +516,9 @@ or no account (NIL).
 
 `(send-mail :to :subject :text)`, inside an operation, queues a mail in the
 operation's transaction: it exists only if the operation commits, and is
-sent after (`spec/mail.md`). `:html` and `:reply-to` are optional. `:key`
-sends once only: a second `send-mail` with the same key returns the first
-mail, so a notification can be sent again harmlessly.
+sent after (`spec/mail.md`). `:reply-to` is optional. `:key` sends once
+only: a second `send-mail` with the same key returns the first mail, so a
+notification can be sent again harmlessly.
 
 ```lisp
 (define-operation notes-share ((note-id :type (id note) :required t :label "Notat")
@@ -531,6 +531,29 @@ mail, so a notification can be sent again harmlessly.
                :key (format nil "share:~a:~a" note-id email))
     note))
 ```
+
+`:html` is the mail's HTML part as a node tree, built as a page is, with
+its strings escaped (`spec/mail.md` §2.1). Without `:text`, the text part
+is made from the same tree, a link as «text (url)». A link may be a path,
+which becomes a whole link at the server's public URL. Only what mail
+apps show safely is allowed: headings, paragraphs, lists, links, tables,
+`https://` images and inline `style` from a short list; anything else,
+and a string of HTML, fails the operation with `invalid_input`.
+
+```lisp
+(send-mail :to address
+           :subject (format nil "Sammendrag: ~d nye saker" (length items))
+           :html `((:h1 "Nye saker")
+                   (:ul ,@(mapcar (lambda (item)
+                                    `(:li (:a (:@ :href ,(format nil "/saker/~a" (entity-id item)))
+                                              ,(item-title item))))
+                                  items)))
+           :key (format nil "summary:~a:~a" name (local-today)))
+```
+
+`(render-mail tree :subject subject)` returns the HTML and the text that
+`send-mail` would store, and stores nothing: for a page that previews a
+mail before it is sent, or a test of what a mail says.
 
 To mail someone with an account, ask for their address by the account's
 name: `(account-address name)` is the email of an active person, else
