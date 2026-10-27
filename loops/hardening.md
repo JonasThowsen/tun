@@ -2,7 +2,7 @@
 
 - loop: hardening
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: e2f758832363eb2cbf5f8141b9c6f4bfd4b1e3b3
 - verified: cbd998b09656e75875b351ede21f1fdbea5df507
 - shown: cbd998b09656e75875b351ede21f1fdbea5df507
@@ -320,3 +320,4 @@ Jobs (`spec/jobs.md` §2):
 - 2026-10-27 21:51  pressure P6 once against this worktree with tun-acceptance b55dfbd (workers from 127.0.0.2-9): passed, 0 failures, 25 203 shed 503, recovery reads at most 8 ms
 - 2026-10-27 21:51  gate B asked of a reviewer
 - 2026-10-27 22:02  gate B: approve (reviewer): criteria 1-18 met and probed: caps, proxy, waits, port claims, job refusals hold; legitimate bursts served
+- 2026-10-27 22:03  finished at tun 95701bb
