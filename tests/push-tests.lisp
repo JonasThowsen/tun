@@ -151,12 +151,12 @@ pmWQxfKTUJqPP3-Kg6NU1Q")))
         (is (equal first (key)) "the same secret, the same key")
         (is (equalp (tun.push:p256-public-key (tun.push:vapid-private-key "hemmelig"))
                     (tun.push:p256-public-key (tun.push:vapid-private-key "hemmelig"))))
-        (let ((setting (find "push.hemmelighet"
+        (let ((setting (find "push.secret"
                              (coerce (jget (call-ok "settings_list" "admin:ada") "items") 'list)
                              :key (lambda (item) (jget item "key")) :test #'equal)))
           (is (equal "***" (jget setting "value")))
           (is (eq t (jget setting "secret"))))
-        (call-ok "settings_set" "admin:ada" "key" "push.hemmelighet" "value" "en ny hemmelighet")
+        (call-ok "settings_set" "admin:ada" "key" "push.secret" "value" "en ny hemmelighet")
         (is (not (equal first (key))) "another secret, another key")))))
 
 ;;; ------------------------------------------------------------------
@@ -186,10 +186,10 @@ is SERVICE, a RECORDING-PUSH answering ANSWERS."
 (define-operation push-test-notify ((name :type string) (title :type string) (body :type string)
                                     (url :type string) (tag :type string)
                                     (then-fail :type boolean))
-    (:kind :update :policy :employee :title "Send varsel (test)")
+    (:kind :update :policy :employee :title "Send a notification (test)")
   (let ((count (tun.push:notify-push name :title title :body body :url url :tag tag)))
     (when then-fail
-      (fail :conflict "Arbeidet feilet etter at varselet ble lagt i køen"))
+      (fail :conflict "The work failed after the notification was queued"))
     (jobj "devices" count)))
 
 (defparameter *endpoint-number* 0)
@@ -374,7 +374,7 @@ is SERVICE, a RECORDING-PUSH answering ANSWERS."
   (with-push (service)
     (let ((endpoint (new-endpoint)))
       (subscribe "employee:kari" :endpoint endpoint)
-      (call-ok "settings_set" "admin:ada" "key" "push.hemmelighet" "value" "en ny hemmelighet")
+      (call-ok "settings_set" "admin:ada" "key" "push.secret" "value" "en ny hemmelighet")
       (is (eq nil (jget (call-ok "push_check" "employee:kari" "endpoint" endpoint) "on")))
       (is (= 0 (notify-device "kari")))
       (is (null (subscriptions-named "kari")) "the old subscription is deleted"))))
@@ -403,6 +403,32 @@ is SERVICE, a RECORDING-PUSH answering ANSWERS."
     (is (= 2 (jget (call-ok "push_test" "employee:kari") "devices")))
     (deliver-push)
     (is (= 4 (length (recording-calls service))))))
+
+;; spec/i18n.md 8: push_test's notification is written in the tenant's
+;; language when it is queued.
+(test a-test-notification-is-in-the-tenants-language
+  (with-push (service)
+    (flet ((latest ()
+             (deliver-push)
+             (parse-json (sb-ext:octets-to-string
+                          (tun.push:decrypt-push (third (first (recording-calls service)))
+                                                 (b64 +rfc-receiver-private+)
+                                                 (b64 +rfc-receiver-public+) (b64 +rfc-auth+))
+                          :external-format :utf-8))))
+      (subscribe "employee:kari")
+      (call-ok "push_test" "employee:kari")
+      (let ((json (latest)))
+        (is (equal "Notifications are on" (jget json "title")))
+        (is (equal (format nil "This is what a notification from ~a looks like."
+                           (application-title *app*))
+                   (jget json "body"))))
+      (call-ok "settings_set" "admin:ada" "key" "locale.language" "value" "nb")
+      (clock-at (+ (clock-time) 60))
+      (call-ok "push_test" "employee:kari")
+      (let ((json (latest)))
+        (is (equal "Varsler er på" (jget json "title")))
+        (is (equal (format nil "Slik ser et varsel fra ~a ut." (application-title *app*))
+                   (jget json "body")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Sending (spec/push.md 4)
@@ -578,7 +604,7 @@ is SERVICE, a RECORDING-PUSH answering ANSWERS."
 (defvar *fake-push-url* nil "Where PUSH-TEST-DELIVER posts.")
 
 (define-operation push-test-deliver ()
-    (:kind :read :title "Lever et varsel (test)")
+    (:kind :read :title "Deliver a notification (test)")
   (multiple-value-bind (status answer)
       (tun.push:deliver-push (make-instance 'tun.push:web-push-service) *fake-push-url*
                              '(("Content-Type" . "application/octet-stream")
@@ -683,7 +709,7 @@ is SERVICE, a RECORDING-PUSH answering ANSWERS."
                 (concatenate 'string "Mozilla/5.0 (iPhone; CPU iPhone OS 17_4 like Mac OS X) "
                              "AppleWebKit/605.1.15 (KHTML, like Gecko) Version/17.4 "
                              "Mobile/15E148 Safari/604.1"))))
-    (is (equal "Chrome på Android"
+    (is (equal "Chrome on Android"
                (tun.push:device-name
                 (concatenate 'string "Mozilla/5.0 (Linux; Android 14) AppleWebKit/537.36 "
                              "(KHTML, like Gecko) Chrome/129.0 Mobile Safari/537.36")))))

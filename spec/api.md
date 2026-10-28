@@ -58,7 +58,9 @@ for `introspect_request`.
 | 503 | AuthKit could not be reached to check a token, or the server is at its limit of requests (`Retry-After: 1`). | The error document. |
 
 The error document is the one an operation error has everywhere,
-`{"error": {"code", "message", …}}`.
+`{"error": {"code", "message", …}}`, its message source text,
+untranslated, on every tenant (`i18n.md` §7; `Accept-Language` is under
+its «Not yet»).
 
 ## 4. Records
 

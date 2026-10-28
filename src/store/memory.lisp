@@ -85,11 +85,11 @@
                    (every (lambda (c) (let ((v (gethash c row)))
                                         (and v (equal v (gethash c (cdr entry))))))
                           columns))
-          (fail :conflict "Finnes allerede (~{~a~^, ~} må være unik)" columns))))
+          (fail :conflict "Already exists (~{~a~^, ~} must be unique)" columns))))
     (let ((id (gethash "id" row)))
       (dolist (entry (table store class-name))
         (when (and id (not (eql (car entry) except-seq)) (equal id (gethash "id" (cdr entry))))
-          (fail :conflict "Id ~a finnes allerede" id))))))
+          (fail :conflict "The id ~a already exists" id))))))
 
 (defmethod store-insert ((store memory-store) entity)
   (let* ((class-name (class-name (class-of entity)))

@@ -6,7 +6,8 @@
 ;;;; multiple>; its script keeps the files a person chose, dropped and
 ;;;; pasted in that input's own list, so the form posts them as it would
 ;;;; without a script.  A thumbnail is a link to the file itself; its
-;;;; script opens the image in a dialog instead.
+;;;; script opens the image in a dialog instead.  What the scripts say is in
+;;;; the markup, written in the page's language (spec/i18n.md 3.6).
 
 (in-package #:tun.ui)
 
@@ -16,22 +17,23 @@
   "The types a file control offers: those spec/files.md 2.1 takes.")
 
 (defun octets-text (octets)
-  "OCTETS, a size, as a person reads it: 640 B, 12 kB, 1,4 MB."
-  (cond ((< octets 1000) (format nil "~d B" octets))
-        ((< octets 1000000) (format nil "~d kB" (round octets 1000)))
-        (t (multiple-value-bind (whole tenths) (floor (round octets 100000) 10)
-             (format nil "~d,~d MB" whole tenths)))))
+  "OCTETS, a size, as a person reads it in the current language: 640 B,
+12 kB, 1.4 MB (1,4 MB in Norwegian)."
+  (cond ((< octets 1000) (tr "~d B" octets))
+        ((< octets 1000000) (tr "~d kB" (round octets 1000)))
+        (t (tr "~a MB" (number-text (/ (round octets 100000) 10))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The control
 
 (define-component file-input ((&key label name hint error optional label-hidden (max 10)
                                     id attributes))
-  (:group "Skjema")
-  (:doc "Et felt for én eller flere filer: skjermbilder, bilder og PDF. Personen velger filer,
-drar dem inn i feltet eller limer inn et skjermbilde, og ser dem i en liste med «Fjern» før
-skjemaet sendes. Skjemaet må ha method=\"post\" og enctype=\"multipart/form-data\"; uten
-JavaScript er det nettleserens eget filvalg. MAX er hvor mange filer feltet tar.")
+  (:group "Forms")
+  (:doc "A field for one or more files: screenshots, images and PDF. The person chooses
+files, drags them into the field or pastes a screenshot, and sees them in a list with
+«Remove» before the form is sent. The form must have method=\"post\" and
+enctype=\"multipart/form-data\"; without JavaScript it is the browser's own file choice. MAX
+is how many files the field takes.")
   (:source "GOV.UK file upload; drag, drop and paste from GOV.UK's multi-file upload pattern")
   (:css (concatenate 'string "
 .tun-file-input {
@@ -127,18 +129,25 @@ const fileInputExtensions = { 'image/png': 'png', 'image/jpeg': 'jpg', 'image/we
 const fileInputMostOctets = 10 * 1024 * 1024;
 const fileInputMostTotal = 25 * 1024 * 1024;
 
-const fileInputSize = (octets) => {
-  if (octets < 1000) return `${octets} B`;
-  if (octets < 1000000) return `${Math.round(octets / 1000)} kB`;
-  return `${(Math.round(octets / 100000) / 10).toFixed(1).replace('.', ',')} MB`;
+// A size as the server writes it (OCTETS-TEXT): SAY holds the zone's texts,
+// and the number has the page's language's decimal mark.
+const fileInputSize = (octets, say) => {
+  if (octets < 1000) return tunText(say.tunFileInputBytes, { size: octets });
+  if (octets < 1000000)
+    return tunText(say.tunFileInputKilobytes, { size: Math.round(octets / 1000) });
+  const megabytes = (Math.round(octets / 100000) / 10)
+    .toLocaleString(document.documentElement.lang || undefined, { maximumFractionDigits: 1 });
+  return tunText(say.tunFileInputMegabytes, { size: megabytes });
 };
 
-// A pasted image a browser named image.png: skjermbilde-HHMMSS.EXT, by the
-// device's own clock, with -2, -3 ... when the list has that name already.
-const fileInputPastedName = (file, taken) => {
+// A pasted image a browser named image.png: screenshot-HHMMSS.EXT in the
+// page's language, by the device's own clock, with -2, -3 ... when the list
+// has that name already.
+const fileInputPastedName = (file, taken, say) => {
   const now = new Date();
   const two = (n) => String(n).padStart(2, '0');
-  const stem = `skjermbilde-${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`;
+  const time = `${two(now.getHours())}${two(now.getMinutes())}${two(now.getSeconds())}`;
+  const stem = tunText(say.tunFileInputPastedName, { time });
   const extension = fileInputExtensions[file.type] || 'png';
   let name = `${stem}.${extension}`;
   for (let n = 2; taken.includes(name); n += 1) name = `${stem}-${n}.${extension}`;
@@ -151,6 +160,7 @@ const setUpFileInput = (zone) => {
   const message = zone.querySelector('[data-tun-file-input-message]');
   const drop = zone.querySelector('[data-tun-file-input-drop]');
   const most = Number(zone.dataset.tunFileInputMax || 10);
+  const say = zone.dataset;
   const dropText = drop.textContent;
   let chosen = Array.from(input.files);
   let previews = [];
@@ -172,7 +182,7 @@ const setUpFileInput = (zone) => {
         previews.push(preview.src);
       } else {
         preview = document.createElement('span');
-        preview.textContent = 'PDF';
+        preview.textContent = say.tunFileInputPdf;
       }
       preview.className = 'tun-file-input-preview';
       const text = document.createElement('span');
@@ -180,15 +190,15 @@ const setUpFileInput = (zone) => {
       text.textContent = file.name;
       const size = document.createElement('span');
       size.className = 'tun-file-input-size';
-      size.textContent = fileInputSize(file.size);
+      size.textContent = fileInputSize(file.size, say);
       text.append(size);
       const remove = document.createElement('button');
       remove.type = 'button';
       remove.className = 'tun-button';
       remove.dataset.variant = 'ghost';
       remove.dataset.size = 'sm';
-      remove.textContent = 'Fjern';
-      remove.setAttribute('aria-label', `Fjern ${file.name}`);
+      remove.textContent = say.tunFileInputRemove;
+      remove.setAttribute('aria-label', tunText(say.tunFileInputRemoveName, { name: file.name }));
       remove.addEventListener('click', () => {
         chosen = chosen.filter((_, i) => i !== index);
         message.textContent = '';
@@ -204,18 +214,18 @@ const setUpFileInput = (zone) => {
     const notes = [];
     for (let file of files) {
       if (pasted && (file.name === '' || /^image\\.[^.]*$/i.test(file.name))) {
-        file = new File([file], fileInputPastedName(file, chosen.map((f) => f.name)),
+        file = new File([file], fileInputPastedName(file, chosen.map((f) => f.name), say),
                         { type: file.type, lastModified: file.lastModified });
       }
       const total = chosen.reduce((sum, f) => sum + f.size, 0);
       if (!fileInputTypes.includes(file.type)) {
-        notes.push(`«${file.name}»: filtypen er ikke tillatt.`);
+        notes.push(tunText(say.tunFileInputNotAllowed, { name: file.name }));
       } else if (file.size > fileInputMostOctets) {
-        notes.push(`«${file.name}» er større enn 10 MB.`);
+        notes.push(tunText(say.tunFileInputTooLarge, { name: file.name }));
       } else if (chosen.length >= most) {
-        notes.push(`Du kan legge ved høyst ${most} filer.`);
+        notes.push(tunText(say.tunFileInputTooMany, { most }));
       } else if (total + file.size > fileInputMostTotal) {
-        notes.push('Filene kan ikke være større enn 25 MB til sammen.');
+        notes.push(say.tunFileInputTooLargeTogether);
       } else {
         chosen.push(file);
       }
@@ -237,7 +247,7 @@ const setUpFileInput = (zone) => {
     event.preventDefault();
     depth += 1;
     zone.dataset.dragging = '';
-    drop.textContent = 'Slipp for å legge ved';
+    drop.textContent = say.tunFileInputDropHere;
   });
   zone.addEventListener('dragover', (event) => {
     if (!event.dataTransfer || !Array.from(event.dataTransfer.types).includes('Files')) return;
@@ -286,28 +296,47 @@ document.addEventListener('paste', (event) => {
   zone.tunAddFiles(files, true);
 });")
   (:examples
-   (("Skjermbilder til en sak" :layout :stack)
-    (file-input (:label "Skjermbilder" :name "filer" :optional t
-                        :hint "PNG, JPEG, WebP, GIF eller PDF, opptil 10 MB hver.")))
-   (("Med feil" :layout :stack)
-    (file-input (:label "Kvittering" :name "kvittering" :max 1
-                        :error "«kvittering.txt»: Filtypen er ikke tillatt."))))
+   (("Screenshots for an item" :layout :stack)
+    (file-input (:label "Screenshots" :name "files" :optional t
+                        :hint "PNG, JPEG, WebP, GIF or PDF, up to 10 MB each.")))
+   (("With an error" :layout :stack)
+    (file-input (:label "Receipt" :name "receipt" :max 1
+                        :error "“receipt.txt”: this file type is not allowed."))))
   (require-label 'file-input label)
   (let ((id (or id (element-id (or name "file")))))
     (field* (list :label label :for id :hint hint :error error :optional optional
                   :label-hidden label-hidden)
-            `(:div (:@ :class "tun-file-input" :data-tun-file-input t
-                       :data-tun-file-input-max ,(princ-to-string max))
+            `(:div ,(attrs (list :class "tun-file-input" :data-tun-file-input t
+                                 :data-tun-file-input-max (princ-to-string max))
+                           (file-input-texts))
                    (:input ,(attrs (list :class "tun-file-input-control" :type "file" :name name
                                          :multiple (when (> max 1) t) :accept +file-accept+)
                                    (control-attributes id :hint hint :error error)
                                    attributes))
                    (:p (:@ :class "tun-file-input-drop" :data-tun-file-input-drop t :hidden t)
-                       "Dra filer hit, eller lim inn et skjermbilde.")
+                       ,(tr "Drag files here, or paste a screenshot."))
                    (:p (:@ :class "tun-file-input-message" :data-tun-file-input-message t
                            :role "status"))
                    (:ul (:@ :class "tun-file-input-list" :data-tun-file-input-list t
-                            :aria-label "Valgte filer"))))))
+                            :aria-label ,(tr "Chosen files")))))))
+
+(defun file-input-texts ()
+  "What the file control's script says, as its data-tun-file-input-*
+attributes: a plist for ATTRS, in the current language.  {name}, {most},
+{size} and {time} are the script's to fill."
+  (list :data-tun-file-input-remove (tr "Remove")
+        :data-tun-file-input-remove-name (tr "Remove {name}")
+        :data-tun-file-input-drop-here (tr "Drop to attach")
+        :data-tun-file-input-not-allowed (tr "“{name}”: this file type is not allowed.")
+        :data-tun-file-input-too-large (tr "“{name}” is larger than 10 MB.")
+        :data-tun-file-input-too-many (tr "You can attach at most {most} files.")
+        :data-tun-file-input-too-large-together
+        (tr "The files can be at most 25 MB together.")
+        :data-tun-file-input-pasted-name (tr "screenshot-{time}")
+        :data-tun-file-input-pdf (tr "PDF")
+        :data-tun-file-input-bytes (tr "{size} B")
+        :data-tun-file-input-kilobytes (tr "{size} kB")
+        :data-tun-file-input-megabytes (tr "{size} MB")))
 
 ;;; ------------------------------------------------------------------
 ;;; A record's files
@@ -326,7 +355,7 @@ document.addEventListener('paste', (event) => {
     (if (attachment-image-p item)
         `(:li (:@ :class "tun-attachments-item")
               (:a (:@ :class "tun-attachments-image" :href ,url :data-tun-attachment-open t
-                      :data-tun-attachment-name ,name :aria-label ,(format nil "Vis ~a" name))
+                      :data-tun-attachment-name ,name :aria-label ,(tr "Show ~a" name))
                   (:img (:@ :src ,url :alt ,name :loading "lazy" :decoding "async"
                             :width ,(princ-to-string (gethash "width" item 1))
                             :height ,(princ-to-string (gethash "height" item 1)))))
@@ -334,16 +363,16 @@ document.addEventListener('paste', (event) => {
         `(:li (:@ :class "tun-attachments-item")
               (:a (:@ :class "tun-attachments-file" :href ,url :download t)
                   ,(icon (:name :file-text))
-                  (:span (:@ :class "tun-attachments-file-type") "PDF")
+                  (:span (:@ :class "tun-attachments-file-type") ,(tr "PDF"))
                   (:span (:@ :class "tun-attachments-size") ,size))
               (:span (:@ :class "tun-attachments-caption") ,name)))))
 
-(define-component attachments ((&key items (label "Vedlegg") (empty "Ingen vedlegg") id
-                                     attributes))
+(define-component attachments ((&key items (label (tr "Attachments"))
+                                     (empty (tr "No attachments")) id attributes))
   (:group "Data")
-  (:doc "Filene som er lagt ved en post, fra attachments_list: et bilde som et lite bilde som
-åpner hele bildet, en PDF som en flis som laster den ned. Nettleseren skalerer bildet selv og
-henter det først når det vises.")
+  (:doc "The files attached to a record, from attachments_list: an image as a thumbnail that
+opens the whole image, a PDF as a tile that downloads it. The browser scales the image itself
+and fetches it only when it is shown.")
   (:source "Designsystemet and Aksel file list; the dialog is the HTML <dialog>")
   (:css "
 .tun-attachments {
@@ -437,12 +466,12 @@ document.addEventListener('click', (event) => {
   dialog.showModal();
 });")
   (:examples
-   (("Uten filer" :layout :stack)
+   (("Without files" :layout :stack)
     (attachments (:items '())))
-   (("En PDF" :layout :stack)
+   (("A PDF" :layout :stack)
     (attachments (:items (list (let ((item (make-hash-table :test 'equal)))
-                                 (setf (gethash "id" item) "fil_eksempel"
-                                       (gethash "filename" item) "kvittering.pdf"
+                                 (setf (gethash "id" item) "fil_example"
+                                       (gethash "filename" item) "receipt.pdf"
                                        (gethash "content_type" item) "application/pdf"
                                        (gethash "size" item) 48211)
                                  item))))))
@@ -456,13 +485,14 @@ document.addEventListener('click', (event) => {
                       ,@(mapcar #'attachment-markup items))
                 `(:p (:@ :class "tun-attachments-empty") ,empty))
            ,(when (some #'attachment-image-p items)
-              `(:dialog (:@ :class "tun-attachments-dialog" :aria-label "Bilde")
+              `(:dialog (:@ :class "tun-attachments-dialog" :aria-label ,(tr "Image"))
                         (:img (:@ :class "tun-attachments-full" :alt ""))
                         (:div (:@ :class "tun-attachments-bar")
                               (:span (:@ :class "tun-attachments-name"))
                               (:span (:@ :class "tun-attachments-actions")
                                      ,(button (:variant :outline :size :sm :href "#"
                                                :attributes '(:data-tun-attachment-original t))
-                                        "Åpne original")
+                                        (tr "Open the original"))
                                      (:form (:@ :method "dialog")
-                                            ,(button (:size :sm :type "submit") "Lukk")))))))))
+                                            ,(button (:size :sm :type "submit")
+                                               (tr "Close"))))))))))

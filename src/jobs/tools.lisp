@@ -6,12 +6,12 @@
 
 (define-operation jobs-list ((state :type (enum "queued" "running" "retrying" "succeeded" "failed"
                                                 "cancelled")
-                                    :label "Tilstand")
-                             (kind :type (string :max 100) :label "Type")
-                             (queue :type (string :max 64) :label "Kø"))
-    (:entity job :kind :read :policy :admin :title "Jobber"
-             :description "De siste 100 jobbene, nyeste først: type, kø, argumenter, tilstand,
-forsøk, forfall og siste feil. Kan begrenses til én tilstand, type eller kø.")
+                                    :label "State")
+                             (kind :type (string :max 100) :label "Kind")
+                             (queue :type (string :max 64) :label "Queue"))
+    (:entity job :kind :read :policy :admin :title "Jobs"
+             :description "The latest 100 jobs, newest first: kind, queue, arguments, state,
+attempts, due time and last error. It can be narrowed to one state, kind or queue.")
   (let ((conditions (remove nil (list (and state `(:= "state" ,state))
                                       (and kind `(:= "kind" ,kind))
                                       (and queue `(:= "queue" ,queue))))))
@@ -44,10 +44,11 @@ forsøk, forfall og siste feil. Kan begrenses til én tilstand, type eller kø."
                                                        (:= "claimed_by" ,(entity-id process))))))))
 
 (define-operation jobs-summary ()
-    (:entity job :kind :read :policy :admin :title "Jobboversikt"
-             :description "Hvordan bakgrunnsjobbene står: hvor mange i hver tilstand, hvor mange
-som lyktes og feilet siste døgn, hver kø med grense, ventende, senere og kjørende jobber og den
-eldste ventende, og prosessene som kjører jobber, om de lever og hvor mange de kjører nå.")
+    (:entity job :kind :read :policy :admin :title "Jobs overview"
+             :description "How the background jobs stand: how many in each state, how many
+succeeded and failed in the last day, each queue with its limit, its waiting, later and running
+jobs and the oldest waiting, and the processes that run jobs, whether they live and how many they
+run now.")
   (let ((day-ago (- (now) 86400)))
     (flet ((count-where (where) (length (select 'job :where where))))
       (jobj "states" (let ((states (jobj)))
@@ -67,20 +68,20 @@ eldste ventende, og prosessene som kjører jobber, om de lever og hvor mange de 
             "processes" (jarr (mapcar #'process-summary
                                       (select 'job-process :order-by '(("seq" :asc)))))))))
 
-(define-operation jobs-get ((id :type (id job) :required t :label "Jobb"))
-    (:entity job :kind :read :policy :admin :title "Les jobb"
-             :description "Én jobb med argumentene og feilene fra hvert forsøk, hver med
-forespørselen den kom fra (introspect_request).")
+(define-operation jobs-get ((id :type (id job) :required t :label "Job"))
+    (:entity job :kind :read :policy :admin :title "Read a job"
+             :description "One job with its arguments and the errors of each attempt, each with
+the request it came from (introspect_request).")
   (fetch! 'job id))
 
-(define-operation jobs-retry ((id :type (id job) :required t :label "Jobb"))
-    (:entity job :kind :update :policy :admin :title "Kjør jobb på nytt"
-             :description "Legger en jobb som feilet eller ble avbrutt, i køen igjen, forfalt
-nå og med forsøkene nullstilt. Feilene den hadde, beholdes.")
+(define-operation jobs-retry ((id :type (id job) :required t :label "Job"))
+    (:entity job :kind :update :policy :admin :title "Run a job again"
+             :description "Queues a job that failed or was cancelled again, due now and with
+its attempts set to zero. The errors it had are kept.")
   (let ((job (fetch! 'job id)))
     (unless (member (job-state job) '("failed" "cancelled") :test #'string=)
-      (fail :invalid-transition "Bare en jobb som feilet eller ble avbrutt, kan kjøres på nytt; denne er ~a"
-            (job-state job)))
+      (fail :invalid-transition "Only a job that failed or was cancelled can run again; this one is ~a"
+            (label "job" "state" (job-state job))))
     (setf (job-state job) "queued"
           (job-attempts job) 0
           (job-due-at job) (now)
@@ -88,14 +89,15 @@ nå og med forsøkene nullstilt. Feilene den hadde, beholdes.")
           (job-note job) nil)
     (save job)))
 
-(define-operation jobs-cancel ((id :type (id job) :required t :label "Jobb"))
-    (:entity job :kind :update :policy :admin :title "Avbryt jobb"
-             :description "Avbryter en jobb som venter i køen. En jobb som kjører nå, gjør
-forsøket ferdig.")
+(define-operation jobs-cancel ((id :type (id job) :required t :label "Job"))
+    (:entity job :kind :update :policy :admin :title "Cancel a job"
+             :description "Cancels a job waiting in its queue. A job running now finishes its
+attempt.")
   (let ((job (fetch! 'job id)))
     (unless (member (job-state job) '("queued" "retrying") :test #'string=)
-      (fail :invalid-transition "Bare en jobb som venter, kan avbrytes; denne er ~a" (job-state job)))
+      (fail :invalid-transition "Only a waiting job can be cancelled; this one is ~a"
+            (label "job" "state" (job-state job))))
     (setf (job-state job) "cancelled"
           (job-finished-at job) (now)
-          (job-note job) (format nil "Avbrutt av ~a" (actor-string *actor*)))
+          (job-note job) (tr "Cancelled by ~a" (actor-string *actor*)))
     (save job)))

@@ -44,8 +44,28 @@
   (or (stringp id) (integerp id)))
 
 (defparameter +instructions+
-  "Alle verktøy er generert fra registeret. Muterende verktøy tar request_key for idempotens; verktøy som krever bekreftelse returnerer et confirmation_token som må sendes i et nytt kall."
-  "Tun's own instructions for every agent, before the client's.")
+  "Every tool is generated from the registry. Mutating tools take a request_key for idempotency; ~
+tools that need a confirmation answer with a confirmation_token, to be sent in a new call."
+  "Tun's own instructions for every agent, after the locale's line and before the client's.")
+
+(defun tenant-locale (application)
+  "The locale of APPLICATION's tenant: the request's, else read from its
+settings; for the name of an application class, the class's defaults."
+  (cond (*locale*)
+        ((typep application 'application) (with-application (application) (request-locale)))
+        (t (let ((options (application-locale-options application)))
+             (make-locale :language (first (getf options :languages))
+                          :currency (getf options :currency)
+                          :time-zone (getf options :time-zone))))))
+
+(defun locale-instructions (application)
+  "The line of the instructions naming the tenant's currency, its minor digits
+and its time zone (spec/i18n.md 7)."
+  (let ((locale (tenant-locale application)))
+    (format nil "This tenant's currency is ~a, which has ~d minor digits: an amount is an ~
+                 integer of minor units. Its time zone is ~a."
+            (locale-currency locale) (currency-minor-digits (locale-currency locale))
+            (locale-time-zone locale))))
 
 (defun handle-initialize (application params)
   (let* ((requested (jget params "protocolVersion"))
@@ -55,9 +75,12 @@
     (jobj "protocolVersion" version
           "capabilities" (jobj "tools" (jobj "listChanged" nil))
           "serverInfo" *server-info*
-          ;; The client's paragraphs after Tun's (spec/waiting.md 4).
-          "instructions" (format nil "~{~a~^~%~%~}"
-                                 (cons +instructions+ (application-instructions application))))))
+          ;; The locale's line, Tun's paragraph, then the client's (spec/i18n.md 7,
+          ;; spec/waiting.md 4).
+          "instructions" (format nil "~a~%~%~{~a~^~%~%~}"
+                                 (locale-instructions application)
+                                 (cons (format nil +instructions+)
+                                       (application-instructions application))))))
 
 (defvar *progress-token* nil
   "The progressToken of the tools/call being handled, from its
@@ -68,21 +91,22 @@ params._meta, or NIL: where a waiting call's progress goes (spec/waiting.md 2)."
   (jobj "jsonrpc" "2.0" "method" "notifications/progress"
         "params" (jobj "progressToken" *progress-token*
                        "progress" seconds
-                       "message" (format nil "Venter fortsatt (~d s)" seconds))))
+                       "message" (format nil "Still waiting (~d s)" seconds))))
 
 (defun handle-tools-call (application actor params)
   (let ((name (jget params "name"))
         (arguments (jget params "arguments" (jobj))))
-    (unless (stringp name) (rpc-fail -32602 "tools/call krever params.name"))
+    (unless (stringp name) (rpc-fail -32602 "tools/call needs params.name"))
     (when (json-null-p arguments) (setf arguments (jobj)))
-    (unless (hash-table-p arguments) (rpc-fail -32602 "params.arguments må være et objekt"))
+    (unless (hash-table-p arguments) (rpc-fail -32602 "params.arguments must be an object"))
     (let ((*request-id* (or *request-id* (new-id "req")))
           (*progress-token* (let* ((meta (jget params "_meta"))
                                    (token (and (hash-table-p meta) (jget meta "progressToken"))))
                               (and (or (stringp token) (integerp token)) token))))
       (handler-case (tool-result (call-tool name arguments :application application :actor actor) nil)
-        (operation-error (e) (tool-result (operation-error-json e) t))
-        (unknown-tool () (rpc-fail -32602 "Ukjent verktøy: ~a" (shown-name name)))))))
+        ;; An answer to a machine is source text (spec/i18n.md 7).
+        (operation-error (e) (tool-result (with-language (:source) (operation-error-json e)) t))
+        (unknown-tool () (rpc-fail -32602 "Unknown tool: ~a" (shown-name name)))))))
 
 (defun dispatch (application actor method params)
   ;; The record clips the method or tool's name as it keeps it.
@@ -101,7 +125,7 @@ params._meta, or NIL: where a waiting call's progress goes (spec/waiting.md 2)."
          (with-application (application)
            (jobj "tools" (jarr (tool-definitions application)))))
         ((string= method "tools/call") (handle-tools-call application actor params))
-        (t (rpc-fail -32601 "Ukjent metode: ~a" (shown-name method)))))
+        (t (rpc-fail -32601 "Unknown method: ~a" (shown-name method)))))
 
 (defun rpc-code-name (code)
   (case code
@@ -110,7 +134,7 @@ params._meta, or NIL: where a waiting call's progress goes (spec/waiting.md 2)."
     (t (format nil "jsonrpc_~d" code))))
 
 (defparameter +missing-actor-message+
-  "Mangler eller ugyldig X-Tun-Actor (forventet rolle:navn, rolle er admin, employee eller viewer)")
+  "X-Tun-Actor is missing or not valid (expected role:name, the role admin, employee or viewer)")
 
 (defun encoded-response (json record)
   "Values JSON, a JSON-RPC response, and its text.  When it cannot be encoded
@@ -120,9 +144,9 @@ an error and the response is a -32603 error instead."
     (error (e)
       (ignore-errors (format *error-output* "~&;; tun mcp: the response cannot be encoded: ~a~%" e))
       (set-request-outcome record "error" :code :internal-error
-                                          :message (format nil "Svaret kan ikke skrives som JSON: ~a" e))
+                                          :message (format nil "The answer cannot be written as JSON: ~a" e))
       (let ((failure (rpc-error-response (jget json "id") -32603
-                                         "Intern feil: svaret kan ikke skrives som JSON")))
+                                         "Internal error: the answer cannot be written as JSON")))
         (values failure (to-json-string failure))))))
 
 (defun handle-mcp (application actor body &key credential (parsed nil parsed-p))
@@ -156,7 +180,7 @@ cannot be is that request's error."
               (values status nil session nil)))))))
 
 (defparameter +too-many-values+
-  (format nil "Forespørselen har for mange JSON-verdier (høyst ~,,' :d)."
+  (format nil "The request has too many JSON values (at most ~:d)."
           +max-request-json-values+)
   "Why a body with more JSON values than a request may hold is refused (core.md §7.5).")
 
@@ -176,17 +200,19 @@ With PARSED-P, PARSED is the body's JSON, whatever its kind."
                                nil)))
                    (json-parse-failure ()
                      (return-from %handle-mcp
-                       (values 200 (rpc-error-response nil -32700 "Ugyldig JSON") nil))))))
+                       (values 200 (rpc-error-response nil -32700 "Invalid JSON") nil))))))
     (unless (hash-table-p request)
       (return-from %handle-mcp
-        (values 200 (rpc-error-response nil -32600 "Forespørselen må være ett JSON-RPC-objekt (batch støttes ikke)") nil)))
+        (values 200 (rpc-error-response
+                     nil -32600 "The request must be one JSON-RPC object (batches are not supported)")
+                nil)))
     (multiple-value-bind (id has-id) (jget request "id")
       (let ((method (jget request "method"))
             (params (jget request "params" (jobj))))
         (cond
           ((or (not (equal (jget request "jsonrpc") "2.0")) (not (stringp method))
                (and has-id (not (valid-id-p id))))
-           (values 200 (rpc-error-response (and (valid-id-p id) id) -32600 "Ugyldig JSON-RPC-forespørsel") nil))
+           (values 200 (rpc-error-response (and (valid-id-p id) id) -32600 "Invalid JSON-RPC request") nil))
           ;; Notifications (no id) get no body.
           ((not has-id) (values 202 nil nil))
           (t
@@ -202,4 +228,4 @@ With PARSED-P, PARSED is the body's JSON, whatever its kind."
              (serious-condition (e)
                (ignore-errors (format *error-output* "~&;; tun mcp: internal ~a in ~a: ~a~%"
                                       (type-of e) method e))
-               (values 200 (rpc-error-response id -32603 "Intern feil") nil)))))))))
+               (values 200 (rpc-error-response id -32603 "Internal error") nil)))))))))

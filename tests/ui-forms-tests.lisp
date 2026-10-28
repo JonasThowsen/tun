@@ -46,8 +46,8 @@
     (is (search "id=\"epost-error\"" page))
     (is (forms-in-order-p page "<label" "id=\"epost-hint\"" "id=\"epost-error\"" "<input")
         "GOV.UK's order: label, hint, error, then the control")
-    (is (cl-ppcre:scan "<span class=\"tun-field-error-prefix\">Feil:</span> Skriv inn" page)
-        "the error starts with Feil: for screen readers")))
+    (is (cl-ppcre:scan "<span class=\"tun-field-error-prefix\">Error:</span> Skriv inn" page)
+        "the error starts with Error: for screen readers")))
 
 (test a-control-without-an-error-is-not-invalid
   (let ((page (forms-html (tun.ui:select (:label "Mva-sats" :id "mva"
@@ -83,7 +83,7 @@
 
 (test an-optional-field-says-so-in-its-label
   (let ((page (forms-html (tun.ui:text-input (:label "Referanse" :optional t)))))
-    (is (search "Referanse<span class=\"tun-field-optional\"> (valgfritt)</span></label>"
+    (is (search "Referanse<span class=\"tun-field-optional\"> (optional)</span></label>"
                 page))))
 
 ;;; ------------------------------------------------------------------
@@ -154,7 +154,7 @@
     (is (search "data-tun-error-summary" page) "the script finds it by its data attribute")
     (is (search "<a href=\"#kunde-navn\">Skriv inn navnet</a>" page))
     (is (search "<a href=\"#kunde-epost\">Skriv inn e-posten</a>" page))
-    (is (search "For å gå videre må du rette opp følgende feil:" page)))
+    (is (search "There is a problem" page)))
   (is (search "focus" (tun.ui:component-script (tun.ui:find-component "error-summary")))))
 
 ;;; ------------------------------------------------------------------
@@ -175,7 +175,7 @@
       (is (equal "filer-hint filer-error" (forms-attribute page "input" "aria-describedby")))
       (is (equal "true" (forms-attribute page "input" "aria-invalid")))
       (is (forms-in-order-p page "data-tun-file-input" "<input" "data-tun-file-input-list"))
-      (is (search "Dra filer hit, eller lim inn et skjermbilde." page))
+      (is (search "Drag files here, or paste a screenshot." page))
       (is (equal page (forms-html (tun.html:untrusted (control))))
           "the same in extension output")))
   (is (not (search " multiple" (forms-html (tun.ui:file-input (:label "Kvittering" :max 1)))))

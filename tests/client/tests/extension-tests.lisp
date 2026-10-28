@@ -31,7 +31,7 @@
       (is (string= "client" (source-of "name" "business_customers_need_org_number"
                                        (jget (find-by "name" "customer" (jget d "entities"))
                                              "rules"))))
-      (is (string= "client" (source-of "kind" "tilbud_påminnelse" (jget d "workflows"))))
+      (is (string= "client" (source-of "kind" "quote_reminder" (jget d "workflows"))))
       (is (string= "client" (source-of "name" "påminnelse" (jget d "message_templates")))))))
 
 (defun tool (name tools)
@@ -74,7 +74,7 @@
                            "lines" (lines-of (list "product_id" (rental "Telt") "quantity" 1)))))
       (is (string= "bronse" (jget stored "loyalty_tier")))
       (is (eq :null (jget stored "org_number" :absent)))
-      (is (= 0 (jget order "discount_ore")) "bronse gives no discount"))))
+      (is (= 0 (jget order "discount_minor")) "bronse gives no discount"))))
 
 (test a-client-operation-stores-the-clients-own-field
   (with-client ()
@@ -120,7 +120,7 @@ confirmed order, or the refusal of the confirmation."
               "~a" date)))
       (is (equal "unavailable" (error-code-of (confirm-booking id tent "2026-06-11" "2026-06-14")))
           "06-11 is cleaning")
-      (is (equal "bekreftet"
+      (is (equal "confirmed"
                  (jget (confirm-booking id tent "2026-06-12" "2026-06-14") "status"))))))
 
 (test the-clients-template-is-registered-as-the-clients
@@ -147,7 +147,7 @@ confirmed order, or the refusal of the confirmation."
 (defun reminders (order)
   "Status and due time of each quote reminder of ORDER."
   (loop for workflow across (jget (call-ok "workflows_list" "viewer:vera" "order_id" order) "items")
-        when (equal "tilbud_påminnelse" (jget workflow "kind"))
+        when (equal "quote_reminder" (jget workflow "kind"))
           collect (list (jget workflow "status") (jget workflow "due_at"))))
 
 (defun messages-of (order)
@@ -167,13 +167,13 @@ confirmed order, or the refusal of the confirmation."
                            "id")))
       (call-ok "orders_send_quote" "employee:anna" "id" open)
       (call-ok "orders_send_quote" "employee:anna" "id" answered)
-      (is (equal '(("planlagt" "2026-03-03T09:00:00Z")) (reminders open)))
+      (is (equal '(("planned" "2026-03-03T09:00:00Z")) (reminders open)))
       (call-ok "orders_accept" "employee:anna" "id" answered)
-      (is (equal "avbrutt" (first (first (reminders answered)))) "accepting cancels the reminder")
+      (is (equal "cancelled" (first (first (reminders answered)))) "accepting cancels the reminder")
       (call-ok "clock_set" "admin:ada" "now" "2026-03-03T08:59:59Z")
-      (is (equal "planlagt" (first (first (reminders open)))) "not due yet")
+      (is (equal "planned" (first (first (reminders open)))) "not due yet")
       (call-ok "clock_set" "admin:ada" "now" "2026-03-03T09:00:00Z")
-      (is (equal "utført" (first (first (reminders open)))))
+      (is (equal "executed" (first (first (reminders open)))))
       (let ((reminder (car (last (messages-of open)))))
         (is (equal "påminnelse" (jget reminder "template")))
         (is (search "Hei Anders" (jget reminder "body")))

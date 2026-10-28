@@ -7,4 +7,5 @@
   :serial t
   :components ((:file "staffing")
                (:file "assignments")
-               (:file "unavailability")))
+               (:file "unavailability")
+               (:file "nb")))

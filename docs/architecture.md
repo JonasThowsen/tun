@@ -27,7 +27,7 @@ flake.nix          dev shell, the kernel package, the tun command, buildClient a
 src/core/          defining macros, types, entities, operations, execution, store port, modules
 src/store/         store adapters: memory (tests), SQLite and Postgres (tenants)
 src/jobs/          background jobs, their workers and crash recovery, schedules in
-                   Norwegian time, triggers (spec/jobs.md)
+                   the tenant's time zone, triggers (spec/jobs.md)
 src/platform/      workflows (on jobs), platform tools, introspection, live definitions,
                    recorded errors and request log lines (spec/errors.md)
 src/auth/          accounts, sign-in providers, access tokens, sessions, setup (spec/auth.md)
@@ -156,9 +156,9 @@ refers to, a date, its total); a record is a `summary-list` of the fields
 that have a value, with its status operations in the page header (a menu
 when there are more than two); a create form chooses each control from the
 input's type and puts a refusal's field errors at the fields and in an
-`error-summary`; a `:confirm` operation shows a `confirm-panel`. Amounts in
-øre are shown in kroner, dates the Norwegian way, references by the name of
-the record. Modules and clients build their own pages from the same
+`error-summary`; a `:confirm` operation shows a `confirm-panel`. Copy, amounts and
+dates are written in the tenant's language, currency and time zone
+(`spec/i18n.md`), references by the name of the record. Modules and clients build their own pages from the same
 components, through `TUN.UI`; a client defines one with `define-page`.
 
 ## Extension points
@@ -256,7 +256,7 @@ handed makes the request fail.
   growing delays. Each process writes a heartbeat, and the running jobs of
   one that is gone are recovered by another within a minute.
   `define-schedule` enqueues a job at each occurrence of a cron time in
-  Norwegian time, once whichever process runs.
+  the tenant's time zone, once whichever process runs.
 - **Workflows run on jobs.** `schedule-workflow` stores the workflow and
   its job, due when it is. The job runs it as `system:workflow`, in its
   own transaction, at most once. A failing handler is rolled back and

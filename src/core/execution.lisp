@@ -25,25 +25,30 @@
 
 (define-condition rejection (rejection-signal)
   ((code :initarg :code :reader rejection-code :type error-code)
-   (message :initarg :message :reader rejection-message)
+   (message :initarg :message
+            :documentation "A string, or a TEXT written where it is shown.")
    (audit-actor :initarg :audit-actor :initform nil :reader rejection-audit-actor
                 :documentation "Who the rejected call is audited as, when not the caller (a quote's customer)."))
   (:report (lambda (c s) (format s "~a: ~a" (rejection-code c) (rejection-message c)))))
+
+(defun rejection-message (condition)
+  "CONDITION's message, written in the current language."
+  (render-text (slot-value condition 'message)))
 
 (defun reject (code control &rest args)
   "Refuse the call with CODE (forbidden, confirmation_invalid,
 idempotency_conflict): the call is audited as rejected, like a policy denial."
   (declare (type error-code code))
-  (error 'rejection :code code :message (apply #'format nil control args)))
+  (error 'rejection :code code :message (make-text control args)))
 
 (defun reject-as (actor code control &rest args)
   "Like REJECT, audited as ACTOR (a string such as \"customer:qte_x\")."
   (declare (type error-code code))
-  (error 'rejection :code code :audit-actor actor :message (apply #'format nil control args)))
+  (error 'rejection :code code :audit-actor actor :message (make-text control args)))
 
 (define-condition unknown-tool (error)
   ((tool :initarg :tool :reader unknown-tool-name))
-  (:report (lambda (c s) (format s "Ukjent verktøy: ~a" (unknown-tool-name c)))))
+  (:report (lambda (c s) (format s "Unknown tool: ~a" (unknown-tool-name c)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Results
@@ -213,7 +218,7 @@ KEY was used with different input."
       (if (string= hash (receipt-input-hash receipt))
           (parse-json (receipt-result receipt))
           (reject :idempotency-conflict
-                  "Nøkkelen ~a er allerede brukt med annen input for ~a" key (operation-tool op))))))
+                  "The key ~a is already used with other input for ~a" key (operation-tool op))))))
 
 (defun redact-entity-receipts (record &optional (replacement (entity->json record)))
   "Replace retained receipt projections atomically; owners may supply a credential-safe replacement."
@@ -289,19 +294,19 @@ request_key, and the target's revision."
 (defun consume-confirmation (op actor token hash)
   (let ((row (select-one 'confirmation :where `(:= "token_hash" ,(sha256-hex token)))))
     (cond ((null row)
-           (reject :confirmation-invalid "Ukjent bekreftelsestoken"))
+           (reject :confirmation-invalid "Unknown confirmation token"))
           ((confirmation-used-at row)
-           (reject :confirmation-invalid "Bekreftelsestokenet er allerede brukt"))
+           (reject :confirmation-invalid "The confirmation token is already used"))
           ((equal (confirmation-request-id row) *request-id*)
-           (reject :confirmation-invalid "Bekreftelsen må gis i et eget kall, ikke i kallet som ba om den"))
+           (reject :confirmation-invalid "The confirmation must be given in a call of its own, not in the call that asked for it"))
           ((> (now) (confirmation-expires-at row))
-           (reject :confirmation-invalid "Bekreftelsestokenet er utløpt"))
+           (reject :confirmation-invalid "The confirmation token has expired"))
           ((string/= (confirmation-actor row) (actor-string actor))
-           (reject :confirmation-invalid "Bekreftelsestokenet tilhører en annen aktør"))
+           (reject :confirmation-invalid "The confirmation token belongs to another actor"))
           ((string/= (confirmation-tool row) (operation-tool op))
-           (reject :confirmation-invalid "Bekreftelsestokenet gjelder et annet verktøy"))
+           (reject :confirmation-invalid "The confirmation token is for another tool"))
           ((string/= (confirmation-input-hash row) hash)
-           (reject :confirmation-invalid "Input eller det som skal bekreftes er endret siden bekreftelsen ble utstedt"))
+           (reject :confirmation-invalid "The input, or what is to be confirmed, has changed since the confirmation was issued"))
           (t (setf (confirmation-used-at row) (now))
              (save row)))))
 
@@ -374,7 +379,10 @@ costs what the record keeps, however large the input.  Without OP, {}."
     (recorder-result recorder)))
 
 (defun condition-text (condition)
-  (or (ignore-errors (princ-to-string condition)) (string-downcase (symbol-name (type-of condition)))))
+  "CONDITION's text, as a request's record and a recorded error keep it: in
+source text, for developers and agents (spec/i18n.md 3.5)."
+  (or (ignore-errors (with-language (:source) (princ-to-string condition)))
+      (string-downcase (symbol-name (type-of condition)))))
 
 (defun run-operation (name application input body)
   "Entry point of every operation's effective method (see the OPERATION method
@@ -403,7 +411,7 @@ code inside one (a workflow, a client method) is a step of that request."
                  (run-top-level op input body record))
                 (t
                  (with-step (:operation :name (operation-tool op) :source (operation-source op)
-                             :detail "kalt fra kode i samme forespørsel")
+                             :detail "called from code in the same request")
                    (run-guarded op input body)))))))))
 
 (defun run-top-level (op input body record)
@@ -414,7 +422,8 @@ code inside one (a workflow, a client method) is a step of that request."
     (operation-error (e)
       (choose-request-backtrace record e)
       (set-request-outcome record (outcome-for-code (operation-error-code e))
-                           :code (operation-error-code e) :message (operation-error-message e))
+                           :code (operation-error-code e)
+                           :message (with-language (:source) (operation-error-message e)))
       (error e))
     (serious-condition (e)
       (choose-request-backtrace record e)
@@ -427,7 +436,9 @@ code inside one (a workflow, a client method) is a step of that request."
              (handler-case (execute-operation op input body)
                (rejection (r)
                  (record-rejection op input *actor* (rejection-code r) :as (rejection-audit-actor r))
-                 (fail (rejection-code r) "~a" (rejection-message r))))))
+                 ;; The message goes on as its text, written where it is shown.
+                 (error 'operation-error :code (rejection-code r)
+                                         :message (slot-value r 'message))))))
       (if *deadline*
           (run)                         ; nested: the outermost call owns the deadline
           ;; Top level: run under the deadline; on expiry everything has
@@ -439,7 +450,7 @@ code inside one (a workflow, a client method) is a step of that request."
             (deadline-exceeded (c)
               (choose-request-backtrace *request-record* c)
               (record-rejection op input *actor* :deadline-exceeded)
-              (fail :deadline-exceeded "~a brukte mer enn ~d ms og ble avbrutt; ingenting er lagret"
+              (fail :deadline-exceeded "~a took more than ~d ms and was stopped; nothing was saved"
                     (operation-tool op) *deadline-ms*)))))))
 
 (defun note-policy (op actor permitted)
@@ -450,12 +461,12 @@ code inside one (a workflow, a client method) is a step of that request."
 (defun execute-operation (op input body)
   (let ((actor *actor*))
     (unless (actor-p actor)
-      (error 'actor-error :message "Kallet mangler aktør (X-Tun-Actor)"))
+      (error 'actor-error :message "The call has no actor (X-Tun-Actor)"))
     (let ((permitted (with-step (:policy :name (string-downcase (symbol-name (operation-policy op))) :source :core)
                        (actor-permits-p actor (operation-policy op)))))
       (note-policy op actor permitted)
       (unless permitted
-        (reject :forbidden "~a (~a) har ikke tilgang til ~a; krever rollen ~a"
+        (reject :forbidden "~a (~a) has no access to ~a; it requires the role ~a"
                 (actor-name actor) (string-downcase (symbol-name (actor-role actor)))
                 (operation-tool op) (string-downcase (symbol-name (operation-policy op))))))
     (with-step (:decode :source :core) (parse-operation-input op input))
@@ -519,7 +530,7 @@ own, after the commit."
         (hash (input-hash op input)))
     (when (and (operation-confirm-p op) (null token) *inside-operation*)
       (reject :confirmation-invalid
-              "~a må bekreftes av en bruker i et eget kall; det kan ikke kalles fra en operasjon, arbeidsflyt eller skjerm"
+              "~a must be confirmed by a user in a call of its own; it cannot be called from an operation, a workflow or a screen"
               (operation-tool op)))
     (if (and (operation-confirm-p op) (null token))
         (let ((replayed (and key (with-transaction (:read)

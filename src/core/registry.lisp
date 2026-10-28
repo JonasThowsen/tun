@@ -86,7 +86,7 @@ must make progress, core.md §4.4)."
 (defvar *message-templates* '())
 
 (defmacro define-message-template (name (&key template label final subject text html variables manual marketing) lambda-list &body body)
-  "Define message template TEMPLATE (its Norwegian key, e.g. \"påminnelse\").
+  "Define message template TEMPLATE (its key, e.g. \"reminder\").
 Expands into a DEFUN named NAME with LAMBDA-LIST (keywords among :ORDER
 :CUSTOMER :INVOICE) returning two values: subject and body.  A client
 template with the same key as a module's default replaces the default,
@@ -293,8 +293,20 @@ messaging module is enabled; otherwise do nothing.  Returns the message or NIL."
         "source" (source-string (operation-source op))
         "module" (operation-module op)))
 
+(defun describe-locale (application)
+  "The tenant's locale as registry_describe gives it: its language, the
+languages APPLICATION offers, its currency with the currency's minor digits,
+and its time zone (spec/i18n.md 7)."
+  (let ((locale (current-locale)))
+    (jobj "language" (locale-language locale)
+          "languages" (jarr (application-languages application))
+          "currency" (locale-currency locale)
+          "minor_digits" (currency-minor-digits (locale-currency locale))
+          "time_zone" (locale-time-zone locale))))
+
 (defun describe-registry (&optional (application *application*))
-  (jobj "templates" (jarr (mapcar #'message-template-description *message-templates*))
+  (jobj "locale" (describe-locale application)
+        "templates" (jarr (mapcar #'message-template-description *message-templates*))
         "settings" (jarr (settings-description :value nil))
         "entities" (jarr (mapcar #'describe-entity
                                  (remove-if #'entity-internal-p (all-entity-classes))))

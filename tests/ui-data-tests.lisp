@@ -72,15 +72,15 @@ aria-current=\"page\", in any order."
   (let ((html (pagination-html 3 12)))
     (is (= 1 (count-matches "aria-current=\"page\"" html)))
     (is (tag-with-p html "href=\"/ordre?side=3\"" "data-variant=\"outline\""
-                    "aria-label=\"Side 3\"" "aria-current=\"page\"")
-        "the current page is the outlined link, named «Side 3»")
-    (is (search "aria-label=\"Sidenavigering\"" html))
-    (is (search "Side 3 av 12" html) "the phone's status line")))
+                    "aria-label=\"Page 3\"" "aria-current=\"page\"")
+        "the current page is the outlined link, named «Page 3»")
+    (is (search "aria-label=\"Pagination\"" html))
+    (is (search "Page 3 of 12" html) "the phone's status line")))
 
 (test pagination-shows-seven-places-with-gaps
   (flet ((pages (html)
            (mapcar #'parse-integer
-                   (cl-ppcre:all-matches-as-strings "(?<=aria-label=\"Side )\\d+" html))))
+                   (cl-ppcre:all-matches-as-strings "(?<=aria-label=\"Page )\\d+" html))))
     (is (equal '(1 2 3 4 5 12) (pages (pagination-html 3 12))))
     (is (equal '(1 6 7 8 24) (pages (pagination-html 7 24))))
     (is (equal '(1 20 21 22 23 24) (pages (pagination-html 22 24))))
@@ -90,12 +90,12 @@ aria-current=\"page\", in any order."
 (test pagination-disables-previous-on-the-first-page-and-next-on-the-last
   (let ((first (pagination-html 1 5))
         (last (pagination-html 5 5)))
-    (is (tag-with-p first "aria-label=\"Forrige side\"" "aria-disabled=\"true\"")
-        "Forrige on page 1 is disabled")
-    (is (not (tag-with-p first "aria-label=\"Forrige side\"" "href="))
+    (is (tag-with-p first "aria-label=\"Previous page\"" "aria-disabled=\"true\"")
+        "Previous on page 1 is disabled")
+    (is (not (tag-with-p first "aria-label=\"Previous page\"" "href="))
         "and leads nowhere")
-    (is (tag-with-p last "aria-label=\"Neste side\"" "aria-disabled=\"true\""))
-    (is (tag-with-p first "aria-label=\"Neste side\"" "href=\"/ordre?side=2\""))))
+    (is (tag-with-p last "aria-label=\"Next page\"" "aria-disabled=\"true\""))
+    (is (tag-with-p first "aria-label=\"Next page\"" "href=\"/ordre?side=2\""))))
 
 (test pagination-of-one-page-is-nothing
   (is (null (tun.ui:pagination (:page 1 :pages 1 :href "/?side=~d"))))
@@ -115,7 +115,7 @@ aria-current=\"page\", in any order."
                (tun.ui:summary-list (:rows '(("E-post" "ole@example.no" :href "/endre")
                                              ("Org.nr." "912 345 678")))))))
     (is (search "<dt class=\"tun-summary-list-key\">E-post</dt>" html))
-    (is (search (concatenate 'string "<a href=\"/endre\">Endre"
+    (is (search (concatenate 'string "<a href=\"/endre\">Change"
                              "<span class=\"tun-summary-list-hidden\"> E-post</span></a>")
                 html))
     (is (= 1 (count-matches "tun-summary-list-action" html)) "only the row with a link")))
@@ -154,11 +154,15 @@ aria-current=\"page\", in any order."
          (id (cl-ppcre:scan-to-strings "(?<=<code class=\"tun-code-block-code\" id=\")[^\"]+"
                                        html)))
     (is (stringp id))
-    (is (tag-with-p html "aria-label=\"Kopier\"" " hidden"
+    (is (tag-with-p html "aria-label=\"Copy\"" " hidden"
                     (format nil "data-tun-copy=\"~a\"" id))
         "the button names what it does, starts hidden and points at the text")
-    (is (tag-with-p html "aria-live=\"polite\"" (format nil "data-tun-copy-status=\"~a\"" id))
-        "«Kopiert» is announced"))
+    (is (tag-with-p html "aria-live=\"polite\"" (format nil "data-tun-copy-status=\"~a\"" id)
+                    "data-tun-copy-done=\"Copied\""
+                    "data-tun-copy-failed=\"Could not copy. The text is selected.\"")
+        "«Copied» is announced, in the page's language"))
+  (is (not (search "Copied" (tun.ui:component-script (tun.ui:find-component "code-block"))))
+      "the script holds no copy of its own")
   (is (not (search "data-tun-copy"
                    (tun.html:render-html (tun.ui:code-block (:copy nil) "nix develop ."))))))
 ;;; ------------------------------------------------------------------
@@ -186,7 +190,7 @@ aria-current=\"page\", in any order."
     (is (search "data-tun-board-count>20+</span>" html) "or the count the page gives")
     (is (search "<a class=\"tun-board-card-title\" href=\"/saker/itm_1\">Eksporten feiler</a>" html))
     (is (search "<span class=\"tun-board-card-title\">Lager</span>" html) "a card without a link")
-    (is (search "<p class=\"tun-board-empty\">Ingen</p>" html))))
+    (is (search "<p class=\"tun-board-empty\">None</p>" html))))
 
 (test a-board-card-moves-by-a-plain-form
   (let ((html (items-board :action "/saker/flytt")))
@@ -202,7 +206,7 @@ aria-current=\"page\", in any order."
         "not to the column it is in")
     (is (search "id=\"tun-board-itm_1-move-trigger\"" html)
         "its menu button's id is the same in every answer")
-    (is (search "aria-label=\"Flytt «Eksporten feiler»\"" html))))
+    (is (search "aria-label=\"Move “Eksporten feiler”\"" html))))
 
 (test a-board-without-an-action-moves-nothing
   (let ((html (items-board :message (list (tun.ui:alert () "Ikke flyttet")))))
@@ -228,7 +232,7 @@ aria-current=\"page\", in any order."
                                                                         :title "Fem")))))))))
 
 (defun order-items (html card)
-  "The «Rekkefølge» items of CARD in HTML, as (LABEL BEFORE) lists in order."
+  "The «Position» items of CARD in HTML, as (LABEL BEFORE) lists in order."
   (let ((items '()))
     (cl-ppcre:do-register-groups (before label)
         ((format nil "<button [^>]*form=\"tun-board-~a-order-form\" name=\"before\" ~
@@ -253,20 +257,20 @@ aria-current=\"page\", in any order."
                              <input type=\"hidden\" name=\"column\" value=\"ny\">")
                 html)
         "the order form posts the card's own column")
-    (is (equal '(("Flytt ned" "itm_3") ("Flytt nederst" "")) (order-items html "itm_1"))
+    (is (equal '(("Move down" "itm_3") ("Move to the bottom" "")) (order-items html "itm_1"))
         "the first card goes down before the card two below it, or to the end")
-    (is (equal '(("Flytt øverst" "itm_1") ("Flytt opp" "itm_1") ("Flytt ned" "itm_4")
-                 ("Flytt nederst" ""))
+    (is (equal '(("Move to the top" "itm_1") ("Move up" "itm_1") ("Move down" "itm_4")
+                 ("Move to the bottom" ""))
                (order-items html "itm_2")))
-    (is (equal '(("Flytt øverst" "itm_1") ("Flytt opp" "itm_2") ("Flytt ned" "")
-                 ("Flytt nederst" ""))
+    (is (equal '(("Move to the top" "itm_1") ("Move up" "itm_2") ("Move down" "")
+                 ("Move to the bottom" ""))
                (order-items html "itm_3"))
         "below the next-to-last card comes the end")
-    (is (equal '(("Flytt øverst" "itm_1") ("Flytt opp" "itm_3")) (order-items html "itm_4"))
+    (is (equal '(("Move to the top" "itm_1") ("Move up" "itm_3")) (order-items html "itm_4"))
         "the last card goes up only")
-    (is (search ">Rekkefølge</div>" html))
+    (is (search ">Position</div>" html))
     (is (tag-with-p html "form=\"tun-board-itm_2-form\"" "name=\"column\"" "value=\"ferdig\"")
-        "«Flytt til» posts the move form, whose before= is empty: the end of that column")))
+        "«Move to» posts the move form, whose before= is empty: the end of that column")))
 
 (test a-card-alone-in-its-column-has-no-order-group
   (let ((html (ordered-board :ordered t)))
@@ -287,16 +291,25 @@ aria-current=\"page\", in any order."
 (test a-board-with-an-action-says-where-a-card-went-in-a-visually-hidden-region
   (dolist (ordered '(t nil))
     (let ((html (ordered-board :ordered ordered)))
-      (is (search "<p class=\"tun-board-status\" role=\"status\" data-tun-board-status></p>" html)
-          "a status region, not hidden from screen readers")))
+      (is (tag-with-p html "<p class=\"tun-board-status\"" "role=\"status\""
+                      "data-tun-board-status "
+                      "data-tun-board-moved=\"Moved “{title}” to {column}.\""
+                      (concatenate 'string "data-tun-board-placed=\"Moved “{title}” to place "
+                                   "{place} of {count} in {column}.\""))
+          "a status region, not hidden from screen readers, with what it says in the page")
+      (is (search "in {column}.\"></p>" html) "and empty until a move")))
   (is (not (search "data-tun-board-status" (items-board))) "not on a board that moves nothing")
   (let ((css (tun.ui:component-css (tun.ui:find-component "board")))
         (script (tun.ui:component-script (tun.ui:find-component "board"))))
     (let ((rule (subseq css (search "& .tun-board-status {" css))))
       (is (search "clip-path: inset(50%)" (subseq rule 0 (search "}" rule))) "clipped to nothing")
       (is (not (search "display: none" (subseq rule 0 (search "}" rule))))))
-    (is (search "`Flyttet «${title}» til plass ${at.index + 1} av ${count} i ${heading}.`" script))
-    (is (search "`Flyttet «${title}» til ${heading}.`" script))
+    (is (search "tunText(board.hasAttribute('data-tun-board-ordered')" script))
+    (is (search "status.dataset.tunBoardPlaced" script))
+    (is (search "status.dataset.tunBoardMoved" script))
+    (is (search "{ title, column: heading, place: at.index + 1, count }" script)
+        "the script fills in the texts the server wrote")
+    (is (not (search "Moved “" script)) "and holds no copy of its own")
     (is (search "if (at.column === from.column && at.index === from.index) return;" script)
         "nothing is said when the answer has the card where it was")))
 
@@ -305,7 +318,7 @@ aria-current=\"page\", in any order."
     (is (not (search "data-tun-board-ordered" html)))
     (is (not (search "name=\"before\"" html)))
     (is (not (search "order-form" html)))
-    (is (not (search "Rekkefølge" html)))
+    (is (not (search "Position" html)))
     (is (search "<input type=\"hidden\" name=\"card\" value=\"itm_2\"></form>" html)
         "the move form holds the card alone"))
   (is (not (search "data-tun-board-ordered"
@@ -394,12 +407,12 @@ aria-current=\"page\", in any order."
       (is (search "kvittering.pdf" html))
       (is (search "48 kB" html))
       (is (search "<dialog" html) "a dialog for the whole image")
-      (is (search "Åpne original" html))
+      (is (search "Open the original" html))
       (is (search "hx-boost:inherited=\"false\"" html) "a thumbnail's link is not boosted")
       (is (search "data-tun-preload=\"off\"" html))
       (is (equal html (tun.html:render-html
                        (tun.html:untrusted (tun.ui:attachments (:items (items))))))
           "the same in extension output")))
   (let ((html (tun.html:render-html (tun.ui:attachments (:items '())))))
-    (is (search "Ingen vedlegg" html))
+    (is (search "No attachments" html))
     (is (not (search "<dialog" html)))))

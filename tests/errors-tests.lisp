@@ -19,11 +19,11 @@
 
 (define-operation errors-test-crash ((text :type string :required t)
                                      (elsewhere :type boolean))
-    (:kind :read :policy :employee :title "Krasj (test)")
+    (:kind :read :policy :employee :title "Crash (test)")
   (if elsewhere (crash-elsewhere text) (crash text)))
 
 (define-operation errors-test-refuse ()
-    (:kind :read :policy :employee :title "Avvis (test)")
+    (:kind :read :policy :employee :title "Refuse (test)")
   (fail :not-found "Fant ingenting"))
 
 (defun crash-call (tool actor &rest arguments)
@@ -154,7 +154,7 @@ and error code, internal_error for such a condition."
     (is (null (mail-subjects)))
     (crash-call "errors_test_crash" "employee:kari" "text" "første")
     (crash-call "errors_test_crash" "employee:kari" "text" "andre")
-    (is (equal '("Ny feil i tun: Krasj med første") (mail-subjects)) "one mail for a new error")
+    (is (equal '("New error in tun: Krasj med første") (mail-subjects)) "one mail for a new error")
     (let ((mail (first (call-ok-items "mail_list"))))
       (is (equal "utvikler@example.no" (jget mail "to"))))
     (let ((id (jget (only-error) "id")))
@@ -164,7 +164,22 @@ and error code, internal_error for such a condition."
       (call-ok "errors_set_status" "admin:root" "id" id "status" "resolved")
       (set-clock-ahead 7200)
       (crash-call "errors_test_crash" "employee:kari" "text" "fjerde")
-      (is (equal "Feilen er tilbake i tun: Krasj med fjerde" (first (mail-subjects)))))))
+      (is (equal "The error is back in tun: Krasj med fjerde" (first (mail-subjects)))))))
+
+(test the-error-mail-is-in-the-tenants-language
+  ;; spec/i18n.md 8: the error mail is written in the tenant's language; the
+  ;; error's own message stays as it was recorded.
+  (with-test-app (:class 'error-mail-application)
+    (call-ok "settings_set" "admin:root" "key" "locale.language" "value" "nb")
+    (crash-call "errors_test_crash" "employee:kari" "text" "norsk")
+    (is (equal '("Ny feil i tun: Krasj med norsk") (mail-subjects)))
+    (let ((text (jget (call-ok "mail_get" "admin:root" "id" (jget (first (call-ok-items "mail_list")) "id"))
+                      "text")))
+      (dolist (part '("Hvor: errors_test_crash" "Antall ganger: 1" "Først sett: "
+                      "Agenter finner den med errors_get"))
+        (is (search part text) "~a" part))
+      (is (cl-ppcre:scan "Først sett: \\d\\d\\.\\d\\d\\.\\d{4} kl\\. \\d\\d:\\d\\d" text)
+          "the time as Norwegian writes it"))))
 
 (test without-error-mail-nothing-is-sent
   (with-test-app ()
@@ -183,13 +198,13 @@ and error code, internal_error for such a condition."
       (with-transaction (:write)
         (redact-request-traces (list "ola nordmann"))))
     (let ((messages (mapcar (lambda (e) (jget e "message")) (errors-of))))
-      (is (member "[slettet]" messages :test #'equal))
+      (is (member "[deleted]" messages :test #'equal))
       (is (member "Krasj med Kari" messages :test #'equal)))
-    (let* ((erased (find "[slettet]" (errors-of) :key (lambda (e) (jget e "message")) :test #'equal))
+    (let* ((erased (find "[deleted]" (errors-of) :key (lambda (e) (jget e "message")) :test #'equal))
            (occurrence (aref (jget (call-ok "errors_get" "admin:root" "id" (jget erased "id"))
                                    "occurrences")
                              0)))
-      (is (equal "[slettet]" (jget occurrence "message"))))))
+      (is (equal "[deleted]" (jget occurrence "message"))))))
 
 (test a-request-has-a-log-line
   (with-test-app ()
@@ -232,7 +247,7 @@ and error code, internal_error for such a condition."
       (is (equal "operation" (jget (first crashes) "kind"))))))
 
 ;;; ------------------------------------------------------------------
-;;; The dashboard's «Feil» and «Logg»
+;;; The dashboard's "Errors" and "Log"
 
 (test the-dashboard-shows-errors-and-requests
   (with-test-server (port)
@@ -242,25 +257,26 @@ and error code, internal_error for such a condition."
       (let ((id (jget (only-error) "id")))
         (flet ((html (path) (nth-value 1 (web-request port path :jar admin)))
                (post (path) (web-request port path :method :post :jar admin)))
-          (is (= 403 (web-request port "/feil" :jar kari)) "for admins only")
-          (is (= 403 (web-request port "/logg" :jar kari)))
-          (let ((list (html "/feil")))
-            (dolist (part '("Åpne (1)" "Krasj med på siden" "simple-error" "errors_test_crash"))
+          (is (= 403 (web-request port "/errors" :jar kari)) "for admins only")
+          (is (= 403 (web-request port "/log" :jar kari)))
+          (let ((list (html "/errors")))
+            (dolist (part '("Open (1)" "Krasj med på siden" "simple-error" "errors_test_crash"))
               (is (search part list) "the list shows ~a" part)))
-          (let ((detail (html (format nil "/feil/~a" id))))
-            (dolist (part '("Backtrace" "tun.tests::crash" "Forekomster" "employee:kari" "Merk som løst"))
+          (let ((detail (html (format nil "/errors/~a" id))))
+            (dolist (part '("Backtrace" "tun.tests::crash" "Occurrences" "employee:kari"
+                            "Mark as resolved"))
               (is (search part detail) "the error's page shows ~a" part)))
-          (is (= 303 (post (format nil "/feil/~a/status/resolved" id))))
+          (is (= 303 (post (format nil "/errors/~a/status/resolved" id))))
           (is (equal "resolved" (jget (call-ok "errors_get" "admin:root" "id" id) "status")))
-          (is (search "Åpne igjen" (html (format nil "/feil/~a" id))))
-          (multiple-value-bind (status body) (post (format nil "/feil/~a/status/gone" id))
+          (is (search "Open again" (html (format nil "/errors/~a" id))))
+          (multiple-value-bind (status body) (post (format nil "/errors/~a/status/gone" id))
             (is (= 422 status) "a status that does not exist is refused on the page")
             (is (search "data-code=\"invalid_input\"" body)))
-          (is (search "errors_test_crash" (html "/logg?utvalg=errors")))
+          (is (search "errors_test_crash" (html "/log?selection=errors")))
           (let* ((request (jget (first (call-ok-items "introspect_recent" "tool" "errors_test_crash"))
                                 "request_id"))
-                 (page (html (format nil "/logg/~a" request))))
-            (dolist (part '("Input" "på siden" "Steg" "policy" "Backtrace"))
+                 (page (html (format nil "/log/~a" request))))
+            (dolist (part '("Input" "på siden" "Steps" "policy" "Backtrace"))
               (is (search part page) "the request's page shows ~a" part)))
-          (is (search "bare i minnet" (nth-value 1 (web-request port "/logg/req_gone" :jar admin)))
+          (is (search "in memory only" (nth-value 1 (web-request port "/log/req_gone" :jar admin)))
               "a request the process no longer has says so"))))))

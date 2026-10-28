@@ -47,7 +47,7 @@
       (person-at provider "2001" "ukjent@example.no")
       (multiple-value-bind (status body) (sign-in-over-provider port)
         (is (= 403 status))
-        (is (search "Det finnes ingen konto for ukjent@example.no her" body)))
+        (is (search "There is no account for ukjent@example.no here" body)))
       (is (null (account-by-name "ukjent")) "signing in makes no account")
       ;; One identity per account and provider: a second Google account
       ;; with the same verified address does not take over the first.
@@ -100,7 +100,7 @@
                                           state)
                              :jar jar)
               (is (= 400 status))
-              (is (search "Innloggingen med Testleverandør ble avbrutt" body)))))
+              (is (search "Signing in with Testleverandør was cancelled" body)))))
         (is (= 404 (web-request port "/auth/nope" :method :post)) "an unknown provider")
         (is (= 404 (web-request port "/auth/test")) "starting is a POST")))))
 
@@ -123,7 +123,7 @@
             (setf (provider-overrides provider) (list override))
             (multiple-value-bind (status body) (sign-in-over-provider port)
               (is (= 502 status) "~a is refused" what)
-              (is (search "Testleverandør svarte ikke som forventet" body)))))
+              (is (search "Testleverandør did not answer as expected" body)))))
         (setf (provider-overrides provider)
               (list (cons "aud" (vector "another-client" +client-id+)) (cons "azp" +client-id+)))
         (is (= 303 (sign-in-over-provider port)) "a list with azp passes")
@@ -157,7 +157,7 @@
         (is (search (encoded "/auth/google/callback") authorization)))
       (multiple-value-bind (status body) (web-request port "/login")
         (is (= 200 status))
-        (is (search "Logg inn med Google" body)))
+        (is (search "Sign in with Google" body)))
       (is (= 303 (sign-in-over-provider port :path "/auth/google")))
       (is (equalp #("google") (jget (account-by-name "kari") "sign_in"))
           "linked by the first sign-in"))))
@@ -188,12 +188,12 @@
         (is (search "prompt=login" authorization) "AuthKit's page every time"))
       (multiple-value-bind (status body) (web-request port "/login")
         (is (= 200 status))
-        (is (search ">Logg inn</button>" body) "the button names no provider"))
+        (is (search ">Sign in</button>" body) "the button names no provider"))
       (is (= 303 (sign-in-over-provider port :path "/auth/workos")))
       (is (equalp #("workos") (jget (account-by-name "kari") "sign_in")))
       (call-ok "accounts_create" "admin:root" "name" "per" "kind" "person" "role" "viewer"
                "email" "per@example.no" "invite" t)
-      (is (search "Logg inn med e-postadressen per@example.no:" (third (first (mail-texts))))))))
+      (is (search "Sign in with the email address per@example.no:" (third (first (mail-texts))))))))
 
 (test the-login-page-offers-only-the-providers
   (with-test-server (port :identity :authenticated)
@@ -201,7 +201,7 @@
     (with-provider (provider)
       (multiple-value-bind (status body) (web-request port "/login")
         (is (= 200 status))
-        (is (search "Logg inn med Testleverandør" body))
+        (is (search "Sign in with Testleverandør" body))
         (is (not (search "name=\"password\"" body)) "no password field"))
       (is (= 404 (web-request port "/login" :method :post
                               :parameters '(("email" . "kari@example.no")
@@ -210,14 +210,14 @@
       (call-ok "accounts_create" "admin:root" "name" "per" "kind" "person" "role" "viewer"
                "email" "per@example.no" "invite" t)
       (let ((text (third (first (mail-texts)))))
-        (is (search "Logg inn med Testleverandør og e-postadressen per@example.no:" text)
+        (is (search "Sign in with Testleverandør and the email address per@example.no:" text)
             "an invitation names the provider")
         (is (search "/login" text)))
       (is (= 303 (sign-in-as port provider "kari@example.no"))))
     (setf (tun.auth:sign-in-strategies *app*) '())
     (multiple-value-bind (status body) (web-request port "/login")
       (is (= 200 status))
-      (is (search "ingen måte å logge inn på" body) "without a provider, nobody gets in"))))
+      (is (search "no way to sign in" body) "without a provider, nobody gets in"))))
 
 (test a-new-email-unlinks-the-identity
   (with-test-server (port :identity :authenticated)
@@ -240,14 +240,14 @@
       (let ((setup (setup-path)))
         (multiple-value-bind (status body) (web-request port setup)
           (is (= 200 status))
-          (is (search "Fortsett med Testleverandør" body))
+          (is (search "Continue with Testleverandør" body))
           (is (not (search "name=\"email\"" body)) "the email comes from the provider"))
         (multiple-value-bind (status body)
             (web-request port setup :method :post
                          :parameters '(("name" . "Kari Nordmann")
                                        ("provider" . "test")))
           (is (= 422 status) "the name is checked before leaving")
-          (is (search "bare små bokstaver" body)))
+          (is (search "only lower-case letters" body)))
         (person-at provider "1001" "kari@example.no" "name" "Kari Nordmann")
         (let* ((jar (make-instance 'drakma:cookie-jar))
                (authorization (go-to-provider port :jar jar :path setup

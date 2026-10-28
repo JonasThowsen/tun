@@ -278,7 +278,7 @@ addresses apart, each under its own bound of connections (core.md 7.5)."
          (octets (recorded-input (make-input (jobj "title" (astral-text 100000))) op))
          (input (parse-json octets)))
     (is (<= (length octets) tun.core::+most-recorded-input+) "input in octets: ~d" (length octets))
-    (is (search "utelatt" (jget input "title")) "the value past it left out")))
+    (is (search "left out" (jget input "title")) "the value past it left out")))
 
 (defun hostile-record-requests (port)
   "Requests whose every field a record keeps is hostile, ASCII and astral:
@@ -665,7 +665,7 @@ back within SECONDS and whether the connection ended."
 
 (test the-inbox-checks-its-secret-before-it-parses
   (with-test-server (port)
-    (call-ok "settings_set" "admin:a" "key" "innboks.hemmelighet" "value" "hemmelig")
+    (call-ok "settings_set" "admin:a" "key" "inbox.secret" "value" "hemmelig")
     (let* ((endpoint (gethash "/inbound/mail" tun.http::*json-endpoints*))
            (handler (car endpoint))
            (called 0))
@@ -695,8 +695,22 @@ back within SECONDS and whether the connection ended."
                                                   ("lines[0][quantity]" . ,digits)))))
             (is (= status (first result)) "~a: ~a" actor (first result))
             (when (= status 422)
-              (is (search "for langt for et tall" (second result)) "~a: told why" actor))
+              (is (search "too long for a number" (second result)) "~a: told why" actor))
             (is (< seconds 2) "~a: answered in ~,1f s" actor seconds)))))))
+
+(test a-long-amount-in-a-generated-form-is-not-read
+  (with-test-server (port)
+    (let ((digits (make-string 200000 :initial-element #\7)))
+      (multiple-value-bind (seconds result)
+          (timed (lambda ()
+                   (web-request port "/orders" :method :post :jar (web-login port "employee:anna")
+                                :parameters `(("event_date" . "2026-06-20")
+                                              ("discount_input_minor" . ,digits)
+                                              ("lines[0][product_id]" . "prd_x")
+                                              ("lines[0][quantity]" . "1")))))
+        (is (= 422 (first result)) "refused: ~a" (first result))
+        (is (search "too long for a number" (second result)) "told why")
+        (is (< seconds 1) "answered in ~,1f s, the amount never read" seconds)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Anonymous callers send at most 256 KiB (core.md §7.5)
@@ -969,7 +983,7 @@ text."
              (answer (sb-thread:join-thread (waits-for port "203.0.113.7"))))
         (is (< (elapsed-since start) 2) "the 33rd is refused before it waits")
         (is (search "unavailable" (second answer)) "~a" (second answer))
-        (is (search "32 kall venter allerede fra samme adresse" (second answer))))
+        (is (search "32 calls are already waiting from the same address" (second answer))))
       (let ((other (waits-for port "203.0.113.8")))
         (is-true (eventually (lambda () (= 1 (client-waiting-count "203.0.113.8"))))
                  "another client's wait is taken")

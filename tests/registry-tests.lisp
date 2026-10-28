@@ -34,7 +34,7 @@
 (test tool-definition-is-a-projection
   (let ((tool (tool-definition (find-operation 'tun.customers:customers-get))))
     (is (string= "customers_get" (jget tool "name")))
-    (is (string= "Hent kunde" (jget tool "title")))
+    (is (string= "Get customer" (jget tool "title")))
     (is (eq t (jget (jget tool "annotations") "readOnlyHint")))
     (is (eq nil (jget (jget tool "annotations") "destructiveHint")))
     (is (equal '("id") (coerce (jget (jget tool "inputSchema") "required") 'list)))))
@@ -49,7 +49,7 @@
          (name (find 'tun.customers::name slots :key #'sb-mop:slot-definition-name)))
     (is (typep class 'entity-class))
     (is (typep name 'tun.core::field-effective-slot-definition))
-    (is (string= "Navn" (field-label name)))
+    (is (string= "Name" (field-label name)))
     (is (field-required-p name))
     (is (eq :core (field-source name)))))
 
@@ -64,7 +64,7 @@
                  (mapcar (lambda (f) (jget f "name")) (coerce (jget customer "fields") 'list))))
       (let ((name (find-by "name" "name" (jget customer "fields"))))
         (is (string= "string" (jget name "type")))
-        (is (string= "Navn" (jget name "label")))
+        (is (string= "Name" (jget name "label")))
         (is (eq t (jget name "required")))
         (is (string= "core" (jget name "source"))))
       (is (string= "customer" (jget create "entity")))

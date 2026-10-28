@@ -46,13 +46,15 @@ and rgb() or rgba() of numbers.  No other function, so no url() or
 expression(), and no quotes, backslashes or !important.")
 
 (define-condition mail-html-refused (error)
-  ((reason :initarg :reason :reader mail-html-refused-reason))
-  (:report (lambda (c s) (write-string (mail-html-refused-reason c) s)))
+  ((reason :initarg :reason :reader mail-html-refused-reason
+           :documentation "A TEXT, written in the language of the place it is shown."))
+  (:report (lambda (c s) (write-string (render-text (mail-html-refused-reason c)) s)))
   (:documentation "A mail's tree holds something outside the allow-list or
-the node grammar; the reason says what, in Norwegian."))
+the node grammar; the reason says what."))
 
-(defun refuse-html (control &rest arguments)
-  (error 'mail-html-refused :reason (apply #'format nil control arguments)))
+(defmacro refuse-html (control &rest arguments)
+  "Refuse the tree, the reason the literal CONTROL with ARGUMENTS."
+  `(error 'mail-html-refused :reason (deferred-tr ,control ,@arguments)))
 
 (defparameter +mail-tree-depth+ 200
   "The deepest a mail's tree may nest: deeper is refused, not followed until
@@ -102,7 +104,7 @@ holds one may not be the URL that was checked."
   (when (find-if (lambda (char)
                    (or (<= (char-code char) 32) (<= 127 (char-code char) 160) (char= char #\\)))
                  url)
-    (refuse-html "~a på <~a> kan ikke ha mellomrom, kontrolltegn eller \\ i e-post: «~a»"
+    (refuse-html "~a on <~a> cannot hold spaces, control characters or \\ in mail: “~a”"
                  name tag (shown url))))
 
 (defun mail-link (url)
@@ -114,14 +116,14 @@ whole with the server's public URL."
         ((and (plusp (length url)) (char= (char url 0) #\/)
               (not (and (> (length url) 1) (member (char url 1) '(#\/ #\\)))))
          (absolute-url url))
-        (t (refuse-html "lenken «~a» må begynne med https://, http://, mailto: eller /"
+        (t (refuse-html "the link “~a” must start with https://, http://, mailto: or /"
                         (shown url)))))
 
 (defun image-source (url)
   "The src URL of an image, which must be https."
   (check-url-characters url "src" "img")
   (unless (scheme-p "https://" url)
-    (refuse-html "bildet «~a» må ha en adresse som begynner med https://" (shown url)))
+    (refuse-html "the image “~a” must have an address that starts with https://" (shown url)))
   url)
 
 ;;; ------------------------------------------------------------------
@@ -151,7 +153,7 @@ list and the inline elements keep the mail app's own.")
         unless (string= declaration "")
           collect (let ((colon (position #\: declaration)))
                     (unless colon
-                      (refuse-html "stilen «~a» på <~a> mangler «:»" (shown declaration) tag))
+                      (refuse-html "the style “~a” on <~a> lacks “:”" (shown declaration) tag))
                     (let ((property (trim (subseq declaration 0 colon)))
                           (value (trim (subseq declaration (1+ colon)))))
                       ;; ASCII before lower case, so no other letter folds into a name.
@@ -161,9 +163,9 @@ list and the inline elements keep the mail app's own.")
                                           property)
                                    (member (string-downcase property) +mail-style-properties+
                                            :test #'string=))
-                        (refuse-html "stilen «~a» kan ikke brukes i e-post" (shown property)))
+                        (refuse-html "the style “~a” cannot be used in mail" (shown property)))
                       (unless (cl-ppcre:scan +style-value+ value)
-                        (refuse-html "verdien «~a» for ~(~a~) kan ikke brukes i e-post"
+                        (refuse-html "the value “~a” for ~(~a~) cannot be used in mail"
                                      (shown value) property))
                       (format nil "~(~a~): ~a" property value)))))
 
@@ -180,20 +182,19 @@ list and the inline elements keep the mail app's own.")
   "ATTRIBUTES, the property list of an element TAG, checked and ready to
 write: a path link made whole, the style the default's and TAG's own."
   (unless (and (proper-list-p attributes) (evenp (length attributes)))
-    (refuse-html "(:@ …) på <~a> må ha et navn og en verdi for hvert attributt" tag))
+    (refuse-html "(:@ …) on <~a> must have a name and a value for each attribute" tag))
   (let ((style (rest (assoc tag +default-styles+ :test #'string=)))
         (checked '()))
     (loop for (key value) on attributes by #'cddr
           do (unless (keywordp key)
-               (refuse-html "~a på <~a> er ikke et attributtnavn; ~
-                             et navn er et nøkkelord, som :href"
+               (refuse-html "~a on <~a> is not an attribute name; a name is a keyword, such as :href"
                             (shown key) tag))
              (let ((name (string-downcase (symbol-name key))))
                (unless (attribute-allowed-p tag name)
-                 (refuse-html "attributtet ~a kan ikke brukes på <~a> i e-post" name tag))
+                 (refuse-html "the attribute ~a cannot be used on <~a> in mail" name tag))
                (when value
                  (unless (or (stringp value) (numberp value))
-                   (refuse-html "attributtet ~a på <~a> må være en tekst eller et tall, ikke ~a"
+                   (refuse-html "the attribute ~a on <~a> must be a text or a number, not ~a"
                                 name tag (shown value)))
                  ;; The keyword in its usual case, so :|href| is read as :href later.
                  (let ((text (princ-to-string value))
@@ -210,12 +211,12 @@ write: a path link made whole, the style the default's and TAG's own."
   "ELEMENT, (:tag [(:@ ...)] child...), checked and ready to write; it is
 DEPTH levels into the tree."
   (unless (proper-list-p element)
-    (refuse-html "«~a» er ikke en node: lista er ikke avsluttet" (shown element)))
+    (refuse-html "“~a” is not a node: the list does not end" (shown element)))
   (when (eq (first element) :@)
-    (refuse-html "(:@ …) må stå rett etter taggen: «~a»" (shown element)))
+    (refuse-html "(:@ …) must come right after the tag: “~a”" (shown element)))
   (multiple-value-bind (tag attributes children) (node-parts element)
     (unless (member tag +mail-elements+ :test #'string=)
-      (refuse-html "<~a> kan ikke brukes i e-post" tag))
+      (refuse-html "<~a> cannot be used in mail" tag))
     (let ((attributes (checked-attributes tag attributes)))
       `(,(first element) ,@(and attributes `((:@ ,@attributes)))
         ,@(mapcar (lambda (child) (checked-node child (1+ depth))) children)))))
@@ -225,14 +226,13 @@ DEPTH levels into the tree."
 the node grammar, ready to render; anything else is refused with
 MAIL-HTML-REFUSED."
   (when (> depth +mail-tree-depth+)
-    (refuse-html "html er dypere enn ~d nivåer" +mail-tree-depth+))
+    (refuse-html "html is deeper than ~d levels" +mail-tree-depth+))
   (cond ((null node) nil)
         ((or (stringp node) (numberp node)) node)
         ((and (consp node) (keywordp (first node))) (checked-element node depth))
         ((and (consp node) (proper-list-p node))
          (mapcar (lambda (child) (checked-node child (1+ depth))) node))
-        (t (refuse-html "«~a» er ikke en node: en node er en tekst, et tall, en liste eller ~
-                         et element som (:p …)"
+        (t (refuse-html "“~a” is not a node: a node is a text, a number, a list or an element such as (:p …)"
                         (shown node)))))
 
 ;;; ------------------------------------------------------------------
@@ -249,11 +249,17 @@ MAIL-HTML-REFUSED."
 the whole width on a phone, and long words and links broken rather than
 widening it.")
 
+(defun mail-language ()
+  "The code a mail's <html lang> carries: the language it is written in,
+English for source text (spec/i18n.md 8)."
+  (let ((language (current-language)))
+    (if (stringp language) language "en")))
+
 (defun mail-frame (tree subject)
   "The whole HTML document of a mail titled SUBJECT holding TREE, checked."
   (check-type subject (or null string))
   (list (trusted "<!doctype html>")
-        `(:html (:@ :lang "no")
+        `(:html (:@ :lang ,(mail-language))
                 (:head (:meta (:@ :charset "utf-8"))
                        (:meta (:@ :name "viewport" :content "width=device-width, initial-scale=1"))
                        (:title ,(or subject "")))
@@ -420,13 +426,14 @@ html, collected for COLLECTING-INPUT-ERRORS, and its parts are NIL and TEXT."
   (handler-case
       (cond ((null html) (values nil text))
             ((stringp html)
-             (refuse-html "html er noder, som (:p \"…\"), ikke tekst med HTML; ~
-                           ren tekst går i text"))
+             (refuse-html "html is nodes, such as (:p \"…\"), not text with HTML; plain text goes in text"))
             (t (let ((tree (checked-node html)))
                  (values (render-html (mail-frame tree subject))
                          (or text (tree-text tree))))))
     (mail-html-refused (refusal)
-      (input-error "html" "~a" (mail-html-refused-reason refusal))
+      ;; The reason is a TEXT already, so it is recorded as it is.
+      (let ((reason (mail-html-refused-reason refusal)))
+        (apply #'input-error "html" (text-control reason) (text-args reason)))
       (values nil text))))
 
 (defun checked-parts (html subject text)
@@ -447,4 +454,4 @@ node tree HTML, SUBJECT and TEXT, with the same checks, storing nothing
      (let ((subject (mail-argument "subject" subject)))
        (if html
            (multiple-value-list (checked-parts html subject text))
-           (input-error "html" "må fylles ut"))))))
+           (input-error "html" "must be filled in"))))))

@@ -27,7 +27,7 @@ values, and CHILDREN to ACTION, through htmx into the board."
           ,@children))
 
 (defun board-order-items (place form-id)
-  "The «Rekkefølge» items of a card at PLACE in its column, a plist
+  "The «Position» items of a card at PLACE in its column, a plist
 (:FIRST :PREVIOUS :NEXT :AFTER-NEXT) of card ids: each submits the order
 form FORM-ID with the before= that puts the card there."
   (destructuring-bind (&key first previous next after-next) place
@@ -36,11 +36,11 @@ form FORM-ID with the before= that puts the card there."
                    :attributes (list :type "submit" :form form-id :name "before"
                                      :value before))))
       (append (when previous
-                (list (item "Flytt øverst" :arrow-up-to-line first)
-                      (item "Flytt opp" :arrow-up previous)))
+                (list (item (tr "Move to the top") :arrow-up-to-line first)
+                      (item (tr "Move up") :arrow-up previous)))
               (when next
-                (list (item "Flytt ned" :arrow-down (or after-next ""))
-                      (item "Flytt nederst" :arrow-down-to-line "")))))))
+                (list (item (tr "Move down") :arrow-down (or after-next ""))
+                      (item (tr "Move to the bottom") :arrow-down-to-line "")))))))
 
 (defun board-move-item (column form-id)
   "The menu item that moves a card to COLUMN: a button that submits the
@@ -51,19 +51,19 @@ card's form FORM-ID with column=KEY."
                             :data-tun-board-move key))))
 
 (defun board-card-menu (base title targets order-items form-id)
-  "The card's menu: its «Rekkefølge» ORDER-ITEMS, then «Flytt til» the
+  "The card's menu: its «Position» ORDER-ITEMS, then «Move to» the
 TARGETS columns, each group only when it has items; NIL when neither has."
   (let ((groups (append (when order-items
-                          (list (list :group "Rekkefølge" :items order-items)))
+                          (list (list :group (tr "Position") :items order-items)))
                         (when targets
-                          (list (list :group "Flytt til"
+                          (list (list :group (tr "Move to")
                                       :items (mapcar (lambda (column)
                                                        (board-move-item column form-id))
                                                      targets)))))))
     (when groups
       `(:div (:@ :class "tun-board-card-actions")
              ,(dropdown-menu* (list :id (format nil "~a-move" base)
-                                    :label (format nil "Flytt «~a»" title)
+                                    :label (tr "Move “~a”" title)
                                     :size :icon-sm :variant :ghost :icon :ellipsis
                                     :align :end
                                     :items groups))))))
@@ -118,7 +118,7 @@ card then also has the form and the menu items that order it there."
 (defun board-column (column &key board-id action columns heading-level ordered)
   "The markup of COLUMN, a plist (:KEY :TITLE :CARDS :COUNT :EMPTY).  ORDERED
 gives each card the menu items and form that put it in its place."
-  (destructuring-bind (&key key title cards count (empty "Ingen")) column
+  (destructuring-bind (&key key title cards count (empty (tr "None"))) column
     (unless (and key title)
       (error "A board column needs :key and :title"))
     (let ((heading-id (format nil "~a-~a" board-id key))
@@ -142,16 +142,16 @@ gives each card the menu items and form that put it in its place."
 (define-component board ((&key label columns action ordered message (heading-level 3) id
                                 attributes))
   (:group "Data")
-  (:doc "Saker som kort i kolonner, én kolonne per status, som en tavle i Asana eller GitHub.
-Hver kolonne i COLUMNS er (:key :title :cards :count :empty), hvert kort (:id :title :href
-:badges :meta). Med ACTION har hvert kort en meny «Flytt til», som poster card=ID og
-column=KEY dit, og med JavaScript kan kortet dras til en annen kolonne (på en berøringsskjerm
-etter at man har holdt på det et øyeblikk). Med ORDERED bestemmer man også rekkefølgen i en
-kolonne: kortet kan dras mellom to kort, i sin egen kolonne eller en annen, og menyen får
-«Rekkefølge» (øverst, opp, ned, nederst); hver post har da også before=ID, kortet det nå står
-rett over, eller tom når det står nederst. Siden lagrer rekkefølgen, for eksempel med
-rank-between. Etter en flytting sier tavla til skjermlesere hvor kortet havnet. MESSAGE vises
-over kolonnene, for eksempel en feil. To tavler på én side trenger hver sin :id.")
+  (:doc "Items as cards in columns, one column per status, as on a board in Asana or GitHub.
+Each column in COLUMNS is (:key :title :cards :count :empty), each card (:id :title :href
+:badges :meta). With ACTION each card has a menu «Move to», which posts card=ID and
+column=KEY there, and with JavaScript the card can be dragged to another column (on a touch
+screen after holding it for a moment). With ORDERED a person also sets the order within a
+column: the card can be dragged between two cards, in its own column or another, and the
+menu gets «Position» (top, up, down, bottom); each post then also has before=ID, the card it
+now stands right above, or empty when it is last. The page stores the order, for example
+with rank-between. After a move the board tells screen readers where the card went. MESSAGE
+shows above the columns, for example an error. Two boards on one page need an :id each.")
   (:source "Tun's own, after GitHub Projects' board and Basecoat card (Vega)")
   (:css (concatenate 'string "
 /* A board fills the height the page leaves it when the app shell gives it
@@ -614,50 +614,53 @@ document.addEventListener('htmx:after:settle', () => {
   const title = card.querySelector('.tun-board-card-title').textContent.trim();
   const heading = column.querySelector('.tun-board-column-title').textContent.trim();
   const count = column.querySelector('[data-tun-board-count]').textContent.trim();
-  status.textContent = board.hasAttribute('data-tun-board-ordered')
-    ? `Flyttet «${title}» til plass ${at.index + 1} av ${count} i ${heading}.`
-    : `Flyttet «${title}» til ${heading}.`;
+  const values = { title, column: heading, place: at.index + 1, count };
+  status.textContent = tunText(board.hasAttribute('data-tun-board-ordered')
+                                 ? status.dataset.tunBoardPlaced
+                                 : status.dataset.tunBoardMoved, values);
 });")
   (:examples
-   (("Saker etter status" :layout :stack)
-    (board (:label "Saker etter status" :action "/saker/flytt"
-                   :columns (list (list :key "ny" :title "Ny"
-                                        :cards (list (list :id "itm_1" :title "Eksporten til regnskap feiler"
-                                                           :href "/saker/itm_1"
-                                                           :badges (list (badge (:variant :destructive) "Feil")
-                                                                         (badge (:variant :outline) "Nordvik"))
-                                                           :meta "Kari Nordmann · 21.10.2026")
-                                                     (list :id "itm_2" :title "Vis lagerbeholdning på ordren"
-                                                           :href "/saker/itm_2"
-                                                           :badges (list (badge (:variant :info) "Ønske"))
-                                                           :meta "Ole Hansen · 20.10.2026")))
-                                  (list :key "planlagt" :title "Planlagt"
-                                        :cards (list (list :id "itm_3" :title "Ny side for fakturaer"
-                                                           :href "/saker/itm_3"
-                                                           :badges (list (badge (:variant :info) "Ønske")))))
-                                  (list :key "under_arbeid" :title "Under arbeid" :cards '())
-                                  (list :key "ferdig" :title "Ferdig" :count "20+"
-                                        :cards (list (list :id "itm_4" :title "Rett skrivefeil i ordrebekreftelsen"
-                                                           :href "/saker/itm_4"
-                                                           :meta "Ferdig 18.10.2026")))))))
-   (("Ordnet: neste sak øverst" :layout :stack)
-    (board (:id "ko" :label "Køen" :action "/ko/flytt" :ordered t
-            :columns (list (list :key "neste" :title "Neste"
-                                 :cards (list (list :id "itm_6" :title "Kunden får ikke logget inn"
+   (("Items by status" :layout :stack)
+    (board (:label "Items by status" :action "/items/move"
+            :columns
+            (list (list :key "new" :title "New"
+                        :cards (list (list :id "itm_1" :title "The export to accounting fails"
+                                           :href "/items/itm_1"
+                                           :badges (list (badge (:variant :destructive) "Bug")
+                                                         (badge (:variant :outline) "Nordvik"))
+                                           :meta "Kari Nordmann · 21 Oct 2026")
+                                     (list :id "itm_2" :title "Show stock on the order"
+                                           :href "/items/itm_2"
+                                           :badges (list (badge (:variant :info) "Wish"))
+                                           :meta "Ole Hansen · 20 Oct 2026")))
+                  (list :key "planned" :title "Planned"
+                        :cards (list (list :id "itm_3" :title "A new page for invoices"
+                                           :href "/items/itm_3"
+                                           :badges (list (badge (:variant :info) "Wish")))))
+                  (list :key "in_progress" :title "In progress" :cards '())
+                  (list :key "done" :title "Done" :count "20+"
+                        :cards (list (list :id "itm_4"
+                                           :title "Fix a typo in the order confirmation"
+                                           :href "/items/itm_4"
+                                           :meta "Done 18 Oct 2026")))))))
+   (("Ordered: the next item at the top" :layout :stack)
+    (board (:id "queue" :label "The queue" :action "/queue/move" :ordered t
+            :columns (list (list :key "next" :title "Next"
+                                 :cards (list (list :id "itm_6" :title "The customer cannot sign in"
                                                     :badges (list (badge (:variant :destructive)
-                                                                    "Haster")))
-                                              (list :id "itm_7" :title "Eksport til regnskap")
-                                              (list :id "itm_8" :title "Ny side for fakturaer")))
-                           (list :key "senere" :title "Senere"
-                                 :cards (list (list :id "itm_9" :title "Mørk modus")))))))
-   ("Bare til å se på, med en melding"
-    (board (:label "Mine saker"
-                   :message (list (alert (:variant :warning :title "Saken ble ikke flyttet")
-                                         "Du kan bare flytte dine egne saker."))
-                   :columns (list (list :key "ny" :title "Ny"
-                                        :cards (list (list :id "itm_5" :title "Kan ikke logge inn"
-                                                           :meta "21.10.2026")))
-                                  (list :key "ferdig" :title "Ferdig" :empty "Ingen ferdige ennå"))))))
+                                                                    "Urgent")))
+                                              (list :id "itm_7" :title "Export to accounting")
+                                              (list :id "itm_8" :title "A new page for invoices")))
+                           (list :key "later" :title "Later"
+                                 :cards (list (list :id "itm_9" :title "Dark mode")))))))
+   ("Only to look at, with a message"
+    (board (:label "My items"
+                   :message (list (alert (:variant :warning :title "The item was not moved")
+                                         "You can move only your own items."))
+                   :columns (list (list :key "new" :title "New"
+                                        :cards (list (list :id "itm_5" :title "Cannot sign in"
+                                                           :meta "21 Oct 2026")))
+                                  (list :key "done" :title "Done" :empty "Nothing done yet"))))))
   (unless (and label columns)
     (error "A board needs :label, what its cards are, and :columns"))
   ;; The ids of cards and their menus come from the board's, the same in
@@ -670,7 +673,12 @@ document.addEventListener('htmx:after:settle', () => {
                    attributes)
            (:div (:@ :class "tun-board-message" :aria-live "polite") ,@message)
            ,@(when action
-               '((:p (:@ :class "tun-board-status" :role "status" :data-tun-board-status t))))
+               ;; What the script says after a move, with {title}, {column},
+               ;; {place} and {count} for it to fill in.
+               `((:p (:@ :class "tun-board-status" :role "status" :data-tun-board-status t
+                         :data-tun-board-moved ,(tr "Moved “{title}” to {column}.")
+                         :data-tun-board-placed
+                         ,(tr "Moved “{title}” to place {place} of {count} in {column}.")))))
            (:div (:@ :class "tun-board-columns")
                  ,@(mapcar (lambda (column)
                              (board-column column :board-id board-id :action action

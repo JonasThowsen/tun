@@ -17,47 +17,49 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module customers
-  (:core ">= 1.2.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:on-open repair-customer-receipts)
   (:documentation "Customers: name, email, phone, notes, completed orders."))
 
-(define-entity customer (:label "Kunde" :id-prefix "cus" :table "customers" :revisioned t)
-  ((marketing-consent :type boolean :initform nil :label "Samtykke til markedsføring")
-   (consent-source :type (enum "manuelt" "epost" "kontaktskjema" "avmelding") :input nil)
-   (consent-at :type timestamp :input nil)
-   (erased :type boolean :input nil :initform nil)
-   (erased-at :type timestamp :input nil)
-   (revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
-   (name :type (string :min 1 :max 120) :required t :label "Navn"
-         :description "Kundens navn (1–120 tegn, trimmes).")
-   (email :type email :required t :label "E-post"
-          :description "E-postadresse på formen navn@domene.no (høyst 160 tegn).")
-   (phone :type (string :max 40 :trim nil) :label "Telefon"
-          :description "Lagres slik det oppgis.")
-   (notes :type (string :max 500) :label "Merknad"
-          :description "Fritekst om kunden (høyst 500 tegn).")
-   (completed-orders :type (integer :min 0) :input nil :initform 0 :label "Fullførte ordrer")
-   (created-at :type timestamp :input nil :label "Opprettet")))
+(define-entity customer (:label "Customer" :id-prefix "cus" :table "customers" :revisioned t)
+  ((marketing-consent :type boolean :initform nil :label "Marketing consent")
+   (consent-source :type (enum "manual" "email" "contact_form" "unsubscribe") :input nil
+                   :label "Consent source")
+   (consent-at :type timestamp :input nil :label "Consent changed")
+   (erased :type boolean :input nil :initform nil :label "Erased")
+   (erased-at :type timestamp :input nil :label "Erased at")
+   (revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
+   (name :type (string :min 1 :max 120) :required t :label "Name"
+         :description "The customer's name (1–120 characters, trimmed).")
+   (email :type email :required t :label "Email"
+          :description "An email address of the form name@domain.com (at most 160 characters).")
+   (phone :type (string :max 40 :trim nil) :label "Phone"
+          :description "Stored as given.")
+   (notes :type (string :max 500) :label "Note"
+          :description "Free text about the customer (at most 500 characters).")
+   (completed-orders :type (integer :min 0) :input nil :initform 0 :label "Completed orders")
+   (created-at :type timestamp :input nil :label "Created")))
 
 (define-operation customers-create ((:draft customer))
     (:entity customer :kind :create
-     :title "Opprett kunde"
-     :description "Registrerer en ny kunde. Returnerer kunden med id og revisjon.")
+     :title "Create customer"
+     :description "Registers a new customer. Returns the customer with its id and revision.")
   (when (customer-marketing-consent customer)
-    (setf (customer-consent-source customer) "manuelt" (customer-consent-at customer) (now)))
+    (setf (customer-consent-source customer) "manual" (customer-consent-at customer) (now)))
   (insert customer))
 
-(define-operation customers-get ((id :type (id customer) :required t :label "Kunde-ID"))
+(define-operation customers-get ((id :type (id customer) :required t :label "Customer ID"))
     (:entity customer :kind :read
-     :title "Hent kunde"
-     :description "Henter én kunde med id.")
+     :title "Get customer"
+     :description "Gets one customer by id.")
   (fetch! 'customer id))
 
-(define-operation customers-list ((query :type (string :max 120) :label "Søk i navn og e-post")
-                                  (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
+(define-operation customers-list ((query :type (string :max 120) :label "Search in names and email")
+                                  (limit :type (integer :min 1 :max 100) :default 20
+                                         :label "Most results"))
     (:entity customer :kind :read
-     :title "List kunder"
-     :description "Lister kunder, eldste først. Valgfritt søk i navn og e-post (uavhengig av store/små bokstaver).")
+     :title "List customers"
+     :description "Lists customers, oldest first, optionally matching a query in the name and the email (whatever the case).")
   ;; Without a query the store applies the limit; a query is matched here
   ;; (case-insensitive beyond ASCII, which SQL LIKE is not).
   (page (if query
@@ -74,13 +76,13 @@
     (save customer)))
 
 (defun record-reopened-order (customer-id)
-  "Decrement the counter for an order reopened from fullført (orders_reopen):
-the count is the number of orders currently fullført (README §3)."
+  "Decrement the counter for an order reopened from completed (orders_reopen):
+the count is the number of orders currently completed (README §3)."
   (let ((customer (fetch! 'customer customer-id)))
     (setf (customer-completed-orders customer) (max 0 (1- (customer-completed-orders customer))))
     (save customer)))
 
-(tun.web:register-web-resource :path "/customers" :entity 'customer :title "Kunder" :icon :users
+(tun.web:register-web-resource :path "/customers" :entity 'customer :title "Customers" :icon :users
                                :list-tool "customers_list" :create-tool "customers_create"
                                :get-tool "customers_get" :list-screen :customer-list)
 
@@ -100,22 +102,23 @@ the count is the number of orders currently fullført (README §3)."
 
 (define-operation customers-set-consent ((id :type (id customer) :required t)
                                          (marketing-consent :type boolean :required t)
-                                         (source :type (enum "manuelt" "epost" "kontaktskjema" "avmelding") :required t))
-    (:entity customer :kind :update :policy :employee :title "Endre samtykke")
+                                         (source :type (enum "manual" "email" "contact_form" "unsubscribe") :required t))
+    (:entity customer :kind :update :policy :employee :title "Change consent")
   (let ((customer (fetch! 'customer id)))
-    (when (customer-erased customer) (fail :invalid-input "kunden er slettet"))
+    (when (customer-erased customer) (fail :invalid-input "the customer is erased"))
     (setf (customer-marketing-consent customer) marketing-consent
           (customer-consent-source customer) source (customer-consent-at customer) (now))
     (audit-as :reason source)
     (save customer)))
 
 (define-operation customers-erase ((id :type (id customer) :required t))
-    (:entity customer :kind :update :policy :admin :confirm t :title "Slett kundedata")
+    (:entity customer :kind :update :policy :admin :confirm t :title "Erase customer data")
   (let* ((customer (fetch! 'customer id)) (suffix (subseq id (max 0 (- (length id) 8)))))
     (customer-erasing *application* customer)
     (redact-request-traces (list id (customer-name customer) (customer-email customer)
                                  (customer-phone customer) (customer-notes customer)))
-    (setf (customer-name customer) (format nil "Slettet kunde ~a" suffix)
+    ;; The placeholder name is copy stored for people: the tenant's language.
+    (setf (customer-name customer) (tr "Erased customer ~a" suffix)
           (customer-email customer) (format nil "~a@slettet.local" suffix)
           (customer-phone customer) nil (customer-notes customer) nil
           (customer-marketing-consent customer) nil
@@ -128,10 +131,10 @@ the count is the number of orders currently fullført (README §3)."
   "The card that says what unsubscribing means, with its button."
   (ui:card ()
            (ui:stack (:gap :lg)
-                     '(:p "Du får ikke lenger tilbud og nyheter på e-post fra oss. Meldinger om
-bestillinger får du fortsatt.")
+                     `(:p ,(tr "You will no longer get offers and news from us by email.") " "
+                          ,(tr "You will still get messages about your bookings."))
                      `(:form (:@ :method "post")
-                             ,(ui:button (:type "submit") "Meld meg av")))))
+                             ,(ui:button (:type "submit") (tr "Unsubscribe me"))))))
 
 (defun public-unsubscribe-page (method parts form session)
   (declare (ignore form session))
@@ -139,18 +142,20 @@ bestillinger får du fortsatt.")
                     (find-if (lambda (c) (constant-time-string= (string-upcase (or (first parts) "")) (link-token "avmeld" (entity-id c))))
                              (select 'customer)))))
     (unless (and customer (= (length parts) 1) (not (customer-erased customer)))
-      (return-from public-unsubscribe-page (values 404 "Siden finnes ikke" '((:p "Kontroller lenken i e-posten.")))))
+      (return-from public-unsubscribe-page
+        (values 404 (tr "Page not found") `((:p ,(tr "Check the link in the email."))))))
     (if (eq method :post)
         (progn
-          (call-customer-action (entity-id customer) "avmelding" "customer" (entity-id customer)
+          (call-customer-action (entity-id customer) "unsubscribe" "customer" (entity-id customer)
             (lambda ()
               (let ((current (fetch! 'customer (entity-id customer))))
-                (when (or (customer-marketing-consent current) (not (equal (customer-consent-source current) "avmelding")))
-                  (setf (customer-marketing-consent current) nil (customer-consent-source current) "avmelding"
-                        (customer-consent-at current) (now)) (save current)))) :reason "avmelding")
-          (values 200 "Du er avmeldt." nil))
-        (values 200 "Meld meg av" (list (unsubscribe-form))))))
-(tun.web:register-public-page "avmeld" #'public-unsubscribe-page)
+                (when (or (customer-marketing-consent current) (not (equal (customer-consent-source current) "unsubscribe")))
+                  (setf (customer-marketing-consent current) nil (customer-consent-source current) "unsubscribe"
+                        (customer-consent-at current) (now)) (save current))))
+            :reason "unsubscribe")
+          (values 200 (tr "You are unsubscribed.") nil))
+        (values 200 (tr "Unsubscribe me") (list (unsubscribe-form))))))
+(tun.web:register-public-page "unsubscribe" #'public-unsubscribe-page)
 
 (publish '(marketing-allowed-p customers-set-consent customer-marketing-consent customer-erased))
 (defun repair-customer-receipts ()

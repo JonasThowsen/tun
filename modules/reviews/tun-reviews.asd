@@ -4,4 +4,6 @@
   :description "tun module reviews: a generic review workflow with kind handlers."
   :version "1.0.0"
   :depends-on ("tun")
-  :components ((:file "reviews")))
+  :serial t
+  :components ((:file "reviews")
+               (:file "nb")))

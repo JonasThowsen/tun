@@ -212,17 +212,17 @@ the attempt."
 
 (define-condition job-cancelled (condition)
   ((reason :initarg :reason :reader job-cancelled-reason))
-  (:report (lambda (c s) (format s "Jobben ble avbrutt: ~a" (job-cancelled-reason c))))
+  (:report (lambda (c s) (format s "The job was cancelled: ~a" (job-cancelled-reason c))))
   (:documentation "Signalled by CANCEL-JOB; the runner makes the job cancelled."))
 
 (define-condition job-snoozed (condition)
   ((seconds :initarg :seconds :reader job-snoozed-seconds))
-  (:report (lambda (c s) (format s "Jobben ble utsatt i ~d sekunder" (job-snoozed-seconds c))))
+  (:report (lambda (c s) (format s "The job was snoozed for ~d seconds" (job-snoozed-seconds c))))
   (:documentation "Signalled by SNOOZE-JOB; the runner queues the job again."))
 
 (define-condition job-given-up (condition)
   ((reason :initarg :reason :reader job-given-up-reason))
-  (:report (lambda (c s) (format s "Jobben feilet for godt: ~a" (job-given-up-reason c))))
+  (:report (lambda (c s) (format s "The job failed for good: ~a" (job-given-up-reason c))))
   (:documentation "Signalled by FAIL-JOB; the runner makes the job failed at once."))
 
 (defvar *job* nil "The job whose body is running.")
@@ -260,30 +260,30 @@ attempt made in its transaction roll back."
 ;;; ------------------------------------------------------------------
 ;;; The jobs table
 
-(define-entity job (:label "Jobb" :id-prefix "job" :table "jobs" :internal t
+(define-entity job (:label "Job" :id-prefix "job" :table "jobs" :internal t
                            :indexes (("state" "queue" "due_at") ("kind" "unique_key")
                                      ("claimed_by")))
-  ((kind :type (string :max 100) :required t :input nil :label "Type")
-   (queue :type (string :max 64) :required t :input nil :label "Kø")
-   (arguments :type json :input nil :label "Argumenter")
+  ((kind :type (string :max 100) :required t :input nil :label "Kind")
+   (queue :type (string :max 64) :required t :input nil :label "Queue")
+   (arguments :type json :input nil :label "Arguments")
    (state :type (enum "queued" "running" "retrying" "succeeded" "failed" "cancelled")
-          :input nil :initform "queued" :label "Tilstand")
-   (priority :type integer :input nil :initform 0 :label "Prioritet")
-   (due-at :type timestamp :input nil :label "Forfaller")
-   (attempts :type integer :input nil :initform 0 :label "Forsøk")
-   (max-attempts :type integer :input nil :label "Maks forsøk")
-   (snoozes :type integer :input nil :initform 0 :label "Utsettelser")
-   (unique-key :type (string :max 64) :input nil :label "Unik nøkkel")
-   (enqueued-at :type timestamp :input nil :label "Lagt i kø")
-   (enqueued-by :type (string :max 200) :input nil :label "Lagt i kø av")
-   (claimed-by :type (string :max 64) :input nil :label "Prosess"
+          :input nil :initform "queued" :label "State")
+   (priority :type integer :input nil :initform 0 :label "Priority")
+   (due-at :type timestamp :input nil :label "Due")
+   (attempts :type integer :input nil :initform 0 :label "Attempts")
+   (max-attempts :type integer :input nil :label "Most attempts")
+   (snoozes :type integer :input nil :initform 0 :label "Snoozes")
+   (unique-key :type (string :max 64) :input nil :label "Unique key")
+   (enqueued-at :type timestamp :input nil :label "Enqueued")
+   (enqueued-by :type (string :max 200) :input nil :label "Enqueued by")
+   (claimed-by :type (string :max 64) :input nil :label "Process"
                :description "The process running the job, or that ran it last.")
-   (started-at :type timestamp :input nil :label "Startet")
-   (finished-at :type timestamp :input nil :label "Ferdig")
-   (last-error :type (string :max 2000) :input nil :label "Siste feil")
-   (errors :type json :input nil :label "Feil"
+   (started-at :type timestamp :input nil :label "Started")
+   (finished-at :type timestamp :input nil :label "Finished")
+   (last-error :type (string :max 2000) :input nil :label "Last error")
+   (errors :type json :input nil :label "Errors"
            :description "The last ten failures: attempt, at and error.")
-   (note :type (string :max 2000) :input nil :label "Merknad"
+   (note :type (string :max 2000) :input nil :label "Note"
          :description "Why the job was cancelled or failed without an error of its own.")))
 
 ;;; ------------------------------------------------------------------
@@ -298,11 +298,11 @@ COLLECTING-INPUT-ERRORS."
         (parameters (job-definition-parameters definition)))
     (loop for (key nil) on arguments by #'cddr
           unless (find key parameters :key #'parameter-keyword)
-            do (input-error (json-name-of key) "er ikke et argument til jobben"))
+            do (input-error (json-name-of key) "is not an argument of the job"))
     (dolist (parameter parameters json)
       (let ((value (getf arguments (parameter-keyword parameter))))
         (cond ((and (null value) (parameter-required-p parameter))
-               (input-error (parameter-json-name parameter) "må fylles ut"))
+               (input-error (parameter-json-name parameter) "must be filled in"))
               ((null value))
               (t (let ((stored (type->json (parameter-type parameter) value)))
                    (coerce-input (parameter-type parameter) stored (parameter-json-name parameter))

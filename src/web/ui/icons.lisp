@@ -14,9 +14,9 @@
       (error "Unknown icon ~s; scripts/ui-icons.py lists the icons Tun carries" name)))
 
 (define-component icon ((&key name label (size :default) id attributes))
-  (:group "Handlinger")
-  (:doc "Et ikon fra Lucide. Uten LABEL er det pynt som skjermlesere hopper over; med LABEL
-leses teksten opp i stedet.")
+  (:group "Actions")
+  (:doc "An icon from Lucide. Without LABEL it is decoration that screen readers skip; with
+LABEL the text is read out instead.")
   (:source "Lucide")
   (:css "
 .tun-icon {
@@ -30,15 +30,15 @@ leses teksten opp i stedet.")
   &[data-size='xl'] { width: calc(var(--spacing) * 6); height: calc(var(--spacing) * 6); }
 }")
   (:examples
-   ("Størrelser"
+   ("Sizes"
     (icon (:name :package :size :xs))
     (icon (:name :package :size :sm))
     (icon (:name :package))
     (icon (:name :package :size :lg))
     (icon (:name :package :size :xl)))
-   ("Med tekst for skjermlesere"
-    (icon (:name :circle-alert :label "Advarsel")))
-   ("Alle ikonene"
+   ("With a text for screen readers"
+    (icon (:name :circle-alert :label "Warning")))
+   ("Every icon"
     (mapcar (lambda (name)
               `(:span (:@ :title ,(string-downcase (symbol-name name)))
                       ,(icon (:name name :size :lg))))

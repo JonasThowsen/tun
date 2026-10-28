@@ -1,50 +1,48 @@
-;;;; public-offers.lisp -- token-authorized offer pages through the kernel HTML port.
+;;;; public-offers.lisp -- token-authorized offer pages through the kernel HTML port,
+;;;; in the tenant's language (README §6.6).
 (in-package #:tun.orders)
 
+(declaim (optimize (safety 3) (debug 2)))
+
 (defun offer-date-text (date)
-  (if date (format nil "~a.~a.~a" (subseq date 8 10) (subseq date 5 7) (subseq date 0 4)) "dato ikke fastsatt"))
-(defun offer-money-text (ore)
-  (let ((digits (write-to-string (floor ore 100))))
-    (format nil "~a,~2,'0d kr"
-      (with-output-to-string (out)
-        (loop for c across digits for i from 0 do
-          (when (and (plusp i) (zerop (mod (- (length digits) i) 3))) (write-char #\Space out))
-          (write-char c out))) (mod ore 100))))
-(defun offer-not-found () (values 404 "Siden finnes ikke" '((:p "Kontroller lenken i e-posten."))))
+  "DATE of the offer's event as the current language writes it, or that it is not set."
+  (if (stringp date) (date-text date) (tr "date not set")))
+(defun offer-not-found ()
+  (values 404 (tr "The page does not exist") `((:p ,(tr "Check the link in the email.")))))
 (defun offer-conflict ()
-  (values 409 "Tilbudet er oppdatert"
-    '((:p "Tilbudet har blitt oppdatert eller svart på i en annen fane. Åpne lenken fra den nyeste e-posten for å se gjeldende tilbud."))))
+  (values 409 (tr "The offer has been updated")
+          `((:p ,(tr "The offer has been updated or answered in another tab. Open the link in the latest email to see the current offer.")))))
 (defun offer-expired-page (sender)
-  (values 410 "Tilbudet er utløpt" `((:p ,(format nil "Ta kontakt med ~a dersom dere ønsker et oppdatert tilbud." sender)))))
+  (values 410 (tr "The offer has expired")
+          `((:p ,(tr "Contact ~a if you would like an updated offer." sender)))))
 (defun offer-period (snapshot)
   "The days of the offer's event: one date, or the first and the last."
   (let ((date (jget snapshot "event_date")) (end (jget snapshot "end_date")))
     (if (and (stringp end) (not (equal end date)))
         (format nil "~a–~a" (offer-date-text date) (offer-date-text end))
-        (offer-date-text (and (stringp date) date)))))
+        (offer-date-text date))))
 
 (defun offer-facts (quote snapshot)
   "When and where, and until when the offer can be answered."
   (let ((expiry (order-quote-expires-at quote))
         (site (jget snapshot "site_address")))
     (ui:summary-list
-     (:rows (list (list "Periode" (offer-period snapshot))
-                  (list "Sted" (if (stringp site) site ""))
-                  (list "Gyldig til" (format nil "~a kl. ~a"
-                                             (offer-date-text (local-date-of expiry))
-                                             (local-time-of expiry))))))))
+     (:rows (list (list (tr "Period") (offer-period snapshot))
+                  (list (tr "Location") (if (stringp site) site ""))
+                  (list (tr "Valid until") (instant-text expiry)))))))
 
 (defun offer-lines (snapshot)
   "The products of the offer with their amounts, and the total."
   (let ((rows (map 'list (lambda (line)
                            (list (jget line "name")
-                                 (princ-to-string (jget line "quantity"))
-                                 (offer-money-text (jget line "line_effective_ore"))))
+                                 (number-text (jget line "quantity"))
+                                 (money-text (jget line "line_effective_minor"))))
                    (jget snapshot "lines")))
-        (total (offer-money-text (jget snapshot "total_ore"))))
-    (ui:table (:columns '("Produkt" ("Antall" :align :end) ("Beløp" :align :end))
+        (total (money-text (jget snapshot "total_minor"))))
+    (ui:table (:columns (list (tr "Product") (list (tr "Quantity") :align :end)
+                              (list (tr "Amount") :align :end))
                         :rows rows
-                        :footer (list "Totalt" nil total)))))
+                        :footer (list (tr "Total") nil total)))))
 
 (defun answer-button (response label &rest options)
   "The button that answers the offer with RESPONSE, accept or decline."
@@ -53,48 +51,48 @@
 (defun offer-answer-form (quote)
   "The form that accepts or declines the offer, with the proof of its revision."
   (let ((proof (sign-response-proof (entity-id quote) (order-quote-revision quote))))
-    `(:form (:@ :method "post" :action ,(format nil "/tilbud/~a/svar" (entity-id quote)))
+    `(:form (:@ :method "post" :action ,(format nil "/offer/~a/respond" (entity-id quote)))
             (:input (:@ :type "hidden" :name "proof" :value ,proof))
             ,(ui:cluster ()
-                         (answer-button "accept" "Godta tilbudet" :icon :check)
-                         (answer-button "decline" "Avslå tilbudet" :variant :outline)))))
+                         (answer-button "accept" (tr "Accept the offer") :icon :check)
+                         (answer-button "decline" (tr "Decline the offer") :variant :outline)))))
 
 (defun offer-content (quote sender)
   (let ((snapshot (order-quote-snapshot quote))
-        (who (format nil "Svaret sendes til ~a. En ansatt bekrefter ordren før den blir endelig."
-                     sender)))
+        (who (tr "Your answer goes to ~a. A member of staff confirms the order before it is final."
+                 sender)))
     (list
-     '(:p "Her er en oversikt over det som er foreslått for arrangementet deres.")
+     `(:p ,(tr "Here is an overview of what is proposed for your event."))
      (offer-facts quote snapshot)
-     (ui:section (:title "Dette er inkludert")
+     (ui:section (:title (tr "This is included"))
                  (offer-lines snapshot))
-     (ui:section (:title "Vil dere gå videre?" :description who)
+     (ui:section (:title (tr "Would you like to go ahead?") :description who)
                  (offer-answer-form quote)))))
 
 (defun offer-gate (quote &key error)
   "The form that asks for the code in the offer's e-mail, with ERROR after a wrong one."
-  (let ((action (format nil "/tilbud/~a/apne" (entity-id quote)))
-        (hint "Koden står i e-posten med tilbudet, for eksempel ABCDE-FGHIJ."))
+  (let ((action (format nil "/offer/~a/open" (entity-id quote)))
+        (hint (tr "The code is in the email with the offer, for example ABCDE-FGHIJ.")))
     (list
      (ui:card ()
               `(:form (:@ :method "post" :action ,action :novalidate t)
                       ,(ui:stack (:gap :lg)
-                                 (ui:text-input (:label "Kode" :name "code" :required t
+                                 (ui:text-input (:label (tr "Code") :name "code" :required t
                                                         :width 20 :autocomplete "off"
                                                         :error error :hint hint))
                                  (ui:form-actions ()
-                                   (ui:button (:type "submit") "Åpne tilbudet"))))))))
+                                   (ui:button (:type "submit") (tr "Open the offer")))))))))
 
 (defun public-offer-page (method parts form session)
   (let* ((quote (with-transaction (:read)
                   (let ((q (fetch 'order-quote (first parts))))
                     (when (and q (not (customer-erased (order-customer (find-order (order-quote-order-id q)))))) q))))
-         (sender (with-transaction (:read) (setting-value-at-use "avsender.navn" "Tun")))
-         (heading (format nil "Tilbud fra ~a" sender))
+         (sender (with-transaction (:read) (setting-value-at-use "sender.name" "Tun")))
+         (heading (tr "Offer from ~a" sender))
          (action (second parts)))
     (unless quote (return-from public-offer-page (offer-not-found)))
     (cond
-      ((and (eq method :post) (equal action "svar"))
+      ((and (eq method :post) (equal action "respond"))
        (let ((proof (jget form "proof")) (response (jget form "response")))
          (unless (and proof response) (return-from public-offer-page (offer-not-found)))
          (multiple-value-bind (revision expiry) (with-transaction (:read) (verify-response-proof proof (entity-id quote)))
@@ -109,23 +107,27 @@
                                                   "access_code" (order-quote-access-code quote) "response" response)
                             :actor (make-actor :customer (entity-id quote)))
                  (if (equal response "accept")
-                     (values 200 "Takk" `((:p ,(format nil "Tilbudet er akseptert. ~a følger opp og bekrefter ordren." sender))))
-                     (values 200 "Svaret er registrert" `((:p ,(format nil "Tilbudet er avslått. Ta kontakt med ~a hvis dere ønsker å avklare noe." sender))))))
+                     (values 200 (tr "Thank you")
+                             `((:p ,(tr "The offer is accepted. ~a will follow up and confirm the order." sender))))
+                     (values 200 (tr "Your answer is registered")
+                             `((:p ,(tr "The offer is declined. Contact ~a if there is anything you would like to clear up." sender))))))
              (operation-error () (offer-conflict))))))
       ((quote-expired-p quote) (offer-not-found))
       ((member (order-quote-status quote) '("accepted" "declined") :test #'equal)
-       (values 200 "Svar registrert" `((:p ,(if (equal (order-quote-status quote) "accepted") "Tilbudet er allerede akseptert" "Tilbudet er avslått")))))
+       (values 200 (tr "Answer registered")
+               `((:p ,(if (equal (order-quote-status quote) "accepted")
+                          (tr "The offer is already accepted")
+                          (tr "The offer has been declined"))))))
       ((and (eq method :get) (null action))
        (values 200 heading (offer-gate quote)))
-      ((and (eq method :post) (equal action "apne"))
+      ((and (eq method :post) (equal action "open"))
        (let* ((code (jget form "code")) (key (entity-id quote)))
          (cond ((and code (same-code-p (normalise-access-code code) (order-quote-access-code quote)))
                 (setf (gethash key session) 0)
                 (values 200 heading (with-transaction (:read) (offer-content quote sender))))
                ((>= (incf (gethash key session 0)) 6)
-                (values 429 "For mange forsøk" '((:p "Vent litt før du prøver koden igjen."))))
+                (values 429 (tr "Too many attempts") `((:p ,(tr "Wait a little before you try the code again.")))))
                (t (values 422 heading
-                          (offer-gate quote :error "Koden stemmer ikke. Kontroller koden i
-e-posten og prøv igjen."))))))
+                          (offer-gate quote :error (tr "The code is not right. Check the code in the email and try again.")))))))
       (t (offer-not-found)))))
-(tun.web:register-public-page "tilbud" #'public-offer-page)
+(tun.web:register-public-page "offer" #'public-offer-page)

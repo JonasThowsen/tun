@@ -1,12 +1,12 @@
-;;;; jobs/cron.lisp -- cron times in Norwegian time (spec/jobs.md 8).
+;;;; jobs/cron.lisp -- cron times in the tenant's time zone (spec/jobs.md 8).
 ;;;;
 ;;;; A cron time is five fields, minute, hour, day of month, month and
 ;;;; weekday, or an alias such as @daily.  Occurrences are wall-clock times
-;;;; in Norway: «07:00 on weekdays» is 07:00 in winter and in summer.  A
-;;;; wall-clock time is turned into an instant with the kernel's rule for
-;;;; summer time (OSLO-OFFSET): one that does not exist, in the spring gap,
-;;;; becomes the first valid minute after it; one that happens twice, in the
-;;;; autumn overlap, the first of the two.  Pure functions only: nothing here
+;;;; in the tenant's zone: «07:00 on weekdays» is 07:00 in winter and in
+;;;; summer.  A wall-clock time is turned into an instant with the zone's
+;;;; rule for summer time (LOCAL-INSTANT): one that does not exist, in the
+;;;; spring gap, becomes the first valid minute after it; one that happens
+;;;; twice, in the autumn overlap, the first of the two.  Pure functions only: nothing here
 ;;;; reads the clock or the store.
 
 (in-package #:tun.jobs)
@@ -122,15 +122,16 @@ a time that names both days of the month and weekdays runs on either."
                (and day-p weekday-p))))))
 
 (defun wall-time-instant (date hour minute)
-  "The instant Norwegian wall-clock HOUR:MINUTE on DATE happens: the first of
-two in the autumn overlap, and for a time in the spring gap the first valid
-minute after it."
-  (let ((wall (+ (parse-date date) (* 3600 hour) (* 60 minute))))
-    (loop for candidate from wall by 60
-          for summer = (- candidate 7200)
-          for winter = (- candidate 3600)
-          do (cond ((= 7200 (oslo-offset summer)) (return summer))
-                   ((= 3600 (oslo-offset winter)) (return winter))))))
+  "The instant the tenant's wall-clock HOUR:MINUTE on DATE happens: the first
+of two in the autumn overlap, and for a time in the spring gap the first
+valid minute after it."
+  (loop for minutes from (+ (* 60 hour) minute)
+        do (multiple-value-bind (instant kind earlier)
+               (local-instant (date-add-days date (floor minutes 1440))
+                              (floor (mod minutes 1440) 60) (mod minutes 60))
+             (case kind
+               (:ok (return instant))
+               (:ambiguous (return earlier))))))
 
 (defun occurrence-key (date hour minute)
   "How an occurrence is known: its wall-clock time, such as
@@ -169,29 +170,39 @@ there is none within four years."
                          (values at (occurrence-key date hour minute))))))))))
 
 ;;; ------------------------------------------------------------------
-;;; In words, for people (the «Jobber» page, schedules_list)
+;;; In words, for people (the «Jobs» page, schedules_list), in the current
+;;; language.
 
-(defparameter +weekday-names+
-  '("søndag" "mandag" "tirsdag" "onsdag" "torsdag" "fredag" "lørdag")
-  "Weekday names by cron's number, 0 Sunday.")
+(defun weekday-name (day)
+  "The name of DAY, cron's number of a weekday (0 Sunday), in the current
+language."
+  (ecase day
+    (0 (tr ("Sunday" :context "weekday"))) (1 (tr ("Monday" :context "weekday")))
+    (2 (tr ("Tuesday" :context "weekday"))) (3 (tr ("Wednesday" :context "weekday")))
+    (4 (tr ("Thursday" :context "weekday"))) (5 (tr ("Friday" :context "weekday")))
+    (6 (tr ("Saturday" :context "weekday")))))
 
-(defun norwegian-list (words)
-  "WORDS joined as Norwegian lists them: «a, b og c»."
-  (format nil "~{~a~#[~; og ~:;, ~]~}" words))
+(defun words-list (words)
+  "WORDS joined as the current language lists them: «a, b and c»."
+  (tr "~{~a~#[~; and ~:;, ~]~}" words))
+
+(defun every-day-p (cron)
+  "True when CRON runs on every day of the month and of the week."
+  (not (or (cron-days-restricted-p cron) (cron-weekdays-restricted-p cron))))
 
 (defun cron-days-text (cron)
   "Which days CRON runs, in words, or NIL when that takes more than a phrase."
   (let ((weekdays (cron-weekdays cron)))
     (cond ((cron-days-restricted-p cron)
            (and (not (cron-weekdays-restricted-p cron)) (= 1 (length (cron-days cron)))
-                (format nil "den ~d. hver måned" (first (cron-days cron)))))
-          ((not (cron-weekdays-restricted-p cron)) "hver dag")
-          ((equal weekdays '(1 2 3 4 5)) "hverdager")
-          ((equal weekdays '(0 6)) "i helgene")
-          ((= 1 (length weekdays)) (format nil "hver ~a" (nth (first weekdays) +weekday-names+)))
-          ;; Monday first, as a Norwegian week runs.
-          (t (norwegian-list (mapcar (lambda (day) (nth day +weekday-names+))
-                                     (append (remove 0 weekdays) (and (member 0 weekdays) '(0)))))))))
+                (tr "on day ~d of every month" (first (cron-days cron)))))
+          ((not (cron-weekdays-restricted-p cron)) (tr "every day"))
+          ((equal weekdays '(1 2 3 4 5)) (tr "weekdays"))
+          ((equal weekdays '(0 6)) (tr "weekends"))
+          ((= 1 (length weekdays)) (tr "every ~a" (weekday-name (first weekdays))))
+          ;; Monday first, as a European week runs.
+          (t (words-list (mapcar #'weekday-name
+                                 (append (remove 0 weekdays) (and (member 0 weekdays) '(0)))))))))
 
 (defun even-step (values limit)
   "The step S when VALUES are 0, S, 2S ... below LIMIT, or NIL."
@@ -201,21 +212,21 @@ there is none within four years."
          step)))
 
 (defun describe-cron (cron)
-  "When CRON runs, in Norwegian, such as «hverdager kl. 07:00»; its cron text
-when it takes more than a phrase."
+  "When CRON runs, in the current language, such as «weekdays at 07:00»; its
+cron text when it takes more than a phrase."
   (let ((minutes (cron-minutes cron))
         (hours (cron-hours cron))
         (days (cron-days-text cron)))
     (flet ((at (hour minute) (format nil "~2,'0d:~2,'0d" hour minute)))
       (or (and days (= 12 (length (cron-months cron)))
-               (cond ((and (= 24 (length hours)) (string= days "hver dag"))
-                      (cond ((equal minutes '(0)) "hver hele time")
+               (cond ((and (= 24 (length hours)) (every-day-p cron))
+                      (cond ((equal minutes '(0)) (tr "every hour on the hour"))
                             ((= 1 (length minutes))
-                             (format nil "hver time, ~d minutter over" (first minutes)))
+                             (tr "every hour, ~d minutes past" (first minutes)))
                             ((even-step minutes 60)
-                             (format nil "hvert ~d. minutt" (even-step minutes 60)))))
+                             (tr "every ~d minutes" (even-step minutes 60)))))
                      ((= 1 (length minutes))
-                      (format nil "~a kl. ~a" days
-                              (norwegian-list (mapcar (lambda (hour) (at hour (first minutes)))
-                                                      hours))))))
+                      (tr "~a at ~a" days
+                          (words-list (mapcar (lambda (hour) (at hour (first minutes)))
+                                              hours))))))
           (cron-text cron)))))

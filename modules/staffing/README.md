@@ -5,10 +5,10 @@ ASDF system `tun-staffing`, package `tun.staffing`; pinned by clients through
 
 - **Owns:** employees, departments, assignments, unavailability, work sessions (§2–§8 below).
 - **Depends on:** `orders`.
-- **Core range:** builds against core `>= 1.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
-- **Publishes:** rule point `assignment_eligibility`, the client's departments (also to the catalog: `catalog_departments`), `to-utc` (Norwegian local time to UTC), `actor-employee` (the employee bound to an actor or its header text; the warehouse alert's recipient lookup, §2.4). Its exported symbols are its interface for
+- **Publishes:** rule point `assignment_eligibility`, the client's departments (also to the catalog: `catalog_departments`), `to-utc` (the tenant's local time to UTC), `actor-employee` (the employee bound to an actor or its header text; the warehouse alert's recipient lookup, §2.4). Its exported symbols are its interface for
   the modules that depend on it; what clients may use is what it publishes
   to `TUN`.
 - **Rollback:** its migrations only add tables and nullable columns, so the
@@ -115,9 +115,9 @@ automatic, in its transaction (the notifications module uses it).
 `{"order_id","employee_id","override_reason"?}`, admin. The checks, in
 order:
 
-1. The order is `avbrutt` or `fullført` → `invalid_transition` `Ordren har
+1. The order is `cancelled` or `completed` → `invalid_transition` `Ordren har
    status <s>; ingen kan tildeles`.
-2. The order is locked (`send_faktura`) → `conflict` with the orders
+2. The order is locked (`ready_for_invoice`) → `conflict` with the orders
    module's lock message.
 3. The employee is not active → `invalid_input` `Den ansatte er ikke aktiv`.
 4. The employee is already actively assigned → `conflict` `Den ansatte er
@@ -228,10 +228,10 @@ make them, no further.
 
 | Tool | Kind | Input | Rules |
 |---|---|---|---|
-| `work_sessions_start` | create | `{"order_id","assignment_id","note"?}` | the assignment must be active, on this order and the actor's own, else `forbidden`; the order must be calendar-active (`utkast`, `tilbud_sendt`, `akseptert`, `bekreftet`), else `invalid_transition` `Ordren har status <s>; timer kan ikke startes`; a running session of the actor anywhere → `conflict` `Du har allerede en aktiv timer` |
+| `work_sessions_start` | create | `{"order_id","assignment_id","note"?}` | the assignment must be active, on this order and the actor's own, else `forbidden`; the order must be calendar-active (`draft`, `quote_sent`, `accepted`, `confirmed`), else `invalid_transition` `Ordren har status <s>; timer kan ikke startes`; a running session of the actor anywhere → `conflict` `Du har allerede en aktiv timer` |
 | `work_sessions_stop` | transition | `{}` | stops the actor's running session, always allowed; none → `not_found` `Du har ingen aktiv timer`; duration max(1, seconds) |
 | `work_sessions_create_manual` | create | `{"order_id","assignment_id","started_at","ended_at","note"?}` | the actor's own assignment on the order (it may be ended), else `forbidden`; `ended_at > started_at`, else `invalid_input` `Sluttid må være etter starttid`; duration max(60, seconds) |
-| `work_sessions_list` | read | `{"order_id"?,"mine"?,"from"?,"to"?}` | `{"items"}`; `from`/`to` filter on the session's start date in Norwegian local time |
+| `work_sessions_list` | read | `{"order_id"?,"mine"?,"from"?,"to"?}` | `{"items"}`; `from`/`to` filter on the session's start date in the tenant's local time |
 
 The `forbidden` message is `Tildelingen <id> er ikke din aktive tildeling på
 ordre <id>`. One employee has at most one running session.
@@ -247,7 +247,7 @@ the order runs (the orders seam `closure_guard`).
 #### 7.1 Entry and tools
 
 `unavailability = {"id","employee_id","start_date","end_date","whole_day","start_time","end_time","private_note","version","start_at","end_at"}`.
-`start_time` and `end_time` are Norwegian local `HH:MM`; a whole-day entry
+`start_time` and `end_time` are the tenant's local `HH:MM`; a whole-day entry
 stores them as null. `start_at` and `end_at` are the entry's UTC interval
 (§8), added to every result. `version` starts at 1 and grows by one on each
 update.
@@ -289,10 +289,10 @@ assigned to → `conflict` `Perioden overlapper en aktiv ordretildeling. Fjern
 tildelingen før utilgjengeligheten registreres.` Dateless orders never
 overlap.
 
-### 8. Norwegian local time
+### 8. Local time
 
-The offsets (CET +01:00, CEST +02:00), the rule for when summer time
-applies and "today" are the kernel's (core.md §2.2); staffing converts the
+The tenant's time zone, its offsets, the rule for when summer time
+applies and "today" are the kernel's (core.md §2.2, `spec/i18n.md` §6.1); staffing converts the
 other way. `to-utc(date, time)` computes both readings of the wall-clock
 time: exactly one is a real instant → that instant; both → ambiguous (the
 autumn overlap); neither → nonexistent (the spring gap).
@@ -321,7 +321,7 @@ hours and 2026-10-25 has 25.
 4. A running work session blocks completing, invoicing readiness and
    cancelling its order and ending its assignment; stopping is always
    allowed; an employee has one running session at most.
-5. Unavailability intervals are half-open UTC intervals from Norwegian local
+5. Unavailability intervals are half-open UTC intervals from local
    time (§8); nonexistent and ambiguous local times are refused; touching
    intervals do not overlap.
 6. A dateless order never conflicts with unavailability.

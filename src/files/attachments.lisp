@@ -13,21 +13,21 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity attachment (:label "Vedlegg" :id-prefix "fil" :table "attachments" :internal t
+(define-entity attachment (:label "Attachment" :id-prefix "fil" :table "attachments" :internal t
                                   :indexes (("entity" "record_id")))
-  ((entity :type (string :min 1 :max 100) :required t :input nil :label "Entitet"
+  ((entity :type (string :min 1 :max 100) :required t :input nil :label "Entity"
            :description "The JSON name of the record's entity.")
-   (record-id :type (string :min 1 :max 64) :required t :input nil :label "Post")
-   (filename :type (string :min 1 :max 255) :required t :input nil :label "Filnavn")
+   (record-id :type (string :min 1 :max 64) :required t :input nil :label "Record")
+   (filename :type (string :min 1 :max 255) :required t :input nil :label "Filename")
    (content-type :type (string :min 1 :max 40) :required t :input nil :label "Type")
-   (size :type integer :required t :input nil :label "Størrelse")
-   (width :type integer :input nil :label "Bredde")
-   (height :type integer :input nil :label "Høyde")
+   (size :type integer :required t :input nil :label "Size")
+   (width :type integer :input nil :label "Width")
+   (height :type integer :input nil :label "Height")
    (sha256 :type (string :max 64) :required t :input nil :label "SHA-256")
-   (created-at :type timestamp :input nil :label "Lagt ved")
-   (created-by :type (string :max 200) :input nil :label "Lagt ved av"
+   (created-at :type timestamp :input nil :label "Attached")
+   (created-by :type (string :max 200) :input nil :label "Attached by"
                :description "The actor that attached it, as the audit records it.")
-   (account :type (string :max 64) :input nil :label "Konto"
+   (account :type (string :max 64) :input nil :label "Account"
             :description "The name of the account that attached it, which may remove it;
 NIL for the system.")))
 
@@ -111,7 +111,7 @@ when no string is that long."
                    (setf from end
                          (gethash (format nil "~cdata:~d" #\Nul i) *set-aside*)
                          (handler-case (json-base64-octets octets start end)
-                           (file-refused (refusal) (file-refused-message refusal)))))
+                           (file-refused (refusal) (file-refused-text refusal)))))
           (replace rest octets :start1 at :start2 from)
           rest))))
 
@@ -138,10 +138,10 @@ when no string is that long."
         "items" (jobj "type" "object"
                       "properties"
                       (jobj "filename" (jobj "type" "string" "maxLength" +most-given-name+
-                                             "description" "Filnavnet, som skjermbilde.png.")
+                                             "description" "The file's name, such as screenshot.png.")
                             "data" (jobj "type" "string" "contentEncoding" "base64"
-                                         "description" "Filens innhold i base64. Tillatt er PNG,
-JPEG, WebP, GIF og PDF, opptil 10 MB per fil. En adresse (url) tas ikke imot."))
+                                         "description" "The file's content in base64: PNG, JPEG,
+WebP, GIF or PDF, up to 10 MB a file. An address (url) is not taken."))
                       "required" (jarr '("filename" "data"))
                       "additionalProperties" nil)))
 
@@ -151,32 +151,34 @@ about the file NAME."
   (multiple-value-bind (data has-data) (jget item "data")
     (multiple-value-bind (handle has-handle) (jget item "upload")
       (cond ((and has-data has-handle)
-             (file-input-error path name "Send enten data eller upload, ikke begge."))
+             (file-input-error path name (deferred-tr "Send either data or upload, not both.")))
             ((and has-data (stringp data) (set-aside-p data))
+             ;; What was set aside: the octets, or why they were refused.
              (let ((entry (gethash data *set-aside*)))
-               (if (stringp entry) (refuse-file "~a" entry) entry)))
+               (if (text-p entry) (error 'file-refused :message entry) entry)))
             ((and has-data (stringp data)) (base64-octets data))
             (has-handle
              (let ((file (and *uploads* (stringp handle) (gethash handle *uploads*))))
                (if file
                    (cdr file)
-                   (file-input-error path name "Filen må sendes som base64 i data."))))
-            (t (file-input-error path name "Innholdet må sendes som base64 i data."))))))
+                   (file-input-error path name
+                                     (deferred-tr "The file must be sent as base64 in data.")))))
+            (t (file-input-error path name
+                                 (deferred-tr "The content must be sent as base64 in data.")))))))
 
-(defun file-input-error (path name control &rest arguments)
-  "An input error at PATH about the file NAME: its message starts with the
-name, so a person sees which of several files it is about."
-  (let ((message (apply #'format nil control arguments)))
-    (if (and (stringp name) (plusp (length (string-trim " " name))))
-        (input-error path "«~a»: ~a"
-                     (string-trim " " (remove-if #'control-character-p name)) message)
-        (input-error path "~a" message))))
+(defun file-input-error (path name message)
+  "An input error at PATH about the file NAME, MESSAGE a TEXT: it starts with
+the name, so a person sees which of several files it is about."
+  (if (and (stringp name) (plusp (length (string-trim " " name))))
+      (input-error path "“~a”: ~a"
+                   (string-trim " " (remove-if #'control-character-p name)) message)
+      (apply #'input-error path (text-control message) (text-args message))))
 
 (defun checked-upload (name octets path)
   "OCTETS, the file NAME, as an UPLOAD, or NIL with an input error at PATH."
-  (cond ((zerop (length octets)) (file-input-error path name "Filen er tom."))
+  (cond ((zerop (length octets)) (file-input-error path name (deferred-tr "The file is empty.")))
         ((> (length octets) +most-file-octets+)
-         (file-input-error path name "Filen er større enn 10 MB."))
+         (file-input-error path name (deferred-tr "The file is larger than 10 MB.")))
         (t (handler-case
                (multiple-value-bind (stored type width height) (examine-file octets)
                  (make-upload :filename (stored-filename name type)
@@ -186,7 +188,7 @@ name, so a person sees which of several files it is about."
                                        (ironclad:digest-sequence :sha256 stored))
                               :path path :given (length octets)))
              (file-refused (refusal)
-               (file-input-error path name "~a" (file-refused-message refusal)))))))
+               (file-input-error path name (file-refused-text refusal)))))))
 
 (defun coerce-file (item path)
   "ITEM, one file of a FILES value, as an UPLOAD; NIL with an input error at
@@ -196,32 +198,32 @@ PATH when Tun does not take it."
                                       :test #'string=)))
         (name (and (hash-table-p item) (jget item "filename" ""))))
     (cond ((not (hash-table-p item))
-           (input-error path "må være et objekt med filename og data"))
+           (input-error path "must be an object with filename and data"))
           ((nth-value 1 (jget item "url"))
-           (input-error path "Tun henter ikke filer fra en adresse. Send innholdet som base64 i ~
-                              data."))
-          (unknown (input-error path "har ukjente felt: ~{~a~^, ~}~@[ og ~d til~]"
+           (input-error path
+                        "Tun does not fetch files from an address. Send the content as base64 in data."))
+          (unknown (input-error path "has unknown fields: ~{~a~^, ~}~@[ and ~d more~]"
                                 (mapcar #'shown-name (subseq unknown 0 (min 5 (length unknown))))
                                 (and (> (length unknown) 5) (- (length unknown) 5))))
-          ((not (stringp name)) (input-error path "filename må være en tekst"))
+          ((not (stringp name)) (input-error path "filename must be text"))
           ((> (length name) +most-given-name+)
-           (input-error path "Filnavnet kan ikke være lengre enn 255 tegn."))
+           (input-error path "The filename cannot be longer than 255 characters."))
           (t (let ((octets (handler-case (file-content item path name)
                              (file-refused (refusal)
-                               (file-input-error path name "~a" (file-refused-message refusal))))))
+                               (file-input-error path name (file-refused-text refusal))))))
                (and octets (checked-upload name octets path)))))))
 
 (defmethod coerce-input ((type files-type) value path)
-  (cond ((not (json-array-p value)) (input-error path "må være en liste av filer"))
+  (cond ((not (json-array-p value)) (input-error path "must be a list of files"))
         ((> (length value) (files-max type))
-         (input-error path "Du kan legge ved høyst ~d filer om gangen." (files-max type)))
+         (input-error path "You can attach at most ~d files at a time." (files-max type)))
         (t (let ((uploads (loop for item across value
                                 for i from 0
                                 for upload = (coerce-file item (format nil "~a[~d]" path i))
                                 when upload collect upload)))
              ;; The files as they were given, before anything was taken out.
              (when (> (reduce #'+ uploads :key #'upload-given) +most-call-octets+)
-               (input-error path "Filene kan ikke være større enn 25 MB til sammen."))
+               (input-error path "The files cannot be larger than 25 MB together."))
              uploads))))
 
 (defmethod type->json ((type files-type) value)
@@ -242,7 +244,7 @@ name, at most 255 characters, and its size (spec/files.md 4.1)."
                              :null)
               "bytes" (cond ((and (stringp data) (set-aside-p data))
                              (let ((entry (gethash data *set-aside*)))
-                               (if (stringp entry) :null (length entry))))
+                               (if (text-p entry) :null (length entry))))
                             ((stringp data) (base64-length data))
                             ((upload-handle-size handle))
                             (t :null))))
@@ -336,7 +338,7 @@ stored."
   (let* ((class (class-of record))
          (option (entity-attachments class)))
     (unless option
-      (fail :invalid-input "~a tar ikke imot filer" (entity-label class)))
+      (fail :invalid-input "~a does not take files" (entity-label-text class)))
     (unless (entity-id record)
       (error "ATTACH-FILES needs a stored record; insert ~a first" (entity-json-name class)))
     (when uploads
@@ -345,8 +347,8 @@ stored."
         (when (> (+ held (length uploads)) most)
           (fail-fields (list (cons (let ((path (upload-path (first uploads))))
                                      (subseq path 0 (or (position #\[ path) (length path))))
-                                   (format nil "Høyst ~d filer per ~(~a~)."
-                                           most (entity-label class)))))))
+                                   (deferred-tr "At most ~d files per ~(~a~)."
+                                                most (entity-label-text class)))))))
       (mapcar (lambda (upload) (store-attachment class record upload)) uploads))))
 
 (defun store-attachment (class record upload)
@@ -403,41 +405,46 @@ a read transaction of its own; NIL when the file is gone."
 ;;; ------------------------------------------------------------------
 ;;; The tools (spec/files.md 4.2)
 
+(defun entity-label-text (class)
+  "The label of the entity CLASS as a TEXT a message takes as an argument,
+written in the language of the message."
+  (make-text (entity-label class) '()))
+
 (defun record-class-or-fail (entity)
   (or (taking-class entity)
-      (fail-fields (list (cons "entity" (format nil "~a tar ikke imot filer" entity))))))
+      (fail-fields (list (cons "entity" (deferred-tr "~a does not take files" entity))))))
 
 (defun check-attachment-policy (class)
   "Refuse the caller when the entity's :POLICY needs a role above theirs."
   (let ((policy (getf (entity-attachments class) :policy)))
     (unless (actor-permits-p *actor* policy)
-      (reject :forbidden "Filer på ~(~a~) kan bare legges ved og fjernes av en ~
-                          administrator" (entity-label class)))))
+      (reject :forbidden "Files on ~(~a~) can only be attached and removed by an administrator"
+              (entity-label-text class)))))
 
 (define-operation attachments-add ((entity :type (string :min 1 :max 100) :required t
-                                           :label "Entitet"
-                                           :description "Entiteten posten hører til, som item.")
+                                           :label "Entity"
+                                           :description "The entity the record belongs to, such as item.")
                                    (record-id :type (string :min 1 :max 64) :required t
-                                              :label "Post" :description "Postens id.")
-                                   (files :type (files :max 10) :required t :label "Filer"))
-    (:entity attachment :kind :update :policy :employee :title "Legg ved filer"
-             :description "Legger filer ved en post: skjermbilder, bilder og PDF, sendt som
-base64. Høyst 10 filer og 25 MB om gangen.")
+                                              :label "Record" :description "The record's id.")
+                                   (files :type (files :max 10) :required t :label "Files"))
+    (:entity attachment :kind :update :policy :employee :title "Attach files"
+             :description "Attaches files to a record: screenshots, pictures and PDF, sent as
+base64. At most 10 files and 25 MB at a time.")
   (let* ((class (record-class-or-fail entity))
          (record (or (visible-record class record-id)
                      (record-not-found (class-name class) record-id))))
     (check-attachment-policy class)
     (unless files
-      (fail-fields (list (cons "files" "Velg minst én fil å legge ved."))))
+      (fail-fields (list (cons "files" (deferred-tr "Choose at least one file to attach.")))))
     (audit-target (entity-json-name class) record-id)
     (jobj "items" (jarr (mapcar #'attachment-json (attach-files record files))))))
 
 (define-operation attachments-list ((entity :type (string :min 1 :max 100) :required t
-                                            :label "Entitet")
+                                            :label "Entity")
                                     (record-id :type (string :min 1 :max 64) :required t
-                                               :label "Post"))
-    (:entity attachment :kind :read :policy :viewer :title "Filer ved en post"
-             :description "Filene som er lagt ved en post, i den rekkefølgen de ble lagt ved.")
+                                               :label "Record"))
+    (:entity attachment :kind :read :policy :viewer :title "Files on a record"
+             :description "The files attached to a record, in the order they were attached.")
   (let* ((class (record-class-or-fail entity))
          (items (progn (or (visible-record class record-id)
                            (record-not-found (class-name class) record-id))
@@ -445,19 +452,19 @@ base64. Høyst 10 filer og 25 MB om gangen.")
                                (record-attachments (entity-json-name class) record-id)))))
     (jobj "items" (jarr items) "returned" (length items) "has_more" nil)))
 
-(define-operation attachments-remove ((id :type (id attachment) :required t :label "Fil"))
-    (:entity attachment :kind :update :policy :employee :title "Fjern en fil"
-             :description "Fjerner en fil fra posten den er lagt ved. Den som la den ved, eller
-en administrator, kan fjerne den.")
+(define-operation attachments-remove ((id :type (id attachment) :required t :label "File"))
+    (:entity attachment :kind :update :policy :employee :title "Remove a file"
+             :description "Removes a file from the record it is attached to. The one who
+attached it, or an administrator, can remove it.")
   (let ((attachment (servable-attachment id)))
     (unless attachment
-      (fail :not-found "Fant ikke filen ~a" id))
+      (fail :not-found "Could not find the file ~a" id))
     (let ((class (taking-class (attachment-entity attachment))))
       (check-attachment-policy class)
       (unless (or (actor-permits-p *actor* :admin)
                   (and (attachment-account attachment)
                        (equal (attachment-account attachment) (actor-name *actor*))))
-        (reject :forbidden "Bare den som la ved filen, eller en administrator, kan fjerne den"))
+        (reject :forbidden "Only the one who attached the file, or an administrator, can remove it"))
       (audit-target (attachment-entity attachment) (attachment-record-id attachment))
       (delete-attachment attachment)
       (jobj "id" id "removed" t))))

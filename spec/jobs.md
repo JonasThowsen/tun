@@ -209,11 +209,16 @@ own documentation says can race, nor River's partial unique index.
 
 - **Times** are cron's five fields (minute, hour, day of month, month,
   weekday) with ranges, steps and names, or `@hourly`, `@daily`,
-  `@weekly`, `@monthly`, read in Norwegian time (Europe/Oslo).
+  `@weekly`, `@monthly`, read in the tenant's time zone (`i18n.md` §6.1;
+  `Europe/Oslo` for a tenant from before core 2.0).
 - **Once, whatever runs.** Each tick looks for the latest occurrence at
-  or before now. When it has no run yet, it enqueues the job and records
-  the run in `job_schedules`: the schedule's name, when it was first
-  seen, and its last occurrence, under the write lock. Two processes, a
+  or before now. When that occurrence is not the one recorded and its
+  instant is later than the recorded one's (`last_occurrence_at`), it
+  enqueues the job and records the run in `job_schedules`: the
+  schedule's name, when it was first seen, and its last occurrence, its
+  wall time and its instant, under the write lock. An occurrence at or
+  before the recorded instant is never run, so a change of the tenant's
+  time zone (`i18n.md` §6.1) runs none twice. Two processes, a
   restart or a deploy cannot enqueue an occurrence twice, and there is no
   leader to elect.
 - **Summer time.** An occurrence is a local wall time, such as
@@ -369,7 +374,8 @@ Left, on purpose:
    itself; mail keeps its seven attempts over five hours.
 2. **A job acts as `system:job`**, which reaches every record, as
    workflows do. It records who enqueued it.
-3. **Norwegian time only** for schedules, as Tun's clock knows it.
+3. **The tenant's time zone** for schedules, from the zones Tun knows
+   (`i18n.md` §6.1).
 4. **Triggers later**, when a client needs one: AshOban's «for every
    record where this query holds, run this job», swept on a schedule,
    each record's job unique, and the job re-checking the query and

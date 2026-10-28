@@ -56,7 +56,7 @@ an older hash gets today's icon, uncached, as SERVE-ASSET does."
                     (and purpose (list "purpose" purpose))))))
     (jobj "id" "/" "start_url" "/" "scope" "/"
           "name" (application-title *web-app*) "short_name" (web-app-short-name web-app)
-          "display" "standalone" "lang" "no"
+          "display" "standalone" "lang" (page-language)
           "theme_color" (getf web-app :theme-color)
           "background_color" (getf web-app :background-color)
           "icons" (jarr (list (icon "icon.svg" "any")
@@ -89,13 +89,13 @@ app, or NIL without (:web-app ...)."
 not logged in, whoever asks, since the worker keeps it."
   (let ((*actor* nil))
     (render-html
-     (page-document "Du er frakoblet"
+     (page-document (tr "You are offline")
                     (page-frame (list (ui:page-header*
-                                       (list :title "Du er frakoblet"
-                                             :description "Siden kunne ikke hentes. Prøv igjen når du er på nett."))
+                                       (list :title (tr "You are offline")
+                                             :description (tr "The page could not be fetched. Try again when you are online.")))
                                       ;; An empty href is the address the page is shown at.
                                       (ui:cluster ()
-                                        (ui:button (:href "" :icon :refresh-cw) "Prøv igjen")))
+                                        (ui:button (:href "" :icon :refresh-cw) (tr "Try again"))))
                                 :guest t :width :narrow)))))
 
 (defparameter +service-worker+ "'use strict';
@@ -103,12 +103,14 @@ not logged in, whoever asks, since the worker keeps it."
 // stylesheet, scripts and offline page, answers those assets from its
 // cache, and shows the offline page when a page cannot be fetched.  It
 // stores nothing else: pages, /api and /mcp carry signed-in data.  It
-// shows the notifications pushed to this device (spec/push.md 7).
+// shows the notifications pushed to this device (spec/push.md 7).  Its
+// one text, for a push without data, is written in by the server.
 const version = ~s;
 const offline = '/offline';
 const kept = ~a;
 const title = ~a;
 const icon = ~a;
+const unnamed = ~a;
 
 self.addEventListener('install', (event) => {
   event.waitUntil(caches.open(version)
@@ -147,7 +149,7 @@ self.addEventListener('push', (event) => {
     message = null;
   }
   if (!message || typeof message.title !== 'string')
-    message = { title, body: 'Du har et nytt varsel', url: '/' };
+    message = { title, body: unnamed, url: '/' };
   const options = { body: typeof message.body === 'string' ? message.body : '', icon,
                     data: { url: message.url } };
   if (typeof message.tag === 'string') {
@@ -186,7 +188,8 @@ self.addEventListener('notificationclick', (event) => {
 });
 "
   "The service worker, given its cache's name, the paths it keeps as a JSON
-array, and the application's title and icon as JSON strings.")
+array, the application's title and icon, and the body of a notification
+pushed without data, as JSON strings.")
 
 (defparameter +removing-service-worker+ "'use strict';
 // This Tun is not installed as an app (spec/ui.md 4.2).  A worker an earlier
@@ -206,7 +209,8 @@ self.addEventListener('activate', (event) => {
 (defun service-worker-script ()
   "The service worker for the running application.  Its cache is named
 after the versions of what it keeps, so a deploy that changes any of them
-installs a new worker, which deletes the older cache."
+installs a new worker, which deletes the older cache.  Its text is in the
+tenant's language (spec/i18n.md 3.6), as is the offline page it keeps."
   (if (web-app)
       (let ((kept (list "/offline" (ui:stylesheet-path) (ui:script-path) (ui:htmx-path))))
         (format nil +service-worker+
@@ -214,7 +218,8 @@ installs a new worker, which deletes the older cache."
                                              0 12))
                 (to-json-string (jarr kept))
                 (to-json-string (application-title *web-app*))
-                (to-json-string (icon-path (web-app-icon (web-app) "icon-192.png")))))
+                (to-json-string (icon-path (web-app-icon (web-app) "icon-192.png")))
+                (to-json-string (tr "You have a new notification"))))
       +removing-service-worker+))
 
 ;;; ------------------------------------------------------------------

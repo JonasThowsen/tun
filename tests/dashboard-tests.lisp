@@ -1,4 +1,4 @@
-;;;; tests/dashboard-tests.lisp -- the dashboard module's «Jobber»
+;;;; tests/dashboard-tests.lisp -- the dashboard module's "Jobs"
 ;;;; page over HTTP, and the core it reads: jobs_summary, schedules in words,
 ;;;; and deleting old jobs (spec/jobs.md 9, 10).
 
@@ -10,8 +10,22 @@
 ;;; ------------------------------------------------------------------
 ;;; Core: what the page reads
 
-(test cron-times-read-as-norwegian
+(test cron-times-read-in-words
   (flet ((words (text) (tun.jobs:describe-cron (tun.jobs:parse-cron text))))
+    (is (equal "weekdays at 07:00" (words "0 7 * * 1-5")))
+    (is (equal "every day at 00:00" (words "@daily")))
+    (is (equal "every day at 08:00 and 16:00" (words "0 8,16 * * *")))
+    (is (equal "every Monday at 09:00" (words "0 9 * * MON")))
+    (is (equal "Monday, Wednesday and Sunday at 09:00" (words "0 9 * * 0,1,3")))
+    (is (equal "weekends at 10:30" (words "30 10 * * 6,0")))
+    (is (equal "on day 1 of every month at 00:00" (words "@monthly")))
+    (is (equal "every hour on the hour" (words "@hourly")))
+    (is (equal "every hour, 30 minutes past" (words "30 * * * *")))
+    (is (equal "every 15 minutes" (words "*/15 * * * *")))
+    (is (equal "0 7 * 6 *" (words "0 7 * 6 *")) "what takes more than a phrase stays cron")))
+
+(test cron-times-read-in-norwegian
+  (flet ((words (text) (with-language ("nb") (tun.jobs:describe-cron (tun.jobs:parse-cron text)))))
     (is (equal "hverdager kl. 07:00" (words "0 7 * * 1-5")))
     (is (equal "hver dag kl. 00:00" (words "@daily")))
     (is (equal "hver dag kl. 08:00 og 16:00" (words "0 8,16 * * *")))
@@ -71,7 +85,7 @@
   (:modules customers))
 
 (test the-page-belongs-to-applications-that-enable-the-module
-  (let ((page (gethash "jobber" tun.web::*staff-pages*)))
+  (let ((page (gethash "jobs" tun.web::*staff-pages*)))
     (is (equal "dashboard" (tun.web::staff-page-module page)))
     (let ((*application* (make-instance 'dashboardless-application)))
       (is (not (tun.web::page-available-p page)) "not where the client leaves it out"))
@@ -96,30 +110,87 @@
         (let ((failing (jget (first (call-ok-items "jobs_list" "kind" "failing_job")) "id")))
           (flet ((html (path) (nth-value 1 (web-request port path :jar admin)))
                  (post (path) (web-request port path :method :post :jar admin)))
-            (let ((overview (html "/jobber")))
-              (dolist (part '("Prøver igjen" "Køer" "Prosesser" "(denne)" "Siste feil" "default"))
+            (let ((overview (html "/jobs")))
+              (dolist (part '("Retrying" "Queues" "Processes" "(this one)" "Recent failures"
+                              "default"))
                 (is (search part overview) "the overview shows ~a" part)))
-            (is (= 403 (web-request port "/jobber" :jar kari)) "for admins only")
-            (is (search "failing_job" (html "/jobber/liste?tilstand=retrying")))
-            (let ((detail (html (format nil "/jobber/~a" failing))))
-              (is (search "Forsøk 1" detail))
+            (is (= 403 (web-request port "/jobs" :jar kari)) "for admins only")
+            (is (search "failing_job" (html "/jobs/list?state=retrying")))
+            (let ((detail (html (format nil "/jobs/~a" failing))))
+              (is (search "Attempt 1" detail))
               (is (search "Det gikk galt med dashbord" detail))
-              (is (search "Avbryt" detail)))
-            (is (= 303 (post (format nil "/jobber/~a/avbryt" failing))))
+              (is (search "Cancel" detail)))
+            (is (= 303 (post (format nil "/jobs/~a/cancel" failing))))
             (is (equal "cancelled" (jget (call-ok "jobs_get" "admin:root" "id" failing) "state")))
-            (multiple-value-bind (status body) (post (format nil "/jobber/~a/avbryt" failing))
+            (multiple-value-bind (status body) (post (format nil "/jobs/~a/cancel" failing))
               (is (= 409 status) "a cancelled job is not cancelled again")
               (is (search "data-code=\"invalid_transition\"" body)))
-            (is (= 303 (post (format nil "/jobber/~a/kjor-igjen" failing))))
+            (is (= 303 (post (format nil "/jobs/~a/retry" failing))))
             (is (equal "queued" (jget (call-ok "jobs_get" "admin:root" "id" failing) "state")))
-            (let ((schedules (html "/jobber/tidsplaner")))
+            (let ((schedules (html "/jobs/schedules")))
               (is (search "test_dashboard_morning" schedules))
-              (is (search "hverdager kl. 07:00" schedules))
-              (is (search "27.02.2026 kl. 07:00" schedules)
+              (is (search "weekdays at 07:00" schedules))
+              (is (search "27 Feb 2026, 07:00" schedules)
                   "the last occurrence, the Friday before the test clock's Sunday, as times are written")
-              (is (search "utløser på trigger_item" schedules))
-              (is (search "hvert 15. minutt" schedules)))
-            (is (= 303 (post "/jobber/tidsplaner/test_dashboard_morning/kjor")))
+              (is (search "trigger on trigger_item" schedules))
+              (is (search "every 15 minutes" schedules)))
+            (is (= 303 (post "/jobs/schedules/test_dashboard_morning/run")))
             (is (find "morgen" (call-ok-items "jobs_list" "kind" "mark_job" "state" "queued")
                       :key (lambda (job) (jget (jget job "arguments") "text")) :test #'equal)
-                "Kjør nå enqueued the schedule's job")))))))
+                "Run now enqueued the schedule's job")))))))
+
+(test the-paths-of-core-1-answer-301-to-the-new-ones
+  (with-test-server (port)
+    (let ((admin (web-login port "admin:root")))
+      (flet ((moved (path)
+               (multiple-value-bind (status body headers) (web-request port path :jar admin)
+                 (declare (ignore body))
+                 (list status (cdr (assoc :location headers))))))
+        (is (equal '(301 "/jobs") (moved "/jobber")))
+        (is (equal '(301 "/jobs/list?state=failed") (moved "/jobber/liste?tilstand=failed")))
+        (is (equal '(301 "/jobs/schedules") (moved "/jobber/tidsplaner")))
+        (is (equal '(301 "/jobs/job_1") (moved "/jobber/job_1")))
+        (is (equal '(301 "/errors?status=resolved") (moved "/feil?status=resolved")))
+        (is (equal '(301 "/log?selection=errors&kind=web") (moved "/logg?utvalg=errors&slag=web")))
+        (is (equal '(301 "/log/req_1") (moved "/logg/req_1")))))))
+
+;;; ------------------------------------------------------------------
+;;; In Norwegian
+
+(test the-dashboard-is-in-norwegian-on-a-norwegian-tenant
+  (with-schedules ((tun.jobs:define-schedule test-dashboard-norwegian "0 7 * * 1-5" mark-job
+                                             :text "morgen"))
+    (with-test-server (port)
+      (call-ok "settings_set" "admin:root" "key" "locale.language" "value" "nb")
+      (with-application (*app*)
+        (with-actor ((system-actor "test"))
+          (with-transaction (:write)
+            (tun.jobs:enqueue-job 'failing-job :text "dashbord")))
+        (tun.jobs:run-due-jobs))
+      (handler-case (call "errors_test_crash" "employee:kari" "text" "på siden")
+        (error () nil))
+      (let* ((admin (web-login port "admin:root"))
+             (job (jget (first (call-ok-items "jobs_list" "kind" "failing_job")) "id"))
+             (error (jget (first (call-ok-items "errors_list")) "id"))
+             (request (jget (first (call-ok-items "introspect_recent" "tool" "errors_test_crash"))
+                            "request_id")))
+        (multiple-value-bind (missing pages)
+            (pages-missing-translations port admin
+                                        (list "/jobs" "/jobs/list?state=retrying"
+                                              (format nil "/jobs/~a" job) "/jobs/schedules"
+                                              "/errors" (format nil "/errors/~a" error)
+                                              "/log" (format nil "/log/~a" request)))
+          (is (null missing) "no Norwegian for ~s" missing)
+          (destructuring-bind (overview list detail schedules errors error-page log request-page)
+              pages
+            (is (search "Køer" overview))
+            (is (search "(denne)" overview))
+            (is (search "Prøver igjen" list))
+            (is (search "Forsøk 1" detail))
+            (is (search "Kjør nå" schedules))
+            (is (search "27.02.2026 kl. 07:00" schedules) "the last occurrence as Norwegian writes it")
+            (is (search "Åpne (2)" errors) "the job's error and the request's")
+            (is (search "Ignorerte (0)" errors))
+            (is (search "Merk som løst" error-page))
+            (is (search "Alle slag" log))
+            (is (search "Steg" request-page))))))))

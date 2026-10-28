@@ -75,6 +75,89 @@
       "the macro and the function make the same markup"))
 
 ;;; ------------------------------------------------------------------
+;;; Every example in Norwegian and in the pseudo-language (spec/i18n.md 3.7)
+
+(defun example-strings (source)
+  "The string literals of SOURCE, an example's forms as the specimen shows
+them, read with the Lisp reader (and nothing evaluated), backquoted forms
+included."
+  (let ((strings '()))
+    (labels ((walk (form)
+               (cond ((stringp form) (push form strings))
+                     ((sb-int:comma-p form) (walk (sb-int:comma-expr form)))
+                     ((consp form) (walk (car form)) (walk (cdr form))))))
+      (let ((*read-eval* nil)
+            (*package* (find-package '#:tun.ui)))
+        (with-input-from-string (in source)
+          (loop for form = (read in nil in)
+                until (eq form in)
+                do (walk form)))))
+    strings))
+
+(defun shown-parts (string)
+  "What a component shows of STRING, a text it was given, besides the whole:
+the text without the spaces around it, as a page's text is read, a
+shortcut's keys (Ctrl+K), a name's initials (KN) and its first letter."
+  (let ((words (cl-ppcre:split "\\s+" (string-trim '(#\Space #\Newline) string))))
+    (append (list (string-trim '(#\Space #\Newline) string))
+            (uiop:split-string string :separator "+")
+            (when words
+              (list (subseq (first words) 0 (min 1 (length (first words))))
+                    (string-upcase
+                     (format nil "~a~a" (subseq (first words) 0 (min 1 (length (first words))))
+                             (let ((last (first (last words))))
+                               (subseq last 0 (min 1 (length last)))))))))))
+
+(defun example-allowed-texts (component source)
+  "The texts an example of COMPONENT whose forms are SOURCE may show without
+a lookup: its own strings and what a component shows of them, and for the
+icon the icons' names, which its specimen shows."
+  (let ((strings (example-strings source)))
+    (append strings (mapcan #'shown-parts strings)
+            (when (eq (tun.ui:component-name component) 'tun.ui:icon)
+              (mapcar (lambda (name) (string-downcase (symbol-name name))) (tun.ui:icon-names))))))
+
+(defun example-unlooked-up-texts (component source thunk)
+  "The texts the example of COMPONENT with forms SOURCE and markup from THUNK
+writes in the pseudo-language without looking them up."
+  (unlooked-up-texts (with-language ("qps") (tun.html:render-html (funcall thunk)))
+                     :allowed (example-allowed-texts component source)))
+
+;; A component made for the test below: it writes one text without TR.  It
+;; is the specimen's own kind (internal), so no other test lists it.
+(tun.ui:define-component unlooked-up-notice ((&key name))
+  (:internal t)
+  (:examples ("A notice" (unlooked-up-notice (:name "Kari Nordmann"))))
+  `(:p (:span ,name) (:span ,(tr "Close")) (:span "Saved")))
+
+(test every-example-has-norwegian-for-its-component-copy
+  (dolist (component (tun.ui:all-components))
+    (loop for (title nil thunk) in (tun.ui:component-examples component)
+          do (let ((missing '()))
+               (let ((*missing-translation-hook*
+                      (lambda (language source context)
+                        (declare (ignore language))
+                        (pushnew (list source context) missing :test #'equal))))
+                 (with-language ("nb") (tun.html:render-html (funcall thunk))))
+               (is (null missing) "~a, ~s: no Norwegian for ~s"
+                   (component-label component) title missing)))))
+
+(test every-example-looks-up-the-texts-it-writes
+  (dolist (component (tun.ui:all-components))
+    (loop for (title source thunk) in (tun.ui:component-examples component)
+          do (let ((unlooked (example-unlooked-up-texts component source thunk)))
+               (is (null unlooked) "~a, ~s writes texts it did not look up: ~s"
+                   (component-label component) title unlooked)))))
+
+(test a-text-written-without-a-lookup-is-found
+  (let ((component (tun.ui:find-component "unlooked-up-notice")))
+    (destructuring-bind (title source thunk &rest more)
+        (first (tun.ui:component-examples component))
+      (declare (ignore title more))
+      (is (equal '("Saved") (example-unlooked-up-texts component source thunk))
+          "the text without TR is found, the looked-up one and the example's own are not"))))
+
+;;; ------------------------------------------------------------------
 ;;; htmx in extension output (spec/ui.md 5)
 
 (test extension-output-keeps-htmx-that-cannot-run-code
@@ -129,13 +212,19 @@
     (multiple-value-bind (status body) (web-request port "/ui")
       (is (= 200 status))
       (is (search "name=\"viewport\"" body))
+      (is (search "<html lang=\"en\">" body) "in the test app's language")
       (dolist (component (tun.ui:all-components))
         (is (search (format nil "id=\"~a\"" (component-label component)) body)
             "the specimen lacks ~a" (component-label component))))
     (is (= 200 (web-request port "/ui/button")))
     (is (= 404 (web-request port "/ui/specimen")) "the specimen's own styles are not a component")
     (is (= 404 (web-request port "/ui/no-such-component")))
-    (is (= 404 (web-request port "/ui/button/more")))))
+    (is (= 404 (web-request port "/ui/button/more"))))
+  (let ((html (with-language ("nb")
+                (tun.ui:specimen-html :component (tun.ui:find-component "pagination")))))
+    (is (search "<html lang=\"nb\">" html) "the page says the language its examples are in")
+    (is (search "Sidenavigering" html) "and they are")
+    (is (search "Source: " html) "while its own chrome stays English")))
 
 (test the-specimen-is-written-as-standalone-files
   (let ((directory (uiop:ensure-directory-pathname

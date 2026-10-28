@@ -16,7 +16,7 @@ def run(t):
     for width, height in ((390, 844), (375, 667)):
         page = t.phone(width, height)
         page.sign_in("employee:anna")
-        page.goto("/saker")
+        page.goto("/items")
         m = page.evaluate(MEASURE)
         t.check(m["oneRow"], f"{width}x{height}: the title and its buttons share a row")
         t.check(m["bottom"] <= height - 40, f"{width}x{height}: a column's bottom edge shows ({m['bottom']:.0f})")
@@ -25,9 +25,9 @@ def run(t):
 
     page = t.phone()
     page.sign_in("employee:anna")
-    page.goto("/saker")
+    page.goto("/items")
     m = page.evaluate(MEASURE)
-    cards = "document.querySelector('[data-tun-board-column=ny] .tun-board-cards').scrollTop"
+    cards = "document.querySelector('[data-tun-board-column=new] .tun-board-cards').scrollTop"
     page.touch.swipe((195, (m["top"] + m["bottom"]) / 2), (195, (m["top"] + m["bottom"]) / 2 - 150))
     page.wait_for_timeout(400)
     t.check(page.evaluate(cards) > 50, "a swipe on the cards scrolls the column")

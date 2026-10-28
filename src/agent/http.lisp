@@ -433,7 +433,8 @@ NIL (/mcp), some tool that takes files does."
   "True for a POST to a page: not /mcp or /api, which take JSON."
   (not (or (string= path "/mcp") (string-prefix-p "/api/" path))))
 
-(defparameter +cross-origin-refused+ "Skjemaet kom fra et annet nettsted og ble avvist."
+(defparameter +cross-origin-refused+
+  (deferred-tr "The form came from another site and was refused.")
   "What a page's multipart post another site sent is told.")
 
 (defparameter *place-body-bytes* (* 256 1024)
@@ -441,8 +442,8 @@ NIL (/mcp), some tool that takes files does."
 what reading and parsing a body costs grows with it (core.md §7.5).")
 
 (defparameter +anonymous-large-refused+
-  "Uten å være logget inn kan du sende høyst 256 KB."
-  "Why a body over *PLACE-BODY-BYTES* from no known caller is refused.")
+  (deferred-tr "Without being signed in you can send at most 256 KB.")
+  "Why a page's body over *PLACE-BODY-BYTES* from no known caller is refused.")
 
 (defgeneric signed-in-p (acceptor)
   (:documentation "True when this request carries the session of a signed-in
@@ -610,18 +611,18 @@ HTTP status, the code, the message and the WWW-Authenticate challenge; NIL
 when the caller may go on."
   (case credential
     (:no-token
-     (values 401 :unauthenticated "Mangler tilgangsnøkkel: send Authorization: Bearer <nøkkel>"
+     (values 401 :unauthenticated "No access token: send Authorization: Bearer <token>"
              (challenge acceptor)))
     (:invalid-token
-     (values 401 :unauthenticated "Tilgangsnøkkelen er ukjent, utløpt eller trukket tilbake"
+     (values 401 :unauthenticated "The access token is unknown, expired or revoked"
              (challenge acceptor "invalid_token")))
     (:unlinked
      (values 403 :unauthenticated
-             (format nil "Logg inn i nettleseren først, på ~a, så kjenner Tun igjen ~
-                          WorkOS-kontoen din" (site-url acceptor "/login"))))
+             (format nil "Sign in in the browser first, at ~a, so that Tun knows your ~
+                          WorkOS account" (site-url acceptor "/login"))))
     (:unreachable
      (values 503 :unauthenticated
-             "Kan ikke sjekke nøkkelen hos WorkOS akkurat nå. Prøv igjen om litt."))))
+             "The token cannot be checked with WorkOS just now. Try again shortly."))))
 
 (defun foreign-origin ()
   "The Origin of a request a browser sent from another site, else NIL.  Such
@@ -662,7 +663,7 @@ returned, or NIL when the stream already holds the answer."
                                      (format nil "event: message~%data: ~a~%~%"
                                              (to-json-string
                                               (tun.mcp:progress-notification seconds)))
-                                     (format nil ": venter ~d s~%~%" seconds)))))
+                                     (format nil ": waiting ~d s~%~%" seconds)))))
       (multiple-value-bind (status json session text)
           (let ((*await-heartbeat* #'beat)) (funcall function))
         (cond ((null stream) (values status json session text))
@@ -735,13 +736,13 @@ body may hold besides its files' data."
          (rest (tun.files:set-aside-file-data (request-body-octets))))
     (funcall function (and (<= (length rest) *max-body-bytes*) rest))))
 
-(defparameter +rest-too-long+ "Utenom filenes innhold kan en forespørsel være høyst 2 MB."
+(defparameter +rest-too-long+ "Besides its files' content, a request can be at most 2 MB."
   "Why a body is refused when what it holds besides its files' data is over 2 MiB.")
 
-(defparameter +large-body-refused+ "Over 2 MB tas bare imot for et verktøy som tar filer."
+(defparameter +large-body-refused+ "More than 2 MB is taken only for a tool that takes files."
   "Why a body over 2 MiB that does not call a tool that takes files is refused.")
 
-(defparameter +long-string-refused+ "Bare innholdet i en fil kan være lengre enn 1 MB."
+(defparameter +long-string-refused+ "Only a file's content can be longer than 1 MB."
   "Why a body with a long string that is not a file's data is refused.")
 
 (defun files-call-refusal (request)
@@ -802,7 +803,7 @@ already parsed, never parsed again."
     (when (foreign-origin)
       (return-from serve-mcp
         (refuse-caller application :mcp "mcp" 403 :forbidden
-                       (format nil "Forespørsler fra en annen nettside (~a) avvises"
+                       (format nil "Requests from another site (~a) are refused"
                                (foreign-origin)))))
     (multiple-value-bind (actor credential) (mcp-caller acceptor)
       (multiple-value-bind (status code message authenticate) (caller-refusal acceptor credential)
@@ -884,7 +885,7 @@ body is parsed, and the body refused when anything else is long
 made of the body; FILES when the body may carry files."
   (cond
     ((null arguments)
-     (api-failure 400 "invalid_json" "Innholdet må være ett JSON-objekt: verktøyets argumenter"))
+     (api-failure 400 "invalid_json" "The body must be one JSON object: the tool's arguments"))
     ((eq arguments :too-many)
      (api-failure 413 "invalid_input" tun.mcp:+too-many-values+))
     ((typep arguments 'json-number-out-of-range)
@@ -896,15 +897,16 @@ made of the body; FILES when the body may carry files."
      (handler-case
          (api-answer 200 (call-tool tool arguments :application application :actor actor))
        (operation-error (e)
-         (api-answer (error-status (operation-error-code e)) (operation-error-json e)))
+         (api-answer (error-status (operation-error-code e))
+                     (with-language (:source) (operation-error-json e))))
        (unknown-tool ()
-         (api-failure 404 "unknown_tool" (format nil "Ukjent verktøy: ~a" (shown-name tool))))
+         (api-failure 404 "unknown_tool" (format nil "Unknown tool: ~a" (shown-name tool))))
        ;; SERIOUS-CONDITION, as on /mcp: a stack or heap exhaustion fails
        ;; this request alone.
        (serious-condition (e)
          (ignore-errors (format *error-output* "~&;; tun api: internal ~a in ~a: ~a~%"
                                 (type-of e) tool e))
-         (api-failure 500 "internal_error" "Intern feil"))))))
+         (api-failure 500 "internal_error" "Internal error"))))))
 
 (defun serve-api (acceptor tool)
   "POST /api/TOOL (spec/api.md): who calls is decided as on /mcp."
@@ -912,7 +914,7 @@ made of the body; FILES when the body may carry files."
     (when (foreign-origin)
       (return-from serve-api
         (refuse-caller application :api tool 403 :forbidden
-                       (format nil "Forespørsler fra en annen nettside (~a) avvises"
+                       (format nil "Requests from another site (~a) are refused"
                                (foreign-origin)))))
     (multiple-value-bind (actor credential) (mcp-caller acceptor)
       (multiple-value-bind (status code message authenticate) (caller-refusal acceptor credential)
@@ -1054,12 +1056,20 @@ redirect's location, or NIL."
              (public-url acceptor (hunchentoot:request-uri*)))))))
 
 (defparameter +upload-refusals+
-  '((400 . "Skjemaet kom ikke riktig fram. Prøv igjen.")
-    (401 . "Du må være logget inn for å sende filer. Logg inn og prøv igjen.")
-    (403 . "Denne siden er ikke for deg, så den tar ikke imot filer fra deg.")
-    (413 . "Skjemaet er for stort: høyst 25 MB med filer om gangen.")
-    (503 . "Serveren tar imot mange filer akkurat nå. Prøv igjen om et øyeblikk."))
+  (list (cons 400 (deferred-tr "The form did not arrive whole. Try again."))
+        (cons 401 (deferred-tr "You must be signed in to send files. Sign in and try again."))
+        (cons 403 (deferred-tr "This page is not for you, so it takes no files from you."))
+        (cons 413 (deferred-tr "The form is too large: at most 25 MB of files at a time."))
+        (cons 503 (deferred-tr "The server is taking many files now. Try again in a moment.")))
   "What a page's multipart post refused before its body is read is told.")
+
+(defun page-text (acceptor text)
+  "TEXT, a TEXT or a string, written for a page of ACCEPTOR's application in
+its tenant's language: a refusal answered before any request reads the
+tenant's settings."
+  (with-application ((acceptor-application acceptor))
+    (let ((*locale* (or *locale* (request-locale))))
+      (render-text text))))
 
 (defun refuse-request (acceptor status &optional message)
   "Answer STATUS without reading the body: to a page's multipart post, or a
@@ -1069,7 +1079,8 @@ with MESSAGE or the status's own."
   (when (= status 503)
     (setf (hunchentoot:header-out "Retry-After") "1"))
   (if (and (web-post-path-p (hunchentoot:script-name*)) (or (multipart-request-p) message))
-      (upload-refusal acceptor status (or message (cdr (assoc status +upload-refusals+))))
+      (upload-refusal acceptor status
+                      (page-text acceptor (or message (cdr (assoc status +upload-refusals+)))))
       ""))
 
 (defun dispatch-request (acceptor request)
@@ -1121,11 +1132,11 @@ the body is parsed: NIL answers 403 and the body is never parsed."
             (let ((secret (inbound-secret)))
               (if (and authorize (not (funcall authorize secret)))
                   (answer 403 (jobj "error" (jobj "code" "forbidden"
-                                                  "message" "Ugyldig hemmelighet")))
+                                                  "message" "Invalid secret")))
                   (multiple-value-call #'answer
                     (funcall handler (parse-request-json (request-body-octets)) secret)))))
         (operation-error (error)
-          (answer 422 (operation-error-json error)))
+          (answer 422 (with-language (:source) (operation-error-json error))))
         (json-number-out-of-range (refusal)
           (answer 400 (jobj "error" (jobj "code" "invalid_json"
                                           "message" (json-number-message refusal)))))
@@ -1133,7 +1144,7 @@ the body is parsed: NIL answers 403 and the body is never parsed."
           (answer 413 (jobj "error" (jobj "code" "invalid_input"
                                           "message" tun.mcp:+too-many-values+))))
         (error ()
-          (answer 422 (jobj "error" (jobj "code" "invalid_input" "message" "Ugyldig JSON"))))))))
+          (answer 422 (jobj "error" (jobj "code" "invalid_input" "message" "Invalid JSON"))))))))
 
 (defun known-caller-p (acceptor path)
   "True when this request to PATH comes from a caller Tun knows before its
@@ -1205,7 +1216,7 @@ A post Tun does not read is answered with a page that says why."
     (tun.files:multipart-refused (refusal)
       (setf (hunchentoot:return-code*) (tun.files:multipart-refused-status refusal))
       (upload-refusal acceptor (tun.files:multipart-refused-status refusal)
-                      (tun.files:multipart-refused-message refusal)))))
+                      (page-text acceptor (tun.files:multipart-refused-message refusal))))))
 
 (defparameter +most-form-pairs+ 1000 "The most fields a urlencoded post has.")
 (defparameter +most-form-name+ 1024 "The longest name of a urlencoded post's field.")
@@ -1278,19 +1289,19 @@ than MOST characters."
 TUN.FILES:MULTIPART-REFUSED with 413."
   (flet ((refuse (message) (error 'tun.files:multipart-refused :status 413 :message message)))
     (when (> (1+ (count 38 octets)) +most-form-pairs+)
-      (refuse (format nil "Skjemaet har for mange felt (høyst ~,,' :d)." +most-form-pairs+)))
+      (refuse (deferred-tr "The form has too many fields (at most ~:d)." +most-form-pairs+)))
     (loop for start = 0 then (1+ end)
           for end = (or (position 38 octets :start start) (length octets))
           for equals = (or (position 61 octets :start start :end end) end)
           ;; A name or value percent-encoded is at most three times as long.
           when (or (> (- equals start) (* 3 +most-form-name+))
                    (> (- end equals) (* 3 +most-form-value+)))
-            do (refuse "Et felt i skjemaet er for langt.")
+            do (refuse (deferred-tr "A field of the form is too long."))
           when (< start end)
             collect (let ((name (form-decode octets start equals +most-form-name+))
                           (value (form-decode octets (min end (1+ equals)) end +most-form-value+)))
                       (unless (and name value)
-                        (refuse "Et felt i skjemaet er for langt."))
+                        (refuse (deferred-tr "A field of the form is too long.")))
                       (cons name value))
           while (< end (length octets)))))
 
@@ -1309,7 +1320,7 @@ bounds is answered with a page that says why."
       (setf (slot-value hunchentoot:*request* 'hunchentoot::raw-post-data) t)
       (setf (hunchentoot:return-code*) (tun.files:multipart-refused-status refusal))
       (upload-refusal acceptor (tun.files:multipart-refused-status refusal)
-                      (tun.files:multipart-refused-message refusal)))))
+                      (page-text acceptor (tun.files:multipart-refused-message refusal))))))
 
 (defun dispatch-bounded (acceptor request bound placed)
   "Answer REQUEST, its body at most BOUND octets; PLACED, holding one of the

@@ -22,12 +22,12 @@
              (is (= 123456.789d0 (balance-of a)) "~a: 123456.789" when)
              (is (= (expt 10 12) (balance-of b)) "~a: 10^12" when)
              (is (= 999999999999.998d0 (balance-of c)) "~a: counted to 999999999999.998" when)
-             (is (equal '((1 "aapning" 123456.789d0 123456.789d0)) (ledger-of a)) "~a: ~s" when (ledger-of a))
-             (is (equal '((2 "telling" 999999999999.998d0 999999999999.998d0)
-                          (1 "aapning" 999999999999.999d0 999999999999.999d0))
+             (is (equal '((1 "opening" 123456.789d0 123456.789d0)) (ledger-of a)) "~a: ~s" when (ledger-of a))
+             (is (equal '((2 "recount" 999999999999.998d0 999999999999.998d0)
+                          (1 "opening" 999999999999.999d0 999999999999.999d0))
                         (ledger-of c))
                  "~a: ~s" when (ledger-of c))
-             (is (equal '((20000001 t)) (forbruk-of d order)) "~a: the forbruk row" when)
+             (is (equal '((20000001 t)) (consumption-of d order)) "~a: the forbruk row" when)
              (is (= 9999999 (balance-of d)) "~a: the balance dropped by the row" when)))
       (with-test-app (:db db)
         (setf a (make-article "Sirup" "opening_balance" 123456.789d0)
@@ -48,18 +48,27 @@
 ;;; The same defect in money texts: (/ ore 100) printed with ~,2f went
 ;;; through a single-float, so 200000.01 kr read 200000.00 in a quote.
 (test s2r-1b-kroner-texts-are-exact
-  (is (equal '("200000.01" "1234567.89" "0.05" "-1.50" "0.00")
-             (mapcar #'format-kroner '(20000001 123456789 5 -150 0))))
+  (is (equal (list "200 000,01 kr" "1 234 567,89 kr" "0,05 kr" "−1,50 kr" "0,00 kr")
+             (with-language ("nb")
+               (mapcar (lambda (amount) (substitute #\Space #\No-break_space
+                                                    (money-text amount :currency "NOK")))
+                       '(20000001 123456789 5 -150 0)))))
   (with-test-app ()
-    (let* ((product (jget (call-ok "products_create" "employee:anna" "name" "Telt" "kind" "utleie" "unit" "stk"
-                                   "unit_price_ore" 20000001 "stock_tracked" nil "units_owned" 2)
+    ;; A message's amounts are written as the tenant writes them.
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (call-ok "settings_set" "admin:a" "key" "locale.currency" "value" "NOK")
+    (let* ((product (jget (call-ok "products_create" "employee:anna" "name" "Telt" "kind" "rental" "unit" "stk"
+                                   "unit_price_minor" 20000001 "stock_tracked" nil "units_owned" 2)
                           "id"))
            (order (jget (new-order (make-customer) "event_date" "2026-06-01" "lines" (jarr (list (line product 1))))
                         "id")))
       (advance-to-accepted order)
-      (is (search "totalt 200000.01 kr" (jget (call-ok "orders_confirm" "employee:anna" "id" order) "summary")))
-      (let ((quote (find-by "template" "tilbud" (jget (call-ok "messages_list" "viewer:vera" "order_id" order) "items"))))
-        (is (search "200 000,01 kr" (jget quote "body")) "~s" (jget quote "body"))))))
+      (is (search "totalt 200 000,01 kr"
+                  (substitute #\Space #\No-break_space
+                              (jget (call-ok "orders_confirm" "employee:anna" "id" order) "summary"))))
+      (let ((quote (find-by "template" "quote" (jget (call-ok "messages_list" "viewer:vera" "order_id" order) "items"))))
+        (is (search "200 000,01 kr" (substitute #\Space #\No-break_space (jget quote "body")))
+            "~s" (jget quote "body"))))))
 
 ;;; Finding 3: the transitions synced consumption at the revision before their
 ;;; save, the correction at the one after; so after a correction, cancel and
@@ -68,7 +77,7 @@
 (test s2r-3-cancel-and-reactivate-after-a-correction-reverse-the-consumption
   (with-test-app ()
     (let* ((cup (make-article "Beger" "opening_balance" 1000))
-           (service (make-product :name "Servering" :kind "tjeneste" :units-owned 0))
+           (service (make-product :name "Servering" :kind "service" :units-owned 0))
            (customer (make-customer)))
       (call-ok "products_set_requirements" "admin:a" "product_id" service
                "requirements" (jarr (list (req "article" cup 10 "per_line"))))
@@ -85,16 +94,16 @@
                           "requirements" (jarr (list (req "article" cup 10 "per_line"))))
                  order)))
         (let ((order (corrected "2026-06-01")))
-          (is (equal '(((20 t)) 980) (list (forbruk-of cup order) (balance-of cup))))
+          (is (equal '(((20 t)) 980) (list (consumption-of cup order) (balance-of cup))))
           (multiple-value-bind (json code) (two-step "orders_cancel" "employee:e" "id" order)
             (is (null code) "cancel after a correction: ~a" (to-json-string json)))
-          (is (equal '(nil 1000) (list (forbruk-of cup order) (balance-of cup))) "the correction is reversed"))
+          (is (equal '(nil 1000) (list (consumption-of cup order) (balance-of cup))) "the correction is reversed"))
         (let ((order (corrected "2026-06-02" t)))
-          (is (equal '(((20 t)) 980) (list (forbruk-of cup order) (balance-of cup))))
+          (is (equal '(((20 t)) 980) (list (consumption-of cup order) (balance-of cup))))
           (multiple-value-bind (json code) (call "orders_reactivate" "employee:e" "id" order)
             (is (null code) "reactivate after a correction: ~a" (to-json-string json)))
-          (is (equal '(nil 1000) (list (forbruk-of cup order) (balance-of cup))))
-          (is (equal "utkast" (jget (call-ok "orders_get" "viewer:v" "id" order) "status"))))))))
+          (is (equal '(nil 1000) (list (consumption-of cup order) (balance-of cup))))
+          (is (equal "draft" (jget (call-ok "orders_get" "viewer:v" "id" order) "status"))))))))
 
 ;;; A neutral edit (orders README §9.1): comparing order-sensitive
 ;;; fingerprints would let swapping two lines activate a pending catalog proposal
@@ -103,8 +112,8 @@
   (with-test-app ()
     (let* ((cup (make-article "Beger" "opening_balance" 1000))
            (lid (make-article "Lokk" "opening_balance" 1000))
-           (one (make-product :name "Tjeneste 1" :kind "tjeneste" :units-owned 0))
-           (two (make-product :name "Tjeneste 2" :kind "tjeneste" :units-owned 0))
+           (one (make-product :name "Tjeneste 1" :kind "service" :units-owned 0))
+           (two (make-product :name "Tjeneste 2" :kind "service" :units-owned 0))
            (rid (jget (aref (jget (set-reqs one (req "article" cup 10 "per_quantity")) "requirements") 0) "id"))
            (customer (make-customer)))
       (set-reqs two (req "article" lid 10 "per_quantity"))
@@ -141,7 +150,7 @@
 (test s2r-6-stock-warnings-ask-once-after-the-commit-and-skip-history
   (with-test-app (:class 'zz-demand-probe)
     (let* ((articles (loop for name in '("Beger" "Lokk" "Sugerør") collect (make-article name "opening_balance" 1)))
-           (service (make-product :name "Servering" :kind "tjeneste" :units-owned 0))
+           (service (make-product :name "Servering" :kind "service" :units-owned 0))
            (customer (make-customer)))
       (call-ok "products_set_requirements" "admin:a" "product_id" service
                "requirements" (jarr (mapcar (lambda (a) (req "article" a 5 "per_line")) articles)))
@@ -159,7 +168,7 @@
             (is (equal (shortages order) (shortages again)) "shows the warnings too"))
           (setf *demand-calls* '())
           (let ((updated (call-ok "orders_update" "employee:e" "id" (jget order "id") "revision" (jget order "revision")
-                                  "tags" (jarr (list "utleie")))))
+                                  "tags" (jarr (list "rental")))))
             (is (equal (shortages order) (shortages updated)))
             (is (equal '((:read nil "2026-03-01")) *demand-calls*) "~s" *demand-calls*))
           (setf *demand-calls* '())
@@ -172,7 +181,7 @@
 (test s2r-7-recount-wins-carries-forward
   (with-test-app ()
     (let* ((cup (make-article "Beger" "opening_balance" 1000))
-           (service (make-product :name "Servering" :kind "tjeneste" :units-owned 0))
+           (service (make-product :name "Servering" :kind "service" :units-owned 0))
            (order (progn (call-ok "products_set_requirements" "admin:a" "product_id" service
                                   "requirements" (jarr (list (req "article" cup 30 "per_line"))))
                          (confirmed-order (make-customer) service "2026-06-01"))))
@@ -181,16 +190,16 @@
                         "requirements" (jarr (list (req "article" cup quantity "per_line"))))
                (multiple-value-bind (json code) (two-step "orders_correct_plan" "admin:a" "id" order "note" "Telt")
                  (is (null code) "~a" (to-json-string json)))
-               (list (forbruk-of cup order) (balance-of cup))))
+               (list (consumption-of cup order) (balance-of cup))))
         (call-ok "orders_ready_for_invoice" "employee:e" "id" order)
-        (is (equal '(((30 t)) 970) (list (forbruk-of cup order) (balance-of cup))))
+        (is (equal '(((30 t)) 970) (list (consumption-of cup order) (balance-of cup))))
         (call-ok "articles_recount" "admin:a" "article_id" cup "quantity" 500 "reason" "Telling")
         (is (equal '(((60 nil)) 500) (correct 60)) "the recount counted the use")
         (is (equal '(((90 nil)) 500) (correct 90)) "a second correction does not deduct either")
         (call-ok "inventory_receive" "employee:e" "article_id" cup "quantity" 10)
         (is (equal '(((120 t)) 390) (correct 120)) "after a receipt newer than the recount it deducts again")
         (two-step "orders_cancel" "employee:e" "id" order)
-        (is (equal '(nil 510) (list (forbruk-of cup order) (balance-of cup))) "and a cancel restores that")))))
+        (is (equal '(nil 510) (list (consumption-of cup order) (balance-of cup))) "and a cancel restores that")))))
 
 ;;; Catalog impact (orders README §11): katalog_endring reads each order's
 ;;; status again when it reaches it, and an order that runs out of time
@@ -238,14 +247,14 @@
         (with-decide-plan-wrapped (order)
             (when (equal (entity-id order) first-order)
               (let ((other (fetch 'tun.orders:order mid-run)))
-                (setf (tun.orders:order-status other) "avbrutt")
+                (setf (tun.orders:order-status other) "cancelled")
                 (save other)))
           (catalog-pass "2026-03-01T09:01:00Z"))
-        (let ((unchanged '(("unchanged" "Kravplanen var allerede oppdatert"))))
+        (let ((unchanged '(("unchanged" "The requirement plan was already up to date"))))
           (is (equal unchanged (impacts-of cancelled change)) "cancelled before the run")
           (is (equal unchanged (impacts-of completed change)) "completed before the run")
           (is (equal unchanged (impacts-of mid-run change)) "cancelled during the run"))
-        (is (equal '(("proposed" "Forslag opprettet for gjennomgang")) (impacts-of first-order change)))
+        (is (equal '(("proposed" "A proposal was made for review")) (impacts-of first-order change)))
         (dolist (o (list cancelled completed mid-run))
           (is (equal '(1 :null nil) (subseq (plan-state-of o) 0 3)) "no proposal, no review"))))))
 
@@ -272,13 +281,13 @@ scheduler's way; clock_set would answer past its own deadline)."
                "requirements" (jarr (list (jobj "id" rid "target" (jobj "kind" "article" "id" cup) "quantity" 11
                                                 "basis" "per_quantity"))))
       (let ((change (last-change-id)))
-        (flet ((planned () (count "katalog_endring" (jget (call-ok "introspect_workflows" "admin:a" "status" "planlagt") "items")
+        (flet ((planned () (count "catalog_change" (jget (call-ok "introspect_workflows" "admin:a" "status" "planned") "items")
                                   :key (lambda (w) (jget w "kind")) :test #'equal)))
           (with-decide-plan-wrapped (order)
               (when (equal (entity-id order) slow) (sleep-with-deadline 5000))
             (pass-at "2026-03-01T09:01:00Z" 300)
             (pass-at "2026-03-01T09:02:00Z" 300)
-            (is (equal '(("applied" "Ny kravplan aktivert automatisk") ("applied" "Ny kravplan aktivert automatisk"))
+            (is (equal '(("applied" "A new requirement plan was activated automatically") ("applied" "A new requirement plan was activated automatically"))
                        (mapcan (lambda (o) (impacts-of o change)) others))
                 "the others are not held up by the slow one")
             (is (null (impacts-of slow change)) "two deadlines: tried again")
@@ -286,7 +295,7 @@ scheduler's way; clock_set would answer past its own deadline)."
             (pass-at "2026-03-01T09:03:00Z" 300))
           (let ((impacts (impacts-of slow change)))
             (is (equal "failed" (first (first impacts))) "the third deadline fails it: ~s" impacts)
-            (is (eql 0 (search "Påvirkningen kunne ikke beregnes; se forespørsel req_" (second (first impacts))))))
+            (is (eql 0 (search "The impact could not be computed; see request req_" (second (first impacts))))))
           (is (= 0 (planned)) "and the run is over")
           (is (= 10 (jget (aref (jget (call-ok "orders_get" "viewer:v" "id" slow) "requirements") 0) "quantity"))
               "the failed order keeps its plan"))))))
@@ -310,12 +319,12 @@ scheduler's way; clock_set would answer past its own deadline)."
           (call "orders_create" "employee:e" "customer_id" customer
                 "lines" (jarr (list (line slush 1 "choices" (jobj gid (jarr (list r1 r2)))))))
         (is (equal "invalid_input" code))
-        (is (equal "Smaker inneholder ugyldige valg" (jget (jget json "error") "message"))))
+        (is (equal "Smaker holds choices that are not valid" (jget (jget json "error") "message"))))
       (call-ok "articles_archive" "admin:a" "id" old)
       (let ((machine (make-product :name "Maskin" :units-owned 9)))
         (multiple-value-bind (json code) (set-reqs machine (req "article" old 1 "per_line"))
           (is (equal "invalid_input" code))
-          (is (equal "Lagerartikkelen er arkivert" (jget (jget json "error") "message"))))
+          (is (equal "The stock article is archived" (jget (jget json "error") "message"))))
         (is-error "invalid_input" nil (set-reqs machine (req "choice_group" group 1 "per_serving" "picks" 2)))
         (call-ok "recipes_archive" "admin:a" "id" r2)
         (is-error "invalid_input" nil (set-reqs machine (req "recipe" r2 1 "per_line"))))
@@ -350,8 +359,8 @@ scheduler's way; clock_set would answer past its own deadline)."
   (let ((db (scratch-path "s2r-relink")) cups lids)
     (with-test-app (:db db)
       (flet ((tracked (name)
-               (jget (call-ok "products_create" "employee:e" "name" name "kind" "forbruk" "unit" "stk"
-                              "unit_price_ore" 500 "stock_tracked" t) "id")))
+               (jget (call-ok "products_create" "employee:e" "name" name "kind" "consumable" "unit" "stk"
+                              "unit_price_minor" 500 "stock_tracked" t) "id")))
         (setf cups (tracked "Beger") lids (tracked "Lokk")))
       ;; As an older core left it: stock levels, no articles.
       (with-application (*app*)
@@ -393,7 +402,7 @@ scheduler's way; clock_set would answer past its own deadline)."
                                           "opening_balance" (1+ (expt 10 12))))
       (multiple-value-bind (json code) (call "inventory_receive" "employee:e" "article_id" full "quantity" 1)
         (is (equal "invalid_input" code))
-        (is (equal "Beholdningen kan være høyst 1000000000000" (jget (jget json "error") "message"))))
+        (is (equal "The balance can be at most 1000000000000" (jget (jget json "error") "message"))))
       (is-error "invalid_input" nil (call "inventory_adjust" "admin:a" "article_id" almost "delta" 1 "reason" "x"))
       (is-error "invalid_input" nil (call "articles_recount" "admin:a" "article_id" almost
                                           "quantity" 1000000000000.001d0 "reason" "Telling"))
@@ -428,7 +437,7 @@ scheduler's way; clock_set would answer past its own deadline)."
 (test s2r-38-stock-warnings-need-no-per-day-series
   (with-test-app (:debug-tools t)
     (let* ((cup (make-article "Beger" "opening_balance" 10))
-           (service (make-product :name "Servering" :kind "tjeneste" :units-owned 0))
+           (service (make-product :name "Servering" :kind "service" :units-owned 0))
            (customer (make-customer))
            (calls 0))
       (set-reqs service (req "article" cup 6 "per_line"))

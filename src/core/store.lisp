@@ -153,23 +153,43 @@ keep their numbers.")
                         cannot read what it may have changed and refuses to start."
                      (newer-database-recorded c) +core-version+ (newer-database-running c)))))
 
-(defun ensure-core-major (marks record)
+(defun mark-major (mark)
+  "The major MARK, a migration id under +CORE-MAJOR-MODULE+, names: 2 for
+core-major-2; NIL for any other id."
+  (cl-ppcre:register-groups-bind ((#'parse-integer major)) ("^core-major-(\\d+)$" mark)
+    major))
+
+(defun highest-major (marks)
+  "The highest major MARKS name, or 0 when they name none."
+  (reduce #'max (remove nil (mapcar #'mark-major marks)) :initial-value 0))
+
+(defun running-major ()
+  "This core's major version."
+  (first (parse-version +core-version+)))
+
+(defun check-core-major (marks &key (running (running-major)))
   "Signal NEWER-DATABASE when MARKS, the migration ids recorded under
-+CORE-MAJOR-MODULE+, name a major above this core's.  Otherwise, unless this
-major's mark is among them, call RECORD with the statement and migration id
-of its mark.  A durable adapter calls this in its migrate transaction before
-it changes anything, so a refused start changes nothing."
-  (let ((running (first (parse-version +core-version+)))
-        (highest (loop for mark in marks
-                       for major = (cl-ppcre:register-groups-bind ((#'parse-integer major))
-                                       ("^core-major-(\\d+)$" mark)
-                                     major)
-                       when major maximize major)))
-    (when (and highest (> highest running))
-      (error 'newer-database :recorded highest :running running))
-    (let ((mark (format nil "core-major-~d" running)))
-      (unless (member mark marks :test #'string=)
-        (funcall record (format nil "core major ~d opened this database" running) mark)))))
++CORE-MAJOR-MODULE+, name a major above RUNNING, this core's by default."
+  (let ((highest (highest-major marks)))
+    (when (> highest running)
+      (error 'newer-database :recorded highest :running running))))
+
+(defun core-major-mark (&optional (major (running-major)))
+  "The statement and migration id of MAJOR's mark, as two values."
+  (values (format nil "core major ~d opened this database" major)
+          (format nil "core-major-~d" major)))
+
+(defun ensure-core-major (marks record &key (running (running-major)))
+  "Signal NEWER-DATABASE when MARKS, the migration ids recorded under
++CORE-MAJOR-MODULE+, name a major above RUNNING (this core's by default).
+Otherwise, unless RUNNING's mark is among them, call RECORD with the
+statement and migration id of its mark.  A durable adapter calls this in its
+migrate transaction before it changes anything, so a refused start changes
+nothing."
+  (check-core-major marks :running running)
+  (multiple-value-bind (statement mark) (core-major-mark running)
+    (unless (member mark marks :test #'string=)
+      (funcall record statement mark))))
 
 ;;; ------------------------------------------------------------------
 ;;; Transactions
@@ -305,8 +325,8 @@ entities get their revision incremented here: every accepted update counts."
 
 (defun record-not-found (class-name id)
   "Fail not_found for the record of CLASS-NAME with ID."
-  (fail :not-found "Fant ikke ~a med id ~a"
-        (string-downcase (or (entity-label (find-entity-class class-name)) "objekt")) id))
+  (fail :not-found "Found no ~(~a~) with the id ~a"
+        (entity-label-text (find-entity-class class-name)) id))
 
 (defun fetch! (class-name id)
   "Like FETCH but signals not_found."

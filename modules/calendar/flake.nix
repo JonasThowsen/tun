@@ -11,7 +11,7 @@
       system = "tun-calendar";
       dependsOn = [ "orders" "staffing" ];
       # The core versions this module builds against (its README states it).
-      core = [ ">= 1.0" "< 2.0" ];
+      core = [ ">= 2.0.0" "< 3.0" ];
       src = ./.;
       rev = self.rev or self.dirtyRev or "unknown";
     };

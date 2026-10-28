@@ -17,7 +17,7 @@ def path(name):
 
 def card_page(page, title):
     """Open the page of the card TITLE from the board; its path."""
-    page.goto("/saker")
+    page.goto("/items")
     href = page.card(title).locator("a").first.get_attribute("href")
     page.goto(href)
     return href
@@ -27,7 +27,7 @@ def file_data(name, as_name=None, size=None):
     """A file for the page's JavaScript: the fixture NAME's bytes, or SIZE
     zero bytes, under AS_NAME, with its type by NAME's extension."""
     suffix = pathlib.Path(name).suffix
-    data = b"" if size is not None else (FILES / name).read_bytes() if (FILES / name).exists() else b"tekst"
+    data = b"" if size is not None else (FILES / name).read_bytes() if (FILES / name).exists() else b"text"
     return {"name": as_name if as_name is not None else name, "type": TYPES.get(suffix, ""),
             "data": base64.b64encode(data).decode(), "size": size}
 

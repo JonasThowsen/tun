@@ -6,7 +6,7 @@ ASDF system `tun-reviews`, package `tun.reviews`; pinned by clients through
 - **Owns:** `review`; `reviews_list`, `reviews_get`, `reviews_resolve`.
 - **Depends on:** none. A review knows its subject, proposal and source only
   as `{type, id, revision}`: no order, no plan (§1).
-- **Core range:** builds against core `>= 1.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source).
 - **Publishes:** `request-review` and `supersede-reviews` for the modules
   that ask for reviews, and two seams a requesting module implements for its

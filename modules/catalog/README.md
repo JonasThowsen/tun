@@ -5,10 +5,10 @@ ASDF system `tun-catalog`, package `tun.catalog`; pinned by clients through
 
 - **Owns:** `product` (with `article_id`, `department`, `requirements`, and `lite_requirement_id`, `lite_recipe_id`: what `set-lite-recipe` made, the only recipe it updates, §10), `recipe`, `choice_group`, `catalog_change`; `products_create`, `_get`, `_list`, `_update` (the capacity guard), `_transfer`, `_set_requirements`, `recipes_*`, `choice_groups_*`, `catalog_changes_list`; the resolver (§8). A client's `products_set_recipe` (the per-100-servings recipe shape) stays a client operation, sugar over `set-lite-recipe` (§10). A new or retargeted requirement must target an active article, recipe or group (§7.3).
 - **Depends on:** none. What it needs from stock and orders it asks through seams that later modules answer.
-- **Core range:** builds against core `>= 1.1, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
-- **Publishes:** seams `stock_article` (inventory: the article of a new stock-tracked product), `article_reference` (inventory: an article's name and unit), `booked_peak` (orders: the capacity guard's peak), `catalog_departments` (staffing: the client's departments), `product_transferred` (inventory: the transfer record), `catalog_changed` (orders: `katalog_endring`). Its exported symbols are its interface for
+- **Publishes:** seams `stock_article` (inventory: the article of a new stock-tracked product), `article_reference` (inventory: an article's name and unit), `booked_peak` (orders: the capacity guard's peak), `catalog_departments` (staffing: the client's departments), `product_transferred` (inventory: the transfer record), `catalog_changed` (orders: `catalog_change`). Its exported symbols are its interface for
   the modules that depend on it; what clients may use is what it publishes
   to `TUN`.
 - **Rollback:** its migrations only add tables and nullable columns, so the
@@ -23,8 +23,8 @@ ASDF system `tun-catalog`, package `tun.catalog`; pinned by clients through
 
 ### 1. Scope
 
-The catalog holds products: rental equipment (`utleie`), consumables
-(`forbruk`) and services (`tjeneste`); the department that owns each; and
+The catalog holds products: rental equipment (`rental`), consumables
+(`consumable`) and services (`service`); the department that owns each; and
 what each requires from stock (requirements, recipes, choice groups). It
 resolves one order line into the stock it needs (§8); it does not plan,
 reserve or consume. It knows no stock article and no order: what it needs
@@ -36,16 +36,16 @@ idempotency, audit) are core.md §3; lists are core.md §2.4.
 
 #### 2.1 Fields
 
-`product = {"id","revision","name","kind","unit","unit_price_ore","stock_tracked","units_owned","manual_url","created_at","article_id","department","department_revision","requirements","lite_requirement_id","lite_recipe_id"}`.
+`product = {"id","revision","name","kind","unit","unit_price_minor","stock_tracked","units_owned","manual_url","created_at","article_id","department","department_revision","requirements","lite_requirement_id","lite_recipe_id"}`.
 
 | Field | Rule |
 |---|---|
 | `name` | 1..120, required |
-| `kind` | `utleie`, `forbruk` or `tjeneste`, required |
+| `kind` | `rental`, `consumable` or `service`, required |
 | `unit` | 1..20, required |
-| `unit_price_ore` | integer ≥ 0, required (money in øre, core.md §2.1) |
+| `unit_price_minor` | integer ≥ 0, required (money in minor units, core.md §2.1) |
 | `stock_tracked` | boolean, required; a relink sets it to whether a link remains (§2.4) |
-| `units_owned` | 0..100000, default 0: units that can be rented at once (`utleie`) |
+| `units_owned` | 0..100000, default 0: units that can be rented at once (`rental`) |
 | `manual_url` | optional, ≤ 2000, an `http(s)://` address without spaces, else `invalid_input` `Bruksanvisningen må ha en gyldig http(s)-adresse` |
 | `article_id` | server-set: the stock article the product counts in; several products may share one |
 | `department` | optional, one of the client's departments (§4); afterwards changed only by `products_transfer` |
@@ -70,7 +70,7 @@ Client fields such as a cleaning window are added by the client (core.md
 
 #### 2.3 Update
 
-`products_update {id, revision?, name?, kind?, unit?, unit_price_ore?, units_owned?, manual_url?, article_id?}`
+`products_update {id, revision?, name?, kind?, unit?, unit_price_minor?, units_owned?, manual_url?, article_id?}`
 (update, employee):
 
 - a given `revision` that is not the current one is `conflict`;
@@ -90,14 +90,14 @@ inventory README §4.
 
 ### 3. The capacity guard
 
-When `products_update` changes `units_owned` of a `utleie` product, or
-changes its `kind` away from `utleie`, the guard asks `booked_peak` for the
+When `products_update` changes `units_owned` of a `rental` product, or
+changes its `kind` away from `rental`, the guard asks `booked_peak` for the
 most units that calendar-active orders block on any one date (cleaning
 windows included; orders README, bookings and availability):
 
 - `units_owned` below the peak: `invalid_input` `Antall enheter kan ikke
   settes til <n>; opptil <peak> er allerede booket i aktive ordrer.`
-- `kind` away from `utleie` with a peak above 0: `invalid_input`
+- `kind` away from `rental` with a peak above 0: `invalid_input`
   `Tilgjengelighet kan ikke deaktiveres mens opptil <peak> er booket i
   aktive ordrer.`
 
@@ -224,7 +224,7 @@ admin) replaces the list (≤ 50). A declaration without `id` is new; one with
 the `id` of an existing requirement updates it; an `id` the product does not
 carry is `invalid_input` `Ukjent krav <id> for dette produktet`; those left
 out are deleted. Each created, updated (with its changed fields) or deleted
-requirement is a catalog change (§11). Services (`tjeneste`) carry
+requirement is a catalog change (§11). Services (`service`) carry
 requirements like any product and never take part in availability.
 
 ### 8. The resolver
@@ -326,7 +326,7 @@ Every write to a requirement, recipe or choice group records
 
 (`changed_fields` sorted; `product_id` for a requirement: the product that
 carries it) and calls the `catalog_changed` seam in the same transaction;
-orders answers it by scheduling `katalog_endring` (orders README, catalog
+orders answers it by scheduling `catalog_change` (orders README, catalog
 impact). `catalog_changes_list {limit?}` (read) lists them newest first,
 bounded per core.md §2.4. Nothing is recorded while an older database's
 catalog is adopted at start.

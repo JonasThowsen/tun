@@ -170,12 +170,13 @@ else what is wrong.  @media, @supports and @container are looked into;
 options plist is destructured with, normally (&key ...); MORE is empty or
 (&rest CHILDREN).  The body starts with clauses:
 
-  (:group \"Skjema\")             where the specimen lists it
-  (:doc \"...\")                  when to use it, in Norwegian
+  (:group \"Forms\")              where the specimen lists it
+  (:doc \"...\")                  when to use it, in English, not translated
   (:source \"...\")               what it was converted from
   (:css \"...\")                  its CSS, every selector starting at .tun-NAME
   (:script \"...\")               JavaScript for the shared script
   (:examples (\"Title\" form...) ((\"Title\" :layout :stack) form...) ...)
+                                 the titles in English, not translated
   (:internal t)                  the specimen's own, not listed
 
 and the rest is the code that returns its markup.  The component is the
@@ -413,6 +414,13 @@ button:not(:disabled), [role='button']:not(:disabled) { cursor: pointer; }
 ")
 
 (defparameter +kit-script+ "
+// A text the server wrote for the script in the page's language, TEMPLATE,
+// with each {NAME} in it replaced by VALUES' NAME: the script holds no copy
+// of its own (spec/i18n.md 3.6).
+const tunText = (template, values = {}) =>
+  String(template ?? '').replace(/\\{(\\w+)\\}/g,
+                                 (match, name) => (name in values ? String(values[name]) : match));
+
 // Set up what a component's markup needs once it is in the page: SETUP is
 // called with the document when the page has loaded, and with each element
 // htmx swaps in afterwards (spec/ui.md 4).

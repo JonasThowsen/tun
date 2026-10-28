@@ -73,8 +73,8 @@
   (with-test-server (port)
     (let* ((jar (web-login port "employee:anna"))
            (customer (jget (call-ok "customers_create" "employee:anna" "name" "Kari" "email" "kari@example.no") "id"))
-           (product (jget (call-ok "products_create" "employee:anna" "name" "Popcornmaskin" "kind" "utleie"
-                                   "unit" "stk" "unit_price_ore" 150000 "stock_tracked" nil "units_owned" 1)
+           (product (jget (call-ok "products_create" "employee:anna" "name" "Popcornmaskin" "kind" "rental"
+                                   "unit" "stk" "unit_price_minor" 150000 "stock_tracked" nil "units_owned" 1)
                           "id"))
            (form (nth-value 1 (web-request port "/orders" :jar jar))))
       (is (search "name=\"lines[0][product_id]\"" form) "list inputs become rows")
@@ -87,7 +87,7 @@
         (is (= 303 status))
         (let* ((path (location headers))
                (id (subseq path (length "/orders/"))))
-          (is (string= "utkast" (jget (call-ok "orders_get" "viewer:vera" "id" id) "status")))
+          (is (string= "draft" (jget (call-ok "orders_get" "viewer:vera" "id" id) "status")))
           (let ((detail (nth-value 1 (web-request port path :jar jar))))
             (is (search "data-field=\"status\"" detail))
             (is (search "data-tool=\"orders_send_quote\"" detail)))
@@ -97,13 +97,13 @@
           (multiple-value-bind (status body)
               (web-request port (format nil "/orders/~a/orders_confirm" id) :method :post :jar jar)
             (is (= 200 status))
-            (is (string= "akseptert" (jget (call-ok "orders_get" "viewer:vera" "id" id) "status")))
+            (is (string= "accepted" (jget (call-ok "orders_get" "viewer:vera" "id" id) "status")))
             (let* ((start (search "name=\"confirmation_token\" value=\"" body))
                    (token (and start (subseq body (+ start 33) (position #\" body :start (+ start 33))))))
               (is (stringp token))
               (is (= 303 (web-request port (format nil "/orders/~a/orders_confirm" id) :method :post :jar jar
                                       :parameters `(("confirmation_token" . ,token)))))
-              (is (string= "bekreftet" (jget (call-ok "orders_get" "viewer:vera" "id" id) "status")))
+              (is (string= "confirmed" (jget (call-ok "orders_get" "viewer:vera" "id" id) "status")))
               (is (= 303 (web-request port (format nil "/orders/~a/orders_complete" id) :method :post :jar jar)))
               (is (= 409 (web-request port (format nil "/orders/~a/orders_complete" id) :method :post :jar jar))
                   "the operation's invalid_transition is shown as 409"))))))))
@@ -471,19 +471,19 @@
             (post-form port "/filprove" (list (list "title" "Feil")
                                               (list "filer" "notat.png" (bytes "tekst"))))
           (is (= 422 status))
-          (is (search "«notat.png»: Filtypen er ikke tillatt." text)))))))
+          (is (search "“notat.png”: This type of file is not allowed." text)))))))
 
 (test a-refused-file-shows-at-its-field-and-in-the-summary
   (let* ((op (find-operation 'file-notes-create))
          (field (jobj "field" "screenshots[0]"
-                      "message" "«notat.png»: Filtypen er ikke tillatt."))
+                      "message" "“notat.png”: This type of file is not allowed."))
          (error-json (jobj "error" (jobj "code" "invalid_input" "message" "Ugyldig input"
                                          "fields" (jarr (list field)))))
          (page (tun.html:render-html
                 (tun.web::operation-form op "/notater" :error-json error-json))))
     (is (search "tun-error-summary" page))
     (is (search "tun-field-error" page))
-    (is (>= (count-matches "«notat\\.png»: Filtypen er ikke tillatt" page) 2)
+    (is (>= (count-matches "“notat\\.png”: This type of file is not allowed" page) 2)
         "at the field and in the summary")))
 
 (test a-page-calls-record-keeps-no-file-and-no-handle

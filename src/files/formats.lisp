@@ -16,20 +16,24 @@
 (deftype octets () '(simple-array (unsigned-byte 8) (*)))
 
 (define-condition file-refused (error)
-  ((message :initarg :message :reader file-refused-message))
+  ((message :initarg :message :reader file-refused-text
+            :documentation "Why, a TEXT written in the language of the place it is shown."))
   (:report (lambda (c s) (write-string (file-refused-message c) s)))
-  (:documentation "A file Tun does not take; MESSAGE says why, in Norwegian."))
+  (:documentation "A file Tun does not take; MESSAGE says why."))
 
-(defun refuse-file (control &rest arguments)
-  (error 'file-refused :message (apply #'format nil control arguments)))
+(defun file-refused-message (condition)
+  "Why CONDITION's file is refused, written in the current language."
+  (render-text (file-refused-text condition)))
 
-(defparameter +type-refused+
-  "Filtypen er ikke tillatt. Tillatt er PNG, JPEG, WebP, GIF og PDF.")
+(defmacro refuse-file (control &rest arguments)
+  "Refuse the file, saying why with the literal CONTROL and ARGUMENTS."
+  `(error 'file-refused :message (deferred-tr ,control ,@arguments)))
 
-(defparameter +damaged+ "Bildet er skadet eller ufullstendig.")
+(defun type-refused ()
+  (refuse-file "This type of file is not allowed. Use PNG, JPEG, WebP, GIF or PDF."))
 
 (defun damaged ()
-  (refuse-file +damaged+))
+  (refuse-file "The image is damaged or incomplete."))
 
 ;;; ------------------------------------------------------------------
 ;;; Bounds (spec/files.md 2.2)
@@ -42,7 +46,7 @@
 (defun check-pixels (width height)
   "Refuse an image or frame of WIDTH × HEIGHT pixels past the bounds."
   (when (or (> width +most-side+) (> height +most-side+) (> (* width height) +most-pixels+))
-    (refuse-file "Bildet er for stort: høyst 30 000 piksler på hver side og 50 megapiksler.")))
+    (refuse-file "The image is too large: at most 30,000 pixels on each side and 50 megapixels.")))
 
 ;;; ------------------------------------------------------------------
 ;;; Reading octets
@@ -448,7 +452,7 @@ a file of another type, a damaged one or one past the pixel bounds."
           (:webp (walk-webp octets))
           (:gif (walk-gif octets))
           (:pdf (values octets nil nil))
-          (t (refuse-file +type-refused+)))
+          (t (type-refused)))
       (when width
         (when (or (zerop width) (zerop height)) (damaged))
         (check-pixels width height))
@@ -484,7 +488,7 @@ paragraph separators, and the double quote."
                      (subseq clean (- (length clean) (length suffix) 1))
                      (concatenate 'string "." (first extensions)))))
     (when (zerop (length stem))
-      (setf stem "fil"))
+      (setf stem "file"))
     (concatenate 'string
                  (subseq stem 0 (min (length stem) (- +most-stored-name+ (length ending))))
                  ending)))
@@ -547,10 +551,10 @@ character, bad padding, or more than +MOST-FILE-OCTETS+ octets, before
 decoding those.  Decodes straight into the result."
   (multiple-value-bind (count padding) (base64-shape each-code)
     (unless count
-      (refuse-file "Innholdet i data er ikke gyldig base64."))
+      (refuse-file "The content in data is not valid base64."))
     (let ((size (- (* 3 (floor count 4)) padding)))
       (when (> size +most-file-octets+)
-        (refuse-file "Filen er større enn 10 MB."))
+        (refuse-file "The file is larger than 10 MB."))
       (let ((octets (make-array size :element-type '(unsigned-byte 8)))
             (bits 0) (held 0) (at 0))
         (funcall each-code
@@ -566,7 +570,7 @@ decoding those.  Decodes straight into the result."
         octets))))
 
 (defun refuse-data-url ()
-  (refuse-file "Send bare base64-innholdet i data, uten «data:…;base64,» foran."))
+  (refuse-file "Send only the base64 content in data, without “data:…;base64,” in front."))
 
 (defun base64-octets (text)
   "The octets TEXT encodes in standard base64 (BASE64-DECODE).  Signals

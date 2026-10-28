@@ -22,12 +22,13 @@
 (define-component alert ((&key (variant :default) (icon (status-icon variant)) title actions
                                (role (when (eq variant :destructive) :alert)) id attributes)
                          &rest children)
-  (:group "Tilbakemelding")
-  (:doc "En melding på siden om noe brukeren bør vite, med TITLE, beskrivelse og eventuelt
-handlinger (ACTIONS). Varianten destructive får role=\"alert\" og leses opp straks; de andre
-er vanlig innhold uten rolle, siden en melding som står der når siden lastes, ikke trenger å
-avbryte skjermleseren. Gi ROLE :status til en melding som settes inn etter at siden er lastet.")
-  (:source "Basecoat alert (Vega), med statusfargene fra Tun")
+  (:group "Feedback")
+  (:doc "A message on the page about something the user should know, with TITLE, a
+description and perhaps actions (ACTIONS). The variant destructive gets role=\"alert\" and is
+read out at once; the others are plain content without a role, since a message that is there
+when the page loads need not interrupt the screen reader. Give ROLE :status to a message
+inserted after the page has loaded.")
+  (:source "Basecoat alert (Vega), with Tun's status colours")
   (:css "
 .tun-alert {
   /* The status variants set these two; the default variant does not use them. */
@@ -107,41 +108,41 @@ avbryte skjermleseren. Gi ROLE :status til en melding som settes inn etter at si
   }
 }")
   (:examples
-   (("Varianter" :layout :stack)
-    (alert (:title "Nytt i Tun")
-           "Du kan nå sende purringer direkte fra fakturaen.")
-    (alert (:variant :info :title "Kunden har en åpen sak")
-           "Berg Rørlegger AS meldte om feil på faktura 2024-117 i går.")
-    (alert (:variant :success :title "Fakturaen er sendt til regnskap")
-           "Faktura 2024-118 på 12 500 kr er bokført og sendt til Fiken.")
-    (alert (:variant :warning :title "Kunden mangler organisasjonsnummer")
-           "Du kan lagre ordren, men ikke fakturere før nummeret er lagt inn.")
-    (alert (:variant :destructive :title "Ordren kunne ikke lagres")
-           "Ordren kunne ikke lagres fordi kunden mangler e-post."))
-   (("Med handlinger" :layout :stack)
-    (alert (:variant :warning :title "Tilbudet utløper i morgen"
-                     :actions (list (button (:size :sm :variant :outline :href "/tilbud/311")
-                                            "Åpne tilbudet")
-                                    (button (:size :sm :variant :ghost) "Ikke nå")))
-           "Tilbud 311 til Nordlys Elektro AS gjelder til 15. oktober.")
-    (alert (:variant :destructive :title "Synkroniseringen med regnskap feilet"
+   (("Variants" :layout :stack)
+    (alert (:title "New in Tun")
+           "You can now send reminders straight from the invoice.")
+    (alert (:variant :info :title "The customer has an open case")
+           "Berg Plumbing Ltd reported an error on invoice 2024-117 yesterday.")
+    (alert (:variant :success :title "The invoice has been sent to accounting")
+           "Invoice 2024-118 for €12,500 is booked and sent to the ledger.")
+    (alert (:variant :warning :title "The customer has no organisation number")
+           "You can save the order, but not invoice it until the number is added.")
+    (alert (:variant :destructive :title "The order could not be saved")
+           "The order could not be saved because the customer has no email."))
+   (("With actions" :layout :stack)
+    (alert (:variant :warning :title "The quote expires tomorrow"
+                     :actions (list (button (:size :sm :variant :outline :href "/quotes/311")
+                                            "Open the quote")
+                                    (button (:size :sm :variant :ghost) "Not now")))
+           "Quote 311 to Northern Lights Electric Ltd is valid until 15 October.")
+    (alert (:variant :destructive :title "Syncing with accounting failed"
                      :actions (list (button (:size :sm :variant :outline :icon :refresh-cw)
-                                            "Prøv igjen")))
-           '(:p "Tre fakturaer ble ikke sendt. Fiken svarte ikke innen 30 sekunder.")
-           '(:p "Fakturaene ligger i køen og sendes neste gang du prøver.")))
-   (("Uten tittel, uten ikon og med lang tekst" :layout :stack)
+                                            "Try again")))
+           '(:p "Three invoices were not sent. The ledger did not answer within 30 seconds.")
+           '(:p "The invoices are in the queue and are sent the next time you try.")))
+   (("Without a title, without an icon and with a long text" :layout :stack)
     (alert (:variant :info)
-           "Oppdraget er flyttet til mandag 20. oktober.")
-    (alert (:icon nil :title "Merknad fra regnskapsfører")
-           "Husk at alle bilag for tredje termin må være registrert før fristen
-for merverdiavgiftsmeldingen. Bilag som kommer senere, føres i neste termin.")
-    (alert (:variant :destructive :title "Ordren kunne ikke lagres")
-           '(:p "Rett opp dette og prøv igjen:")
-           '(:ul (:li "Kunden mangler e-postadresse.")
-             (:li "Leveringsdatoen 31.09.2026 finnes ikke."))))
-   (("Satt inn etter at siden er lastet" :layout :stack)
-    (alert (:variant :success :role :status :title "Kopiert")
-           "Lenken til tilbudet er kopiert til utklippstavlen.")))
+           "The job has been moved to Monday 20 October.")
+    (alert (:icon nil :title "A note from the accountant")
+           "Remember that every voucher for the third term must be registered before the
+deadline for the VAT return. Vouchers that come later are entered in the next term.")
+    (alert (:variant :destructive :title "The order could not be saved")
+           '(:p "Correct this and try again:")
+           '(:ul (:li "The customer has no email address.")
+             (:li "The delivery date 31 Sep 2026 does not exist."))))
+   (("Inserted after the page has loaded" :layout :stack)
+    (alert (:variant :success :role :status :title "Copied")
+           "The link to the quote has been copied to the clipboard.")))
   (check-type variant (member :default :info :success :warning :destructive))
   (check-type role (member nil :alert :status))
   `(:div ,(attrs (list :class "tun-alert" :id id :data-variant (option-string variant)
@@ -159,11 +160,11 @@ for merverdiavgiftsmeldingen. Bilag som kommer senere, føres i neste termin.")
 (define-component flash ((&key (variant :success) (icon (status-icon variant)) (dismissible t)
                                id attributes)
                          &rest children)
-  (:group "Tilbakemelding")
-  (:doc "Meldingen en side viser etter en omdirigering, som «Kunden er lagret.», øverst på
-siden. Den har role=\"status\". Lukkeknappen vises bare når JavaScript kjører; uten blir
-meldingen stående til neste side.")
-  (:source "Basecoat alert (Vega); GOV.UK notification banner (melding etter en handling)")
+  (:group "Feedback")
+  (:doc "The message a page shows at its top after a redirect, such as «The customer has been
+saved.». It has role=\"status\". The close button shows only when JavaScript runs; without it
+the message stays until the next page.")
+  (:source "Basecoat alert (Vega); GOV.UK notification banner (a message after an action)")
   (:css "
 .tun-flash {
   --tun-flash-tone: var(--success);
@@ -227,20 +228,22 @@ document.addEventListener('click', (event) => {
   if (button) button.closest('.tun-flash')?.remove();
 });")
   (:examples
-   (("Varianter" :layout :stack)
-    (flash () "Kunden er lagret.")
-    (flash (:variant :info) "Ordren er flyttet til Hansen Bakeri AS.")
-    (flash (:variant :warning) "Fakturaen er lagret som kladd fordi kunden mangler adresse.")
-    (flash (:variant :destructive) "Ordren kunne ikke lagres fordi kunden mangler e-post."))
-   (("Med lenke og lang tekst" :layout :stack)
+   (("Variants" :layout :stack)
+    (flash () "The customer has been saved.")
+    (flash (:variant :info) "The order has been moved to Hansen Bakery Ltd.")
+    (flash (:variant :warning)
+           "The invoice was saved as a draft because the customer has no address.")
+    (flash (:variant :destructive)
+           "The order could not be saved because the customer has no email."))
+   (("With a link and a long text" :layout :stack)
     (flash ()
-           "Tilbud 311 er sendt til post@nordlys.example.no. "
-           '(:a (:@ :href "/tilbud/311") "Vis tilbudet"))
+           "Quote 311 has been sent to post@northernlights.example.com. "
+           '(:a (:@ :href "/quotes/311") "Show the quote"))
     (flash (:variant :info)
-           "Fakturaene for september er sendt til regnskapsfører, og kopien av
-mva-rapporten ligger under Dokumenter."))
-   (("Uten lukkeknapp" :layout :stack)
-    (flash (:dismissible nil) "Du er logget ut.")))
+           "The invoices for September have been sent to the accountant, and the copy of
+the VAT report is under Documents."))
+   (("Without a close button" :layout :stack)
+    (flash (:dismissible nil) "You are signed out.")))
   (check-type variant (member :success :info :warning :destructive))
   `(:div ,(attrs (list :class "tun-flash" :id id :data-variant (option-string variant)
                        :role "status")
@@ -248,7 +251,7 @@ mva-rapporten ligger under Dokumenter."))
          ,@(when icon (list (icon (:name icon))))
          (:div (:@ :class "tun-flash-message") ,@children)
          ,@(when dismissible
-             (list (button (:variant :ghost :size :icon :label "Lukk meldingen"
+             (list (button (:variant :ghost :size :icon :label (tr "Close the message")
                                      :attributes '(:hidden t :data-tun-flash-close t))
                            (icon (:name :x)))))))
 
@@ -263,16 +266,16 @@ mva-rapporten ligger under Dokumenter."))
                   `(:input (:@ :type "hidden" :name ,name :value ,(princ-to-string value))))))
 
 (define-component confirm-panel ((&key title action confirm-label cancel-href
-                                       (cancel-label "Avbryt") (variant :destructive)
+                                       (cancel-label (tr "Cancel")) (variant :destructive)
                                        (icon (when (eq variant :destructive) :triangle-alert))
                                        warning hidden id attributes)
                                  &rest children)
-  (:group "Tilbakemelding")
-  (:doc "Det en :confirm-operasjon viser før den kjøres: hva som vil skje (barna, ofte en
-summary-list), en advarsel (WARNING) om det trengs, og et skjema som poster til ACTION med
-feltene i HIDDEN, som bekreftelsesnøkkelen. Bruk variant primary når handlingen ikke
-ødelegger noe.")
-  (:source "GOV.UK warning text og bekreftelse; Basecoat alert dialog (Vega)")
+  (:group "Feedback")
+  (:doc "What a :confirm operation shows before it runs: what will happen (the children,
+often a summary-list), a warning (WARNING) when one is needed, and a form that posts to ACTION
+with the fields in HIDDEN, such as the confirmation token. Use the variant primary when the
+action destroys nothing.")
+  (:source "GOV.UK warning text and confirmation; Basecoat alert dialog (Vega)")
   (:css "
 .tun-confirm-panel {
   container-type: inline-size;
@@ -384,35 +387,35 @@ feltene i HIDDEN, som bekreftelsesnøkkelen. Bruk variant primary når handlinge
   }
 }")
   (:examples
-   (("Slette en kunde" :layout :stack)
-    (confirm-panel (:title "Slette kunden Berg Rørlegger AS?"
-                           :action "/kunder/42/customers_delete"
-                           :confirm-label "Slett kunde"
-                           :cancel-href "/kunder/42"
-                           :warning "Dette kan ikke angres."
+   (("Deleting a customer" :layout :stack)
+    (confirm-panel (:title "Delete the customer Berg Plumbing Ltd?"
+                           :action "/customers/42/customers_delete"
+                           :confirm-label "Delete customer"
+                           :cancel-href "/customers/42"
+                           :warning "This cannot be undone."
                            :hidden '(("confirmation_token" "c7f3a9e2")))
-                   '(:p "Kunden og de 3 kontaktpersonene slettes. Fakturaer som er sendt,
-beholdes i regnskapet.")))
-   (("Kansellere en ordre" :layout :stack)
-    (confirm-panel (:title "Kansellere ordre 10423?"
-                           :action "/ordre/10423/orders_cancel"
-                           :confirm-label "Kanseller ordre"
-                           :cancel-href "/ordre/10423"
-                           :cancel-label "Behold ordren"
+                   '(:p "The customer and its 3 contacts are deleted. Invoices that have been
+sent are kept in the accounts.")))
+   (("Cancelling an order" :layout :stack)
+    (confirm-panel (:title "Cancel order 10423?"
+                           :action "/orders/10423/orders_cancel"
+                           :confirm-label "Cancel order"
+                           :cancel-href "/orders/10423"
+                           :cancel-label "Keep the order"
                            :hidden '(("confirmation_token" "5d1e0b74")))
-                   '(:p "Ordren til " (:strong "Hansen Bakeri AS") " på " (:strong "8 750 kr")
-                     " kanselleres, og kunden får beskjed på e-post.")
-                   '(:p "Bekreftelsen utløper kl. 14.32.")))
-   (("Bekrefte uten fare (primary)" :layout :stack)
-    (confirm-panel (:title "Sende faktura 2024-118?"
+                   '(:p "The order for " (:strong "Hansen Bakery Ltd") " of " (:strong "€8,750")
+                     " is cancelled, and the customer is told by email.")
+                   '(:p "The confirmation expires at 14:32.")))
+   (("Confirming without danger (primary)" :layout :stack)
+    (confirm-panel (:title "Send invoice 2024-118?"
                            :variant :primary
                            :icon :send
-                           :action "/faktura/2024-118/invoices_send"
-                           :confirm-label "Send faktura"
-                           :cancel-href "/faktura/2024-118"
+                           :action "/invoices/2024-118/invoices_send"
+                           :confirm-label "Send invoice"
+                           :cancel-href "/invoices/2024-118"
                            :hidden '(("confirmation_token" "9a04c6f1")))
-                   '(:p "Fakturaen på " (:strong "12 500 kr") " sendes til
-post@nordlys.example.no med forfall 30. oktober."))))
+                   '(:p "The invoice of " (:strong "€12,500") " is sent to
+post@northernlights.example.com, due on 30 October."))))
   (check-type title string)
   (check-type action string)
   (check-type confirm-label string)
@@ -431,7 +434,8 @@ post@nordlys.example.no med forfall 30. oktober."))))
                ,@(when warning
                    `((:p (:@ :class "tun-confirm-panel-warning")
                          (:span (:@ :class "tun-confirm-panel-mark" :aria-hidden "true") "!")
-                         (:strong (:span (:@ :class "tun-confirm-panel-hidden") "Advarsel: ")
+                         (:strong (:span (:@ :class "tun-confirm-panel-hidden")
+                                         ,(tr "Warning:") " ")
                                   ,warning))))
                (:form (:@ :class "tun-confirm-panel-actions" :method "post" :action ,action)
                       ,@(confirm-hidden-inputs hidden)
@@ -442,11 +446,11 @@ post@nordlys.example.no med forfall 30. oktober."))))
 ;;; Progress
 
 (define-component progress ((&key label value (max 100) value-text id attributes))
-  (:group "Tilbakemelding")
-  (:doc "Hvor langt noe har kommet, som en stolpe med LABEL over og verdien som tekst
-(«3 av 5 steg», ellers prosent). Uten VALUE går stolpen fram og tilbake fordi lengden er
-ukjent. Bygd på <progress>, som skjermlesere leser selv.")
-  (:source "Basecoat progress (Vega), på det innebygde <progress>-elementet")
+  (:group "Feedback")
+  (:doc "How far something has come, as a bar with LABEL above it and the value as text
+(«3 of 5 steps», else a percentage). Without VALUE the bar goes back and forth, since the
+length is unknown. Built on <progress>, which screen readers read themselves.")
+  (:source "Basecoat progress (Vega), on the built-in <progress> element")
   (:css "
 .tun-progress {
   display: grid;
@@ -511,20 +515,20 @@ ukjent. Bygd på <progress>, som skjermlesere leser selv.")
   to { background-position: 170% 0; }
 }")
   (:examples
-   (("Med verdi" :layout :stack)
-    (progress (:label "Importerer kunder" :value 66))
-    (progress (:label "Ordren behandles" :value 3 :max 5 :value-text "3 av 5 steg"))
-    (progress (:label "Bilag lastet opp" :value 12 :max 12 :value-text "12 av 12 bilag")))
-   (("Ukjent lengde" :layout :stack)
-    (progress (:label "Henter fakturaer fra Fiken")))
-   (("Lang tekst på en smal skjerm" :layout :stack)
-    (progress (:label "Sender påminnelser til kunder med forfalte fakturaer" :value 41
-                      :max 180 :value-text "41 av 180 kunder"))))
+   (("With a value" :layout :stack)
+    (progress (:label "Importing customers" :value 66))
+    (progress (:label "The order is being processed" :value 3 :max 5 :value-text "3 of 5 steps"))
+    (progress (:label "Vouchers uploaded" :value 12 :max 12 :value-text "12 of 12 vouchers")))
+   (("Unknown length" :layout :stack)
+    (progress (:label "Fetching invoices from the ledger")))
+   (("A long text on a narrow screen" :layout :stack)
+    (progress (:label "Sending reminders to customers with overdue invoices" :value 41
+                      :max 180 :value-text "41 of 180 customers"))))
   (check-type label string)
   (check-type max (real (0)))
   (check-type value (or null (real 0)))
   (let ((progress-id (element-id "progress"))
-        (text (or value-text (when value (format nil "~d %" (round (* 100 value) max))))))
+        (text (or value-text (when value (tr "~d%" (round (* 100 value) max))))))
     `(:div ,(attrs (list :class "tun-progress" :id id) attributes)
            (:div (:@ :class "tun-progress-header")
                  (:label (:@ :class "tun-progress-label" :for ,progress-id) ,label)
@@ -537,12 +541,13 @@ ukjent. Bygd på <progress>, som skjermlesere leser selv.")
 ;;; ------------------------------------------------------------------
 ;;; Spinner
 
-(define-component spinner ((&key (size :default) (label "Laster…") id attributes)
+(define-component spinner ((&key (size :default) (label (tr "Loading…")) id attributes)
                            &rest children)
-  (:group "Tilbakemelding")
-  (:doc "Et snurrende ikon mens noe lastes, med role=\"status\". LABEL («Laster…») leses av
-skjermlesere uten å vises; barna vises som tekst ved siden av. Med LABEL nil er spinneren
-bare pynt, for eksempel i en knapp som allerede sier hva som skjer.")
+  (:group "Feedback")
+  (:doc "A spinning icon while something loads, with role=\"status\". LABEL («Loading…») is
+read by screen readers without being shown; the children show as text beside it. With LABEL
+nil the spinner is only decoration, for example in a button that already says what is
+happening.")
   (:source "Basecoat spinner (Lucide loader-circle)")
   (:css "
 .tun-spinner {
@@ -571,17 +576,17 @@ bare pynt, for eksempel i en knapp som allerede sier hva som skjer.")
   to { rotate: 1turn; }
 }")
   (:examples
-   ("Størrelser"
+   ("Sizes"
     (spinner (:size :sm))
     (spinner ())
     (spinner (:size :lg))
     (spinner (:size :xl)))
-   ("Med synlig tekst"
-    (spinner () "Henter ordre…")
-    (spinner (:size :sm) "Behandler betaling på 4 990 kr…"))
-   ("I en knapp"
-    (button (:disabled t) (spinner (:label nil)) "Lagrer…")
-    (button (:variant :outline :disabled t) (spinner (:label nil)) "Sender faktura…")))
+   ("With visible text"
+    (spinner () "Fetching orders…")
+    (spinner (:size :sm) "Processing a payment of €4,990…"))
+   ("In a button"
+    (button (:disabled t) (spinner (:label nil)) "Saving…")
+    (button (:variant :outline :disabled t) (spinner (:label nil)) "Sending invoice…")))
   (check-type size (member :sm :default :lg :xl))
   (check-type label (or null string))
   (let ((announced (or label children)))
@@ -608,11 +613,12 @@ fixed widths from 3rem (:xs) to 16rem (:xl).")
 (define-component skeleton ((&key (shape :line) width height (direction :column) label
                                   id attributes)
                             &rest children)
-  (:group "Tilbakemelding")
-  (:doc "En grå plassholder i formen til innhold som lastes: en linje (line), en sirkel
-(circle) eller en blokk (block), med bredde og høyde fra en fast liste. Med barn er den en
-gruppe som stabler formene (DIRECTION :column eller :row). Formene er skjult for
-skjermlesere; gi den ytterste gruppen LABEL, som «Laster kunder…», så den leses opp.")
+  (:group "Feedback")
+  (:doc "A grey placeholder in the shape of content that is loading: a line (line), a circle
+(circle) or a block (block), with a width and a height from a fixed list. With children it
+is a group that stacks the shapes (DIRECTION :column or :row). The shapes are hidden from
+screen readers; give the outermost group a LABEL, such as «Loading customers…», so it is
+read out.")
   (:source "Basecoat skeleton (Vega)")
   (:css "
 .tun-skeleton {
@@ -681,15 +687,15 @@ skjermlesere; gi den ytterste gruppen LABEL, som «Laster kunder…», så den l
   50% { opacity: 0.5; }
 }")
   (:examples
-   (("Former" :layout :stack)
+   (("Shapes" :layout :stack)
     (skeleton ())
     (skeleton (:width :two-thirds))
     (skeleton (:width :lg :height :xs))
     (skeleton (:shape :circle))
     (skeleton (:shape :block :height :lg))
     (skeleton (:shape :block)))
-   (("Et kort som lastes" :layout :stack)
-    (skeleton (:label "Laster kunden…")
+   (("A card that is loading" :layout :stack)
+    (skeleton (:label "Loading the customer…")
               (skeleton (:direction :row)
                         (skeleton (:shape :circle))
                         (skeleton ()
@@ -699,8 +705,8 @@ skjermlesere; gi den ytterste gruppen LABEL, som «Laster kunder…», så den l
               (skeleton (:direction :row)
                         (skeleton (:shape :block :width :sm :height :lg))
                         (skeleton (:shape :block :width :sm :height :lg)))))
-   (("Tabellrader som lastes" :layout :stack)
-    (skeleton (:label "Laster ordre…")
+   (("Table rows that are loading" :layout :stack)
+    (skeleton (:label "Loading orders…")
               (loop repeat 4
                     collect (skeleton (:direction :row)
                                       (skeleton (:width :quarter))

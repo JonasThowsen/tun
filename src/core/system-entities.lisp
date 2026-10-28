@@ -5,36 +5,36 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity audit-entry (:json-name "audit" :label "Revisjonslogg" :id-prefix "aud" :internal t
+(define-entity audit-entry (:json-name "audit" :label "Audit log" :id-prefix "aud" :internal t
                             :indexes (("entity_type" "entity_id")))
-  ((at :type timestamp :input nil :label "Tidspunkt")
-   (actor :type (string :max 200) :input nil :label "Aktør")
-   (tool :type (string :max 200) :input nil :label "Verktøy")
-   (outcome :type (enum "ok" "rejected") :input nil :label "Utfall")
-   (entity-type :type (string :max 100) :input nil :label "Entitetstype")
-   (entity-id :type (string :max 100) :input nil :label "Entitets-ID")
-   (request-key :type (string :max 64) :input nil :label "Forespørselsnøkkel")
-   (error-code :type (string :max 64) :input nil :label "Feilkode")
-   (request-id :type (string :max 64) :input nil :label "Forespørsel"
+  ((at :type timestamp :input nil :label "Time")
+   (actor :type (string :max 200) :input nil :label "Actor")
+   (tool :type (string :max 200) :input nil :label "Tool")
+   (outcome :type (enum "ok" "rejected") :input nil :label "Outcome")
+   (entity-type :type (string :max 100) :input nil :label "Entity type")
+   (entity-id :type (string :max 100) :input nil :label "Entity ID")
+   (request-key :type (string :max 64) :input nil :label "Request key")
+   (error-code :type (string :max 64) :input nil :label "Error code")
+   (request-id :type (string :max 64) :input nil :label "Request"
                :description "X-Tun-Request-Id of the call (introspect_request).")
-   (reason :type (string :max 500) :input nil :label "Begrunnelse"
+   (reason :type (string :max 500) :input nil :label "Reason"
            :description "The reason an override or forced transition was given.")
-   (credential :type (string :max 64) :input nil :label "Legitimasjon"
+   (credential :type (string :max 64) :input nil :label "Credential"
                :description "The token or session the call was made with, or claimed (spec/auth.md 7).")))
 
-(define-entity receipt (:json-name "receipt" :label "Kvittering" :id-prefix "rcp" :internal t
+(define-entity receipt (:json-name "receipt" :label "Receipt" :id-prefix "rcp" :internal t
                         :unique (("actor" "tool" "request_key")))
   ((actor :type (string :max 200) :input nil)
    (tool :type (string :max 200) :input nil)
    (request-key :type (string :max 64) :input nil)
    (input-hash :type (string :max 64) :input nil)
    (redacted :type boolean :input nil :initform nil)
-   (result :type (string :max 10000000) :input nil :label "Opprinnelig resultat (JSON)")
+   (result :type (string :max 10000000) :input nil :label "Original result (JSON)")
    (created-at :type timestamp :input nil)))
 
-(define-entity confirmation (:json-name "confirmation" :label "Bekreftelse" :id-prefix "cnf" :internal t
+(define-entity confirmation (:json-name "confirmation" :label "Confirmation" :id-prefix "cnf" :internal t
                              :unique (("token_hash")))
-  ((token-hash :type (string :max 64) :input nil :label "SHA-256 av token")
+  ((token-hash :type (string :max 64) :input nil :label "SHA-256 of the token")
    (actor :type (string :max 200) :input nil)
    (tool :type (string :max 200) :input nil)
    (input-hash :type (string :max 64) :input nil)
@@ -44,10 +44,10 @@
    (used-at :type timestamp :input nil)
    (created-at :type timestamp :input nil)))
 
-(define-entity setting (:json-name "setting" :label "Innstilling" :id-prefix "set"
+(define-entity setting (:json-name "setting" :label "Setting" :id-prefix "set"
                         :unique (("key")))
-  ((key :type (string :max 200) :input nil)
-   (value :type json :input nil)))
+  ((key :type (string :max 200) :input nil :label "Key")
+   (value :type json :input nil :label "Value")))
 
 (defun read-setting (key)
   (let ((row (select-one 'setting :where `(:= "key" ,key))))

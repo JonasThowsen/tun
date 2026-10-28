@@ -76,10 +76,14 @@ the listed symbols (the same symbol objects, not copies)."
    #:define-entity #:extend-entity #:define-rule #:define-computed-field #:define-operation
    #:define-workflow #:define-message-template #:define-application #:define-setting #:define-setting-initial-value #:setting-value-at-use
    ;; field type designators (string, integer and boolean are CL's own)
-   #:email #:enum #:date #:timestamp #:id #:list-of #:json #:files
+   #:email #:enum #:date #:timestamp #:id #:list-of #:json #:files #:money
+   ;; copy in the tenant's language, amounts, dates and numbers as it writes
+   ;; them (spec/i18n.md)
+   #:tr #:deferred-tr #:define-translations #:label #:with-language #:current-language
+   #:money-text #:date-text #:timestamp-text #:number-text #:local-date-of #:local-time-of
    ;; the application and its context
    #:application #:*application* #:entity #:stored-entity #:entity-id
-   #:now #:today #:local-today #:date-add-days #:date-add-months #:date-at #:date-of #:parse-date #:format-date #:format-quantity #:format-kroner
+   #:now #:today #:local-today #:date-add-days #:date-add-months #:date-at #:date-of #:parse-date #:format-date #:format-quantity
    #:format-rfc3339 #:parse-rfc3339 #:date<= #:date<
    ;; a link at the server's public URL, for mail (spec/deploy.md 1)
    #:absolute-url
@@ -102,7 +106,7 @@ the listed symbols (the same symbol objects, not copies)."
   ;; from the components in TUN.UI (spec/ui.md 8)
   (#:tun.web
    #:render-screen #:section #:json-table #:entity-detail
-   #:define-page #:web-call #:error-alert #:timestamp-text #:htmx-request-p #:staff-page-extras
+   #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras
    #:preload-request-p #:decline-preload)
   ;; Mail: queued in the caller's write, delivered after it commits, its
   ;; HTML a node tree that render-mail also previews (spec/mail.md), and

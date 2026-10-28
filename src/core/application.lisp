@@ -94,6 +94,12 @@ and the failed-login counts, which live in memory only.")
 
 (defvar *application* nil "The application handling the current request.")
 
+(defmethod default-locale ((application application))
+  (let ((options (application-locale-options application)))
+    (make-locale :language (first (getf options :languages))
+                 :currency (getf options :currency)
+                 :time-zone (getf options :time-zone))))
+
 (defun test-mode-p (&optional (application *application*))
   (typep (application-clock application) 'test-clock))
 
@@ -119,17 +125,22 @@ a mail needs.  PATH itself when the server was given no public URL
 (defun now-string () (format-rfc3339 (now)))
 (defun today () (date-of (now)))
 (defun local-today ()
-  "The clock instant's Norwegian local date (core.md §2.2: \"today\")."
+  "The clock instant's local date in the tenant's time zone (core.md §2.2:
+\"today\")."
   (local-date-of (now)))
 
 (defun call-with-application (application function)
+  "Call FUNCTION with APPLICATION current, its store, its clock, and its
+tenant's locale read from its settings (spec/i18n.md 9)."
   (if (eq application *application*)
       (funcall function)
       (let ((*application* application)
             (*store* (application-store application))
             (*now-function* #'now)
-            (*transaction-mode* nil))
-        (funcall function))))
+            (*transaction-mode* nil)
+            (*locale* nil))
+        (let ((*locale* (request-locale)))
+          (funcall function)))))
 
 (defmacro with-application ((application) &body body)
   `(call-with-application ,application (lambda () ,@body)))

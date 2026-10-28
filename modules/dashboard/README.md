@@ -5,13 +5,13 @@ through `flake.nix` in this directory (tun-platform.md §2, §4). Enable it
 with `tun add dashboard`.
 
 - **Owns:** no records. It is the developer's dashboard: pages for admins
-  that show how the application runs. «Jobber» at `/jobber` shows what its
+  that show how the application runs. «Jobber» at `/jobs` shows what its
   background work does (spec/jobs.md), as Hangfire's dashboard does for
-  .NET; «Feil» at `/feil` the errors it has had, grouped by cause, as
-  Sentry lists issues; «Logg» at `/logg` the requests the process has in
+  .NET; «Feil» at `/errors` the errors it has had, grouped by cause, as
+  Sentry lists issues; «Logg» at `/log` the requests the process has in
   memory, as Laravel's Telescope lists them (spec/errors.md).
 - **Depends on:** no module.
-- **Core range:** builds against core `>= 1.4.0, < 2.0` (`flake.nix`
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix`
   `core`, and `define-module` in the Lisp source): the jobs, schedules,
   triggers and `jobs_summary`, and the recorded errors and `errors_*`
   tools, of core 1.4.
@@ -24,16 +24,19 @@ with `tun add dashboard`.
 
 ## The pages
 
+The paths were `/jobber`, `/feil` and `/logg` before core 2.0; those
+answer 301 to `/jobs`, `/errors` and `/log` (`spec/i18n.md` §4.8).
+
 | Path | Shows |
 |---|---|
-| `/jobber` | **Oversikt**: how many jobs wait, run, retry and failed, and how many succeeded and failed in the last 24 hours; each queue with its limit, what waits and runs in it, and its oldest waiting job; the processes running jobs, whether each is alive and how many jobs it runs; the latest failures. |
-| `/jobber/liste?tilstand=STATE` | **Jobber** in one state, newest first: type, queue, arguments, attempts, when it is due or finished, its last error. A tab per state, with its count. |
-| `/jobber/JOB-ID` | **One job**: its fields, its arguments, and the history of its attempts with each error and the request it ran in. «Kjør på nytt» for a failed or cancelled job, «Avbryt» for one that waits. |
-| `/jobber/tidsplaner` | **Tidsplaner**: each schedule and trigger, when it runs in words («hverdager kl. 07:00») and as cron, its job, its last and next occurrence (for a trigger, how many jobs its last sweep enqueued), and «Kjør nå». |
-| `/feil?status=STATUS` | **Feil**, open, resolved or ignored, latest seen first: the message, the condition's type, where it happened, how many times, last seen. A tab per status, with its count. |
-| `/feil/ERROR-ID` | **One error**: its fields, its message, its backtrace, and its latest 50 occurrences, each linking to its request. «Merk som løst» and «Ignorer» for an open error, «Åpne igjen» for the others. |
-| `/logg?utvalg=SELECTION&slag=KIND` | **Logg**: the latest 200 requests in memory, newest first: all, errors, refusals or slow ones, of every kind or one (tools, web pages, jobs, workflows, MCP); and the requests running now. |
-| `/logg/REQUEST-ID` | **One request**: who, what, its outcome and error, its time, store calls and wait for the write lock, its input, its steps in time order with each step's time drawn against the whole, and its backtrace. |
+| `/jobs` | **Oversikt**: how many jobs wait, run, retry and failed, and how many succeeded and failed in the last 24 hours; each queue with its limit, what waits and runs in it, and its oldest waiting job; the processes running jobs, whether each is alive and how many jobs it runs; the latest failures. |
+| `/jobs/list?state=STATE` | **Jobber** in one state, newest first: type, queue, arguments, attempts, when it is due or finished, its last error. A tab per state, with its count. |
+| `/jobs/JOB-ID` | **One job**: its fields, its arguments, and the history of its attempts with each error and the request it ran in. «Kjør på nytt» for a failed or cancelled job, «Avbryt» for one that waits. |
+| `/jobs/schedules` | **Tidsplaner**: each schedule and trigger, when it runs in words («hverdager kl. 07:00») and as cron, its job, its last and next occurrence (for a trigger, how many jobs its last sweep enqueued), and «Kjør nå». |
+| `/errors?status=STATUS` | **Feil**, open, resolved or ignored, latest seen first: the message, the condition's type, where it happened, how many times, last seen. A tab per status, with its count. |
+| `/errors/ERROR-ID` | **One error**: its fields, its message, its backtrace, and its latest 50 occurrences, each linking to its request. «Merk som løst» and «Ignorer» for an open error, «Åpne igjen» for the others. |
+| `/log?selection=SELECTION&kind=KIND` | **Logg**: the latest 200 requests in memory, newest first: all, errors, refusals or slow ones, of every kind or one (tools, web pages, jobs, workflows, MCP); and the requests running now. |
+| `/log/REQUEST-ID` | **One request**: who, what, its outcome and error, its time, store calls and wait for the write lock, its input, its steps in time order with each step's time drawn against the whole, and its backtrace. |
 
 The requests are the process's own and are not stored: after a restart
 «Logg» starts again, while «Feil» keeps every error. A refused button shows
@@ -52,18 +55,18 @@ drawn on the page it came from, with the refusal's status.
 
 ### 2. «Jobber»
 
-`/jobber` and its subpages show the application's background work: jobs by
+`/jobs` and its subpages show the application's background work: jobs by
 state, one job's attempts, the queues, the processes running jobs, and the
 schedules and triggers (spec/jobs.md §9). They read `jobs_summary`,
 `jobs_list`, `jobs_get` and `schedules_list`; «Kjør på nytt» calls
 `jobs_retry`, «Avbryt» `jobs_cancel`, «Kjør nå» `schedules_run`. An
-occurrence's key, a Norwegian wall-clock time, is written as
-`dd.mm.yyyy kl. HH:MM`.
+occurrence's key, a wall-clock time in the tenant's zone, is written as
+the page's language writes an instant (`spec/i18n.md` §6.2).
 
 ### 3. «Feil»
 
-`/feil` shows the recorded errors, grouped by cause, in one status (`open`,
-`resolved`, `ignored`) with a count per status; `/feil/ERROR-ID` one error
+`/errors` shows the recorded errors, grouped by cause, in one status (`open`,
+`resolved`, `ignored`) with a count per status; `/errors/ERROR-ID` one error
 with its backtrace and its latest occurrences (spec/errors.md §3, §8). They
 read `errors_list` and `errors_get`; «Merk som løst», «Ignorer» and «Åpne
 igjen» call `errors_set_status`. Errors are stored, so the page keeps them
@@ -71,10 +74,10 @@ across restarts.
 
 ### 4. «Logg»
 
-`/logg` shows the latest 200 requests the process keeps in memory, newest
+`/log` shows the latest 200 requests the process keeps in memory, newest
 first, narrowed by selection (`all`, `errors`, `rejected`, `slow`) and kind
 (`operation`, `web`, `job`, `workflow`, `mcp`), and the requests running now
-(spec/errors.md §8). `/logg/REQUEST-ID` shows one request: actor, tool,
+(spec/errors.md §8). `/log/REQUEST-ID` shows one request: actor, tool,
 outcome, error, time, store calls, wait for the write lock, input, up to
 300 steps in time order drawn against the whole, and its backtrace. The
 pages read `introspect_recent`, `introspect_inflight` and

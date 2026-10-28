@@ -119,8 +119,8 @@ of ASCII, or an integer for one octet."
   (let ((result (multiple-value-list (examined octets))))
     (and (stringp (first result)) (first result))))
 
-(defparameter +damaged+ "Bildet er skadet eller ufullstendig.")
-(defparameter +type-refused+ "Filtypen er ikke tillatt. Tillatt er PNG, JPEG, WebP, GIF og PDF.")
+(defparameter +damaged+ "The image is damaged or incomplete.")
+(defparameter +type-refused+ "This type of file is not allowed. Use PNG, JPEG, WebP, GIF or PDF.")
 
 ;;; PNG
 
@@ -369,7 +369,7 @@ pointer, and a GPS IFD holding a latitude."
 ;;; 4. Size and dimensions (spec/files.md 2.2)
 
 (defparameter +too-large+
-  "Bildet er for stort: høyst 30 000 piksler på hver side og 50 megapiksler.")
+  "The image is too large: at most 30,000 pixels on each side and 50 megapixels.")
 
 (test dimensions-come-from-the-header-and-are-bounded
   (let ((turned (jpeg-with (fixture "foto.jpg") (jpeg-segment #xE1 (exif-payload :orientation 6)))))
@@ -408,16 +408,16 @@ pointer, and a GPS IFD holding a latitude."
       (is (null (nth-value 1 (call-files "employee:anna" (file-json "stor.png" exactly)))))
       (multiple-value-bind (json code) (call-files "employee:anna" (file-json "for-stor.png" over))
         (is (string= "invalid_input" code))
-        (is (equal "«for-stor.png»: Filen er større enn 10 MB." (field-message json))))
+        (is (equal "“for-stor.png”: The file is larger than 10 MB." (field-message json))))
       (multiple-value-bind (json code) (call-files "employee:anna" (file-json "tom.png" (bytes)))
         (is (string= "invalid_input" code))
-        (is (equal "«tom.png»: Filen er tom." (field-message json)))))
+        (is (equal "“tom.png”: The file is empty." (field-message json)))))
     (multiple-value-bind (json code)
         (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" "fnt_x"
               "files" (jarr (loop repeat 11
                                   collect (file-json "a.png" (fixture "skjermbilde.png")))))
       (is (string= "invalid_input" code))
-      (is (search "høyst 10 filer" (field-message json))))
+      (is (search "at most 10 files" (field-message json))))
     (let* ((padding (make-array (* 9 1024 1024) :initial-element 0))
            (nine (bytes (fixture "skjermbilde.png") padding))
            (id (jget (call-ok "file_notes_create" "employee:anna" "title" "Tom") "id")))
@@ -425,7 +425,7 @@ pointer, and a GPS IFD holding a latitude."
           (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
                 "files" (files-json "1.png" nine "2.png" nine "3.png" nine))
         (is (string= "invalid_input" code))
-        (is (search "25 MB til sammen" (field-message json))))
+        (is (search "25 MB together" (field-message json))))
       (call-ok "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
                "files" (files-json "1.png" (fixture "skjermbilde.png")
                                    "2.png" (fixture "skjermbilde.png")))
@@ -434,7 +434,7 @@ pointer, and a GPS IFD holding a latitude."
                 "files" (files-json "3.png" (fixture "skjermbilde.png")
                                     "4.png" (fixture "skjermbilde.png")))
         (is (string= "invalid_input" code))
-        (is (equal "Høyst 3 filer per notat." (field-message json))))
+        (is (equal "At most 3 files per notat." (field-message json))))
       (is (= 2 (length (jget (call-ok "attachments_list" "viewer:vera" "entity" "file_note"
                                       "record_id" id)
                              "items")))
@@ -595,13 +595,13 @@ pointer, and a GPS IFD holding a latitude."
     (is (equal "skjermbilde.png" (name "skjermbilde" :png)))
     (is (equal "faktura.png.pdf" (name "faktura.png" :pdf)))
     (is (equal "bilde.JPEG" (name "bilde.JPEG" :jpeg)))
-    (is (equal "fil.png" (name "" :png))))
+    (is (equal "file.png" (name "" :png))))
   (with-test-app ()
     (multiple-value-bind (json code)
         (call-files "employee:anna" (file-json (make-string 256 :initial-element #\x)
                                                (fixture "skjermbilde.png")))
       (is (string= "invalid_input" code))
-      (is (equal "Filnavnet kan ikke være lengre enn 255 tegn." (field-message json))))
+      (is (equal "The filename cannot be longer than 255 characters." (field-message json))))
     (is (null (nth-value 1 (call-files "employee:anna"
                                        (file-json (make-string 255 :initial-element #\x)
                                                   (fixture "skjermbilde.png"))))))))
@@ -624,21 +624,21 @@ pointer, and a GPS IFD holding a latitude."
           (is (null (nth-value 1 (add (jobj "filename" "linjer.png"
                                             "data" (format nil "~{~a~^~c~c~}" lines)))))
               "line breaks are ignored"))
-        (is (equal "«a.png»: Innholdet i data er ikke gyldig base64."
+        (is (equal "“a.png”: The content in data is not valid base64."
                    (add (jobj "filename" "a.png"
                               "data" (concatenate 'string "*" (subseq encoded 1))))))
-        (is (equal "«a.png»: Innholdet i data er ikke gyldig base64."
+        (is (equal "“a.png”: The content in data is not valid base64."
                    (add (jobj "filename" "a.png" "data" (subseq encoded 0 (1- (length encoded))))))
             "bad padding")
-        (is (equal "«a.png»: Send bare base64-innholdet i data, uten «data:…;base64,» foran."
+        (is (equal "“a.png”: Send only the base64 content in data, without “data:…;base64,” in front."
                    (add (jobj "filename" "a.png"
                               "data" (concatenate 'string "data:image/png;base64," encoded)))))
         (let ((*http-json-handler* (lambda (&rest arguments)
                                      (declare (ignore arguments))
                                      (error "nothing may be fetched"))))
-          (is (equal "Tun henter ikke filer fra en adresse. Send innholdet som base64 i data."
+          (is (equal "Tun does not fetch files from an address. Send the content as base64 in data."
                      (add (jobj "filename" "a.png" "url" "http://127.0.0.1/hemmelig.png")))))
-        (is (equal "«a.png»: Filen må sendes som base64 i data."
+        (is (equal "“a.png”: The file must be sent as base64 in data."
                    (add (jobj "filename" "a.png" "upload" "upl_gjettet")))
             "a page's handle means nothing over MCP")))
     (let* ((tools (with-application (*app*) (tool-definitions *app*)))
@@ -1234,8 +1234,8 @@ octets put in, at places RANDOM-STATE chooses."
     (is (= (length png) (tun.files::base64-length encoded)))))
 
 (test a-name-that-is-only-an-extension-gets-a-name
-  (is (equal "fil.png" (tun.files:stored-filename ".png" :png)))
-  (is (equal "fil.PDF" (tun.files:stored-filename " .PDF " :pdf))))
+  (is (equal "file.png" (tun.files:stored-filename ".png" :png)))
+  (is (equal "file.PDF" (tun.files:stored-filename " .PDF " :pdf))))
 
 (test a-filename-star-is-escaped-as-rfc-5987-says
   (is (equal "a%27b%28c%29%2A%2C%20%C3%B8.png" (tun.web::rfc-5987-value "a'b(c)*, ø.png"))))
@@ -1341,18 +1341,18 @@ octets put in, at places RANDOM-STATE chooses."
         (multiple-value-bind (status json)
             (call "Adresse" (concatenate 'string "data:image/png;base64," escaped))
           (is (= 422 status))
-          (is (search "uten «data:…;base64,» foran" (to-json-string json)) "a data URL"))
+          (is (search "without “data:…;base64,” in front" (to-json-string json)) "a data URL"))
         (multiple-value-bind (status json) (call "Ugyldig" (concatenate 'string escaped "!"))
           (is (= 422 status))
-          (is (search "ikke gyldig base64" (to-json-string json)) "base64 that is not"))
+          (is (search "not valid base64" (to-json-string json)) "base64 that is not"))
         (multiple-value-bind (status json)
             (call (make-string (* 1200 1024) :initial-element #\t) "")
           (is (= 413 status) "a long string set aside outside a file's data")
-          (is (search "Bare innholdet i en fil" (to-json-string json))))
+          (is (search "Only a file's content" (to-json-string json))))
         (multiple-value-bind (status json)
             (call "For mye" escaped "x" filler "y" filler "z" filler)
           (is (= 413 status) "more than 2 MiB besides the files' data")
-          (is (search "Utenom filenes innhold" (to-json-string json))))))))
+          (is (search "Besides its files' content" (to-json-string json))))))))
 
 ;;; attachments-of, a record's files in a client's own operation (spec/files.md 4.2)
 

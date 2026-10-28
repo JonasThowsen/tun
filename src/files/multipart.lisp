@@ -21,18 +21,23 @@ its files may hold (core.md §7.5).")
 
 (define-condition multipart-refused (error)
   ((status :initarg :status :reader multipart-refused-status)
-   (message :initarg :message :reader multipart-refused-message))
+   (message :initarg :message
+            :documentation "A string, or a TEXT written in the language of the place it is
+shown."))
   (:report (lambda (c s) (format s "~d: ~a" (multipart-refused-status c)
                                  (multipart-refused-message c))))
   (:documentation "A multipart post Tun does not read: STATUS and the page's MESSAGE."))
 
-(defparameter +unreadable+ "Skjemaet kunne ikke leses. Last siden på nytt og prøv igjen.")
+(defun multipart-refused-message (condition)
+  "The page's message for CONDITION, written in the current language."
+  (render-text (slot-value condition 'message)))
 
-(defun refuse-post (status message)
-  (error 'multipart-refused :status status :message message))
+(defmacro refuse-post (status control &rest arguments)
+  "Refuse the post with STATUS, its message the literal CONTROL with ARGUMENTS."
+  `(error 'multipart-refused :status ,status :message (deferred-tr ,control ,@arguments)))
 
 (defun unreadable ()
-  (refuse-post 400 +unreadable+))
+  (refuse-post 400 "The form could not be read. Reload the page and try again."))
 
 (defun multipart-boundary (content-type)
   "The boundary CONTENT-TYPE, a multipart/form-data Content-Type header,
@@ -152,11 +157,11 @@ cannot read (spec/files.md 4.3)."
            ((octets-at-p octets at line-end) (incf at 2))
            (t (unreadable)))
      (when (> (incf parts) +most-parts+)
-       (refuse-post 413 (format nil "Skjemaet har for mange felt (høyst ~d)." +most-parts+)))
+       (refuse-post 413 "The form has too many fields (at most ~d)." +most-parts+))
      (let ((end (find-octets headers-end octets at)))
        (when (or (and end (> (- end at) +most-part-header-octets+))
                  (and (null end) (> (- (length octets) at) +most-part-header-octets+)))
-         (refuse-post 413 "En del av skjemaet har for lange overskrifter (høyst 8 KB)."))
+         (refuse-post 413 "A part of the form has headers that are too long (at most 8 KB)."))
        (unless end (unreadable))
        (let* ((headers (part-headers (subseq octets at end)))
               (content-start (+ end 4))
@@ -165,15 +170,15 @@ cannot read (spec/files.md 4.3)."
            (let ((length (- content-end content-start)))
              (cond (filename
                     (when (> (incf file-parts) +most-file-parts+)
-                      (refuse-post 413 (format nil "Du kan sende høyst ~d filer om gangen."
-                                               +most-file-parts+)))
+                      (refuse-post 413 "You can send at most ~d files at a time."
+                                   +most-file-parts+))
                     (unless (and (zerop (length filename)) (zerop length))
                       (push (list name filename (subseq octets content-start content-end))
                             files)))
                    ((> length +most-text-part-octets+)
-                    (refuse-post 413 "Et felt i skjemaet er lengre enn 1 MB."))
+                    (refuse-post 413 "A field in the form is longer than 1 MB."))
                    ((> (incf text-octets length) +most-text-octets+)
-                    (refuse-post 413 "Feltene i skjemaet har mer enn 2 MB tekst til sammen."))
+                    (refuse-post 413 "The form's fields hold more than 2 MB of text together."))
                    (t (push (cons name (utf-8-text (subseq octets content-start content-end)))
                             texts)))))
          (setf at (+ content-end (length next))))))))

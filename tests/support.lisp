@@ -13,7 +13,10 @@
            #:public-interface-violations #:client-source-files #:client-files-under
            #:client-violations #:module-violations #:asd-violations #:module-asd-files #:+kernel-public-packages+ #:+module-library-packages+ #:file-text
            #:define-scenario #:find-scenario #:run-scenario #:scenario-names #:scenario-name #:scenario-actors
-           #:scenario-description #:serve-preview))
+           #:scenario-description #:serve-preview
+           #:untranslated-texts #:unused-translations #:known-texts #:definition-texts
+           #:page-visible-texts #:unlooked-up-texts #:stored-strings #:data-codes #:json-strings
+           #:pages-missing-translations #:pseudo-page-problems))
 
 (in-package #:tun.test-support)
 
@@ -25,7 +28,9 @@
       (values (call-tool tool (apply #'jobj keys-and-values)
                          :application *app* :actor (parse-actor actor))
               nil)
-    (operation-error (e) (values (operation-error-json e) (json-name-of (operation-error-code e))))))
+    ;; As over MCP, the error document is source text (spec/i18n.md 7).
+    (operation-error (e) (values (with-language (:source) (operation-error-json e))
+                                 (json-name-of (operation-error-code e))))))
 
 (defun call-ok (tool actor &rest keys-and-values)
   "Like CALL but fails the test on an error result."

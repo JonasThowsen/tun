@@ -1,7 +1,7 @@
 ;;;; modules/dashboard/dashboard.lisp -- the developer's dashboard: pages for
 ;;;; an application's admins and developers on what it does in the background
-;;;; and what goes wrong.  jobs.lisp is «Jobber» (spec/jobs.md), errors.lisp
-;;;; «Feil» and log.lisp «Logg» (spec/errors.md).  Every figure comes from a
+;;;; and what goes wrong.  jobs.lisp is "Jobs" (spec/jobs.md), errors.lisp
+;;;; "Errors" and log.lisp "Log" (spec/errors.md).  Every figure comes from a
 ;;;; core tool, called as the admin logged in, and every button calls one, so
 ;;;; the pages show and do exactly what an agent can over MCP.  This file has
 ;;;; what the pages share.
@@ -16,8 +16,10 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module dashboard
-  (:core ">= 1.4.0" "< 2.0")
-  (:documentation "The developer's dashboard: «Jobber» with jobs by state, each job's attempts, queues, processes and schedules; «Feil» with the errors grouped by cause; «Logg» with the requests the process has in memory."))
+  (:core ">= 2.0.0" "< 3.0")
+  (:documentation "The developer's dashboard: Jobs with jobs by state, each job's attempts,
+queues, processes and schedules; Errors with the errors grouped by cause; Log with the requests
+the process has in memory."))
 
 ;;; ------------------------------------------------------------------
 ;;; Calling the tools
@@ -48,8 +50,9 @@ draw ON-ERROR's page for the error, with the refusal's status."
 ;;; Pieces
 
 (defun when-text (instant)
-  "INSTANT, an RFC 3339 text or JSON null, in Norwegian time; a dash for none."
-  (if (stringp instant) (tun.web:timestamp-text instant) "—"))
+  "INSTANT, an RFC 3339 text or JSON null, in the tenant's time zone; a dash
+for none."
+  (if (stringp instant) (timestamp-text instant) "—"))
 
 (defun shortened (text length)
   (if (> (length text) length)
@@ -74,7 +77,50 @@ one whose KEY is CURRENT is marked."
                          label))))
 
 (defun ms-text (ms)
-  "Milliseconds as Norwegian writes them: 12,5 ms; a dash for none."
+  "Milliseconds to a tenth, as the current language writes them: 12.5 ms, or
+12,5 ms; a dash for none."
   (if (realp ms)
-      (format nil "~a ms" (substitute #\, #\. (format nil "~,1f" ms)))
+      (tr "~a ms" (number-text (/ (round (* ms 10)) 10)))
       "—"))
+
+
+;;; ------------------------------------------------------------------
+;;; The paths of core 1.x
+
+;;; The pages were /jobber, /feil and /logg before core 2.0, and a tenant
+;;; from 1.x has them bookmarked: each old path answers 301 to its new one
+;;; (spec/i18n.md 4.8), with its parts and query keys renamed.
+
+(defparameter +old-path-parts+
+  '(("jobber" . "jobs") ("feil" . "errors") ("logg" . "log")
+    ("liste" . "list") ("tidsplaner" . "schedules") ("kjor" . "run")
+    ("kjor-igjen" . "retry") ("avbryt" . "cancel"))
+  "Old path parts and their new names; any other part, such as an id, stays.")
+
+(defparameter +old-query-keys+
+  '(("tilstand" . "state") ("utvalg" . "selection") ("slag" . "kind") ("status" . "status"))
+  "Old query keys and their new names; any other key is dropped.")
+
+(defun new-path-part (part)
+  (or (cdr (assoc part +old-path-parts+ :test #'equal)) part))
+
+(defun moved-path (prefix parts query)
+  "The new address of the old page at /PREFIX/PARTS?QUERY.  Only values made
+of letters, digits and _ are kept, so none needs escaping."
+  (let ((pairs (loop for (old . new) in +old-query-keys+
+                     for value = (jget query old)
+                     when (and (stringp value) (plusp (length value))
+                               (every (lambda (c) (or (alphanumericp c) (char= c #\_))) value))
+                       collect (format nil "~a=~a" new value))))
+    (format nil "/~{~a~^/~}~@[?~{~a~^&~}~]"
+            (mapcar #'new-path-part (cons prefix parts)) pairs)))
+
+(defmacro define-moved-page (name prefix)
+  "NAME, the page at the old /PREFIX, answering 301 to the new address."
+  `(tun.web:define-page ,name (,prefix :policy :admin :navigation nil :group :system)
+       (method path form query)
+     (values 301 (moved-path ,prefix path query))))
+
+(define-moved-page old-jobs-page "jobber")
+(define-moved-page old-errors-page "feil")
+(define-moved-page old-log-page "logg")

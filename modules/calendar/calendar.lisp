@@ -14,40 +14,41 @@
 
 (define-module calendar
   (:depends-on orders staffing)
-  (:core ">= 1.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:documentation "Calendar: events and the merged calendar of orders and events."))
 
-(define-entity calendar-event (:json-name "calendar_event" :label "Hendelse" :id-prefix "cev"
+(define-entity calendar-event (:json-name "calendar_event" :label "Event" :id-prefix "cev"
                                :table "calendar_events" :indexes (("start_date") ("order_id")))
-  ((title :type (string :min 1 :max 200) :required t :label "Tittel")
-   (description :type (string :max 2000) :label "Beskrivelse")
-   (start-date :type date :required t :label "Fra dato")
-   (end-date :type date :label "Til dato" :description "Standard: fra-datoen.")
-   (order-id :type (id order) :label "Ordre")
-   (created-at :type timestamp :input nil :label "Opprettet")))
+  ((title :type (string :min 1 :max 200) :required t :label "Title")
+   (description :type (string :max 2000) :label "Description")
+   (start-date :type date :required t :label "From date")
+   (end-date :type date :label "To date" :description "By default the from date.")
+   (order-id :type (id order) :label "Order")
+   (created-at :type timestamp :input nil :label "Created")))
 
 (defun check-event (event)
   (unless (calendar-event-end-date event)
     (setf (calendar-event-end-date event) (calendar-event-start-date event)))
   (when (date< (calendar-event-end-date event) (calendar-event-start-date event))
-    (fail :invalid-input "Sluttdato kan ikke være før startdato"))
+    (fail :invalid-input "The end date cannot be before the start date"))
   (when (calendar-event-order-id event)
     (find-order (calendar-event-order-id event)))
   event)
 
 (define-operation calendar-events-create ((:draft calendar-event))
-    (:entity calendar-event :kind :create :policy :admin :title "Opprett hendelse"
-     :description "En hendelse i kalenderen (messe, vedlikehold, befaring), eventuelt knyttet til en ordre.")
+    (:entity calendar-event :kind :create :policy :admin :title "Create an event"
+             :description "An event in the calendar (a fair, maintenance, a site visit), perhaps
+linked to an order.")
   (insert (check-event calendar-event)))
 
-(define-operation calendar-events-update ((id :type (id calendar-event) :required t :label "Hendelse-ID")
+(define-operation calendar-events-update ((id :type (id calendar-event) :required t :label "Event ID")
                                           (:field calendar-event title)
                                           (:field calendar-event description)
                                           (:field calendar-event start-date)
                                           (:field calendar-event end-date)
                                           (:field calendar-event order-id))
-    (:entity calendar-event :kind :update :policy :admin :title "Endre hendelse"
-     :description "Endrer en hendelse; feltene som ikke oppgis, beholdes.")
+    (:entity calendar-event :kind :update :policy :admin :title "Change an event"
+             :description "Changes an event; the fields not given are kept.")
   (let ((event (fetch! 'calendar-event id)))
     (macrolet ((update (key accessor)
                  `(cond ((input-provided-p ,key) (setf (,accessor event) (input-value ,key)))
@@ -59,22 +60,24 @@
       (update :order-id calendar-event-order-id))
     (save (check-event event))))
 
-(define-operation calendar-events-delete ((id :type (id calendar-event) :required t :label "Hendelse-ID"))
-    (:entity calendar-event :kind :update :policy :admin :title "Slett hendelse" :description "Sletter en hendelse.")
+(define-operation calendar-events-delete ((id :type (id calendar-event) :required t :label "Event ID"))
+    (:entity calendar-event :kind :update :policy :admin :title "Delete an event"
+             :description "Deletes an event.")
   (delete-entity (fetch! 'calendar-event id))
   (jobj "deleted" t "id" id))
 
-(define-operation calendar-events-get ((id :type (id calendar-event) :required t :label "Hendelse-ID"))
-    (:entity calendar-event :kind :read :policy :admin :title "Hent hendelse" :description "Henter én hendelse.")
+(define-operation calendar-events-get ((id :type (id calendar-event) :required t :label "Event ID"))
+    (:entity calendar-event :kind :read :policy :admin :title "Get an event"
+             :description "Gets one event.")
   (fetch! 'calendar-event id))
 
 (defun events-between (from to)
   (select 'calendar-event :where `(:and (:<= "start_date" ,to) (:>= "end_date" ,from))))
 
-(define-operation calendar-events-list ((from :type date :required t :label "Fra dato")
-                                        (to :type date :required t :label "Til dato"))
-    (:entity calendar-event :kind :read :policy :admin :title "Hendelser"
-     :description "Hendelser som overlapper perioden.")
+(define-operation calendar-events-list ((from :type date :required t :label "From date")
+                                        (to :type date :required t :label "To date"))
+    (:entity calendar-event :kind :read :policy :admin :title "Events"
+             :description "The events that overlap the period.")
   (jobj "items" (jarr (mapcar #'entity->json (events-between from to)))))
 
 ;;; ------------------------------------------------------------------
@@ -85,11 +88,17 @@
          (earliest (and s (not (eq t (jget s "not_agreed"))) (jget s "earliest"))))
     (and (stringp earliest) earliest)))
 
+(defun tag-label (tag)
+  "The order tag TAG as the calendar shows it: its label, in upper case."
+  (string-upcase (render-text (label "order" "tags" tag))))
+
 (defun order-entry (order)
+  "ORDER as an entry of the calendar, and its sort key.  Its labels are copy,
+in the tenant's language: PACKED, the status's label, the tags' in upper case."
   (let* ((logistics (order-logistics-object order))
-         (labels (append (and (order-packed-p order) (list "PAKKET"))
+         (labels (append (and (order-packed-p order) (list (tr "PACKED")))
                          (list (status-label (order-status order)))
-                         (mapcar #'string-upcase (order-tags order)))))
+                         (mapcar #'tag-label (order-tags order)))))
     (values (jobj "kind" "order" "id" (entity-id order)
                   "start_date" (order-event-date order) "end_date" (order-last-date order)
                   "title" (customer-name-of order)
@@ -114,7 +123,7 @@
 (defun event-entry (event)
   (values (jobj "kind" "event" "id" (entity-id event)
                 "start_date" (calendar-event-start-date event) "end_date" (calendar-event-end-date event)
-                "title" (calendar-event-title event) "labels" (jarr (list "Hendelse"))
+                "title" (calendar-event-title event) "labels" (jarr (list (tr "Event")))
                 "description" (or (calendar-event-description event) :null)
                 "order_id" (or (calendar-event-order-id event) :null)
                 "order_status" (linked-order-status event))
@@ -141,15 +150,19 @@ time after those with one), then creation."
 
 (defun check-calendar-period (from to)
   (when (date< to from)
-    (fail :invalid-input "Til dato (~a) er før fra dato (~a)" to from))
+    (fail :invalid-input "The to date (~a) is before the from date (~a)" to from))
   (when (date< (date-add-days from *calendar-list-max-days*) to)
-    (fail :invalid-input "Perioden kan være høyst ~d dager" *calendar-list-max-days*)))
+    (fail :invalid-input "The period can be at most ~d days" *calendar-list-max-days*)))
 
-(define-operation calendar-list ((from :type date :required t :label "Fra dato")
-                                 (to :type date :required t :label "Til dato")
-                                 (mine :type boolean :label "Mine" :description "Bare ordrer du er tildelt."))
-    (:entity calendar-event :kind :read :title "Kalender"
-     :description "Kalenderen for perioden (høyst 366 dager, høyst 1000 oppføringer; flere gir truncated): aktive ordrer (utkast til bekreftet) med dato som overlapper, og hendelser (bare for admin), sortert på startdato, utleveringstid, returtid og opprettelse. Utilgjengelighet vises ikke her.")
+(define-operation calendar-list ((from :type date :required t :label "From date")
+                                 (to :type date :required t :label "To date")
+                                 (mine :type boolean :label "Mine"
+                                       :description "Only the orders you are assigned to."))
+    (:entity calendar-event :kind :read :title "Calendar"
+             :description "The calendar of the period (at most 366 days, at most 1000 entries; more
+gives truncated): the active orders (draft to confirmed) whose dates overlap it, and the events (for
+an admin only), sorted by start date, delivery time, return time and creation. Unavailability is not
+shown here.")
   (check-calendar-period from to)
   (let* ((me (and mine (actor-employee)))
          (mine-ids (and me (mapcar #'assignment-order-id (active-assignments :employee-id (entity-id me)))))

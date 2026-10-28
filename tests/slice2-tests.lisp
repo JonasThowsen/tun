@@ -28,7 +28,7 @@
       (is (equal '("created") (task-events id)))
       (is (string= tor (jget (aref (jget (call-ok "task_events_list" "viewer:v" "id" id) "items") 0) "recipient_id")))
       ;; Validation: nothing stored.
-      (is-error "invalid_input" "Ansvarlig må tilhøre samme avdeling som lageroppgaven"
+      (is-error "invalid_input" "The assignee must belong to the warehouse task's department"
                 (call "tasks_create" "admin:a" "department" "nord" "title" "Feil" "assignee_id" kim))
       (is-error "invalid_input" nil (call "tasks_create" "admin:a" "department" "nord" "title" "x"))
       (is-error "invalid_input" nil (call "tasks_create" "admin:a" "department" "nord"
@@ -42,7 +42,7 @@
       ;; Stale revisions; update; assign.
       (is-error "conflict" nil (call "tasks_update" "admin:a" "id" id "revision" 9 "title" "Ny"))
       (is (= 2 (jget (call-ok "tasks_update" "admin:a" "id" id "revision" 1 "title" "Telle alle beger") "revision")))
-      (is-error "invalid_input" "Oppgaven er allerede tildelt denne personen"
+      (is-error "invalid_input" "The task is already assigned to this person"
                 (call "tasks_assign" "admin:a" "id" id "revision" 2 "assignee_id" tor))
       (call-ok "tasks_assign" "admin:a" "id" id "revision" 2 "assignee_id" tea)
       (let ((unassigned (call-ok "tasks_assign" "admin:a" "id" id "revision" 3 "assignee_id" :null))
@@ -51,10 +51,10 @@
         (is (equal '("changed" t) (list (jget last "kind") (jget (jget last "details") "assignment_removed")))))
       (call-ok "tasks_assign" "admin:a" "id" id "revision" 4 "assignee_id" tea)
       ;; Completion: the assignee, in the department, at the current revision.
-      (is-error "forbidden" "Bare nåværende ansvarlig kan fullføre lageroppgaven"
+      (is-error "forbidden" "Only the current assignee can complete the warehouse task"
                 (call "tasks_complete" "employee:tor" "id" id "revision" 5))
       (call-ok "employees_update" "admin:a" "id" tea "department" "sør")
-      (is-error "forbidden" "Du må tilhøre samme avdeling som lageroppgaven for å fullføre den"
+      (is-error "forbidden" "You must belong to the warehouse task's department to complete it"
                 (call "tasks_complete" "employee:tea" "id" id "revision" 5))
       (call-ok "employees_update" "admin:a" "id" tea "department" "nord")
       (is-error "conflict" nil (call "tasks_complete" "employee:tea" "id" id "revision" 4))
@@ -125,7 +125,7 @@
           (is (equal '("approved" "approved" "admin:a" "Greit")
                      (list (jget ok "result") (jget (jget ok "review") "status") (jget (jget ok "review") "reviewed_by")
                            (jget (jget ok "review") "note")))))
-        (is-error "invalid_transition" "Gjennomgangen er allerede behandlet"
+        (is-error "invalid_transition" "The review has already been handled"
                   (call "reviews_resolve" "admin:a" "id" a "decision" "reject"))
         (is (equal '("superseded" "Utdatert")
                    (let ((r (call-ok "reviews_resolve" "admin:a" "id" c "decision" "approve")))
@@ -195,14 +195,14 @@
 (test the-balance-is-a-ledger-projection
   (with-test-app (:class 'departments-app)
     (let ((sb (make-article "Slushbeger" "opening_balance" 100 "sku" "SB-1" "package_size" 50)))
-      (is (equal '((1 "aapning" 100 100)) (ledger-of sb)) "the opening is one aapning row")
-      (is (equal '((1 "aapning" 0 0)) (ledger-of (make-article "Null"))) "an opening of 0 is a row too")
+      (is (equal '((1 "opening" 100 100)) (ledger-of sb)) "the opening is one aapning row")
+      (is (equal '((1 "opening" 0 0)) (ledger-of (make-article "Null"))) "an opening of 0 is a row too")
       (call-ok "inventory_receive" "employee:e" "article_id" sb "quantity" 10)
       (call-ok "inventory_adjust" "admin:a" "article_id" sb "delta" -2 "reason" "Knust")
       (call-ok "articles_recount" "admin:a" "article_id" sb "quantity" 42.5 "reason" "Telling")
       (call-ok "inventory_receive" "employee:e" "article_id" sb "quantity" 5)
-      (is (equal '((5 "mottak" 5 47.5d0) (4 "telling" 42.5d0 42.5d0) (3 "justering" -2 108) (2 "mottak" 10 110)
-                   (1 "aapning" 100 100))
+      (is (equal '((5 "receipt" 5 47.5d0) (4 "recount" 42.5d0 42.5d0) (3 "adjustment" -2 108) (2 "receipt" 10 110)
+                   (1 "opening" 100 100))
                  (ledger-of sb)))
       (let ((article (call-ok "articles_get" "viewer:v" "id" sb)))
         (is (equal '(47.5d0 5) (list (jget article "balance") (jget article "movement_revision")))))
@@ -214,14 +214,14 @@
                                           "supplier" (jobj "order_url" "https://ola:pw@grossist.example.no/")))
       (is-error "invalid_input" nil (call "articles_create" "admin:a" "name" "Pakning" "unit" "stk" "package_size" 0))
       (is-error "insufficient_stock" nil (call "inventory_adjust" "admin:a" "article_id" sb "delta" -100 "reason" "x"))
-      (is-error "invalid_input" "Oppgi årsaken til lagerkorrigeringen"
+      (is-error "invalid_input" "Give the reason for the stock correction"
                 (call "articles_recount" "admin:a" "article_id" sb "quantity" 1))
       (is (= 5 (length (ledger-of sb))))
       ;; Archived: no receipt, adjustment or recount; reactivated by update.
       (call-ok "articles_archive" "admin:a" "id" sb)
-      (is-error "invalid_input" "Lagerartikkelen er arkivert"
+      (is-error "invalid_input" "The stock article is archived"
                 (call "inventory_receive" "employee:e" "article_id" sb "quantity" 1))
-      (is-error "invalid_input" "Lagerartikkelen er arkivert"
+      (is-error "invalid_input" "The stock article is archived"
                 (call "articles_recount" "admin:a" "article_id" sb "quantity" 1 "reason" "x"))
       (is (null (find sb (map 'list (lambda (a) (jget a "id")) (jget (call-ok "articles_list" "viewer:v") "items"))
                       :test #'equal)))
@@ -229,10 +229,10 @@
       (call-ok "inventory_receive" "employee:e" "article_id" sb "quantity" 1)
       ;; A stock-tracked product's article: no opening row;
       ;; two products may share one article.
-      (let* ((cup (call-ok "products_create" "employee:e" "name" "Plastkopp" "kind" "forbruk" "unit" "stk"
-                           "unit_price_ore" 300 "stock_tracked" t))
-             (pack (jget (call-ok "products_create" "employee:e" "name" "Plastkopp pakke" "kind" "forbruk" "unit" "stk"
-                                  "unit_price_ore" 3000 "stock_tracked" nil) "id"))
+      (let* ((cup (call-ok "products_create" "employee:e" "name" "Plastkopp" "kind" "consumable" "unit" "stk"
+                           "unit_price_minor" 300 "stock_tracked" t))
+             (pack (jget (call-ok "products_create" "employee:e" "name" "Plastkopp pakke" "kind" "consumable" "unit" "stk"
+                                  "unit_price_minor" 3000 "stock_tracked" nil) "id"))
              (article (jget cup "article_id")))
         (is (stringp article))
         (is (null (ledger-of article)))
@@ -242,17 +242,77 @@
         (is (= 7 (jget (call-ok "inventory_balance" "viewer:v" "product_id" pack) "on_hand")))
         (is-error "invalid_input" nil (call "inventory_receive" "employee:e" "product_id"
                                             (jget (call-ok "products_create" "employee:e" "name" "Tjeneste"
-                                                           "kind" "tjeneste" "unit" "time" "unit_price_ore" 1
+                                                           "kind" "service" "unit" "time" "unit_price_minor" 1
                                                            "stock_tracked" nil) "id")
                                             "quantity" 1))))))
+
+;;; ------------------------------------------------------------------
+;;; The catalog's, inventory's and reviews' copy on a Norwegian tenant
+;;; (spec/i18n.md 3.5, 3.7)
+
+(defun tenant-refusal (tool actor &rest arguments)
+  "Values the message of TOOL's refusal as a page of the tenant writes it, in
+the tenant's language, and the texts it found no translation for."
+  (let ((missing '()))
+    (handler-case (progn (call-tool tool (apply #'jobj arguments) :application *app*
+                                    :actor (parse-actor actor))
+                         (values nil '()))
+      (operation-error (e)
+        (let ((*locale* (request-locale *app*))
+              (*missing-translation-hook* (lambda (language source context)
+                                            (declare (ignore language))
+                                            (push (list source context) missing))))
+          (values (operation-error-message e) missing))))))
+
+(defun tenant-label (entity field value)
+  "The label of VALUE of ENTITY's FIELD, as a page of the tenant writes it."
+  (let ((*locale* (request-locale *app*)))
+    (render-text (label entity field value))))
+
+(test stock-and-catalog-copy-is-in-the-tenants-language
+  (with-test-app ()
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (let* ((cup (make-article "Kopp" "opening_balance" 5))
+           (opening (aref (jget (call-ok "inventory_movements" "viewer:v" "article_id" cup) "items")
+                          0)))
+      (is (equal "Åpningsbeholdning" (jget opening "reason"))
+          "the reason Tun stores is written in the tenant's language, over MCP too")
+      (is (equal '("Talt mengde kan ikke være negativ" nil)
+                 (multiple-value-list
+                  (tenant-refusal "articles_recount" "admin:a" "article_id" cup "quantity" -1
+                                  "reason" "Telling"))))
+      (is (equal "Åpning" (tenant-label "inventory_movement" "kind" "opening"))))
+    (is (equal '("Ukjent avdeling nord (gyldige: )" nil)
+               (multiple-value-list
+                (tenant-refusal "products_transfer" "admin:a" "id" (make-product)
+                                "department" "nord" "note" "Flytter"))))
+    (multiple-value-bind (message missing)
+        (tenant-refusal "products_create" "employee:e" "name" "Maskin" "kind" "rental"
+                        "unit" "stk" "unit_price_minor" 100 "stock_tracked" nil
+                        "manual_url" "ftp://bruksanvisning")
+      (is (search "Bruksanvisningen må ha en gyldig http(s)-adresse" message) "a rule's message: ~a"
+          message)
+      (is (null missing)))
+    (is (equal "Utleie" (tenant-label "product" "kind" "rental")))))
+
+(test review-copy-is-in-the-tenants-language
+  (with-test-app (:class 'zz-review-app)
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (let ((review (request-test-review "zz_test" "p1")))
+      (call-ok "reviews_resolve" "admin:a" "id" review "decision" "reject")
+      (is (equal '("Gjennomgangen er allerede behandlet" nil)
+                 (multiple-value-list
+                  (tenant-refusal "reviews_resolve" "admin:a" "id" review "decision" "approve"))))
+      (is (equal "Avvist" (tenant-label "review" "status" "rejected"))
+          "the status's own word, not the plain label's"))))
 
 (test an-older-databases-stock-is-adopted-at-start
   ;; An older core kept the balance in the product's stock level;
   ;; the database is made to look like one it wrote.
   (let ((db (scratch-path "s2-adopt")) product)
     (with-test-app (:db db)
-      (setf product (jget (call-ok "products_create" "employee:e" "name" "Popcornbeger" "kind" "forbruk" "unit" "stk"
-                                   "unit_price_ore" 500 "stock_tracked" t) "id"))
+      (setf product (jget (call-ok "products_create" "employee:e" "name" "Popcornbeger" "kind" "consumable" "unit" "stk"
+                                   "unit_price_minor" 500 "stock_tracked" t) "id"))
       (call-ok "inventory_receive" "employee:e" "product_id" product "quantity" 30)
       (call-ok "inventory_adjust" "admin:a" "product_id" product "delta" -4 "reason" "Svinn")
       (with-application (*app*)
@@ -265,7 +325,7 @@
     (with-test-app (:db db)
       (let ((balance (call-ok "inventory_balance" "viewer:v" "product_id" product)))
         (is (equal '(26 0 26) (list (jget balance "on_hand") (jget balance "reserved") (jget balance "available"))))
-        (is (equal '((2 "justering" -4 26) (1 "mottak" 30 30)) (ledger-of (jget balance "article_id"))))
+        (is (equal '((2 "adjustment" -4 26) (1 "receipt" 30 30)) (ledger-of (jget balance "article_id"))))
         (is (equal "system:migration"
                    (jget (aref (jget (call-ok "inventory_movements" "viewer:v" "product_id" product) "items") 0) "by")))))
     (is (null (preflight-findings db)) "an untouched adoption is what the older core reads")
@@ -294,26 +354,26 @@
            (r1 (jget (call-ok "recipes_create" "admin:a" "name" "Jordbær"
                               "lines" (jarr (list (jobj "article_id" syrup "quantity" 0.05)))) "id"))
            (group (jget (call-ok "choice_groups_create" "admin:a" "name" "Smaker" "members" (jarr (list r1))) "id"))
-           (product (make-product :name "Prøve" :kind "tjeneste")))
+           (product (make-product :name "Prøve" :kind "service")))
       (flet ((refused (message &rest requirement)
                (is-error "invalid_input" message (set-reqs product (apply #'jobj requirement)))))
-        (refused "Fyll inn mengde og hva kravet beregnes fra" "target" (jobj "kind" "article" "id" cup) "basis" "per_line")
-        (refused "Fyll inn mengde og hva kravet beregnes fra" "target" (jobj "kind" "article" "id" cup) "quantity" 1)
-        (refused "Fyll inn mengde og hva kravet beregnes fra" "target" (jobj "kind" "article" "id" cup) "quantity" 0
+        (refused "Fill in the quantity and what the requirement is calculated from" "target" (jobj "kind" "article" "id" cup) "basis" "per_line")
+        (refused "Fill in the quantity and what the requirement is calculated from" "target" (jobj "kind" "article" "id" cup) "quantity" 1)
+        (refused "Fill in the quantity and what the requirement is calculated from" "target" (jobj "kind" "article" "id" cup) "quantity" 0
                  "basis" "per_line")
-        (refused "Velg en lagerartikkel for dette kravet" "target" (jobj "kind" "article") "quantity" 1 "basis" "per_line")
-        (refused "Velg en oppskrift for dette kravet" "target" (jobj "kind" "recipe") "quantity" 1 "basis" "per_line")
-        (refused "Velg en oppskriftgruppe for dette kravet" "target" (jobj "kind" "choice_group") "quantity" 1
+        (refused "Choose a stock article for this requirement" "target" (jobj "kind" "article") "quantity" 1 "basis" "per_line")
+        (refused "Choose a recipe for this requirement" "target" (jobj "kind" "recipe") "quantity" 1 "basis" "per_line")
+        (refused "Choose a choice group for this requirement" "target" (jobj "kind" "choice_group") "quantity" 1
                  "basis" "per_serving" "picks" 1)
-        (refused "Antall valg må være minst 1" "target" (jobj "kind" "choice_group" "id" group) "quantity" 1
+        (refused "The number of choices must be at least 1" "target" (jobj "kind" "choice_group" "id" group) "quantity" 1
                  "basis" "per_serving" "picks" 0)
-        (refused "Antall valg må være minst 1" "target" (jobj "kind" "choice_group" "id" group) "quantity" 1
+        (refused "The number of choices must be at least 1" "target" (jobj "kind" "choice_group" "id" group) "quantity" 1
                  "basis" "per_serving")
-        (refused "Antall valg er kun tillatt for valggruppe-krav" "target" (jobj "kind" "article" "id" cup)
+        (refused "A number of choices is allowed only on a choice group requirement" "target" (jobj "kind" "article" "id" cup)
                  "quantity" 1 "basis" "per_line" "picks" 2)
-        (refused "Valggruppe-krav må beregnes per porsjon" "target" (jobj "kind" "choice_group" "id" group)
+        (refused "A choice group requirement must be calculated per serving" "target" (jobj "kind" "choice_group" "id" group)
                  "quantity" 1 "basis" "per_line" "picks" 2)
-        (refused "Mengder kan ha høyst tre desimaler" "target" (jobj "kind" "article" "id" cup) "quantity" 0.0005
+        (refused "Quantities can have at most three decimals" "target" (jobj "kind" "article" "id" cup) "quantity" 0.0005
                  "basis" "per_line"))
       (is-error "not_found" nil (set-reqs product (req "article" "art_nope" 1 "per_line")))
       (is-error "forbidden" nil (call "products_set_requirements" "employee:e" "product_id" product
@@ -390,21 +450,21 @@
                    (handler-case (progn (tun.catalog:check-line-choices slush quantity servings choices) nil)
                      (operation-error (e) (operation-error-message e)))))))
         (is (null (check 1 200 choices)))
-        (is (equal "Ordrelinjer med valggruppekrav må ha antall 1. Legg til én linje per enhet." (check 2 200 choices)))
-        (is (equal "Smaker krever 2 valg (1 valgt)" (check 1 200 (jobj (funcall rid 0) (jarr (list (jget rj "id")))))))
-        (is (equal "Smaker krever 2 valg (0 valgt)" (check 1 200 nil)) "missing choices count as zero picks")
-        (is (equal "Porsjoner må deles likt på 2 valg" (check 1 201 choices)))
-        (is (equal "Smaker inneholder ugyldige valg"
+        (is (equal "An order line with a choice group requirement must have quantity 1. Add one line per unit." (check 2 200 choices)))
+        (is (equal "Smaker needs 2 choices (1 chosen)" (check 1 200 (jobj (funcall rid 0) (jarr (list (jget rj "id")))))))
+        (is (equal "Smaker needs 2 choices (0 chosen)" (check 1 200 nil)) "missing choices count as zero picks")
+        (is (equal "The servings must be shared evenly between 2 choices" (check 1 201 choices)))
+        (is (equal "Smaker holds choices that are not valid"
                    (check 1 200 (jobj (funcall rid 0) (jarr (list (jget rj "id") (jget ri "id")))))))
         (call-ok "recipes_archive" "admin:a" "id" (jget rb "id"))
-        (is (equal "Smaker inneholder ugyldige valg" (check 1 200 choices)) "an archived pick")))))
+        (is (equal "Smaker holds choices that are not valid" (check 1 200 choices)) "an archived pick")))))
 
 (test lite-recipes-resolve-to-ceil-per-100
   (with-test-app ()
-    (let* ((beger (call-ok "products_create" "employee:e" "name" "Beger" "kind" "forbruk" "unit" "stk"
-                           "unit_price_ore" 500 "stock_tracked" t))
-           (kjerner (call-ok "products_create" "employee:e" "name" "Kjerner" "kind" "forbruk" "unit" "pose"
-                             "unit_price_ore" 15000 "stock_tracked" t))
+    (let* ((beger (call-ok "products_create" "employee:e" "name" "Beger" "kind" "consumable" "unit" "stk"
+                           "unit_price_minor" 500 "stock_tracked" t))
+           (kjerner (call-ok "products_create" "employee:e" "name" "Kjerner" "kind" "consumable" "unit" "pose"
+                             "unit_price_minor" 15000 "stock_tracked" t))
            (machine (make-product :name "Popcornmaskin")))
       (with-application (*app*)
         (with-transaction (:write)
@@ -462,7 +522,7 @@
       ;; A requirement-neutral edit keeps the plan; an edit in utkast activates.
       (let ((o (call-ok "orders_get" "viewer:v" "id" order)))
         (is (= 2 (jget (call-ok "orders_update" "employee:e" "id" order "revision" (jget o "revision")
-                                "tags" (jarr (list "utleie")))
+                                "tags" (jarr (list "rental")))
                        "revision"))))
       (is (equal '((1 "active" "automatic")) (plans-of order)))
       (call-ok "orders_update" "employee:e" "id" order "revision" 2
@@ -509,7 +569,7 @@
         (is (= 48 (reserved-of cup)))
         (is (equal '(48) (map 'list (lambda (i) (jget i "computed_quantity"))
                               (jget (call-ok "checklists_list" "viewer:v" "order_id" order) "items"))))
-        (is-error "invalid_transition" "Gjennomgangen er allerede behandlet"
+        (is-error "invalid_transition" "The review has already been handled"
                   (call "reviews_resolve" "admin:a" "id" review-id "decision" "approve")))
       ;; Rule 1: back to the active snapshot supersedes a proposal and its review.
       (call-ok "products_set_requirements" "admin:a" "product_id" machine
@@ -567,34 +627,34 @@
           ;; Stale: the order left bekreftet; the catalog changed after the proposal.
           (let ((review (review-of stale-status)))
             (call-ok "orders_reactivate" "employee:e" "id" stale-status)
-            (is (equal '("superseded" "Ordrestatusen tillater ikke lenger godkjenning")
+            (is (equal '("superseded" "The order's status no longer allows approval")
                        (let ((r (call-ok "reviews_resolve" "admin:a" "id" review "decision" "approve")))
                          (list (jget r "result") (jget r "reason"))))))
           (let ((review (review-of stale-catalog)))
             (call-ok "products_set_requirements" "admin:a" "product_id" machine
                      "requirements" (jarr (list (jobj "id" rid "target" (jobj "kind" "article" "id" cup) "quantity" 13
                                                       "basis" "per_quantity"))))
-            (is (equal '("superseded" "Katalogen eller ordren er endret etter forslaget")
+            (is (equal '("superseded" "The catalog or the order has changed since the proposal")
                        (let ((r (call-ok "reviews_resolve" "admin:a" "id" review "decision" "approve")))
                          (list (jget r "result") (jget r "reason"))))))
           ;; Rule 2 on edit; the correction.
-          (is-error "invalid_input" "Ordren har lagerforbruk og krever en eksplisitt korrigering" (set-quantity consumed 2))
-          (is-error "invalid_transition" "Det finnes ingen registrert lagerforbruk å korrigere"
+          (is-error "invalid_input" "The order has stock consumption and needs an explicit correction" (set-quantity consumed 2))
+          (is-error "invalid_transition" "There is no registered stock consumption to correct"
                     (two-step "orders_correct_plan" "admin:a" "id" soon "note" "x"))
           (is-error "forbidden" nil (call "orders_correct_plan" "employee:e" "id" consumed "note" "x"))
-          (is-error "invalid_input" "Oppgi en merknad for korrigeringen"
+          (is-error "invalid_input" "Give a note for the correction"
                     (two-step "orders_correct_plan" "admin:a" "id" consumed "note" "  "))
           (let* ((before (call-ok "orders_get" "viewer:v" "id" consumed))
                  (done (two-step "orders_correct_plan" "admin:a" "id" consumed "note" "Ny oppskrift")))
             (is (= (1+ (jget before "revision")) (jget done "revision")))
-            (is (= (jget before "total_ore") (jget done "total_ore")) "pricing is never touched")
+            (is (= (jget before "total_minor") (jget done "total_minor")) "pricing is never touched")
             (is (equal '(2 "active" "correction") (first (plans-of consumed))))
             (is (= 13 (jget (aref (jget (call-ok "inventory_movements" "viewer:v" "article_id" cup "limit" 1) "items") 0)
                             "quantity"))
                 "consumption re-synced at the new revision")
             (is (equal "corrected" (last-impact-status consumed)))
             (is (equal '(2 :null nil t nil) (plan-state-of consumed))))
-          (is-error "invalid_transition" "Det finnes ingen ny kravendring å korrigere"
+          (is-error "invalid_transition" "There is no new change of requirements to correct"
                     (two-step "orders_correct_plan" "admin:a" "id" consumed "note" "igjen")))))))
 
 (test catalog-impact-reaches-future-orders-each-independently
@@ -624,9 +684,9 @@
                  (map 'list (lambda (i) (list (jget i "status") (jget i "detail") (jget i "plan_revision")))
                       (remove change (coerce (jget (call-ok "plan_impacts_list" "viewer:v" "order_id" order) "items") 'list)
                               :key (lambda (i) (jget i "catalog_change_id")) :test-not #'equal))))
-          (is (equal '(("conflict" "Ordren har lagerforbruk og krever en eksplisitt korrigering" :null)) (impacts consumed)))
-          (is (equal '(("applied" "Ny kravplan aktivert automatisk" 2)) (impacts draft)) "one conflict blocks no other")
-          (is (equal '(("proposed" "Forslag opprettet for gjennomgang" 2)) (impacts confirmed)))
+          (is (equal '(("conflict" "The order has stock consumption and needs an explicit correction" :null)) (impacts consumed)))
+          (is (equal '(("applied" "A new requirement plan was activated automatically" 2)) (impacts draft)) "one conflict blocks no other")
+          (is (equal '(("proposed" "A proposal was made for review" 2)) (impacts confirmed)))
           (is (equal '(nil nil nil) (list (impacts past) (impacts dateless) (impacts cancelled)))
               "past, dateless and closed orders are left alone")
           (is (= 11 (jget (aref (jget (call-ok "orders_get" "viewer:v" "id" draft) "requirements") 0) "quantity"))))))))
@@ -634,9 +694,9 @@
 ;;; ------------------------------------------------------------------
 ;;; Consumption (inventory README §6, orders README §10)
 
-(defun forbruk-of (article order)
+(defun consumption-of (article order)
   (map 'list (lambda (m) (list (jget m "quantity") (jget m "balance_updated")))
-       (remove-if-not (lambda (m) (and (equal "forbruk" (jget m "kind")) (equal order (jget m "order_id"))))
+       (remove-if-not (lambda (m) (and (equal "consumption" (jget m "kind")) (equal order (jget m "order_id"))))
                       (coerce (jget (call-ok "inventory_movements" "viewer:v" "article_id" article "limit" 100) "items")
                               'list))))
 
@@ -654,22 +714,22 @@
         (is (equal '(100 0.5d0) (list (reserved-of cup) (reserved-of kernel))) "the active plan is reserved")
         (let ((picked (call-ok "orders_register_pickup" "employee:e" "id" k1 "condition" "ok")))
           (is (eq t (jget (jget picked "plan") "consumption_applied"))))
-        (is (equal '((100 t)) (forbruk-of cup k1)) "one row per article at pickup")
+        (is (equal '((100 t)) (consumption-of cup k1)) "one row per article at pickup")
         (is (equal '(400 9.5d0 0 0) (list (balance-of cup) (balance-of kernel) (reserved-of cup) (reserved-of kernel))))
         (let ((row (aref (jget (call-ok "inventory_movements" "viewer:v" "article_id" cup "limit" 1) "items") 0)))
-          (is (equal (list "Reservert for ordre" k1 "employee:e")
+          (is (equal (list "Reserved for order" k1 "employee:e")
                      (list (jget row "reason") (jget row "order_id") (jget row "by")))))
         (call-ok "orders_register_return" "employee:e" "id" k1 "condition" "ok")
         (call-ok "orders_ready_for_invoice" "employee:e" "id" k1)
         (call-ok "orders_complete" "employee:e" "id" k1)
-        (is (equal '(((100 t)) 400) (list (forbruk-of cup k1) (balance-of cup))) "completion after pickup adds nothing"))
+        (is (equal '(((100 t)) 400) (list (consumption-of cup k1) (balance-of cup))) "completion after pickup adds nothing"))
       ;; Completion from bekreftet consumes; reopen does not reverse; again nothing.
       (let ((k2 (confirmed-order customer machine "2026-06-02")))
         (call-ok "orders_complete" "employee:e" "id" k2)
         (two-step "orders_reopen" "admin:a" "id" k2)
         (is (equal '(300 0) (list (balance-of cup) (reserved-of cup))) "consumed, reopened: nothing reserved")
         (call-ok "orders_complete" "employee:e" "id" k2)
-        (is (equal '(((100 t)) 300) (list (forbruk-of cup k2) (balance-of cup)))))
+        (is (equal '(((100 t)) 300) (list (consumption-of cup k2) (balance-of cup)))))
       ;; insufficient_stock aborts the pickup and changes nothing.
       (let ((k3 (confirmed-order customer machine "2026-06-03")))
         (call-ok "products_set_requirements" "admin:a" "product_id" machine
@@ -677,8 +737,8 @@
         ;; An own change of the snapshot activates it (a neutral edit would not, 13.2.23).
         (set-quantity k3 2)
         (is-error "insufficient_stock" nil (call "orders_register_pickup" "employee:e" "id" k3 "condition" "ok"))
-        (is (equal (list "bekreftet" nil 300)
-                   (list (jget (call-ok "orders_get" "viewer:v" "id" k3) "status") (forbruk-of cup k3) (balance-of cup))))
+        (is (equal (list "confirmed" nil 300)
+                   (list (jget (call-ok "orders_get" "viewer:v" "id" k3) "status") (consumption-of cup k3) (balance-of cup))))
         (two-step "orders_cancel" "employee:e" "id" k3))
       (call-ok "products_set_requirements" "admin:a" "product_id" machine
                "requirements" (jarr (list (req "article" cup 100 "per_quantity") (req "article" kernel 0.5 "per_quantity"))))
@@ -690,13 +750,13 @@
         (call-ok "orders_register_return" "employee:e" "id" k4 "condition" "ok")
         (call-ok "orders_ready_for_invoice" "employee:e" "id" k4)
         (two-step "orders_cancel" "employee:e" "id" k4)
-        (is (equal '(150 9 nil nil) (list (balance-of cup) (balance-of kernel) (forbruk-of cup k4) (forbruk-of kernel k4))))
+        (is (equal '(150 9 nil nil) (list (balance-of cup) (balance-of kernel) (consumption-of cup k4) (consumption-of kernel k4))))
         (is (eq nil (jget (jget (call-ok "orders_get" "viewer:v" "id" k4) "plan") "consumption_applied"))))
       ;; Archived articles are still consumed and reversed.
       (let ((k5 (confirmed-order customer machine "2026-06-05")))
         (call-ok "articles_archive" "admin:a" "id" kernel)
         (call-ok "orders_complete" "employee:e" "id" k5)
-        (is (equal '((0.5d0 t)) (forbruk-of kernel k5)))
+        (is (equal '((0.5d0 t)) (consumption-of kernel k5)))
         (two-step "orders_reopen" "admin:a" "id" k5)
         (two-step "orders_cancel" "employee:e" "id" k5)
         (is (= 9 (balance-of kernel)))))))
@@ -716,20 +776,20 @@
                                           :ok)
                        (operation-error (e) (operation-error-code e))))))))
         (is (eq :ok (sync 3 "2026-06-01" 10)))
-        (is (equal '(90 ((10 t))) (list (balance-of cup) (forbruk-of cup "ord_test"))))
+        (is (equal '(90 ((10 t))) (list (balance-of cup) (consumption-of cup "ord_test"))))
         (sync 2 "2026-06-01" 50)
         (sync 3 "2026-05-01" 50)
         (sync 3 "2026-06-01" 10)
-        (is (equal '(90 ((10 t))) (list (balance-of cup) (forbruk-of cup "ord_test"))) "older and repeated: no-ops")
+        (is (equal '(90 ((10 t))) (list (balance-of cup) (consumption-of cup "ord_test"))) "older and repeated: no-ops")
         (is (eq :conflict (sync 3 "2026-06-01" 20)))
         (is (eq :ok (sync 4 "2026-06-01" 20)))
-        (is (equal '(80 ((20 t))) (list (balance-of cup) (forbruk-of cup "ord_test"))) "replaced wholesale")
+        (is (equal '(80 ((20 t))) (list (balance-of cup) (consumption-of cup "ord_test"))) "replaced wholesale")
         (call-ok "articles_recount" "admin:a" "article_id" cup "quantity" 70 "reason" "Telling")
         (is (eq :ok (sync 5 "2026-06-01" 25)))
-        (is (equal '(70 ((25 nil))) (list (balance-of cup) (forbruk-of cup "ord_test")))
+        (is (equal '(70 ((25 nil))) (list (balance-of cup) (consumption-of cup "ord_test")))
             "after a recount the row does not deduct")
         (is (eq :ok (sync 6 "2026-06-01" nil)))
-        (is (equal '(70 nil) (list (balance-of cup) (forbruk-of cup "ord_test"))) "a row that did not deduct restores nothing")))))
+        (is (equal '(70 nil) (list (balance-of cup) (consumption-of cup "ord_test"))) "a row that did not deduct restores nothing")))))
 
 ;;; ------------------------------------------------------------------
 ;;; Forecast, shortages, suggestions; capacity and grid
@@ -745,7 +805,7 @@
                                 "supplier" (jobj "name" "Grossisten AS")))
            (lids (make-article "Lokk" "opening_balance" 20 "min_level" 30 "package_size" 100))
            (machine (make-product :name "Sukkerspinn" :units-owned 99))
-           (lidset (make-product :name "Lokksett" :kind "tjeneste"))
+           (lidset (make-product :name "Lokksett" :kind "service"))
            (customer (make-customer)))
       (call-ok "products_set_requirements" "admin:a" "product_id" machine
                "requirements" (jarr (list (req "article" sugar 10 "per_quantity"))))
@@ -804,10 +864,10 @@
            (a (confirmed-order customer castle "2026-06-10"))
            (b (confirmed-order customer castle "2026-06-10")))
       (declare (ignore b))
-      (is-error "invalid_input" "Antall enheter kan ikke settes til 1; opptil 2 er allerede booket i aktive ordrer."
+      (is-error "invalid_input" "The units owned cannot be set to 1; up to 2 are already booked in active orders."
                 (call "products_update" "employee:e" "id" castle "units_owned" 1))
-      (is-error "invalid_input" "Tilgjengelighet kan ikke deaktiveres mens opptil 2 er booket i aktive ordrer."
-                (call "products_update" "employee:e" "id" castle "kind" "tjeneste"))
+      (is-error "invalid_input" "Availability cannot be turned off while up to 2 are booked in active orders."
+                (call "products_update" "employee:e" "id" castle "kind" "service"))
       (is (= 2 (jget (call-ok "products_update" "employee:e" "id" castle "units_owned" 2) "units_owned")))
       (let ((days (jget (aref (jget (call-ok "inventory_availability_grid" "viewer:v" "from" "2026-06-09" "to" "2026-06-11"
                                              "product_ids" (jarr (list castle)))
@@ -842,7 +902,7 @@
       (catalog-pass "2026-03-01T09:01:00Z")
       (is (equal '(1 2 t nil nil) (plan-state-of order)))
       (let ((o (call-ok "orders_get" "viewer:v" "id" order)))
-        (call-ok "orders_update" "employee:e" "id" order "revision" (jget o "revision") "tags" (jarr (list "utleie"))))
+        (call-ok "orders_update" "employee:e" "id" order "revision" (jget o "revision") "tags" (jarr (list "rental"))))
       (is (equal '(1 2 t nil nil) (plan-state-of order)) "the proposal and its review stay")
       (is (= 10 (reserved-of cup)))
       (set-quantity order 2)
@@ -853,20 +913,20 @@
   ;; 13.2.24, 13.2.25
   (with-test-app ()
     (let* ((cup (make-article "Serviett" "opening_balance" 100))
-           (service (make-product :name "Servering" :kind "tjeneste"))
+           (service (make-product :name "Servering" :kind "service"))
            (customer (make-customer)))
       (call-ok "products_set_requirements" "admin:a" "product_id" service
                "requirements" (jarr (list (req "article" cup 10 "per_line"))))
       (let ((a (confirmed-order customer service "2026-06-01")))
         (call-ok "orders_ready_for_invoice" "employee:e" "id" a)
-        (is (equal '(90 ((10 t))) (list (balance-of cup) (forbruk-of cup a))) "invoicing readiness consumes without pickup")
+        (is (equal '(90 ((10 t))) (list (balance-of cup) (consumption-of cup a))) "invoicing readiness consumes without pickup")
         (call-ok "orders_complete" "employee:e" "id" a)
         (is (= 90 (balance-of cup)) "and completion adds nothing"))
       (let ((b (confirmed-order customer service "2026-06-02")))
         (call-ok "orders_complete" "employee:e" "id" b)
         (two-step "orders_reopen" "admin:a" "id" b)
         (call-ok "orders_reactivate" "employee:e" "id" b)
-        (is (equal '(90 nil) (list (balance-of cup) (forbruk-of cup b))))
+        (is (equal '(90 nil) (list (balance-of cup) (consumption-of cup b))))
         (is (eq nil (jget (jget (call-ok "orders_get" "viewer:v" "id" b) "plan") "consumption_applied")))
         (is (= 2 (jget (aref (jget (set-quantity b 2) "lines") 0) "quantity")) "editable again")))))
 
@@ -897,7 +957,7 @@
               (with-actor ((system-actor "test"))
                 (tun.workflows:run-due-workflows))))
           (is (equal before (mapcar #'impacts (cons unrelated referencing))) "no impact yet")
-          (is (find "katalog_endring" (coerce (jget (call-ok "introspect_workflows" "admin:a" "status" "planlagt") "items") 'list)
+          (is (find "catalog_change" (coerce (jget (call-ok "introspect_workflows" "admin:a" "status" "planned") "items") 'list)
                     :key (lambda (w) (jget w "kind")) :test #'equal)
               "the remaining work is planned for the next pass")
           (catalog-pass "2026-03-01T09:01:00Z")
@@ -933,11 +993,11 @@
            (article (call-ok "articles_get" "viewer:v" "id" tent)))
       (is (equal '("nord" 1) (list (jget article "department") (jget article "department_revision"))))
       (flet ((transfer (actor &rest args) (apply #'call "articles_transfer" actor "id" tent args)))
-        (is-error "invalid_input" "Velg avdelingen lageret skal overføres til"
+        (is-error "invalid_input" "Choose the department to transfer the stock to"
                   (transfer "admin:a" "note" "Flytting" "department_revision" 1))
-        (is-error "invalid_input" "Velg en annen avdeling"
+        (is-error "invalid_input" "Choose another department"
                   (transfer "admin:a" "department" "nord" "note" "Flytting" "department_revision" 1))
-        (is-error "invalid_input" "Oppgi årsaken til overføringen"
+        (is-error "invalid_input" "Give the reason for the transfer"
                   (transfer "admin:a" "department" "sør" "note" "  " "department_revision" 1))
         (is-error "invalid_input" nil (transfer "admin:a" "department" "trondheim" "note" "x" "department_revision" 1))
         (is-error "conflict" nil (transfer "admin:a" "department" "sør" "note" "Flytting" "department_revision" 0))
@@ -954,8 +1014,8 @@
                            records))
             "append-only, newest first"))
       (is-error "invalid_input" nil (call "articles_update" "admin:a" "id" tent "department" "sør"))
-      (let ((product (call-ok "products_create" "employee:e" "name" "Telt" "kind" "utleie" "unit" "stk"
-                              "unit_price_ore" 1000 "stock_tracked" nil "units_owned" 1)))
+      (let ((product (call-ok "products_create" "employee:e" "name" "Telt" "kind" "rental" "unit" "stk"
+                              "unit_price_minor" 1000 "stock_tracked" nil "units_owned" 1)))
         (is-error "invalid_input" nil (call "products_update" "employee:e" "id" (jget product "id") "department" "nord"))
         (let ((moved (call-ok "products_transfer" "admin:a" "id" (jget product "id") "department" "nord"
                               "note" "Eies av nord" "department_revision" (jget product "department_revision"))))
@@ -981,11 +1041,14 @@
     ;; Customers, a service order without requirements (an empty plan), a
     ;; plain product: what the slice 1 core reads the same way.
     (with-test-app (:db compatible :class 'departments-app)
-      (let ((service (make-product :name "Rørlegger" :kind "tjeneste")))
+      (let ((service (make-product :name "Rørlegger" :kind "service")))
         (confirmed-order (make-customer) service "2026-06-20")))
     (let ((findings (tun.runtime::rollback-preflight 'application compatible (slice1-registry-path))))
-      (is (= 1 (length findings)))
-      (is (search "delivery:" (caar findings))))
+      (is (search "delivery:" (caar findings)))
+      ;; Core 2.0 renamed the workflow statuses, which the older core cannot read.
+      (is (every (lambda (f) (or (search "delivery:" (car f)) (search "workflow.status = " (car f))))
+                 findings)
+          "~s" findings))
     (with-test-app (:db slice2 :class 'zz-slice2-app)
       (let* ((cup (make-article "Beger" "opening_balance" 100 "department" "nord"))
              (syrup (make-article "Sirup" "opening_balance" 10))
@@ -1014,7 +1077,7 @@
       (dolist (kind '("article: stock kept on an article" "plan: active plan with requirements"
                       "plan: proposed plan awaiting review" "review: pending review" "task: warehouse task"
                       "transfer: department transfer" "order.lines[].choices set"
-                      "inventory_movement.kind = aapning"))
+                      "inventory_movement.kind = opening"))
         (is (finding-count findings kind) "~a is counted: ~s" kind findings))
       (is (eql 2 (finding-count findings "article: ")) "both articles")
       (is (eql 1 (finding-count findings "order.lines[].choices set")) "the line with choices"))))

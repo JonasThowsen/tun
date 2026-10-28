@@ -173,11 +173,11 @@
     (let* ((items (coerce (jget (call-ok "introspect_workflows" "admin:ada" "limit" 1000) "items") 'list))
            (broken (find-by "kind" "test_broken" items))
            (pending (find-by "kind" "test_ping" items)))
-      (is (equal '("feilet" 1) (list (jget broken "status") (jget broken "attempts"))))
+      (is (equal '("failed" 1) (list (jget broken "status") (jget broken "attempts"))))
       (is (search "Malen finnes ikke" (jget broken "note")))
-      (is (equal '("planlagt" 0) (list (jget pending "status") (jget pending "attempts"))))
+      (is (equal '("planned" 0) (list (jget pending "status") (jget pending "attempts"))))
       (is (equal '("test_ping") (map 'list (lambda (w) (jget w "kind"))
-                                     (jget (call-ok "introspect_workflows" "admin:ada" "status" "planlagt") "items")))))
+                                     (jget (call-ok "introspect_workflows" "admin:ada" "status" "planned") "items")))))
     (let ((run (find "workflow:test_broken" (recent "errors") :key (lambda (i) (jget i "tool")) :test #'equal)))
       (is (not (null run)) "the failed run is its own request")
       (let ((trace (trace-of (jget run "request_id"))))
@@ -187,10 +187,10 @@
 (defun simple-order-catalog ()
   "Values customer, a one-unit rental, a service."
   (values (jget (call-ok "customers_create" "employee:anna" "name" "Kari" "email" "kari@example.no") "id")
-          (jget (call-ok "products_create" "employee:anna" "name" "Hoppeslott" "kind" "utleie" "unit" "stk"
-                         "unit_price_ore" 120000 "stock_tracked" nil "units_owned" 1) "id")
-          (jget (call-ok "products_create" "employee:anna" "name" "Oppsett" "kind" "tjeneste" "unit" "stk"
-                         "unit_price_ore" 30000 "stock_tracked" nil) "id")))
+          (jget (call-ok "products_create" "employee:anna" "name" "Hoppeslott" "kind" "rental" "unit" "stk"
+                         "unit_price_minor" 120000 "stock_tracked" nil "units_owned" 1) "id")
+          (jget (call-ok "products_create" "employee:anna" "name" "Oppsett" "kind" "service" "unit" "stk"
+                         "unit_price_minor" 30000 "stock_tracked" nil) "id")))
 
 (defun audit-count () (length (jget (call-ok "audit_list" "viewer:vera" "limit" 100) "items")))
 
@@ -208,7 +208,7 @@
         (is (= audits (audit-count)) "no audit entry")
         (let ((real (call-ok "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-07-01"
                              "lines" (jget input "lines"))))
-          (dolist (key '("subtotal_ore" "discount_ore" "total_ore"))
+          (dolist (key '("subtotal_minor" "discount_minor" "total_minor"))
             (is (equal (jget real key) (jget (jget explained "would") key)) "~a" key))
           (is (equalp #() (jget (jget explained "would") "bookings")) "a create books nothing")
           ;; A second order for the one unit on the same date: confirming it would fail.
@@ -224,7 +224,7 @@
                    (line (aref (jget (jget explained "would") "availability") 0)))
               (is (eq t (jget explained "confirm_required")))
               (is (equal (list slott nil 0) (list (jget line "product_id") (jget line "ok") (jget line "available"))))
-              (is (string= "akseptert" (jget (call-ok "orders_get" "viewer:vera" "id" second) "status"))))))
+              (is (string= "accepted" (jget (call-ok "orders_get" "viewer:vera" "id" second) "status"))))))
         (let ((bad (call-ok "explain" "admin:ada" "tool" "orders_create" "input" (jobj "customer_id" customer))))
           (is (null (jget bad "input_valid")))
           (is (find "lines" (coerce (jget bad "input_errors") 'list) :key (lambda (e) (jget e "field")) :test #'equal)))
@@ -303,7 +303,7 @@
       (setf (tun.accounting.fake:fake-latency-ms (application-accounting *app*)) 5000)
       (let* ((invoice (invoice-ready)))
         (is (string= "deadline_exceeded" (nth-value 1 (send-invoice invoice))))
-        (is (string= "utkast" (jget (call-ok "invoices_get" "viewer:vera" "id" invoice) "status")))
+        (is (string= "draft" (jget (call-ok "invoices_get" "viewer:vera" "id" invoice) "status")))
         (let* ((trace (trace-of (jget (first (recent "errors")) "request_id")))
                (external (find "external" (coerce (jget trace "steps") 'list) :key (lambda (s) (jget s "kind")) :test #'equal)))
           (is (string= "invoices_send" (jget trace "tool")))

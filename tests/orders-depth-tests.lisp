@@ -38,77 +38,77 @@
 (test line-and-order-price-modes
   (with-test-app ()
     (let* ((customer (make-customer))
-           (p (make-product :name "Ting" :kind "tjeneste" :price 10000 :units-owned 0)))
+           (p (make-product :name "Ting" :kind "service" :price 10000 :units-owned 0)))
       ;; 3 × 10000 = 30000 per line
       (let ((o (new-order customer "lines" (jarr (list (line p 3)
-                                                       (line p 3 "price_mode" "prosent_rabatt" "discount_percent" 12.5)
-                                                       (line p 3 "price_mode" "fast_rabatt" "discount_ore_input" 40000)
-                                                       (line p 3 "price_mode" "manuell_total" "manual_total_ore" 45000))))))
+                                                       (line p 3 "price_mode" "percent_discount" "discount_percent" 12.5)
+                                                       (line p 3 "price_mode" "fixed_discount" "discount_input_minor" 40000)
+                                                       (line p 3 "price_mode" "manual_total" "manual_total_minor" 45000))))))
         (let ((ls (coerce (jget o "lines") 'list)))
-          (is (equal '(30000 26250 0 45000) (mapcar (lambda (l) (jget l "line_effective_ore")) ls))
+          (is (equal '(30000 26250 0 45000) (mapcar (lambda (l) (jget l "line_effective_minor")) ls))
               "percent rounds the discount down; fixed floors at 0; manual is exact (may exceed)")
-          (is (equal '(0 -3750 -30000 15000) (mapcar (lambda (l) (jget l "line_adjustment_ore")) ls)))
-          (is (equal '(30000 30000 30000 30000) (mapcar (lambda (l) (jget l "line_total_ore")) ls))))
-        (is (= 120000 (jget o "catalog_total_ore")))
-        (is (= 101250 (jget o "subtotal_ore")))
-        (is (= 101250 (jget o "total_ore")))
-        (is (= 0 (jget o "adjustment_ore")))
-        (is (string= "automatisk" (jget o "price_mode"))))
+          (is (equal '(0 -3750 -30000 15000) (mapcar (lambda (l) (jget l "line_adjustment_minor")) ls)))
+          (is (equal '(30000 30000 30000 30000) (mapcar (lambda (l) (jget l "line_total_minor")) ls))))
+        (is (= 120000 (jget o "catalog_total_minor")))
+        (is (= 101250 (jget o "subtotal_minor")))
+        (is (= 101250 (jget o "total_minor")))
+        (is (= 0 (jget o "adjustment_minor")))
+        (is (string= "automatic" (jget o "price_mode"))))
       ;; Order modes replace the automatic discount; adjustment = total - subtotal.
-      (let ((o (new-order customer "lines" (jarr (list (line p 3))) "price_mode" "prosent_rabatt" "discount_percent" 10)))
+      (let ((o (new-order customer "lines" (jarr (list (line p 3))) "price_mode" "percent_discount" "discount_percent" 10)))
         (is (equal '(30000 30000 0 -3000 27000)
-                   (mapcar (lambda (k) (jget o k)) '("catalog_total_ore" "subtotal_ore" "discount_ore" "adjustment_ore" "total_ore")))))
-      (let ((o (new-order customer "lines" (jarr (list (line p 3))) "price_mode" "fast_rabatt" "discount_ore_input" 99999)))
-        (is (= 0 (jget o "total_ore")) "floored at 0")
-        (is (= -30000 (jget o "adjustment_ore"))))
+                   (mapcar (lambda (k) (jget o k)) '("catalog_total_minor" "subtotal_minor" "discount_minor" "adjustment_minor" "total_minor")))))
+      (let ((o (new-order customer "lines" (jarr (list (line p 3))) "price_mode" "fixed_discount" "discount_input_minor" 99999)))
+        (is (= 0 (jget o "total_minor")) "floored at 0")
+        (is (= -30000 (jget o "adjustment_minor"))))
       ;; Messages, and nothing stored.
       (let ((before (length (jget (call-ok "orders_list" "viewer:vera" "limit" 100) "items"))))
-        (is-error "invalid_input" "Prisvalg er ikke tillatt her"
+        (is-error "invalid_input" "That price mode is not allowed here"
                   (call "orders_create" "employee:anna" "customer_id" customer "lines" (jarr (list (line p 1)))
-                        "price_mode" "manuell_total"))
-        (is-error "invalid_input" "Rabattprosent må fylles ut"
+                        "price_mode" "manual_total"))
+        (is-error "invalid_input" "Discount percent must be filled in"
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "prosent_rabatt")))))
-        (is-error "invalid_input" "Rabattprosent må være mellom 0 og 100"
+                        "lines" (jarr (list (line p 1 "price_mode" "percent_discount")))))
+        (is-error "invalid_input" "Discount percent must be between 0 and 100"
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "prosent_rabatt" "discount_percent" 101)))))
+                        "lines" (jarr (list (line p 1 "price_mode" "percent_discount" "discount_percent" 101)))))
         (is-error "invalid_input" nil
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "prosent_rabatt" "discount_percent" 10.555d0)))))
-        (is-error "invalid_input" "Rabattbeløp må fylles ut"
+                        "lines" (jarr (list (line p 1 "price_mode" "percent_discount" "discount_percent" 10.555d0)))))
+        (is-error "invalid_input" "Discount amount must be filled in"
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "fast_rabatt")))))
-        (is-error "invalid_input" "Rabattbeløp kan ikke være negativt"
+                        "lines" (jarr (list (line p 1 "price_mode" "fixed_discount")))))
+        (is-error "invalid_input" "Discount amount cannot be negative"
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "fast_rabatt" "discount_ore_input" -1)))))
-        (is-error "invalid_input" "Manuell total må fylles ut"
+                        "lines" (jarr (list (line p 1 "price_mode" "fixed_discount" "discount_input_minor" -1)))))
+        (is-error "invalid_input" "Manual total must be filled in"
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "manuell_total")))))
-        (is-error "invalid_input" "Manuell total kan ikke være negativ"
+                        "lines" (jarr (list (line p 1 "price_mode" "manual_total")))))
+        (is-error "invalid_input" "Manual total cannot be negative"
                   (call "orders_create" "employee:anna" "customer_id" customer
-                        "lines" (jarr (list (line p 1 "price_mode" "manuell_total" "manual_total_ore" -5)))))
+                        "lines" (jarr (list (line p 1 "price_mode" "manual_total" "manual_total_minor" -5)))))
         (is-error "invalid_input" nil
                   (call "orders_create" "employee:anna" "customer_id" customer "lines" (jarr (list (line p 1)))
-                        "total_ore" 1))
+                        "total_minor" 1))
         (is (= before (length (jget (call-ok "orders_list" "viewer:vera" "limit" 100) "items"))))))))
 
 (defclass ten-percent-feature () ())
 (defclass priced-app (ten-percent-feature application) ())
 (defmethod tun.orders:order-discount ((app ten-percent-feature) order customer)
   (declare (ignore customer))
-  (floor (tun.orders:order-subtotal-ore order) 10))
+  (floor (tun.orders:order-subtotal-minor order) 10))
 
 (test the-automatic-discount-seam-works-on-the-subtotal-of-effective-lines
   (with-test-app (:class 'priced-app)
     (let* ((customer (make-customer))
-           (p (make-product :name "Ting" :kind "tjeneste" :price 10000 :units-owned 0))
-           (o (new-order customer "lines" (jarr (list (line p 2 "price_mode" "fast_rabatt" "discount_ore_input" 5000))))))
+           (p (make-product :name "Ting" :kind "service" :price 10000 :units-owned 0))
+           (o (new-order customer "lines" (jarr (list (line p 2 "price_mode" "fixed_discount" "discount_input_minor" 5000))))))
       (is (equal '(20000 15000 1500 -1500 13500)
-                 (mapcar (lambda (k) (jget o k)) '("catalog_total_ore" "subtotal_ore" "discount_ore" "adjustment_ore" "total_ore"))))
-      ;; An explicit order mode replaces the seam: discount_ore 0.
+                 (mapcar (lambda (k) (jget o k)) '("catalog_total_minor" "subtotal_minor" "discount_minor" "adjustment_minor" "total_minor"))))
+      ;; An explicit order mode replaces the seam: discount_minor 0.
       (let ((u (call-ok "orders_update" "employee:anna" "id" (jget o "id") "revision" (jget o "revision")
-                        "price_mode" "fast_rabatt" "discount_ore_input" 1000)))
-        (is (equal '(0 -1000 14000) (mapcar (lambda (k) (jget u k)) '("discount_ore" "adjustment_ore" "total_ore"))))))))
+                        "price_mode" "fixed_discount" "discount_input_minor" 1000)))
+        (is (equal '(0 -1000 14000) (mapcar (lambda (k) (jget u k)) '("discount_minor" "adjustment_minor" "total_minor"))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; §6 logistics, invariant 5
@@ -124,7 +124,7 @@
 (test logistics-are-either-not-agreed-or-complete
   (with-test-app ()
     (let* ((customer (make-customer))
-           (p (make-product :name "Ting" :kind "tjeneste" :price 100 :units-owned 0))
+           (p (make-product :name "Ting" :kind "service" :price 100 :units-owned 0))
            (ls (jarr (list (line p 1)))))
       (flet ((try (l &rest more) (apply #'call "orders_create" "employee:anna" "customer_id" customer
                                         "event_date" "2026-06-20" "lines" ls "logistics" l more)))
@@ -133,51 +133,51 @@
           (is (eq t (jget (jget (jget o "logistics") "delivery") "not_agreed")))
           (is (string= "Storgata 1" (jget (jget o "logistics") "site_address")))
           (is (eq nil (jget o "logistics_settled")))
-          (is (string= "Ikke avtalt" (jget (jget o "logistics_summary") "delivery"))))
-        (is-error "invalid_input" "Velg utleveringsmetode"
+          (is (string= "Not agreed" (jget (jget o "logistics_summary") "delivery"))))
+        (is-error "invalid_input" "Choose a delivery method"
                   (try (logistics :delivery (jobj "not_agreed" nil))))
-        (is-error "invalid_input" "Velg returmetode"
+        (is-error "invalid_input" "Choose a return method"
                   (try (logistics :return (jobj "not_agreed" nil))))
-        (is-error "invalid_input" "Sett tidsvindu for utlevering"
-                  (try (logistics :delivery (side "kunde_henter" "10:00" :null))))
-        (is-error "invalid_input" "Sett tidsvindu for retur"
-                  (try (logistics :return (side "kunde_returnerer" :null "12:00"))))
-        (is-error "invalid_input" "Utlevering senest kan ikke være før tidligst"
-                  (try (logistics :delivery (side "kunde_henter" "12:00" "10:00"))))
-        (is-error "invalid_input" "Retur senest kan ikke være før tidligst"
-                  (try (logistics :return (side "kunde_returnerer" "12:00" "10:00"))))
-        (is-error "invalid_input" "Retur kan ikke starte før utlevering er ferdig samme dag"
-                  (try (logistics :delivery (side "kunde_henter" "10:00" "12:00")
-                                  :return (side "kunde_returnerer" "11:00" "13:00"))))
-        (is-error "invalid_input" "Adresse må fylles ut når vi leverer eller henter hos kunde"
-                  (try (logistics :delivery (side "vi_leverer" "10:00" "12:00") :address "  ")))
+        (is-error "invalid_input" "Set a time window for the delivery"
+                  (try (logistics :delivery (side "customer_collects" "10:00" :null))))
+        (is-error "invalid_input" "Set a time window for the return"
+                  (try (logistics :return (side "customer_returns" :null "12:00"))))
+        (is-error "invalid_input" "The latest delivery time cannot be before the earliest"
+                  (try (logistics :delivery (side "customer_collects" "12:00" "10:00"))))
+        (is-error "invalid_input" "The latest return time cannot be before the earliest"
+                  (try (logistics :return (side "customer_returns" "12:00" "10:00"))))
+        (is-error "invalid_input" "The return cannot start before the delivery is done on the same day"
+                  (try (logistics :delivery (side "customer_collects" "10:00" "12:00")
+                                  :return (side "customer_returns" "11:00" "13:00"))))
+        (is-error "invalid_input" "Address must be filled in when we deliver to or collect from the customer"
+                  (try (logistics :delivery (side "we_deliver" "10:00" "12:00") :address "  ")))
         ;; First failure wins: method before window.
-        (is-error "invalid_input" "Velg utleveringsmetode"
-                  (try (logistics :delivery (jobj "not_agreed" nil) :return (side "kunde_returnerer" "12:00" "10:00"))))
+        (is-error "invalid_input" "Choose a delivery method"
+                  (try (logistics :delivery (jobj "not_agreed" nil) :return (side "customer_returns" "12:00" "10:00"))))
         ;; Multi-day orders may return earlier in the day than delivery.
         (is (jget (call-ok "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-06-20"
                            "end_date" "2026-06-22" "lines" ls
-                           "logistics" (logistics :delivery (side "kunde_henter" "10:00" "12:00")
-                                                  :return (side "kunde_returnerer" "08:00" "09:00")))
+                           "logistics" (logistics :delivery (side "customer_collects" "10:00" "12:00")
+                                                  :return (side "customer_returns" "08:00" "09:00")))
                   "id"))
         ;; Normalisation: a not-agreed side loses method and times; no side
         ;; needing an address clears it; the address is trimmed.
         (let ((o (call-ok "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-06-20" "lines" ls
-                          "logistics" (logistics :delivery (jobj "not_agreed" t "method" "vi_leverer" "earliest" "10:00")
-                                                 :return (side "kunde_returnerer" "14:00" "14:00")
+                          "logistics" (logistics :delivery (jobj "not_agreed" t "method" "we_deliver" "earliest" "10:00")
+                                                 :return (side "customer_returns" "14:00" "14:00")
                                                  :address "Storgata 1"))))
           (is (json-null-p (jget (jget (jget o "logistics") "delivery") "method")))
           (is (json-null-p (jget (jget o "logistics") "site_address")))
           (is (json-null-p (jget o "delivery_address")) "site_address and delivery_address are one value")
-          (is (string= "Kunde returnerer kl. 14:00" (jget (jget o "logistics_summary") "return"))))
+          (is (string= "Customer returns at 14:00" (jget (jget o "logistics_summary") "return"))))
         (let ((o (call-ok "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-06-20" "lines" ls
-                          "logistics" (logistics :delivery (side "vi_leverer" "08:00" "10:00")
-                                                 :return (side "vi_henter" "22:00" "23:30")
+                          "logistics" (logistics :delivery (side "we_deliver" "08:00" "10:00")
+                                                 :return (side "we_collect" "22:00" "23:30")
                                                  :address "  Kaia 3  "))))
           (is (string= "Kaia 3" (jget (jget o "logistics") "site_address")))
           (is (string= "Kaia 3" (jget o "delivery_address")))
           (is (eq t (jget o "logistics_settled")))
-          (is (equal '("Vi leverer 08:00-10:00" "Vi henter 22:00-23:30")
+          (is (equal '("We deliver 08:00-10:00" "We collect 22:00-23:30")
                      (list (jget (jget o "logistics_summary") "delivery") (jget (jget o "logistics_summary") "return")))))))))
 
 ;;; ------------------------------------------------------------------
@@ -188,19 +188,19 @@
     (let* ((customer (make-customer))
            (machine (make-product))
            (ls (jarr (list (line machine 1)))))
-      (is-error "invalid_input" "Sluttdato kan ikke være før startdato"
+      (is-error "invalid_input" "The end date cannot be before the start date"
                 (call "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-06-20"
                       "end_date" "2026-06-19" "lines" ls))
       (is-error "invalid_input" nil
-                (call "orders_create" "employee:anna" "customer_id" customer "lines" ls "tags" (jarr '("utleie" "utleie"))))
-      (let ((o (new-order customer "lines" ls "tags" (jarr '("utleie" "underholdning")))))
+                (call "orders_create" "employee:anna" "customer_id" customer "lines" ls "tags" (jarr '("rental" "rental"))))
+      (let ((o (new-order customer "lines" ls "tags" (jarr '("rental" "entertainment")))))
         (is (eq t (jget o "dateless")))
         (is (eq nil (jget o "locked")))
         (is (eq t (jget o "requires_pickup")))
-        (is (equalp #("utleie" "underholdning") (jget o "tags")))
+        (is (equalp #("rental" "entertainment") (jget o "tags")))
         (is (json-null-p (jget o "quote")))
         ;; A quote may be sent without a date; confirmation still needs one.
-        (is (string= "tilbud_sendt" (jget (call-ok "orders_send_quote" "employee:anna" "id" (jget o "id")) "status")))
+        (is (string= "quote_sent" (jget (call-ok "orders_send_quote" "employee:anna" "id" (jget o "id")) "status")))
         (call-ok "orders_accept" "employee:anna" "id" (jget o "id"))
         (is-error "invalid_input" nil (two-step "orders_confirm" "employee:anna" "id" (jget o "id")))
         (is (equalp #() (jget (order-of (jget o "id")) "bookings")) "dateless orders never book"))
@@ -212,7 +212,7 @@
           (is (member dated (ids "from" "2026-06-22" "to" "2026-06-30") :test #'string=) "overlap uses end_date")
           (is (not (member dated (ids "from" "2026-06-23") :test #'string=)))
           (is (not (member dated (ids "to" "2026-06-19") :test #'string=)))
-          (is (= 1 (length (ids "tag" "underholdning"))))))
+          (is (= 1 (length (ids "tag" "entertainment"))))))
       (let ((summary (call-ok "orders_summary" "viewer:vera")))
         (is (= 2 (jget summary "total")))
         (is (= 1 (jget summary "dateless")))
@@ -225,7 +225,7 @@
   (with-test-app ()
     (let* ((customer (make-customer))
            (machine (make-product :units-owned 1))
-           (service (make-product :name "Tjeneste" :kind "tjeneste" :units-owned 0))
+           (service (make-product :name "Tjeneste" :kind "service" :units-owned 0))
            (order (confirmed-order customer machine "2026-06-20")))
       (flet ((status () (jget (order-of order) "status"))
              (revision () (jget (order-of order) "revision"))
@@ -240,36 +240,36 @@
         (is-error "conflict" nil (call "orders_register_pickup" "employee:anna" "id" order "condition" "ok" "revision" 0))
         ;; Pickup releases the booking; return records condition, damages, fee.
         (let ((picked (call-ok "orders_register_pickup" "employee:anna" "id" order "condition" "ok")))
-          (is (string= "hentet" (jget picked "status")))
+          (is (string= "picked_up" (jget picked "status")))
           (is (string= "employee:anna" (jget (jget picked "pickup") "by"))))
         (is (= 0 (blocked "2026-06-20")) "hentet holds no booking")
         (is-error "invalid_transition" nil (two-step "orders_cancel" "employee:anna" "id" order))
         ;; Invoicing readiness needs the return, unless an admin forces it with a reason.
-        (is-error "invalid_transition" "kan ikke fakturere før retur er registrert; utleie-ordrer krever retur før faktura"
+        (is-error "invalid_transition" "cannot invoice before the return is registered; a rental order needs its return before the invoice"
                   (call "orders_ready_for_invoice" "employee:anna" "id" order))
         (is-error "forbidden" nil (call "orders_ready_for_invoice" "employee:anna" "id" order "force" t "reason" "x"))
         (is-error "invalid_input" nil (call "orders_ready_for_invoice" "admin:jonas" "id" order "force" t "reason" " "))
         (let ((returned (call-ok "orders_register_return" "employee:anna" "id" order "condition" "skadet"
-                                 "damages" "bulk" "fee_ore" 5000)))
-          (is (= 5000 (jget (jget returned "return") "fee_ore"))))
-        (is (string= "send_faktura" (jget (call-ok "orders_ready_for_invoice" "employee:anna" "id" order) "status")))
+                                 "damages" "bulk" "fee_minor" 5000)))
+          (is (= 5000 (jget (jget returned "return") "fee_minor"))))
+        (is (string= "ready_for_invoice" (jget (call-ok "orders_ready_for_invoice" "employee:anna" "id" order) "status")))
         ;; Locked: send_faktura refuses edits with the lock message.
         (is (eq t (jget (order-of order) "locked")))
-        (is-error "conflict" "Ordren er låst (send faktura eller fullført). Åpne ordren for redigering først."
+        (is-error "conflict" "The order is locked (ready for invoice or completed). Reopen the order for editing first."
                   (call "orders_update" "employee:anna" "id" order "revision" (revision) "delivery_address" "x"))
-        (is-error "conflict" "Ordren er låst (send faktura eller fullført). Åpne ordren for redigering først."
+        (is-error "conflict" "The order is locked (ready for invoice or completed). Reopen the order for editing first."
                   (call "checklists_add_manual" "employee:anna" "order_id" order "description" "x"))
         ;; A status tool that never applies to a locked order answers invalid_transition.
         (is-error "invalid_transition" nil (call "orders_send_quote" "employee:anna" "id" order))
         ;; Complete from send_faktura; fullført refuses updates with invalid_transition.
-        (is (string= "fullført" (jget (call-ok "orders_complete" "employee:anna" "id" order) "status")))
+        (is (string= "completed" (jget (call-ok "orders_complete" "employee:anna" "id" order) "status")))
         (is-error "invalid_transition" nil
                   (call "orders_update" "employee:anna" "id" order "revision" (revision) "delivery_address" "x"))
         ;; Reopen: admin, two steps; re-books, unlocks.
         (is-error "forbidden" nil (call "orders_reopen" "employee:anna" "id" order))
         (multiple-value-bind (reopened code) (two-step "orders_reopen" "admin:jonas" "id" order)
           (is (null code))
-          (is (string= "bekreftet" (jget reopened "status")))
+          (is (string= "confirmed" (jget reopened "status")))
           (is (eq nil (jget reopened "locked"))))
         (is (= 1 (blocked "2026-06-20")) "reopen re-books")
         ;; Reopen fails (unavailable, as confirmation does) when the capacity is gone.
@@ -278,7 +278,7 @@
         (let ((other (confirmed-order customer machine "2026-06-20")))
           (is (stringp other))
           (is-error "unavailable" nil (two-step "orders_reopen" "admin:jonas" "id" order)))
-        (is (string= "send_faktura" (status)))
+        (is (string= "ready_for_invoice" (status)))
         ;; The forced readiness carries its reason in the audit entry.
         (let ((entry (find "orders_ready_for_invoice"
                            (coerce (jget (call-ok "audit_list" "viewer:vera" "entity_type" "order" "entity_id" order) "items") 'list)
@@ -286,15 +286,15 @@
           (is (string= "kunden betaler før retur" (jget entry "reason"))))
         ;; Pickup is only for orders with utleie lines.
         (let ((service-order (confirmed-order customer service "2026-07-01")))
-          (is-error "invalid_transition" "henting/retur gjelder bare ordrer med produkter av type utleie"
+          (is-error "invalid_transition" "pickup and return apply only to orders with rental products"
                     (call "orders_register_pickup" "employee:anna" "id" service-order "condition" "ok"))
-          (is (string= "send_faktura" (jget (call-ok "orders_ready_for_invoice" "employee:anna" "id" service-order) "status"))
+          (is (string= "ready_for_invoice" (jget (call-ok "orders_ready_for_invoice" "employee:anna" "id" service-order) "status"))
               "no return needed without utleie lines")
-          (is (string= "avbrutt" (jget (two-step "orders_cancel" "employee:anna" "id" service-order) "status"))))
+          (is (string= "cancelled" (jget (two-step "orders_cancel" "employee:anna" "id" service-order) "status"))))
         ;; Reactivate: avbrutt -> utkast.
         (let ((cancelled (jget (new-order customer "lines" (jarr (list (line machine 1)))) "id")))
           (two-step "orders_cancel" "employee:anna" "id" cancelled)
-          (is (string= "utkast" (jget (call-ok "orders_reactivate" "employee:anna" "id" cancelled) "status"))))))))
+          (is (string= "draft" (jget (call-ok "orders_reactivate" "employee:anna" "id" cancelled) "status"))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; §5 quotes, invariants 3 and 4
@@ -304,11 +304,11 @@
 (test quotes-are-objects-with-revisions-codes-and-expiry
   (with-test-app ()
     (let* ((customer (make-customer))
-           (p (make-product :name "Ting" :kind "tjeneste" :price 10000 :units-owned 0))
+           (p (make-product :name "Ting" :kind "service" :price 10000 :units-owned 0))
            (order (jget (new-order customer "event_date" "2026-06-20" "lines" (jarr (list (line p 1)))) "id")))
       (is-error "not_found" nil (call "quotes_get" "viewer:vera" "order_id" order))
       (let ((preview (jget (call-ok "quotes_preview" "viewer:vera" "order_id" order) "snapshot")))
-        (is (= 10000 (jget preview "total_ore")))
+        (is (= 10000 (jget preview "total_minor")))
         (is (string= "Ting" (jget (aref (jget preview "lines") 0) "name"))))
       (call-ok "orders_send_quote" "employee:anna" "id" order)
       (let* ((q (quote-of order))
@@ -332,14 +332,14 @@
         ;; Responses: wrong code is forbidden (audited), an old revision is conflict.
         (is-error "forbidden" nil (call "quotes_respond" "viewer:kunde" "quote_id" (jget q "id") "revision" 2
                                         "access_code" "AAAAAAAAAA" "response" "accept"))
-        (is-error "conflict" "tilbudet er endret; last siden på nytt"
+        (is-error "conflict" "the quote has changed; reload the page"
                   (call "quotes_respond" "viewer:kunde" "quote_id" (jget q "id") "revision" 1
                         "access_code" code "response" "accept"))
         ;; Decline: the order stays tilbud_sendt; the quote can be re-issued.
         (let ((declined (call-ok "quotes_respond" "viewer:kunde" "quote_id" (jget q "id") "revision" 2
                                  "access_code" (format nil " ~a " (string-downcase code)) "response" "decline")))
           (is (string= "declined" (jget declined "status"))))
-        (is (string= "tilbud_sendt" (jget (order-of order) "status")))
+        (is (string= "quote_sent" (jget (order-of order) "status")))
         (is-error "invalid_transition" nil (call "quotes_respond" "viewer:kunde" "quote_id" (jget q "id") "revision" 2
                                                  "access_code" code "response" "accept"))
         (call-ok "orders_send_quote" "employee:anna" "id" order)
@@ -348,19 +348,19 @@
                                  "access_code" code "response" "accept")))
           (is (string= "accepted" (jget accepted "status")))
           (is (stringp (jget accepted "responded_at"))))
-        (is (string= "akseptert" (jget (order-of order) "status")))
+        (is (string= "accepted" (jget (order-of order) "status")))
         (let ((entries (coerce (jget (call-ok "audit_list" "viewer:vera" "entity_type" "quote" "entity_id" (jget q "id")) "items") 'list)))
           (is (find (format nil "customer:~a" (jget q "id")) entries :key (lambda (e) (jget e "actor")) :test #'string=))
           (is (find "rejected" entries :key (lambda (e) (jget e "outcome")) :test #'string=)))))
     ;; Expiry is derived: 14 days after sending.
     (let* ((customer (make-customer "Kari Utløp"))
-           (p (make-product :name "Ting2" :kind "tjeneste" :price 10000 :units-owned 0))
+           (p (make-product :name "Ting2" :kind "service" :price 10000 :units-owned 0))
            (order (jget (new-order customer "lines" (jarr (list (line p 1)))) "id")))
       (call-ok "orders_send_quote" "employee:anna" "id" order)
       (let ((q (quote-of order)))
         (call-ok "clock_set" "admin:jonas" "now" (format-rfc3339 (+ (now-of *app*) (* 15 86400))))
         (is (string= "expired" (jget (quote-of order) "status")))
-        (is-error "conflict" "tilbudet er utløpt; send et nytt tilbud"
+        (is-error "conflict" "the quote has expired; send a new quote"
                   (call "quotes_respond" "viewer:kunde" "quote_id" (jget q "id") "revision" 1
                         "access_code" (jget q "access_code") "response" "accept"))))))
 
@@ -381,7 +381,7 @@
   (with-test-app (:class 'checklist-app)
     (let* ((customer (make-customer))
            (machine (make-product :units-owned 5))
-           (*component* (make-product :name "Beger" :kind "forbruk" :unit "stk" :price 100 :stock-tracked t
+           (*component* (make-product :name "Beger" :kind "consumable" :unit "stk" :price 100 :stock-tracked t
                                       :units-owned 0))
            (o (new-order customer "event_date" "2026-06-20" "lines" (jarr (list (line machine 2)))))
            (id (jget o "id")))
@@ -436,7 +436,7 @@
   (with-test-app (:class 'checklist-app)
     (let* ((customer (make-customer))
            (machine (make-product :units-owned 1))
-           (*component* (make-product :name "Beger" :kind "forbruk" :unit "stk" :price 100 :stock-tracked t
+           (*component* (make-product :name "Beger" :kind "consumable" :unit "stk" :price 100 :stock-tracked t
                                       :units-owned 0))
            (order (progn (call-ok "inventory_receive" "employee:anna" "product_id" *component* "quantity" 100)
                          (confirmed-order customer machine "2026-06-20"))))
@@ -448,7 +448,7 @@
         (is (equal '(90 0) (balance)) "pickup releases the reservation and consumes")
         (call-ok "orders_register_return" "employee:anna" "id" order "condition" "ok")
         (call-ok "orders_ready_for_invoice" "employee:anna" "id" order)
-        (is (string= "fullført" (jget (call-ok "orders_complete" "employee:anna" "id" order) "status")))
+        (is (string= "completed" (jget (call-ok "orders_complete" "employee:anna" "id" order) "status")))
         (is (equal '(90 0) (balance)) "completion from send_faktura consumes nothing more and reserves nothing")))))
 
 (test multi-day-orders-book-and-check-every-date
@@ -471,7 +471,7 @@
         (is (eq t (free-on "2026-06-11")))
         (let ((inside (accepted "2026-06-06")))
           (is-error "unavailable" nil (two-step "orders_confirm" "employee:anna" "id" inside))
-          (is (equal "akseptert" (jget (order-of inside) "status"))))
+          (is (equal "accepted" (jget (order-of inside) "status"))))
         (let ((overlapping (accepted "2026-05-25" "2026-06-02")))
           (is-error "unavailable" nil (two-step "orders_confirm" "employee:anna" "id" overlapping)))
         (is (stringp (confirmed-order customer machine "2026-06-11" "2026-06-12")) "the next day is free")))))
@@ -491,7 +491,7 @@
         (complete)
         (is (= 1 (completed)))
         (two-step "orders_reopen" "admin:a" "id" order)
-        (is (equal "bekreftet" (jget (order-of order) "status")))
+        (is (equal "confirmed" (jget (order-of order) "status")))
         (is (= 0 (completed)) "reopen from fullført decrements")
         (complete)
         (is (= 1 (completed)) "completing again counts the order once")))))

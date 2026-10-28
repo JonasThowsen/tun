@@ -35,7 +35,7 @@
            (real (call-ok "orders_create" "employee:anna" "customer_id" id
                           "event_date" "2026-08-01" "lines" lines))
            (would (jget explained "would")))
-      (dolist (key '("subtotal_ore" "discount_ore" "total_ore"))
+      (dolist (key '("subtotal_minor" "discount_minor" "total_minor"))
         (is (equal (jget real key) (jget would key)) "~a" key))
       (is (hook-listed-p explained "order_discount" "loyalty-feature")
           "the discount seam's client method is listed")
@@ -43,7 +43,7 @@
                             "input" (jobj "id" (jget real "id")))))
         (is (hook-listed-p quote "after" "workflow-feature")
             "the reminder hook is listed, after the operation")
-        (is (string= "utkast" (jget (call-ok "orders_get" "viewer:vera" "id" (jget real "id"))
+        (is (string= "draft" (jget (call-ok "orders_get" "viewer:vera" "id" (jget real "id"))
                                     "status"))
             "explain sent nothing")))))
 
@@ -88,7 +88,7 @@
     ("before" "booking_window" "cleaning-feature" "(defmethod booking-window")
     ("after" "orders_send_quote" "workflow-feature" "(defmethod orders-send-quote :after")
     ("after" "orders_accept" "workflow-feature" "(defmethod orders-accept :after")
-    ("workflow" "tilbud_påminnelse" "quote-reminder" "(define-workflow quote-reminder")
+    ("workflow" "quote_reminder" "quote-reminder" "(define-workflow quote-reminder")
     ("template" "påminnelse" "reminder-message" "(define-message-template reminder-message")
     ("screen" "order_detail" "order-screen-feature" "(defmethod render-screen")
     ("screen" "customer_list" "customer-list-feature" "(defmethod render-screen"))

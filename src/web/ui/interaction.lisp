@@ -41,13 +41,14 @@ joined to its own (ATTRS: a value in PLIST replaces NODE's)."
 (define-component dialog ((&key id title description (variant :default) icon footer action
                                 (method "post") shortcut attributes)
                           &rest children)
-  (:group "Interaksjon")
-  (:doc "Et vindu over siden for en kort oppgave eller et spørsmål som må besvares før man går
-videre. Knappen som åpner det, har :attributes (list :command \"show-modal\" :commandfor ID);
-«Avbryt» har :command \"close\". Variantene confirm og destructive er for «Er du sikker?»: de
-lukkes ikke ved klikk utenfor og har ingen lukkeknapp, bare valgene i FOOTER. Med :shortcut
-(\"/\", \"Ctrl+K\" eller en liste av dem) åpnes dialogen med den tasten fra hvor som helst på
-siden; Ctrl er Cmd på en Mac, og en tast uten Ctrl virker ikke mens man skriver i et felt.")
+  (:group "Interaction")
+  (:doc "A window over the page for a short task or a question that must be answered before
+going on. The button that opens it has :attributes (list :command \"show-modal\" :commandfor
+ID); «Cancel» has :command \"close\". The variants confirm and destructive are for «Are you
+sure?»: they do not close on a click outside and have no close button, only the choices in
+FOOTER. With :shortcut (\"/\", \"Ctrl+K\" or a list of them) the dialog opens on that key from
+anywhere on the page; Ctrl is Cmd on a Mac, and a key without Ctrl does nothing while typing
+in a field.")
   (:source "Basecoat dialog and alert dialog (Vega)")
   (:css "
 .tun-dialog {
@@ -261,85 +262,86 @@ document.addEventListener('keydown', (event) => {
   }
 });")
   (:examples
-   ("En oppgave i en dialog"
+   ("A task in a dialog"
     (button (:variant :outline :icon :send
-                      :attributes (list :command "show-modal" :commandfor "send-faktura"))
-            "Send faktura")
-    (dialog (:id "send-faktura"
-                 :title "Send faktura 2024-117"
-                 :description "Fakturaen sendes som PDF til kundens fakturaadresse."
+                      :attributes (list :command "show-modal" :commandfor "send-invoice"))
+            "Send invoice")
+    (dialog (:id "send-invoice"
+                 :title "Send invoice 2024-117"
+                 :description "The invoice is sent as a PDF to the customer's invoice address."
                  :footer (list (button (:variant :outline
                                                  :attributes (list :command "close"
-                                                                   :commandfor "send-faktura"))
-                                       "Avbryt")
-                               (button (:type "submit") "Send faktura"))
-                 :action "/fakturaer/2024-117/send")
-            `(:p "Til " (:strong "Bakeri Nordvik AS") ", faktura@example.no.")
-            `(:p "Beløp 12 450 kr, forfall 14 dager etter sending.")))
-   ("Bekreftelse før sletting"
+                                                                   :commandfor "send-invoice"))
+                                       "Cancel")
+                               (button (:type "submit") "Send invoice"))
+                 :action "/invoices/2024-117/send")
+            `(:p "To " (:strong "Nordvik Bakery Ltd") ", invoice@example.com.")
+            `(:p "Amount €12,450, due 14 days after sending.")))
+   ("A confirmation before deleting"
     (button (:variant :destructive :icon :trash
-                      :attributes (list :command "show-modal" :commandfor "slett-ordre"))
-            "Slett ordre")
-    (dialog (:id "slett-ordre"
+                      :attributes (list :command "show-modal" :commandfor "delete-order"))
+            "Delete order")
+    (dialog (:id "delete-order"
                  :variant :destructive
-                 :title "Slette ordre 1042?"
-                 :description "Ordren og alle ordrelinjene slettes for godt. Dette kan ikke
-angres."
-                 :action "/ordre/1042/slett"
+                 :title "Delete order 1042?"
+                 :description "The order and all its lines are deleted for good. This cannot be
+undone."
+                 :action "/orders/1042/delete"
                  :footer (list (button (:variant :outline
                                                  :attributes (list :command "close"
-                                                                   :commandfor "slett-ordre"))
-                                       "Avbryt")
-                               (button (:type "submit" :variant :destructive) "Slett ordren")))))
-   ("Spørsmål uten fare"
+                                                                   :commandfor "delete-order"))
+                                       "Cancel")
+                               (button (:type "submit" :variant :destructive)
+                                       "Delete the order")))))
+   ("A question without danger"
     (button (:variant :secondary
-                      :attributes (list :command "show-modal" :commandfor "fullfor-oppdrag"))
-            "Fullfør oppdrag")
-    (dialog (:id "fullfor-oppdrag"
+                      :attributes (list :command "show-modal" :commandfor "complete-job"))
+            "Complete the job")
+    (dialog (:id "complete-job"
                  :variant :confirm
                  :icon :circle-check
-                 :title "Er du sikker?"
-                 :description "Oppdraget merkes som fullført, og kunden får beskjed på e-post."
+                 :title "Are you sure?"
+                 :description "The job is marked as complete, and the customer is told by email."
                  :footer (list (button (:variant :outline
                                                  :attributes (list :command "close"
-                                                                   :commandfor "fullfor-oppdrag"))
-                                       "Avbryt")
-                               (button () "Fullfør")))))
-   ("Søk fra hvor som helst, med / eller Ctrl+K"
+                                                                   :commandfor "complete-job"))
+                                       "Cancel")
+                               (button () "Complete")))))
+   ("Search from anywhere, with / or Ctrl+K"
     (button (:variant :outline :icon :search :shortcut "/"
-                      :attributes (list :command "show-modal" :commandfor "sok"))
-            "Søk")
-    (dialog (:id "sok" :title "Søk" :shortcut '("/" "Ctrl+K")
-                 :action "/sok" :method "get"
-                 :footer (list (button (:type "submit") "Søk")))
-            (text-input (:label "Søk etter saker, kunder og personer" :name "q" :type :search
+                      :attributes (list :command "show-modal" :commandfor "search"))
+            "Search")
+    (dialog (:id "search" :title "Search" :shortcut '("/" "Ctrl+K")
+                 :action "/search" :method "get"
+                 :footer (list (button (:type "submit") "Search")))
+            (text-input (:label "Search for items, customers and people" :name "q" :type :search
                                 :attributes (list :autofocus t)))))
-   ("Langt innhold ruller inne i dialogen"
+   ("Long content scrolls inside the dialog"
     (button (:variant :ghost
-                      :attributes (list :command "show-modal" :commandfor "vilkar"))
-            "Les vilkårene")
-    (dialog (:id "vilkar"
-                 :title "Vilkår for oppdrag"
-                 :description "Gjelder alle oppdrag bestilt etter 1. januar 2026."
-                 :footer (list (button (:attributes (list :command "close" :commandfor "vilkar"))
-                                       "Jeg har lest vilkårene")))
+                      :attributes (list :command "show-modal" :commandfor "terms"))
+            "Read the terms")
+    (dialog (:id "terms"
+                 :title "Terms for jobs"
+                 :description "Apply to every job ordered after 1 January 2026."
+                 :footer (list (button (:attributes (list :command "close" :commandfor "terms"))
+                                       "I have read the terms")))
             (loop for (heading text)
-                  in '(("Bestilling" "Et oppdrag er bindende når kunden har godtatt tilbudet
-skriftlig, også på e-post eller SMS.")
-                       ("Pris" "Prisen i tilbudet gjelder i 30 dager. Arbeid utover det som er
-beskrevet, faktureres etter medgått tid med 850 kr per time eksklusive merverdiavgift.")
-                       ("Avbestilling" "Kunden kan avbestille kostnadsfritt inntil sju dager
-før oppstart. Senere avbestilling faktureres med 25 prosent av avtalt pris.")
-                       ("Betaling" "Betalingsfristen er 14 dager. Ved forsinket betaling
-beregnes forsinkelsesrente etter forsinkelsesrenteloven.")
-                       ("Reklamasjon" "Mangler meldes skriftlig innen rimelig tid etter at de
-ble oppdaget, og senest fem år etter overtakelse.")
-                       ("Ansvar" "Vi er ansvarlige for skade vi påfører kundens eiendom
-under arbeidet, begrenset til oppdragets verdi. Vi er ikke ansvarlige for indirekte tap.")
-                       ("Personopplysninger" "Vi lagrer navn, adresse og telefonnummer så
-lenge kundeforholdet varer, og deretter så lenge bokføringsloven krever.")
-                       ("Tvister" "Partene skal først forsøke å løse uenighet ved
-forhandlinger. Verneting er tingretten der oppdraget ble utført."))
+                  in '(("Ordering" "A job is binding once the customer has accepted the quote in
+writing, by email or text message too.")
+                       ("Price" "The price in the quote is valid for 30 days. Work beyond what is
+described is invoiced by time spent at €85 an hour excluding VAT.")
+                       ("Cancelling" "The customer can cancel free of charge up to seven days
+before the start. A later cancellation is invoiced at 25 per cent of the agreed price.")
+                       ("Payment" "Payment is due within 14 days. Late payment carries interest
+under the Late Payment Act.")
+                       ("Complaints" "Defects are reported in writing within a reasonable time
+after they were found, and at the latest five years after handover.")
+                       ("Liability" "We are liable for damage we cause to the customer's property
+during the work, up to the value of the job. We are not liable for indirect loss.")
+                       ("Personal data" "We keep name, address and phone number for as long as
+the customer relationship lasts, and after that as long as the Bookkeeping Act requires.")
+                       ("Disputes" "The parties shall first try to settle a disagreement by
+negotiation. The venue is the district court where the job was done."))
                   collect `(:p (:strong ,heading ". ") ,text)))))
   (unless (and id title)
     (error "A dialog needs :id, which its buttons name, and :title"))
@@ -360,7 +362,7 @@ forhandlinger. Verneting er tingretten der oppdraget ble utført."))
             ,@(when footer `((:footer (:@ :class "tun-dialog-footer") ,@footer)))
             ,@(unless asking
                 `((:div (:@ :class "tun-dialog-close")
-                        ,(button (:variant :ghost :size :icon-sm :label "Lukk"
+                        ,(button (:variant :ghost :size :icon-sm :label (tr "Close")
                                            :attributes (list :command "close" :commandfor id))
                                  (icon (:name :x)))))))))
     `(:dialog ,(attrs (list :class "tun-dialog" :id id :data-variant (option-string variant)
@@ -424,11 +426,11 @@ inside a raw HTML string is not looked into."
 
 (define-component dropdown-menu ((&key label items (variant :outline) (size :default) icon
                                        (icon-end :chevron-down) (align :start) id attributes))
-  (:group "Interaksjon")
-  (:doc "En knapp som åpner en liste med handlinger, for valg som ikke får plass som egne
-knapper. LABEL er knappens tekst; med en ikonstørrelse (:size :icon) vises bare ICON, og LABEL
-blir knappens navn for skjermlesere. Hvert punkt i ITEMS er (:label :href :icon :shortcut
-:variant :disabled :attributes), :separator eller (:group OVERSKRIFT :items (...)).")
+  (:group "Interaction")
+  (:doc "A button that opens a list of actions, for choices that do not fit as buttons of
+their own. LABEL is the button's text; with an icon size (:size :icon) only ICON shows, and
+LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:label :href :icon
+:shortcut :variant :disabled :attributes), :separator or (:group HEADING :items (...)).")
   (:source "Basecoat dropdown menu (Vega), on the Popover API")
   (:css "
 .tun-dropdown-menu {
@@ -677,58 +679,60 @@ document.addEventListener('pointerout', (event) => {
     menu.focus({ preventScroll: true });
 });")
   (:examples
-   ("Handlinger for en ordre"
-    (dropdown-menu (:label "Handlinger"
-                           :items (list (list :group "Ordre 1042"
-                                              :items (list (list :label "Rediger" :icon :pencil
-                                                                 :href "/ordre/1042/rediger"
+   ("Actions for an order"
+    (dropdown-menu (:label "Actions"
+                           :items (list (list :group "Order 1042"
+                                              :items (list (list :label "Edit" :icon :pencil
+                                                                 :href "/orders/1042/edit"
                                                                  :shortcut "E")
-                                                           (list :label "Dupliser" :icon :copy
+                                                           (list :label "Duplicate" :icon :copy
                                                                  :shortcut "D")
-                                                           (list :label "Last ned PDF"
+                                                           (list :label "Download a PDF"
                                                                  :icon :download
-                                                                 :href "/ordre/1042.pdf")))
+                                                                 :href "/orders/1042.pdf")))
                                         :separator
-                                        (list :label "Send til kunden" :icon :send)
+                                        (list :label "Send to the customer" :icon :send)
                                         :separator
-                                        (list :label "Slett ordre" :icon :trash
+                                        (list :label "Delete order" :icon :trash
                                               :variant :destructive
                                               :attributes (list :command "show-modal"
-                                                                :commandfor "meny-slett-ordre")))))
-    (dialog (:id "meny-slett-ordre"
+                                                                :commandfor "menu-delete-order")))))
+    (dialog (:id "menu-delete-order"
                  :variant :destructive
-                 :title "Slette ordre 1042?"
-                 :description "Ordren og alle ordrelinjene slettes for godt."
-                 :action "/ordre/1042/slett"
+                 :title "Delete order 1042?"
+                 :description "The order and all its lines are deleted for good."
+                 :action "/orders/1042/delete"
                  :footer (list (button (:variant :outline
                                                  :attributes (list :command "close"
-                                                                   :commandfor "meny-slett-ordre"))
-                                       "Avbryt")
-                               (button (:type "submit" :variant :destructive) "Slett ordren")))))
-   ("Bare ikon, i enden av en rad"
-    (dropdown-menu (:label "Flere valg for Bakeri Hansen AS" :size :icon :variant :ghost
+                                                                   :commandfor "menu-delete-order"))
+                                       "Cancel")
+                               (button (:type "submit" :variant :destructive)
+                                       "Delete the order")))))
+   ("Icon only, at the end of a row"
+    (dropdown-menu (:label "More options for Hansen Bakery Ltd" :size :icon :variant :ghost
                            :icon :ellipsis :align :end
-                           :items (list (list :label "Vis kunden" :icon :user :href "/kunder/17")
-                                        (list :label "Ny ordre" :icon :plus
-                                              :href "/kunder/17/ordre/ny")
-                                        (list :label "Send påminnelse om ubetalt faktura"
+                           :items (list (list :label "Show the customer" :icon :user
+                                              :href "/customers/17")
+                                        (list :label "New order" :icon :plus
+                                              :href "/customers/17/orders/new")
+                                        (list :label "Send a reminder of an unpaid invoice"
                                               :icon :mail)
                                         :separator
-                                        (list :label "Slå sammen med en annen kunde" :icon :users
+                                        (list :label "Merge with another customer" :icon :users
                                               :disabled t)))))
-   ("Konto"
+   ("Account"
     (dropdown-menu (:label "Kari Nordmann" :variant :ghost :icon :user
-                           :items (list (list :group "Kari Nordmann, Rørlegger Nordmann AS"
-                                              :items (list (list :label "Profil" :icon :user
-                                                                 :href "/profil")
-                                                           (list :label "Innstillinger"
+                           :items (list (list :group "Kari Nordmann, Nordmann Plumbing Ltd"
+                                              :items (list (list :label "Profile" :icon :user
+                                                                 :href "/profile")
+                                                           (list :label "Settings"
                                                                  :icon :settings
-                                                                 :href "/innstillinger")))
+                                                                 :href "/settings")))
                                         :separator
-                                        (list :label "Logg ut" :icon :log-out
+                                        (list :label "Sign out" :icon :log-out
                                               :attributes (list :type "submit"
-                                                                :form "logg-ut")))))
-    '(:form (:@ :id "logg-ut" :method "post" :action "/logout"))))
+                                                                :form "sign-out")))))
+    '(:form (:@ :id "sign-out" :method "post" :action "/logout"))))
   (unless (and label items)
     (error "A dropdown menu needs :label, its button's text or name, and :items"))
   (let* ((base (or id (element-id "tun-dropdown-menu")))
@@ -754,11 +758,11 @@ document.addEventListener('pointerout', (event) => {
 ;;; tooltip
 
 (define-component tooltip ((&key text (side :top) id attributes) &rest children)
-  (:group "Interaksjon")
-  (:doc "En kort forklaring som vises når pekeren er over eller tastaturet er på en knapp,
-gjerne en knapp med bare ikon. Den vises ikke på berøringsskjermer, så den må aldri være det
-eneste stedet viktig informasjon står. Teksten leses opp i tillegg til knappens navn, så den
-bør utfylle navnet, ikke gjenta det.")
+  (:group "Interaction")
+  (:doc "A short explanation that shows when the pointer is over a button or the keyboard is
+on it, often a button with only an icon. It does not show on touch screens, so it must never
+be the only place important information is. The text is read out after the button's name,
+so it should add to the name, not repeat it.")
   (:source "Basecoat tooltip (Vega)")
   (:css "
 .tun-tooltip {
@@ -887,23 +891,23 @@ const reset = (event) => {
 document.addEventListener('mouseout', reset);
 document.addEventListener('focusout', reset);")
   (:examples
-   ("Ikonknapper"
-    (tooltip (:text "Kopier lenken til fakturaen")
-             (button (:size :icon :variant :outline :label "Kopier lenke") (icon (:name :copy))))
-    (tooltip (:text "Last ned som PDF")
-             (button (:size :icon :variant :outline :label "Last ned") (icon (:name :download))))
-    (tooltip (:text "Skriv ut pakkseddel for alle ordre som skal sendes i dag")
-             (button (:size :icon :variant :outline :label "Pakkseddel")
+   ("Icon buttons"
+    (tooltip (:text "Copy the link to the invoice")
+             (button (:size :icon :variant :outline :label "Copy link") (icon (:name :copy))))
+    (tooltip (:text "Download as a PDF")
+             (button (:size :icon :variant :outline :label "Download") (icon (:name :download))))
+    (tooltip (:text "Print a packing slip for every order to be sent today")
+             (button (:size :icon :variant :outline :label "Packing slip")
                      (icon (:name :file-text)))))
-   ("Sider"
-    (tooltip (:text "Over" :side :top)
-             (button (:variant :outline) "Over"))
-    (tooltip (:text "Under" :side :bottom)
-             (button (:variant :outline) "Under"))
-    (tooltip (:text "Til venstre" :side :left)
-             (button (:variant :outline) "Venstre"))
-    (tooltip (:text "Til høyre" :side :right)
-             (button (:variant :outline) "Høyre"))))
+   ("Sides"
+    (tooltip (:text "Above" :side :top)
+             (button (:variant :outline) "Top"))
+    (tooltip (:text "Below" :side :bottom)
+             (button (:variant :outline) "Bottom"))
+    (tooltip (:text "To the left" :side :left)
+             (button (:variant :outline) "Left"))
+    (tooltip (:text "To the right" :side :right)
+             (button (:variant :outline) "Right"))))
   (unless (and text (= 1 (length children)))
     (error "A tooltip needs :text and exactly one element to explain, such as a button"))
   (check-type side (member :top :bottom :left :right))
@@ -921,10 +925,10 @@ document.addEventListener('focusout', reset);")
 ;;; accordion
 
 (define-component accordion ((&key items exclusive name id attributes))
-  (:group "Interaksjon")
-  (:doc "Overskrifter som folder ut innholdet sitt, for tekst man sjelden trenger å se alt av på
-en gang, som vanlige spørsmål. Hvert punkt i ITEMS er (:title :content :open). Med EXCLUSIVE er
-bare ett punkt åpent om gangen. Virker uten JavaScript.")
+  (:group "Interaction")
+  (:doc "Headings that unfold their content, for text one seldom needs to see all of at once,
+such as frequently asked questions. Each entry of ITEMS is (:title :content :open). With
+EXCLUSIVE only one entry is open at a time. Works without JavaScript.")
   (:source "Basecoat accordion (Vega), on <details>")
   (:css "
 .tun-accordion {
@@ -987,31 +991,31 @@ bare ett punkt åpent om gangen. Virker uten JavaScript.")
   & .tun-accordion-item[open]::details-content { block-size: auto; }
 }")
   (:examples
-   (("Vanlige spørsmål, ett åpent om gangen" :layout :stack)
-    (accordion (:items (list (list :title "Hvor lang er leveringstiden?"
+   (("Frequently asked questions, one open at a time" :layout :stack)
+    (accordion (:items (list (list :title "How long is the delivery time?"
                                    :open t
-                                   :content "Varer på lager sendes samme dag når du
-bestiller før klokken 14. Du får dem vanligvis innen to til fire virkedager.")
-                             (list :title "Kan jeg endre en ordre etter at den er sendt?"
-                                   :content "Nei, men du kan returnere varene innen 30
-dager og legge inn en ny ordre.")
-                             (list :title "Hvordan fungerer fakturering for bedrifter?"
+                                   :content "Goods in stock are sent the same day when you
+order before 2 pm. You usually get them within two to four working days.")
+                             (list :title "Can I change an order after it has been sent?"
+                                   :content "No, but you can return the goods within 30
+days and place a new order.")
+                             (list :title "How does invoicing work for businesses?"
                                    :content
-                                   (list '(:p "Bedrifter får faktura med 14 dagers
-betalingsfrist. Fakturaen sendes som EHF når vi har organisasjonsnummeret ditt.")
-                                         '(:p "Privatpersoner betaler med kort eller
-Vipps når de bestiller."))))
+                                   (list '(:p "Businesses are invoiced with 14 days to pay.
+The invoice is sent by EHF when we have your organisation number.")
+                                         '(:p "Private persons pay by card or Vipps when
+they order."))))
                        :exclusive t)))
-   (("Flere åpne samtidig" :layout :stack)
-    (accordion (:items (list (list :title "Kontaktinformasjon"
+   (("Several open at once" :layout :stack)
+    (accordion (:items (list (list :title "Contact details"
                                    :open t
-                                   :content "Bakeri Hansen AS, Storgata 12, 0155 Oslo.")
-                             (list :title "Betalingsbetingelser"
+                                   :content "Hansen Bakery Ltd, Storgata 12, 0155 Oslo.")
+                             (list :title "Terms of payment"
                                    :open t
-                                   :content "14 dager netto. Purregebyr 35 kr.")
-                             (list :title "Merknader fra montøren om tilkomst, nøkler og
-parkering ved oppdraget i bakgården"
-                                   :content "Nøkkel hentes i butikken. Parker i
+                                   :content "14 days net. A reminder fee of €3.")
+                             (list :title "The fitter's notes on access, keys and parking
+for the job in the back yard"
+                                   :content "Collect the key in the shop. Park in
 Dronningens gate."))))))
   (unless items (error "An accordion needs :items"))
   (let ((name (or name (when exclusive (or id (element-id "tun-accordion"))))))
@@ -1078,11 +1082,11 @@ none says :selected."
                                         ,(getf item :label)))))))
 
 (define-component tabs ((&key label items (variant :default) (heading-level 2) id attributes))
-  (:group "Interaksjon")
-  (:doc "Faner som deler innholdet på én side i deler man ser én av om gangen. Hvert punkt i
-ITEMS er (:label :content :icon :selected :id); uten JavaScript vises alle delene etter hverandre,
-hver under sin overskrift. Er punktene lenker (:label :href :current), er fanene navigasjon
-mellom egne sider. LABEL sier hva fanene gjelder.")
+  (:group "Interaction")
+  (:doc "Tabs that split the content of one page into parts seen one at a time. Each entry of
+ITEMS is (:label :content :icon :selected :id); without JavaScript every part shows one after
+another, each under its heading. When the entries are links (:label :href :current), the tabs
+navigate between pages of their own. LABEL says what the tabs are about.")
   (:source "Basecoat tabs (Vega); without JavaScript as GOV.UK tabs")
   (:css "
 .tun-tabs {
@@ -1238,41 +1242,42 @@ const fromHash = () => {
 document.addEventListener('DOMContentLoaded', fromHash);
 window.addEventListener('hashchange', fromHash);")
   (:examples
-   (("Faner på en side" :layout :stack)
-    (tabs (:label "Ordre 1042"
-                  :items (list (list :label "Detaljer"
+   (("Tabs on a page" :layout :stack)
+    (tabs (:label "Order 1042"
+                  :items (list (list :label "Details"
                                      :content
-                                     (list '(:p "Bestilt 3. oktober 2026 av Bakeri Hansen AS.")
-                                           '(:p "Leveres til Storgata 12, 0155 Oslo.")))
-                               (list :label "Ordrelinjer" :selected t
-                                     :content (list '(:p "3 linjer, til sammen 12 450 kr.")
-                                                    '(:ul (:li "Hvetemel 25 kg, 10 sekker")
-                                                      (:li "Rugmel 25 kg, 4 sekker")
-                                                      (:li "Frakt"))))
-                               (list :label "Historikk"
-                                     :content '(:p "Ordren ble opprettet av Kari Nordmann."))))))
-   (("Strek, med ikoner og mange faner" :layout :stack)
-    (tabs (:label "Kunde" :variant :line
-                  :items (list (list :label "Oversikt" :icon :house
-                                     :content '(:p "Bakeri Hansen AS har vært kunde siden 2019."))
-                               (list :label "Ordre" :icon :package
-                                     :content '(:p "12 ordre i år."))
-                               (list :label "Fakturaer" :icon :receipt
-                                     :content '(:p "2 ubetalte fakturaer, til sammen 18 900 kr."))
-                               (list :label "Kontaktpersoner" :icon :users
-                                     :content '(:p "Ola Hansen, daglig leder."))
-                               (list :label "Notater" :icon :message-square
-                                     :content '(:p "Leveres bakveien før klokken 7."))))))
-   (("Lenker til egne sider" :layout :stack)
-    (tabs (:label "Kunde" :variant :line
-                  :items (list (list :label "Oversikt" :href "/kunder/17")
-                               (list :label "Ordre" :href "/kunder/17/ordre" :current t)
-                               (list :label "Fakturaer" :href "/kunder/17/fakturaer")
-                               (list :label "Kontaktpersoner" :href "/kunder/17/kontakter"))))
-    (tabs (:label "Periode"
-                  :items (list (list :label "I dag" :href "/salg?periode=dag" :current t)
-                               (list :label "Denne uken" :href "/salg?periode=uke")
-                               (list :label "Denne måneden" :href "/salg?periode=maned"))))))
+                                     (list '(:p "Ordered on 3 October 2026 by Hansen Bakery Ltd.")
+                                           '(:p "Delivered to Storgata 12, 0155 Oslo.")))
+                               (list :label "Order lines" :selected t
+                                     :content (list '(:p "3 lines, €12,450 in all.")
+                                                    '(:ul (:li "Wheat flour 25 kg, 10 sacks")
+                                                      (:li "Rye flour 25 kg, 4 sacks")
+                                                      (:li "Shipping"))))
+                               (list :label "History"
+                                     :content '(:p "The order was created by Kari Nordmann."))))))
+   (("Line, with icons and many tabs" :layout :stack)
+    (tabs (:label "Customer" :variant :line
+                  :items (list (list :label "Overview" :icon :house
+                                     :content
+                                     '(:p "Hansen Bakery Ltd has been a customer since 2019."))
+                               (list :label "Orders" :icon :package
+                                     :content '(:p "12 orders this year."))
+                               (list :label "Invoices" :icon :receipt
+                                     :content '(:p "2 unpaid invoices, €18,900 in all."))
+                               (list :label "Contacts" :icon :users
+                                     :content '(:p "Ola Hansen, managing director."))
+                               (list :label "Notes" :icon :message-square
+                                     :content '(:p "Deliver by the back way before 7 am."))))))
+   (("Links to pages of their own" :layout :stack)
+    (tabs (:label "Customer" :variant :line
+                  :items (list (list :label "Overview" :href "/customers/17")
+                               (list :label "Orders" :href "/customers/17/orders" :current t)
+                               (list :label "Invoices" :href "/customers/17/invoices")
+                               (list :label "Contacts" :href "/customers/17/contacts"))))
+    (tabs (:label "Period"
+                  :items (list (list :label "Today" :href "/sales?period=day" :current t)
+                               (list :label "This week" :href "/sales?period=week")
+                               (list :label "This month" :href "/sales?period=month"))))))
   (unless (and label items)
     (error "Tabs need :label, what they are about, and :items"))
   (check-type variant (member :default :line))

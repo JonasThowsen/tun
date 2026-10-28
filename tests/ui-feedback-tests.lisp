@@ -43,7 +43,7 @@
     (is (search "<input type=\"hidden\" name=\"id\" value=\"42\">" html)
         "a value that is not a string is written as text")
     (is (cl-ppcre:scan "<button [^>]*type=\"submit\"[^>]*>Slett kunde</button>" html))
-    (is (cl-ppcre:scan "<a [^>]*href=\"/kunder/42\"[^>]*>Avbryt</a>" html)
+    (is (cl-ppcre:scan "<a [^>]*href=\"/kunder/42\"[^>]*>Cancel</a>" html)
         "cancel is a link back")
     (is (< (search "type=\"submit\"" html) (search "</form>" html))
         "the button is inside the form")))
@@ -53,7 +53,7 @@
          (labelledby (first (feedback-attributes "aria-labelledby" html))))
     (is (eql 0 (search "<section class=\"tun-confirm-panel\"" html)))
     (is (search (format nil "<h2 class=\"tun-confirm-panel-title\" id=\"~a\">" labelledby) html))
-    (is (search "Advarsel: </span>Dette kan ikke angres." html)
+    (is (search "Warning: </span>Dette kan ikke angres." html)
         "the warning says it is one to a screen reader, not only with its mark")))
 
 (test the-confirm-panel-button-follows-its-variant
@@ -103,7 +103,7 @@
 (test a-flash-is-a-status-whose-close-button-needs-javascript
   (let ((html (feedback-html (tun.ui:flash () "Kunden er lagret."))))
     (is (equal '("status") (feedback-attributes "role" html)))
-    (is (search "aria-label=\"Lukk meldingen\"" html))
+    (is (search "aria-label=\"Close the message\"" html))
     (is (search " hidden data-tun-flash-close" html)
         "hidden in the markup, shown by the script"))
   (is (not (search "data-tun-flash-close"
@@ -112,10 +112,10 @@
 (test a-spinner-is-announced-unless-it-is-decoration
   (let ((html (feedback-html (tun.ui:spinner ()))))
     (is (equal '("status") (feedback-attributes "role" html)))
-    (is (search ">Laster…</span>" html)))
+    (is (search ">Loading…</span>" html)))
   (let ((html (feedback-html (tun.ui:spinner () "Henter ordre…"))))
     (is (equal '("status") (feedback-attributes "role" html)))
-    (is (not (search "Laster…" html)) "visible text replaces the hidden label"))
+    (is (not (search "Loading…" html)) "visible text replaces the hidden label"))
   (let ((html (feedback-html (tun.ui:spinner (:label nil)))))
     (is (null (feedback-attributes "role" html)))
     (is (search "class=\"tun-spinner\" aria-hidden=\"true\"" html))))
@@ -139,7 +139,7 @@
                         for)
                 html)
         "the label is tied to the <progress>"))
-  (is (search ">66 %</span>" (feedback-html (tun.ui:progress (:label "Import" :value 66)))))
+  (is (search ">66%</span>" (feedback-html (tun.ui:progress (:label "Import" :value 66)))))
   (let ((html (feedback-html (tun.ui:progress (:label "Henter fakturaer")))))
     (is (not (search "value=" html)) "without a value the bar is indeterminate"))
   (signals error (tun.ui:progress (:value 3))))

@@ -4,7 +4,8 @@
 (defpackage #:tun.invoicing
   (:use #:cl #:tun.core #:tun.customers #:tun.catalog #:tun.orders)
   (:export #:invoice #:invoice-order-id #:invoice-status #:invoice-customer #:invoice-lines
-           #:invoice-subtotal-ore #:invoice-discount-ore #:invoice-total-ore #:invoice-external-ref
+           #:invoice-subtotal-minor #:invoice-discount-minor #:invoice-total-minor
+           #:invoice-external-ref
            #:invoice-created-at #:invoice-sent-at
            #:invoice-line #:find-invoice #:invoice-for-order #:create-invoice-from-order
            #:invoices-create-from-order #:invoices-get #:invoices-list #:invoices-send
@@ -16,35 +17,35 @@
 
 (define-module invoicing
   (:depends-on orders)
-  (:core ">= 1.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   ;; Sends whose outcome was never recorded are reconciled before any retry.
   (:on-open reconcile-send-intents)
   (:documentation "Invoicing: invoices from orders, sent through the accounting port."))
 
-(define-entity invoice-line (:embedded t :json-name "invoice_line" :label "Fakturalinje")
-  ((description :type (string :max 500) :input nil :label "Beskrivelse")
-   (quantity :type integer :input nil :label "Antall")
-   (unit-price-ore :type integer :input nil :label "Enhetspris (øre)")
-   (line-total-ore :type integer :input nil :label "Linjesum (øre)")
-   (line-effective-ore :type integer :input nil :label "Linjesum etter prisvalg (øre)")
-   (line-adjustment-ore :type integer :input nil :label "Linjejustering (øre)")))
+(define-entity invoice-line (:embedded t :json-name "invoice_line" :label "Invoice line")
+  ((description :type (string :max 500) :input nil :label "Description")
+   (quantity :type integer :input nil :label "Quantity")
+   (unit-price-minor :type money :input nil :label "Unit price")
+   (line-total-minor :type money :input nil :label "Line total")
+   (line-effective-minor :type money :input nil :label "Line total after price mode")
+   (line-adjustment-minor :type money :input nil :label "Line adjustment")))
 
-(define-entity invoice (:label "Faktura" :id-prefix "fak" :table "invoices"
+(define-entity invoice (:label "Invoice" :id-prefix "fak" :table "invoices"
                         :unique (("order_id")) :indexes (("status")))
-  ((order-id :type (id order) :required t :label "Ordre")
-   (status :type (enum "utkast" "sendt") :input nil :initform "utkast" :label "Status")
-   (customer :type json :input nil :label "Kunde"
-             :description "Kopi av kundens opplysninger da fakturaen ble laget.")
-   (lines :type (list-of invoice-line) :input nil :label "Linjer")
-   (subtotal-ore :type integer :input nil :label "Sum før rabatt (øre)")
-   (discount-ore :type integer :input nil :label "Rabatt (øre)")
-   (adjustment-ore :type integer :input nil :label "Justering (øre)")
-   (total-ore :type integer :input nil :label "Totalt (øre)")
-   (external-ref :type (string :max 200) :input nil :label "Ekstern referanse")
-   (created-at :type timestamp :input nil :label "Opprettet")
-   (sent-at :type timestamp :input nil :label "Sendt")))
+  ((order-id :type (id order) :required t :label "Order")
+   (status :type (enum "draft" "sent") :input nil :initform "draft" :label "Status")
+   (customer :type json :input nil :label "Customer"
+             :description "A copy of the customer's details when the invoice was made.")
+   (lines :type (list-of invoice-line) :input nil :label "Lines")
+   (subtotal-minor :type money :input nil :label "Subtotal before discount")
+   (discount-minor :type money :input nil :label "Discount")
+   (adjustment-minor :type money :input nil :label "Adjustment")
+   (total-minor :type money :input nil :label "Total")
+   (external-ref :type (string :max 200) :input nil :label "External reference")
+   (created-at :type timestamp :input nil :label "Created")
+   (sent-at :type timestamp :input nil :label "Sent")))
 
-(define-entity send-intent (:json-name "send_intent" :label "Sendeintensjon" :id-prefix "int"
+(define-entity send-intent (:json-name "send_intent" :label "Send intent" :id-prefix "int"
                             :table "invoice_send_intents" :internal t :unique (("invoice_id")))
   ((invoice-id :type id :input nil)
    (intent-id :type (string :max 200) :input nil)
@@ -69,13 +70,13 @@ free-text fields (phone, notes) stay off invoices and the accounting port."
               (type->json (field-type field) (field-value customer field)))))))
 
 (defun create-invoice-from-order (order)
-  "Snapshot ORDER into a new utkast invoice. conflict when one exists."
+  "Snapshot ORDER into a new draft invoice. conflict when one exists."
   ;; Confirmed or later, not cancelled (README §3).
-  (unless (member (order-status order) '("bekreftet" "hentet" "returnert" "send_faktura" "fullført") :test #'string=)
-    (fail :invalid-transition "Ordren har status ~a; faktura krever en bekreftet ordre"
-          (order-status order)))
+  (unless (member (order-status order) '("confirmed" "picked_up" "returned" "ready_for_invoice" "completed") :test #'string=)
+    (fail :invalid-transition "The order is ~a; an invoice needs a confirmed order"
+          (label "order" "status" (order-status order))))
   (when (invoice-for-order (entity-id order))
-    (fail :conflict "Ordre ~a er allerede fakturert" (entity-id order)))
+    (fail :conflict "Order ~a has already been invoiced" (entity-id order)))
   (insert (make-instance 'invoice
                          :order-id (entity-id order)
                          :customer (customer-snapshot (order-customer order))
@@ -83,40 +84,41 @@ free-text fields (phone, notes) stay off invoices and the accounting port."
                                           (make-instance 'invoice-line
                                                          :description (product-name (find-product (order-line-product-id line)))
                                                          :quantity (order-line-quantity line)
-                                                         :unit-price-ore (order-line-unit-price-ore line)
-                                                         :line-total-ore (order-line-line-total-ore line)
-                                                         :line-effective-ore (or (order-line-line-effective-ore line)
-                                                                                 (order-line-line-total-ore line))
-                                                         :line-adjustment-ore (- (or (order-line-line-effective-ore line)
-                                                                                     (order-line-line-total-ore line))
-                                                                                 (order-line-line-total-ore line))))
+                                                         :unit-price-minor (order-line-unit-price-minor line)
+                                                         :line-total-minor (order-line-line-total-minor line)
+                                                         :line-effective-minor (or (order-line-line-effective-minor line)
+                                                                                 (order-line-line-total-minor line))
+                                                         :line-adjustment-minor (- (or (order-line-line-effective-minor line)
+                                                                                     (order-line-line-total-minor line))
+                                                                                 (order-line-line-total-minor line))))
                                         (order-lines order))
-                         :subtotal-ore (order-subtotal-ore order)
-                         :discount-ore (order-discount-ore order)
-                         :adjustment-ore (or (order-adjustment-ore order) (- (order-discount-ore order)))
-                         :total-ore (order-total-ore order))))
+                         :subtotal-minor (order-subtotal-minor order)
+                         :discount-minor (order-discount-minor order)
+                         :adjustment-minor (or (order-adjustment-minor order) (- (order-discount-minor order)))
+                         :total-minor (order-total-minor order))))
 
-(define-operation invoices-create-from-order ((order-id :type (id order) :required t :label "Ordre-ID"))
-    (:entity invoice :kind :create :title "Lag faktura"
-     :description "Lager et fakturautkast som kopi av en bekreftet eller fullført ordre. Ny faktura for samme ordre gir conflict.")
+(define-operation invoices-create-from-order ((order-id :type (id order) :required t :label "Order ID"))
+    (:entity invoice :kind :create :title "Create an invoice"
+             :description "Makes a draft invoice, a copy of a confirmed or completed order. A second
+invoice for the same order is conflict.")
   (create-invoice-from-order (find-order order-id)))
 
-(define-operation invoices-get ((id :type (id invoice) :required t :label "Faktura-ID"))
-    (:entity invoice :kind :read :title "Hent faktura" :description "Henter én faktura.")
+(define-operation invoices-get ((id :type (id invoice) :required t :label "Invoice ID"))
+    (:entity invoice :kind :read :title "Get an invoice" :description "Gets one invoice.")
   (find-invoice id))
 
-(define-operation invoices-list ((order-id :type (id order) :label "Ordre-ID")
-                                 (status :type (enum "utkast" "sendt") :label "Status")
-                                 (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity invoice :kind :read :title "Fakturaliste" :description "Lister fakturaer.")
+(define-operation invoices-list ((order-id :type (id order) :label "Order ID")
+                                 (status :type (enum "draft" "sent") :label "Status")
+                                 (limit :type (integer :min 1 :max 100) :default 20 :label "Limit"))
+    (:entity invoice :kind :read :title "List invoices" :description "Lists invoices.")
   (let ((where (remove nil (list (and order-id `(:= "order_id" ,order-id))
                                  (and status `(:= "status" ,status))))))
     (page (select 'invoice :where (and where `(:and ,@where)) :limit (1+ limit)) limit)))
 
 (defun send-summary ()
   (let ((invoice (find-invoice (input-value :id))))
-    (format nil "Send faktura ~a (ordre ~a, totalt ~a kr) til regnskapssystemet og kunden."
-            (entity-id invoice) (invoice-order-id invoice) (format-kroner (invoice-total-ore invoice)))))
+    (tr "Send invoice ~a (order ~a, total ~a) to the accounting system and the customer."
+        (entity-id invoice) (invoice-order-id invoice) (money-text (invoice-total-minor invoice)))))
 
 (defvar *sending* (make-hash-table :test 'equal) "Invoice ids being sent by this process.")
 (defvar *sending-lock* (sb-thread:make-mutex :name "invoices being sent"))
@@ -126,16 +128,22 @@ free-text fields (phone, notes) stay off invoices and the accounting port."
 sending it. Released when the send finishes or its transaction rolls back."
   (sb-thread:with-mutex (*sending-lock*)
     (when (gethash id *sending*)
-      (fail :conflict "Fakturaen ~a er i ferd med å bli sendt" id))
+      (fail :conflict "The invoice ~a is being sent" id))
     (setf (gethash id *sending*) t))
   (on-rollback (lambda () (release-send id))))
 
 (defun release-send (id)
   (sb-thread:with-mutex (*sending-lock*) (remhash id *sending*)))
 
+(defun accounting-unavailable (condition)
+  "Refuse the send: the accounting port failed with CONDITION."
+  (fail :unavailable
+        "The accounting system did not answer (~a); the invoice was not sent, try again"
+        condition))
+
 (defun finish-send (id intent-id)
   "Outside any transaction: call the accounting port for the committed intent,
-then record the outcome and send the faktura message in a new transaction.
+then record the outcome and send the invoice message in a new transaction.
 A failure leaves the intent pending; a later send resumes it."
   (unwind-protect
        (let* ((snapshot (with-transaction (:read)
@@ -144,22 +152,21 @@ A failure leaves the intent pending; a later send resumes it."
                              :id intent-id :invoice-id id
                              :customer (invoice-customer invoice)
                              :lines (mapcar #'entity->json (invoice-lines invoice))
-                             :total-ore (invoice-total-ore invoice)))))
+                             :total-minor (invoice-total-minor invoice)))))
               (ref (handler-case (with-request-state (:external-call)
                                    (with-step (:external :name "accounting.create_invoice" :source :core
                                                :detail (format nil "intent ~a" intent-id))
                                      (tun.accounting:create-invoice (application-accounting *application*) snapshot)))
                      (operation-error (e) (error e))
                      (deadline-exceeded (e) (error e))
-                     (error (e)
-                       (fail :unavailable "Regnskapssystemet svarte ikke (~a); fakturaen er ikke sendt, prøv igjen" e)))))
+                     (error (e) (accounting-unavailable e)))))
          (check-type ref string)
          (record-send-outcome id ref "invoices_send.completed"))
     (release-send id)))
 
 (defun record-send-outcome (id ref audit-tool)
-  "In a new transaction: the intent is done, the invoice sendt with REF, the
-customer gets the faktura message. Idempotent: an invoice already sendt is
+  "In a new transaction: the intent is done, the invoice sent with REF, the
+customer gets the invoice message. Idempotent: an invoice already sent is
 left as it is."
   (with-transaction (:write)
     (let ((invoice (find-invoice id))
@@ -167,13 +174,13 @@ left as it is."
       (when intent
         (setf (send-intent-status intent) "done" (send-intent-external-ref intent) ref)
         (save intent))
-      (when (string= (invoice-status invoice) "utkast")
-        (setf (invoice-status invoice) "sendt"
+      (when (string= (invoice-status invoice) "draft")
+        (setf (invoice-status invoice) "sent"
               (invoice-external-ref invoice) ref
               (invoice-sent-at invoice) (now))
         (save invoice)
         (let ((order (find-order (invoice-order-id invoice))))
-          (notify "faktura" :order order :customer (order-customer order)))
+          (notify "invoice" :order order :customer (order-customer order)))
         (write-system-audit audit-tool "ok" :entity-type "invoice" :entity-id id))
       invoice)))
 
@@ -193,13 +200,16 @@ pending and the next invoices_send creates it. Returns how many completed."
           (record-send-outcome (send-intent-invoice-id intent) ref "invoices_send.reconciled")
           (incf completed))))))
 
-(define-operation invoices-send ((id :type (id invoice) :required t :label "Faktura-ID"))
-    (:entity invoice :kind :transition :confirm t :destructive t :policy :admin :title "Send faktura"
+(define-operation invoices-send ((id :type (id invoice) :required t :label "Invoice ID"))
+    (:entity invoice :kind :transition :confirm t :destructive t :policy :admin :title "Send an invoice"
      :summary send-summary
-     :description "utkast → sendt. Lagrer en sendeintensjon (committet før regnskapskallet), kaller regnskapsporten utenfor transaksjonen, lagrer ekstern referanse og sender fakturameldingen. Krever bekreftelse og admin.")
+             :description "draft → sent. Stores a send intent (committed before the accounting
+call), calls the accounting port outside the transaction, stores the external reference and sends
+the invoice message. Needs a confirmation and admin.")
   (let ((invoice (find-invoice id)))
-    (unless (string= (invoice-status invoice) "utkast")
-      (fail :invalid-transition "Fakturaen har status ~a og kan ikke sendes på nytt" (invoice-status invoice)))
+    (unless (string= (invoice-status invoice) "draft")
+      (fail :invalid-transition "The invoice is ~a and cannot be sent again"
+            (label "invoice" "status" (invoice-status invoice))))
     (claim-send id)
     ;; 1. Persist the send intent; its id is stable per invoice, so a resumed
     ;;    send reuses it and the provider can de-duplicate.

@@ -11,7 +11,24 @@
    #:random-bytes #:random-token-string #:new-id #:new-secret-token #:sha256-hex
    #:universal-time #:parse-rfc3339 #:format-rfc3339 #:parse-date #:valid-date-string-p #:format-date
    #:date-add-days #:date-add-months #:date-at #:date-of #:date<= #:date<
-   #:last-sunday #:summer-time-p #:oslo-offset #:local-date-of #:local-time-of #:local-today
+   #:last-sunday #:local-today
+   ;; languages, catalogues and texts (spec/i18n.md)
+   #:+languages+ #:+pseudo-language+ #:*language* #:with-language #:current-language
+   #:locale #:make-locale #:locale-language #:locale-currency #:locale-time-zone #:*locale*
+   #:application-languages #:application-source-language #:application-locale-options
+   #:read-tenant-locale #:request-locale #:setting-texts
+   #:current-locale #:default-locale #:translate #:translate-in-context #:tr #:deferred-tr #:define-translations #:register-translations
+   #:find-translation #:catalogue-entries #:*missing-translation-hook* #:noted-texts #:note-text
+   #:text #:make-text #:text-p #:text-control #:text-args #:text-context #:render-text
+   #:label #:label-p #:humanize-value
+   ;; currencies and formats (spec/i18n.md 5, 6.2)
+   #:+currencies+ #:currency-p #:current-currency #:currency-minor-digits #:+most-amount+
+   #:money-text #:number-text #:date-text #:instant-text #:timestamp-text #:yes-no-text
+   #:read-money-text #:read-decimal-text #:money-type #:money #:money-name-p #:check-money-name
+   #:*written-amounts*
+   ;; time zones (spec/i18n.md 6.1)
+   #:+time-zones+ #:time-zone-p #:european-summer-time-p #:current-time-zone #:zone-offset
+   #:local-date-of #:local-time-of #:local-instant
    ;; json
    #:jobj #:jarr #:json-bool #:jget #:jkeys #:json-null-p #:json-object-p #:json-array-p
    #:parse-json #:json-parse-failure #:*max-json-string-length*
@@ -21,6 +38,7 @@
    #:+number-too-many-digits+
    ;; conditions
    #:error-code #:operation-error #:operation-error-code #:operation-error-message
+   #:operation-error-text
    #:operation-error-fields #:operation-error-details #:fail #:fail-with-details #:fail-fields
    #:operation-error-json #:error-status #:actor-error #:actor-error-message #:extension-error
    ;; rank keys
@@ -78,7 +96,12 @@
    #:store-open #:store-close #:store-migrate #:store-call-in-transaction #:store-insert
    #:store-update #:store-delete #:store-find #:store-select #:store-lock-row #:store-description
    #:store-claim-presence #:store-present-p #:store-presences
-   #:+core-major-module+ #:newer-database #:ensure-core-major
+   #:+core-major-module+ #:newer-database #:ensure-core-major #:check-core-major
+   #:core-major-mark #:running-major #:highest-major
+   ;; core 2.0's migration and its revert (spec/i18n.md 4.4 to 4.6)
+   #:make-database-access #:prepare-database #:revert-database
+   #:store-revert-to-core-1 #:database-refused #:database-refused-reason
+   #:*core-migration-fault*
    #:with-transaction #:call-in-transaction #:assert-writable #:insert #:save #:delete-entity #:fetch #:fetch!
    #:select #:select-one #:lock-row #:where-field #:where-value->db #:read-only-violation
    #:store-describe-schema #:store-write-queue-depth #:store-runs-queries-p #:store-query
@@ -111,7 +134,7 @@
    #:audit-entry-entity-type #:audit-entry-entity-id #:audit-entry-request-key #:audit-entry-error-code
    #:audit-entry-reason #:audit-entry-credential #:audit-as #:audit-target #:*audit-actor*
    #:*audit-reason* #:reject #:reject-as #:input-null-p
-   #:decimal #:decimal-type #:json-number->rational #:round-decimal #:quantity-json #:format-quantity #:format-kroner
+   #:decimal #:decimal-type #:json-number->rational #:round-decimal #:quantity-json #:format-quantity
    #:receipt #:confirmation #:setting #:read-setting #:write-setting
    ;; operations
    #:operation #:define-operation #:operation-name #:operation-tool #:operation-entity
@@ -124,7 +147,7 @@
    #:input-provided-p #:input-draft #:input-request-key #:operation-result #:current-operation-tool
    #:*input* #:*operation* #:operation-input-schema
    #:parameter-json-name #:parameter-type #:parameter-entity-field #:parameter-required-p
-   #:parameter-label
+   #:parameter-label #:parameter-description
    #:parameter-text #:parameter-name #:parameter-keyword #:parameter-default #:parse-parameter-spec
    #:check-operation-methods
    #:operation-location #:method-owner-name #:method-source #:traced-protocol

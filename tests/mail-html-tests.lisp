@@ -12,7 +12,7 @@
   "The node tree MAIL-TEST-SEND-TREE sends: a tree cannot travel as JSON.")
 
 (define-operation mail-test-send-tree ((text :type string) (subject :type string))
-    (:kind :update :policy :employee :title "Send e-post av noder (test)")
+    (:kind :update :policy :employee :title "Send a mail of nodes (test)")
   (jobj "id" (entity-id (tun:send-mail :to "ola@example.no" :subject (or subject "Sammendrag")
                                        :text text :html *mail-tree*))))
 
@@ -120,12 +120,12 @@ html alone and stores no mail; else NIL."
 
 (test what-is-outside-the-node-grammar-is-refused-not-an-internal-error
   (with-mail (provider)
-    (is (search "tekst eller et tall" (mail-refusal '(:a (:@ :href t) "x"))) "a value T")
+    (is (search "a text or a number" (mail-refusal '(:a (:@ :href t) "x"))) "a value T")
     (is (mail-refusal '(:p (:@ :title #\x) "x")) "a character as a value")
-    (is (search "nøkkelord" (mail-refusal '(:p (:@ "title" "x") "x"))) "a name that is a string")
+    (is (search "keyword" (mail-refusal '(:p (:@ "title" "x") "x"))) "a name that is a string")
     (is (mail-refusal '(:p (:@ title "x") "x")) "a name that is a symbol")
     (is (mail-refusal '(:p (:@ :title) "x")) "an odd (:@ ...)")
-    (is (search "rett etter taggen" (mail-refusal '(:p "x" (:@ :title "y"))))
+    (is (search "right after the tag" (mail-refusal '(:p "x" (:@ :title "y"))))
         "(:@ ...) after a child")
     (is (mail-refusal '(:p sym)) "a symbol")
     (is (mail-refusal '(:p :strong)) "a keyword not at the head of an element")
@@ -153,17 +153,17 @@ html alone and stores no mail; else NIL."
       (is (mail-refusal (list :p circular)) "a list of nodes that goes round"))
     (let ((inside (list :div "a")))
       (setf (cdr (last inside)) (list inside))
-      (is (search "dypere enn 200" (or (mail-refusal inside) "")) "an element inside itself"))
+      (is (search "deeper than 200" (or (mail-refusal inside) "")) "an element inside itself"))
     (let ((attributes (list :title "a")))
       (setf (cdr (last attributes)) attributes)
       (is (mail-refusal (list :p (cons :@ attributes) "x")) "attributes that go round"))
-    (is (search "dypere enn 200" (or (mail-refusal (nested 300)) "")))
+    (is (search "deeper than 200" (or (mail-refusal (nested 300)) "")))
     (is (sends-p (nested 150)) "150 levels are sent")))
 
 (test a-string-as-the-whole-html-is-refused
   (with-mail (provider)
-    (is (search "ikke tekst med HTML" (mail-refusal "<p>Hei</p>" "text" "Hei")))
-    (is (search "ikke tekst med HTML" (mail-refusal "Hei" "text" "Hei")))
+    (is (search "not text with HTML" (mail-refusal "<p>Hei</p>" "text" "Hei")))
+    (is (search "not text with HTML" (mail-refusal "Hei" "text" "Hei")))
     (is (sends-p '("Hei")) "a list holding a string is a tree")))
 
 ;;; ------------------------------------------------------------------
@@ -177,7 +177,7 @@ html alone and stores no mail; else NIL."
     (dolist (href '(" javascript:alert(1)" " https://example.no" "https://example.no/a b"
                     "https://example.no/	" "https://exa\\mple.no" "/sak
 er"))
-      (is (search "mellomrom, kontrolltegn" (or (mail-refusal `(:a (:@ :href ,href) "x")) ""))
+      (is (search "spaces, control characters" (or (mail-refusal `(:a (:@ :href ,href) "x")) ""))
           "~s is refused for its spaces or controls" href))
     (is (mail-refusal `(:a (:@ :href ,(format nil "java~cscript:alert(1)" (code-char 0))) "x")))
     (is (mail-refusal `(:a (:@ :href ,(format nil "~chttps://example.no" (code-char 160))) "x"))))
@@ -238,7 +238,7 @@ background-color: rgba(0, 0, 0, 0.1);") "x")))
 (test the-frame-is-a-whole-document-without-anything-external
   (with-test-app ()
     (let ((html (nth-value 0 (rendered '(:p "Hei") :subject "Sammendrag for i dag"))))
-      (is (eql 0 (search "<!doctype html><html lang=\"no\"><head><meta charset=\"utf-8\">" html)))
+      (is (eql 0 (search "<!doctype html><html lang=\"en\"><head><meta charset=\"utf-8\">" html)))
       (is (search "<meta name=\"viewport\" content=\"width=device-width, initial-scale=1\">" html))
       (is (search "<title>Sammendrag for i dag</title>" html))
       (is (search "max-width: 600px" html))
@@ -251,6 +251,20 @@ background-color: rgba(0, 0, 0, 0.1);") "x")))
       (is (search "<title>&lt;/title&gt;&lt;img src=x onerror=alert(1)&gt;</title>" html)
           "the subject is escaped in the title")
       (is (not (search "<img" html))))))
+
+;; spec/i18n.md 8: the frame carries the code of the language the mail is
+;; written in, the tenant's.
+(test the-frames-lang-is-the-tenants-language
+  (with-test-app ()
+    (let ((*mail-tree* '(:p "Hei")))
+      (call-ok "mail_test_send_tree" "employee:kari")
+      (call-ok "settings_set" "admin:ada" "key" "locale.language" "value" "nb")
+      (call-ok "mail_test_send_tree" "employee:kari"))
+    (destructuring-bind (norwegian english)
+        (mapcar (lambda (mail) (jget (call-ok "mail_get" "admin:ada" "id" (jget mail "id")) "html"))
+                (coerce (jget (call-ok "mail_list" "admin:ada") "items") 'list))
+      (is (search "<html lang=\"nb\">" norwegian) "the newest, on a Norwegian tenant")
+      (is (search "<html lang=\"en\">" english) "the first, on an English one"))))
 
 ;;; ------------------------------------------------------------------
 ;;; The text part

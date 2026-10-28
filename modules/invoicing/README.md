@@ -5,7 +5,7 @@ ASDF system `tun-invoicing`, package `tun.invoicing`; pinned by clients through
 
 - **Owns:** `invoice`, send intents; `invoices_*`; reconciles pending sends at start-up.
 - **Depends on:** `orders`.
-- **Core range:** builds against core `>= 1.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** no extension points of its own; a client extends it with
@@ -31,33 +31,33 @@ reconciliation) is the kernel's (core.md §5.2); this module is its user.
 It turns an order into an invoice, a copy that later order changes do not
 alter, and sends the invoice to the accounting system through the port.
 Sending happens at most once per invoice, survives a crash between the
-call and its outcome, and tells the customer through the `faktura` message.
+call and its outcome, and tells the customer through the `invoice` message.
 
 ### 2. Invoice
 
-`invoice = {"id","order_id","status","customer","lines","subtotal_ore","discount_ore","adjustment_ore","total_ore","external_ref","created_at","sent_at"}`.
+`invoice = {"id","order_id","status","customer","lines","subtotal_minor","discount_minor","adjustment_minor","total_minor","external_ref","created_at","sent_at"}`.
 
-- `status` is `utkast` or `sendt`; the only transition is `utkast → sendt`.
+- `status` is `draft` or `sent`; the only transition is `draft → sent`.
 - One invoice per order.
 - `customer` is a snapshot of who the invoice is for: the customer's `name`
   and `email` and every input field a client added (such as `kind` and
   `org_number`). The kernel's free-text fields (`phone`, `notes`) stay off
   invoices and the port.
-- `lines` copy the order's lines: `{"description","quantity","unit_price_ore","line_total_ore","line_effective_ore","line_adjustment_ore"}`,
-  `description` being the product's name. `line_effective_ore` is the line
-  after its price mode (or `line_total_ore`), and `line_adjustment_ore` the
+- `lines` copy the order's lines: `{"description","quantity","unit_price_minor","line_total_minor","line_effective_minor","line_adjustment_minor"}`,
+  `description` being the product's name. `line_effective_minor` is the line
+  after its price mode (or `line_total_minor`), and `line_adjustment_minor` the
   difference.
-- `subtotal_ore`, `discount_ore`, `adjustment_ore` and `total_ore` copy the
-  order's; `adjustment_ore` defaults to minus the discount.
+- `subtotal_minor`, `discount_minor`, `adjustment_minor` and `total_minor` copy the
+  order's; `adjustment_minor` defaults to minus the discount.
 - `external_ref` is the accounting system's reference, set when sent.
 
 ### 3. Creating an invoice
 
 `invoices_create_from_order {"order_id"}` (create). The order must be
-`bekreftet`, `hentet`, `returnert`, `send_faktura` or `fullført`, else
+`confirmed`, `picked_up`, `returned`, `ready_for_invoice` or `completed`, else
 `invalid_transition` `Ordren har status <s>; faktura krever en bekreftet
 ordre`. A second invoice for the same order is `conflict` `Ordre <id> er
-allerede fakturert`. The result is the `utkast` invoice.
+allerede fakturert`. The result is the `draft` invoice.
 
 `create-invoice-from-order` does the same for a dependent module or a
 client's workflow (for example an invoice created automatically on the
@@ -68,7 +68,7 @@ event date).
 `invoices_send {"id"}` (transition, admin, confirm, destructive). Its
 confirmation summary names the invoice, the order and the total. The steps:
 
-1. The invoice is not `utkast` → `invalid_transition` `Fakturaen har status
+1. The invoice is not `draft` → `invalid_transition` `Fakturaen har status
    <s> og kan ikke sendes på nytt`.
 2. Another call in this process is sending it → `conflict` `Fakturaen <id>
    er i ferd med å bli sendt`.
@@ -78,16 +78,16 @@ confirmation summary names the invoice, the order and the total. The steps:
 4. After the commit, outside any transaction (core.md §7.3), the port's
    `create_invoice` is called with the intent: its id, the invoice id, the
    customer snapshot, the lines and the total.
-5. In a new transaction: the intent is done, the invoice `sendt` with
-   `external_ref` and `sent_at`, the `faktura` message goes to the customer
+5. In a new transaction: the intent is done, the invoice `sent` with
+   `external_ref` and `sent_at`, the `invoice` message goes to the customer
    through the kernel's messaging port (core.md §5.1; nothing is sent
    without a messaging module), and a system audit entry
    `invoices_send.completed` is written.
 
 When the port fails, the answer is `unavailable` `Regnskapssystemet svarte
-ikke (…); fakturaen er ikke sendt, prøv igjen`, the invoice stays `utkast`
+ikke (…); fakturaen er ikke sendt, prøv igjen`, the invoice stays `draft`
 and the intent pending; the next `invoices_send` resumes with the same
-intent id. Recording an outcome is idempotent: an invoice already `sendt`
+intent id. Recording an outcome is idempotent: an invoice already `sent`
 is left as it is.
 
 ### 5. Reconciliation at start

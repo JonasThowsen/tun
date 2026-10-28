@@ -28,7 +28,9 @@ and `docs/client-api.md` (how a client extends it). Before writing Lisp, read
   rather than guessing.
 - Comments explain what the code does and why. They do not narrate review
   rounds, finding numbers or history; that belongs in commit messages.
-- Code identifiers in English; Norwegian in labels, descriptions and copy.
+- Code identifiers in English, stored values and keys included. Copy is
+  written in English and translated in catalogues, Norwegian (bokmål)
+  among them, keeping `æ`, `ø` and `å` (`spec/i18n.md`).
 - No production deployments, credentials, publishing, pushes to remotes, or
   external infrastructure changes without explicit authorization. Every
   external system sits behind a port with a fake adapter.

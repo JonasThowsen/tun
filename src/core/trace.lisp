@@ -41,7 +41,7 @@
   "The most octets of a backtrace's frame names a record keeps.")
 (defparameter +most-recorded-input+ (* 48 1024)
   "The most octets of input a record keeps (RECORDED-INPUT).")
-(defparameter +input-left-out+ "[utelatt: posten holder høyst 48 KB av input]"
+(defparameter +input-left-out+ "[left out: the record keeps at most 48 KB of input]"
   "What a record keeps of an input value past +MOST-RECORDED-INPUT+.")
 
 (defparameter +most-record-octets+ (* 64 1024)
@@ -261,7 +261,7 @@ a workflow, a screen -- cannot confirm on the user's behalf.")
     (if (>= (fill-pointer (request-steps record)) *max-steps-per-request*)
         (progn (incf (request-dropped-steps record)) nil)
         (let ((step (make-trace-step kind name source order (trace-clock-us)
-                                     (if (request-redacted record) "[slettet]" detail))))
+                                     (if (request-redacted record) "[deleted]" detail))))
           (vector-push-extend step (request-steps record))
           step))))
 
@@ -384,7 +384,7 @@ this form would unwind before it is consulted."
 (defun set-request-outcome (record outcome &key code message)
   (setf (request-outcome record) outcome
         (request-error-code record) code
-        (request-error-message record) (if (and message (request-redacted record)) "[slettet]" message)))
+        (request-error-message record) (if (and message (request-redacted record)) "[deleted]" message)))
 
 (defun request-input-json (record)
   "RECORD's input as a JSON object: {} when it has none."
@@ -449,8 +449,8 @@ this form would unwind before it is consulted."
 (defun redact-request-payload (record)
   "Discard trace payloads without changing identity, outcome or timing; caller holds its lock."
   (setf (request-redacted record) t (request-input record) nil)
-  (when (request-error-message record) (setf (request-error-message record) "[slettet]"))
-  (loop for step across (request-steps record) do (setf (trace-step-detail step) "[slettet]")))
+  (when (request-error-message record) (setf (request-error-message record) "[deleted]"))
+  (loop for step across (request-steps record) do (setf (trace-step-detail step) "[deleted]")))
 
 (defvar *stored-diagnostics-redactors* '()
   "Functions of NEEDLES that erase the diagnostics kept in the store which
@@ -527,6 +527,7 @@ taken over by the first operation called in it."
               (request-input record) input)
         (unwind-protect
              (let ((*request-record* record)
+                   (*locale* (or *locale* (request-locale application)))
                    (finished nil))
                (register-in-flight record)
                (unwind-protect
@@ -553,8 +554,11 @@ retire it to the history."
           (set-request-outcome record "ok")
           (set-request-outcome record "error"
                                :code :internal-error
-                               :message (or (and latest (ignore-errors (princ-to-string (car latest))))
-                                            "Forespørselen ble avbrutt"))))
+                               :message (or (and latest
+                                                 (ignore-errors
+                                                  (with-language (:source)
+                                                    (princ-to-string (car latest)))))
+                                            "The request was cut short"))))
     (when (and (equal (request-outcome record) "error") (not (request-backtrace-chosen record))
                latest)
       (setf (request-backtrace record) (cdr latest)
@@ -582,7 +586,7 @@ retire it to the history."
     (when (trace-step-source step)
       (setf (gethash "source" object) (string-downcase (symbol-name (trace-step-source step)))))
     (when (trace-step-order step) (setf (gethash "order" object) (trace-step-order step)))
-    (let ((detail (if (request-redacted record) "[slettet]" (trace-step-detail step))))
+    (let ((detail (if (request-redacted record) "[deleted]" (trace-step-detail step))))
       (when detail
         (setf (gethash "detail" object)
               (if (and (stringp detail) (> (length detail) 300)) (concatenate 'string (subseq detail 0 300) "…") detail))))
@@ -610,7 +614,7 @@ retire it to the history."
     (when (request-error-code record)
       (setf (gethash "error" object)
             (jobj "code" (code-string (request-error-code record))
-                  "message" (if (request-redacted record) "[slettet]" (or (request-error-message record) "")))))
+                  "message" (if (request-redacted record) "[deleted]" (or (request-error-message record) "")))))
     (when (and (equal (request-outcome record) "error") (not running))
       (setf (gethash "backtrace" object) (jarr (request-backtrace record))))
     (when (plusp (request-dropped-steps record))
@@ -635,7 +639,7 @@ retire it to the history."
     (when (request-error-code record)
       (setf (gethash "error_code" object) (code-string (request-error-code record))
             (gethash "message" object) (if (request-redacted record)
-                                           "[slettet]"
+                                           "[deleted]"
                                            (or (request-error-message record) ""))))
     object))
 

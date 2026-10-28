@@ -311,8 +311,8 @@ free port, and URL bound to its /v1/check."
                (tun.web::setting-card (jobj "key" "typesafe.api_key" "type" "secret" "secret" t
                                             "value" "***" "env" "TYPESAFE_API_KEY"
                                             "description" "Nøkkelen til TypeSafe.")))))
-    (is (search "miljøvariabelen TYPESAFE_API_KEY" html))
+    (is (search "the environment variable TYPESAFE_API_KEY" html))
     (is (not (search "<form" html))))
   (is (search "<form" (tun.html:render-html
-                       (tun.web::setting-card (jobj "key" "lenker.base_url" "type" "url" "secret" nil
+                       (tun.web::setting-card (jobj "key" "links.base_url" "type" "url" "secret" nil
                                                     "value" "https://tun.example" "description" ""))))))

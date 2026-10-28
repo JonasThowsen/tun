@@ -406,15 +406,15 @@ status, the body as text and the headers."
                (says (answer status message)
                  (and (= status (first answer)) (search message (second answer)) t)))
           (is (says (answer (loop for i below 65 collect (list (format nil "f~d" i) "x")))
-                    413 "Skjemaet har for mange felt (høyst 64)."))
+                    413 "The form has too many fields (at most 64)."))
           (is (says (answer (loop for i below 11
                                   collect (list "filer" (format nil "~d.png" i) png)))
-                    413 "Du kan sende høyst 10 filer om gangen."))
+                    413 "You can send at most 10 files at a time."))
           (is (says (answer (list (list (make-string 9000 :initial-element #\n) "x")))
-                    413 "En del av skjemaet har for lange overskrifter (høyst 8 KB)."))
+                    413 "A part of the form has headers that are too long (at most 8 KB)."))
           (is (says (answer (list (list "title" (make-string (1+ +mib+) :initial-element #\a))))
-                    413 "Et felt i skjemaet er lengre enn 1 MB."))
-          (let ((unreadable "Skjemaet kunne ikke leses."))
+                    413 "A field in the form is longer than 1 MB."))
+          (let ((unreadable "The form could not be read."))
             (flet ((raw-form (content-type octets)
                      (multiple-value-bind (status text)
                          (post-octets port "/filprove" octets
@@ -467,7 +467,7 @@ status, the body as text and the headers."
               (post-form port "/filprove" (list (list "title" "Tom fil")
                                                 (list "filer" "tom.png" (bytes))))
             (is (= 422 status))
-            (is (search "«tom.png»: Filen er tom." text)))
+            (is (search "“tom.png”: The file is empty." text)))
           (is (equal temporary (directory (merge-pathnames "*.*" hunchentoot:*tmp-directory*)))
               "nothing written to a temporary file"))))))
 
@@ -554,7 +554,7 @@ return the whole response as text: what is answered before the body is read."
                                          "Content-Type: multipart/form-data; boundary=b"
                                          (format nil "Content-Length: ~d" (* 3 +mib+))))))
                  (is (search " 503" answer))
-                 (is (search "Serveren tar imot mange filer akkurat nå." answer))
+                 (is (search "The server is taking many files now." answer))
                  (is (search "Content-Type: text/html" answer))
                  (is (search "Retry-After: 1" answer)))
                (sb-thread:signal-semaphore semaphore 10)
@@ -780,14 +780,14 @@ IDAT chunk, which Tun keeps as it is and never inflates."
                        (sb-ext:string-to-octets (to-json-string arguments) :external-format :utf-8)
                        :headers headers)
         (is (= 413 status))
-        (is (search "Bare innholdet i en fil kan være lengre enn 1 MB." text))
+        (is (search "Only a file's content can be longer than 1 MB." text))
         (is (< (longest-string text) +mib+) "the answer does not repeat the key")
         (is (<= (longest-record-string (last-request :api)) +mib+)
             "the request's record holds no string over 1 MiB"))
       (multiple-value-bind (status text)
           (post-octets port "/mcp" (tools-call-text "attachments_add" arguments) :headers headers)
         (is (= 413 status))
-        (is (search "Bare innholdet i en fil kan være lengre enn 1 MB." text))
+        (is (search "Only a file's content can be longer than 1 MB." text))
         (is (<= (longest-record-string (last-request :mcp)) +mib+))))))
 
 (test each-refusal-of-a-large-body-says-its-own-reason
@@ -799,14 +799,14 @@ IDAT chunk, which Tun keeps as it is and never inflates."
                                                                            :initial-element #\a)))
                        :headers headers)
         (is (= 413 status))
-        (is (search "Over 2 MB tas bare imot for et verktøy som tar filer." text)))
+        (is (search "More than 2 MB is taken only for a tool that takes files." text)))
       (multiple-value-bind (status text)
           (post-octets port "/mcp" (tools-call-text "registry_describe"
                                                     (jobj "x" (make-string (round (* 1.5 +mib+))
                                                                            :initial-element #\a)))
                        :headers headers)
         (is (= 413 status) "a long string under 2 MiB")
-        (is (search "Bare innholdet i en fil kan være lengre enn 1 MB." text))))))
+        (is (search "Only a file's content can be longer than 1 MB." text))))))
 
 (test a-multipart-post-from-another-site-is-refused-unread
   (with-files-page ()
@@ -1018,7 +1018,7 @@ connection, and whether it ended within SECONDS."
       (multiple-value-bind (status text)
           (post-octets port "/api/registry_describe" (structured-body "" 6000) :headers headers)
         (is (= 413 status))
-        (is (search "Forespørselen har for mange JSON-verdier (høyst 10 000)." text)))
+        (is (search "The request has too many JSON values (at most 10,000)." text)))
       (multiple-value-bind (status text)
           (post-octets port "/mcp"
                        (sb-ext:string-to-octets
@@ -1048,7 +1048,7 @@ connection, and whether it ended within SECONDS."
              (input (request-input-json record)))
         (is (equal '("title") (jkeys input)) "no key the operation does not declare")
         (is (< (length (to-json-string input)) (* 65 1024)) "and no more than the cap")
-        (is (search "utelatt" (jget input "title")) "what is past it is marked")
+        (is (search "left out" (jget input "title")) "what is past it is marked")
         (is (< (length (request-error-message record)) 5000) "nor a long message")))))
 
 ;;; Structure-heavy bodies, at the value limit, in the default heap.
@@ -1189,7 +1189,7 @@ two files of 5.85 MiB, about 15.6 MiB of base64 together."
                      :content-type "application/x-www-form-urlencoded"
                      :headers '(("X-Tun-Actor" . "viewer:vera")))
       (is (= 413 status))
-      (is (search "Skjemaet har for mange felt (høyst 1 000)." text)))
+      (is (search "The form has too many fields (at most 1,000)." text)))
     (multiple-value-bind (status text)
         (post-octets port "/login" (sb-ext:string-to-octets
                                     (format nil "a=~a"
@@ -1198,7 +1198,7 @@ two files of 5.85 MiB, about 15.6 MiB of base64 together."
                      :content-type "application/x-www-form-urlencoded"
                      :headers '(("X-Tun-Actor" . "viewer:vera")))
       (is (= 413 status))
-      (is (search "Et felt i skjemaet er for langt." text))))
+      (is (search "A field of the form is too long." text))))
   (multiple-value-bind (statuses alive)
       (with-default-heap-server (port)
         (let* ((body (many-pairs (* 2 +mib+)))

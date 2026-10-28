@@ -27,7 +27,7 @@ def centred(dialog):
 def run(t):
     page = t.phone()
     page.sign_in("employee:anna")
-    _files.card_page(page, "Eksport til regnskap")
+    _files.card_page(page, "Export to accounting")
     thumbnail = page.locator(".tun-attachments-image img")
     t.check(thumbnail.count() == 1, "one thumbnail")
     t.check((thumbnail.get_attribute("width"), thumbnail.get_attribute("height")) == ("640", "400"),
@@ -41,19 +41,19 @@ def run(t):
     t.check(centred(dialog), "in the middle of the window")
     full = dialog.locator(".tun-attachments-full")
     t.check(full.evaluate("(img) => img.naturalWidth") == 640, "showing the whole image")
-    t.check(dialog.get_by_role("link", name="Åpne original").get_attribute("href").endswith(url),
-            "«Åpne original» links to the file")
+    t.check(dialog.get_by_role("link", name="Open the original").get_attribute("href").endswith(url),
+            "«Open the original» links to the file")
     page.keyboard.press("Escape")
     t.check(not dialog.evaluate("(d) => d.open"), "Escape closes it")
     pdf = page.locator(".tun-attachments-file")
     t.check(pdf.count() == 1 and pdf.get_attribute("href").startswith("/files/fil_"),
             "the PDF is a tile linking to its file")
-    t.check("kvittering.pdf" in page.locator(".tun-attachments").inner_text(), "with its name")
+    t.check("receipt.pdf" in page.locator(".tun-attachments").inner_text(), "with its name")
     t.check(page.evaluate("document.documentElement.scrollWidth <= window.innerWidth"),
             "the page does not scroll sideways")
     desktop = t.desktop()
     desktop.sign_in("employee:anna")
-    _files.card_page(desktop, "Eksport til regnskap")
+    _files.card_page(desktop, "Export to accounting")
     desktop.locator(".tun-attachments-image").click()
     viewer = desktop.locator(".tun-attachments-dialog")
     t.check(viewer.evaluate("(d) => d.open"), "on a computer too, a click opens it")

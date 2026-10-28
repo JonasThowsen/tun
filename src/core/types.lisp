@@ -1,10 +1,11 @@
 ;;;; core/types.lisp -- field types.
 ;;;;
 ;;;; A field type is a CLOS object built from a designator such as
-;;;; (STRING :MIN 1 :MAX 120) or (ENUM "privat" "bedrift").  One type object
-;;;; yields the JSON Schema fragment, the input coercion (with Norwegian error
-;;;; messages), the JSON and database encodings, the SQL column type and the
-;;;; Lisp type used for the slot's :TYPE declaration.
+;;;; (STRING :MIN 1 :MAX 120) or (ENUM "private" "business").  One type object
+;;;; yields the JSON Schema fragment, the input coercion (with its error
+;;;; messages, written where they are shown), the JSON and database
+;;;; encodings, the SQL column type and the Lisp type used for the slot's
+;;;; :TYPE declaration.
 
 (in-package #:tun.core)
 
@@ -16,8 +17,9 @@
 (defvar *input-errors* nil)
 
 (defun input-error (path control &rest args)
-  "Record an input error for PATH. Returns NIL."
-  (push (cons path (apply #'format nil control args)) *input-errors*)
+  "Record an input error for PATH, its message CONTROL formatted with ARGS
+and written where it is shown (spec/i18n.md 3.1). Returns NIL."
+  (push (cons path (make-text control args)) *input-errors*)
   nil)
 
 (defparameter +most-shown-name+ 100
@@ -40,9 +42,9 @@ rest counted under PREFIX."
   (loop for name in names
         for i from 0
         while (< i +most-unknown-names+)
-        do (input-error (join-path prefix (shown-name name)) "er ikke et kjent felt"))
+        do (input-error (join-path prefix (shown-name name)) "is not a known field"))
   (when (> (length names) +most-unknown-names+)
-    (input-error (if (blank-p prefix) "input" prefix) "har ~d ukjente felt til"
+    (input-error (if (blank-p prefix) "input" prefix) "has ~d more unknown fields"
                  (- (length names) +most-unknown-names+))))
 
 (defmacro collecting-input-errors (&body body)
@@ -86,11 +88,25 @@ rest counted under PREFIX."
 ;;; ------------------------------------------------------------------
 ;;; Strings
 
+(defparameter +invalid-format-text+ "has an invalid format"
+  "The error of a string that does not match its pattern, when its type gives
+no message of its own.")
+
+(defparameter +invalid-email-text+ "must be a valid email address (name@example.com)"
+  "The error of an email that is not one.")
+
+;;; Noted for the checks of spec/i18n.md 3.7, as a refusal's literal is.
+(note-text +invalid-format-text+ nil "core" "types.lisp")
+(note-text +invalid-email-text+ nil "core" "types.lisp")
+
 (defclass string-type (field-type)
   ((min :initarg :min :initform 0 :reader string-min)
    (max :initarg :max :initform 1000 :reader string-max)
    (pattern :initarg :pattern :initform nil :reader string-pattern)
-   (pattern-message :initarg :pattern-message :initform "har ugyldig format" :reader string-pattern-message)
+   (pattern-message :initarg :pattern-message :initform +invalid-format-text+
+                    :reader string-pattern-message
+                    :documentation "The error of a value the pattern refuses, in its
+definer's source language: translated where it is shown.")
    (trim :initarg :trim :initform t :reader string-trim-p)))
 
 (defmethod type-name ((type string-type)) "string")
@@ -103,25 +119,25 @@ rest counted under PREFIX."
     schema))
 
 (defmethod coerce-input ((type string-type) value path)
-  (cond ((not (stringp value)) (input-error path "må være en tekst"))
+  (cond ((not (stringp value)) (input-error path "must be text"))
         (t (let ((s (if (string-trim-p type) (trim value) value)))
              (cond ((and (zerop (length s)) (zerop (string-min type)) (string-trim-p type))
                     nil)                ; an empty (trimmed) optional string means "no value"
                    ((< (length s) (string-min type))
                     (if (zerop (length s))
-                        (input-error path "må fylles ut")
-                        (input-error path "må være minst ~d tegn" (string-min type))))
+                        (input-error path "must be filled in")
+                        (input-error path "must be at least ~d characters" (string-min type))))
                    ((> (length s) (string-max type))
-                    (input-error path "kan ikke være lengre enn ~d tegn" (string-max type)))
+                    (input-error path "cannot be longer than ~d characters" (string-max type)))
                    ((and (string-pattern type) (plusp (length s))
                          (not (cl-ppcre:scan (string-pattern type) s)))
-                    (input-error path "~a" (string-pattern-message type)))
+                    (input-error path (string-pattern-message type)))
                    (t (coerce s 'simple-string)))))))
 
 (defclass email-type (string-type) ()
   (:default-initargs :min 1 :max 160
                      :pattern "^[^@\\s]+@[^@\\s.]+(\\.[^@\\s.]+)+$"
-                     :pattern-message "må være en gyldig e-postadresse (navn@domene.no)"))
+                     :pattern-message +invalid-email-text+))
 
 (defmethod type-name ((type email-type)) "email")
 (defmethod type-json-schema ((type email-type))
@@ -155,11 +171,57 @@ that is parsed (core.md §7.5): more than any number field holds.")
 
 (defmethod coerce-input ((type integer-type) value path)
   (cond ((long-number-text-p value)
-         (input-error path "er for langt for et tall: høyst ~d tegn" +most-number-text+))
-        ((not (integerp value)) (input-error path "må være et heltall"))
-        ((< value (integer-min type)) (input-error path "må være minst ~d" (integer-min type)))
-        ((> value (integer-max type)) (input-error path "kan ikke være større enn ~d" (integer-max type)))
+         (input-error path "is too long for a number: at most ~d characters" +most-number-text+))
+        ((not (integerp value)) (input-error path "must be a whole number"))
+        ((< value (integer-min type)) (input-error path "must be at least ~d" (integer-min type)))
+        ((> value (integer-max type)) (input-error path "cannot be more than ~d" (integer-max type)))
         (t value)))
+
+;;; Money: an integer count of the tenant's currency's minor units
+;;; (spec/i18n.md 5.2).  JSON carries the integer; a page writes and reads
+;;; it in the tenant's language (core/formats.lisp).
+
+(defclass money-type (integer-type) ())
+
+(defmethod type-name ((type money-type)) "money")
+
+(defvar *written-amounts* nil
+  "True while a page's form is the input: an amount given as text is then
+read as a person writes it in the tenant's language (spec/i18n.md 5.4).
+Over MCP and the API an amount is the integer.")
+
+(defmethod coerce-input ((type money-type) value path)
+  ;; Text too long for a number is refused as an integer's is, unread.
+  (if (and *written-amounts* (stringp value) (not (long-number-text-p value)))
+      (multiple-value-bind (amount problem) (read-money-text value)
+        (if amount
+            (call-next-method type amount path)
+            (progn (push (cons path problem) *input-errors*) nil)))
+      (call-next-method)))
+
+(defgeneric money-schema-description (type)
+  (:documentation "What a money field's JSON Schema says about its unit: the
+tenant's currency and its minor digits (core/formats.lisp)."))
+
+(defmethod type-json-schema ((type money-type))
+  (let ((schema (call-next-method)))
+    (setf (gethash "description" schema) (money-schema-description type))
+    schema))
+
+(defun money-name-p (json-name)
+  "True when JSON-NAME, a field's or parameter's, ends _minor, as a money
+field's must (spec/i18n.md 5.2)."
+  (let ((suffix "_minor"))
+    (and (> (length json-name) (length suffix))
+         (string= suffix json-name :start2 (- (length json-name) (length suffix))))))
+
+(defun check-money-name (designator json-name what)
+  "Refuse the money type DESIGNATOR on a field or parameter whose JSON-NAME
+does not end _minor, when the definition is compiled.  WHAT names the
+definition.  It reads the designator alone, since a type class of the
+definition's own file is not defined yet."
+  (when (and (string= (designator-head designator) "MONEY") (not (money-name-p json-name)))
+    (error "~a: the money field ~a must be named …_minor (spec/i18n.md 5.2)" what json-name)))
 
 (defclass boolean-type (field-type) ())
 (defmethod type-name ((type boolean-type)) "boolean")
@@ -169,7 +231,7 @@ that is parsed (core.md §7.5): more than any number field holds.")
 (defmethod coerce-input ((type boolean-type) value path)
   (cond ((eq value t) t)
         ((null value) nil)
-        (t (input-error path "må være true eller false"))))
+        (t (input-error path "must be true or false"))))
 (defmethod type->json ((type boolean-type) value) (json-bool value))
 (defmethod type->db ((type boolean-type) value) (if value 1 0))
 (defmethod db->type ((type boolean-type) value) (and value (not (eql value 0))))
@@ -225,12 +287,12 @@ binary fraction nearest to it, nor as the simplest rational near it."
 (defmethod coerce-input ((type decimal-type) value path)
   (if (not (realp value))
       (if (long-number-text-p value)
-          (input-error path "er for langt for et tall: høyst ~d tegn" +most-number-text+)
-          (input-error path "må være et tall"))
+          (input-error path "is too long for a number: at most ~d characters" +most-number-text+)
+          (input-error path "must be a number"))
       (let ((r (json-number->rational value)))
         (if (integerp (* r (expt 10 (decimal-scale type))))
             r
-            (input-error path "kan ha høyst ~d desimaler" (decimal-scale type))))))
+            (input-error path "can have at most ~d decimals" (decimal-scale type))))))
 
 (defmethod type->json ((type decimal-type) value)
   (cond ((null value) :null)
@@ -261,12 +323,6 @@ decimals (the encoder prints the shortest form, e.g. 0.3)."
         (let ((*read-default-float-format* 'double-float))
           (format nil "~f" (float r 1d0))))))
 
-(defun format-kroner (ore)
-  "An amount in øre as kroner with two decimals, exactly: 200000.01 (never
-through a float, which keeps only about seven digits)."
-  (multiple-value-bind (kroner rest) (floor (abs ore) 100)
-    (format nil "~:[~;-~]~d.~2,'0d" (minusp ore) kroner rest)))
-
 (defmethod db->type ((type decimal-type) value)
   (cond ((null value) nil)
         ((integerp value) value)
@@ -286,7 +342,7 @@ through a float, which keeps only about seven digits)."
 (defmethod coerce-input ((type enum-type) value path)
   (if (and (stringp value) (member value (enum-values type) :test #'string=))
       (coerce value 'simple-string)
-      (input-error path "må være en av: ~{~a~^, ~}" (enum-values type))))
+      (input-error path "must be one of: ~{~a~^, ~}" (enum-values type))))
 
 ;;; ------------------------------------------------------------------
 ;;; Dates and timestamps
@@ -299,7 +355,7 @@ through a float, which keeps only about seven digits)."
 (defmethod coerce-input ((type date-type) value path)
   (if (valid-date-string-p value)
       (coerce value 'simple-string)
-      (input-error path "må være en gyldig dato på formen ÅÅÅÅ-MM-DD")))
+      (input-error path "must be a valid date in the form YYYY-MM-DD")))
 
 (defclass timestamp-type (field-type) ())
 (defmethod type-name ((type timestamp-type)) "timestamp")
@@ -307,7 +363,7 @@ through a float, which keeps only about seven digits)."
 (defmethod type-json-schema ((type timestamp-type)) (jobj "type" "string" "format" "date-time"))
 (defmethod coerce-input ((type timestamp-type) value path)
   (or (parse-rfc3339 value)
-      (input-error path "må være et tidspunkt i RFC 3339-format, f.eks. 2026-03-01T09:00:00Z")))
+      (input-error path "must be a time in RFC 3339 format, such as 2026-03-01T09:00:00Z")))
 (defmethod type->json ((type timestamp-type) value)
   (if value (format-rfc3339 value) :null))
 (defmethod type->db ((type timestamp-type) value)
@@ -326,7 +382,7 @@ through a float, which keeps only about seven digits)."
 (defmethod coerce-input ((type id-type) value path)
   (if (and (stringp value) (< 0 (length value) 65))
       (coerce value 'simple-string)
-      (input-error path "må være en gyldig identifikator")))
+      (input-error path "must be a valid identifier")))
 
 ;;; ------------------------------------------------------------------
 ;;; Opaque JSON
@@ -388,6 +444,7 @@ packages need not import every type keyword."
       (cond ((string= head "STRING") (apply #'make 'string-type args))
             ((string= head "EMAIL") (apply #'make 'email-type args))
             ((string= head "INTEGER") (apply #'make 'integer-type args))
+            ((string= head "MONEY") (apply #'make 'money-type args))
             ((string= head "DECIMAL") (apply #'make 'decimal-type args))
             ((string= head "BOOLEAN") (make 'boolean-type))
             ((string= head "ENUM") (make 'enum-type :values (copy-list args)))
@@ -411,6 +468,6 @@ packages need not import every type keyword."
 (defun embedded-entity-designator-p (symbol)
   "True when SYMBOL is not a scalar type name, i.e. it names an entity class."
   (not (member (symbol-name symbol)
-               '("STRING" "EMAIL" "INTEGER" "DECIMAL" "BOOLEAN" "DATE" "TIMESTAMP" "ID" "JSON"
-                 "FILES")
+               '("STRING" "EMAIL" "INTEGER" "MONEY" "DECIMAL" "BOOLEAN" "DATE" "TIMESTAMP" "ID"
+                 "JSON" "FILES")
                :test #'string=)))

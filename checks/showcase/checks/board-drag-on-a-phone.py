@@ -22,57 +22,57 @@ def scrolled(page):
 def run(t):
     page = t.phone()
     page.sign_in("employee:anna")
-    page.goto("/saker")
-    planlagt, under_arbeid = start_of(page, "planlagt"), start_of(page, "under_arbeid")
-    t.check(scrolled(page) == 0, "the board starts on «Ny»")
+    page.goto("/items")
+    planned, in_progress = start_of(page, "planned"), start_of(page, "in_progress")
+    t.check(scrolled(page) == 0, "the board starts on «New»")
 
-    finger = page.touch.hold(page.card("Sak nummer 1")).move_to(389, 400, steps=4)
+    finger = page.touch.hold(page.card("Item 1")).move_to(389, 400, steps=4)
     finger.stay(0.15)
     t.check(scrolled(page) == 0, "a moment at the edge does not page yet")
     finger.stay(0.7)
-    t.check(scrolled(page) == planlagt, f"held at the very edge, it pages to «Planlagt» ({scrolled(page)})")
+    t.check(scrolled(page) == planned, f"held at the very edge, it pages to «Planned» ({scrolled(page)})")
     t.check(page.evaluate(f"getComputedStyle({COLUMNS}).scrollSnapType") == "none",
             "the columns do not snap while a card is dragged")
     finger.move_to(200, 400)
-    t.check(column_of(page, "Sak nummer 1") == "planlagt", "the card is in «Planlagt» under the finger")
-    with page.expect_post("/saker/flytt") as post:
+    t.check(column_of(page, "Item 1") == "planned", "the card is in «Planned» under the finger")
+    with page.expect_post("/items/move") as post:
         finger.lift()
     page.wait_for_timeout(500)
-    t.check(post.status == 200 and "column=planlagt" in post.body, f"the drop moves it: {post.body}")
-    t.check(column_of(page, "Sak nummer 1") == "planlagt", "the answer has it in «Planlagt»")
-    t.check(scrolled(page) == planlagt, "and keeps «Planlagt» in view")
+    t.check(post.status == 200 and "column=planned" in post.body, f"the drop moves it: {post.body}")
+    t.check(column_of(page, "Item 1") == "planned", "the answer has it in «Planned»")
+    t.check(scrolled(page) == planned, "and keeps «Planned» in view")
     t.check(page.evaluate(f"getComputedStyle({COLUMNS}).scrollSnapType") != "none",
             "the columns snap again")
 
-    finger = page.touch.hold(page.card("Sak nummer 1")).move_to(1, 300, steps=4)
+    finger = page.touch.hold(page.card("Item 1")).move_to(1, 300, steps=4)
     finger.stay(0.9)
-    t.check(scrolled(page) == 0, "held at the left edge, it pages back to «Ny»")
+    t.check(scrolled(page) == 0, "held at the left edge, it pages back to «New»")
     finger.move_to(200, 300)
-    with page.expect_post("/saker/flytt") as post:
+    with page.expect_post("/items/move") as post:
         finger.lift()
     page.wait_for_timeout(500)
-    t.check("column=ny" in post.body, f"and a drop there moves it back: {post.body}")
+    t.check("column=new" in post.body, f"and a drop there moves it back: {post.body}")
 
     page.evaluate(f"{COLUMNS}.scrollTo({{left: 0}}); document.activeElement.blur()")
-    page.evaluate("document.querySelector('[data-tun-board-column=ny] .tun-board-cards').scrollTop = 0")
-    finger = page.touch.hold(page.card("Sak nummer 2")).move_to(389, 400, steps=4)
+    page.evaluate("document.querySelector('[data-tun-board-column=new] .tun-board-cards').scrollTop = 0")
+    finger = page.touch.hold(page.card("Item 2")).move_to(389, 400, steps=4)
     seen = set()
     for _ in range(22):
         finger.stay(0.1)
         seen.add(scrolled(page))
-    t.check(planlagt in seen and under_arbeid in seen,
+    t.check(planned in seen and in_progress in seen,
             f"held on, it pages again, a column at a time: {sorted(seen)}")
     finger.move_to(200, 400)
-    with page.expect_post("/saker/flytt"):
+    with page.expect_post("/items/move"):
         finger.lift()
     page.wait_for_timeout(500)
 
     page.evaluate(f"{COLUMNS}.scrollTo({{left: 0}}); document.activeElement.blur()")
-    cards = "document.querySelector('[data-tun-board-column=ny] .tun-board-cards')"
+    cards = "document.querySelector('[data-tun-board-column=new] .tun-board-cards')"
     page.evaluate(f"{cards}.scrollTop = 0")
     page.wait_for_timeout(200)
-    box = page.locator("[data-tun-board-column=ny] .tun-board-cards").bounding_box()
-    finger = page.touch.hold(page.card("Sak nummer 3")).move_to(195, box["y"] + box["height"] - 10)
+    box = page.locator("[data-tun-board-column=new] .tun-board-cards").bounding_box()
+    finger = page.touch.hold(page.card("Item 3")).move_to(195, box["y"] + box["height"] - 10)
     finger.stay(1.0)
     t.check(page.evaluate(f"{cards}.scrollTop") > 200, "held near a column's bottom, its cards scroll")
     t.check(scrolled(page) == 0 and page.evaluate("scrollY") == 0, "and neither the board nor the page")

@@ -91,8 +91,8 @@ with a policy is given in that form without records and without an actor."
 (defun refuse-record-write (class)
   "Refuse a write of a record of CLASS that its record policy does not
 admit: forbidden, audited as a rejection (spec/store.md 6.5)."
-  (reject :forbidden "Du har ikke tilgang til å lagre ~a slik"
-          (string-downcase (or (entity-label class) (entity-json-name class)))))
+  (reject :forbidden "You do not have access to save ~(~a~) this way"
+          (entity-label-text class)))
 
 ;;; ------------------------------------------------------------------
 ;;; Checking every policy at start

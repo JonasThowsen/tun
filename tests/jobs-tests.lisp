@@ -80,10 +80,10 @@
 
 (define-operation jobs-test-enqueue ((text :type string :required t)
                                      (then-fail :type boolean))
-    (:kind :update :policy :employee :title "Legg en jobb i køen (test)")
+    (:kind :update :policy :employee :title "Queue a job (test)")
   (let ((job (tun.jobs:enqueue-job 'mark-job :text text)))
     (when then-fail
-      (fail :conflict "Arbeidet feilet etter at jobben ble lagt i køen"))
+      (fail :conflict "The work failed after the job was queued"))
     (jobj "id" (entity-id job))))
 
 (defun job-json (id)
@@ -217,7 +217,7 @@
   (with-test-app ()
     (multiple-value-bind (outcome job) (perform-job 'slow-job)
       (is (eq :failed outcome))
-      (is (search "mer enn 1 sekunder" (jget job "last_error"))))))
+      (is (search "more than 1 second" (jget job "last_error"))))))
 
 (test a-unique-job-is-enqueued-once
   (with-test-app ()
@@ -345,7 +345,7 @@
       (is (equal "forbidden" (nth-value 1 (call "jobs_cancel" "employee:kari" "id" id))))
       (call-ok "jobs_cancel" "admin:root" "id" id)
       (is (equal "cancelled" (jget (job-json id) "state")))
-      (is (equal "Avbrutt av admin:root" (jget (job-json id) "note")))
+      (is (equal "Cancelled by admin:root" (jget (job-json id) "note")))
       (is (equal "invalid_transition" (nth-value 1 (call "jobs_cancel" "admin:root" "id" id))))
       (is (null (call-ok-items "jobs_list" "state" "queued")))
       (call-ok "jobs_retry" "admin:root" "id" id)

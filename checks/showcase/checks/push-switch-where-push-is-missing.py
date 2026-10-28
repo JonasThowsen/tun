@@ -20,16 +20,16 @@ TOUCH = "Object.defineProperty(Navigator.prototype, 'maxTouchPoints', { get: () 
 BLOCKED = "Object.defineProperty(Notification, 'permission', { get: () => 'denied' });"
 
 TEXTS = {
-    "unavailable": "Varsler er ikke tilgjengelige her.",
-    "home screen": "Varsler virker bare i appen. Legg den på Hjem-skjermen først",
-    "old ios": "Denne enheten kan ikke vise varsler fra appen. Det krever iOS 16.4 eller nyere.",
-    "unsupported": "Denne nettleseren kan ikke vise varsler.",
-    "blocked": "Varsler er blokkert for denne appen.",
+    "unavailable": "Notifications are not available here.",
+    "home screen": "Notifications work only in the app. Add it to your Home Screen first",
+    "old ios": "This device cannot show notifications from the app. That needs iOS 16.4 or later.",
+    "unsupported": "This browser cannot show notifications.",
+    "blocked": "Notifications are blocked for this app.",
 }
 
 
 def open_switch(t, *scripts, phone=False, user_agent=None, no_key=False):
-    """The «Varsler» page in a browser changed by SCRIPTS, run before the page's own."""
+    """The «Notifications» page in a browser changed by SCRIPTS, run before the page's own."""
     page = (t.phone if phone else t.desktop)(user_agent=user_agent)
     _push.stand_in(page)
     for script in scripts:
@@ -37,7 +37,7 @@ def open_switch(t, *scripts, phone=False, user_agent=None, no_key=False):
     if no_key:
         page.route("**/push/key", lambda route: route.fulfill(status=404, body="{}"))
     page.sign_in("employee:anna")
-    page.goto("/varsler")
+    page.goto("/notifications")
     _push.state(page)
     return page
 
@@ -45,7 +45,7 @@ def open_switch(t, *scripts, phone=False, user_agent=None, no_key=False):
 def says(t, page, text, what):
     status = _push.status(page)
     t.check(status.startswith(TEXTS[text]), f"{what}: «{status}»")
-    switch = page.get_by_role("switch", name="Varsler på denne enheten")
+    switch = page.get_by_role("switch", name="Notifications on this device")
     t.check(not switch.is_checked() and not switch.is_enabled(), f"{what}: the switch is off and disabled")
 
 
@@ -64,6 +64,6 @@ def run(t):
     says(t, open_switch(t, NO_PUSH, BLOCKED), "unsupported", "no push goes before blocked")
 
     page = open_switch(t, HOME_SCREEN, phone=True, user_agent=IPHONE)
-    switch = page.get_by_role("switch", name="Varsler på denne enheten")
+    switch = page.get_by_role("switch", name="Notifications on this device")
     t.check(_push.state(page) == "off", "an iPhone's Home Screen app with push shows the switch")
     t.check(not switch.is_checked() and switch.is_enabled(), "off, and it can be turned on")

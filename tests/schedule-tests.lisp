@@ -1,5 +1,6 @@
 ;;;; tests/schedule-tests.lisp -- schedules (spec/jobs.md 8): reading cron
-;;;; times, their occurrences in Norwegian time across summer time, and a
+;;;; times, their occurrences in a tenant's time zone across summer time, a
+;;;; change of that zone, and a
 ;;;; schedule that enqueues its job once per occurrence, catches up after
 ;;;; downtime, and never runs what happened before it existed; and triggers,
 ;;;; which run a job for each record that meets a condition.
@@ -10,6 +11,15 @@
 (in-suite schedules)
 
 (defun instant (text) (parse-rfc3339 text))
+
+(defmacro in-oslo (&body body)
+  "Run BODY in a locale whose time zone is Europe/Oslo."
+  `(let ((*locale* (make-locale :time-zone "Europe/Oslo")))
+     ,@body))
+
+(defun set-time-zone (name)
+  "Set the tenant's time zone to NAME."
+  (call-ok "settings_set" "admin:root" "key" "locale.time_zone" "value" name))
 
 (defun cron-fields (text)
   (let ((cron (tun.jobs:parse-cron text)))
@@ -47,38 +57,43 @@
 ;;; Occurrences in Norwegian time
 
 (test occurrences-are-norwegian-wall-clock-times
-  (let ((weekdays (tun.jobs:parse-cron "0 7 * * 1-5")))
-    (flet ((previous (at) (multiple-value-list (tun.jobs:previous-occurrence weekdays (instant at))))
-           (next (at) (multiple-value-list (tun.jobs:next-occurrence weekdays (instant at)))))
-      (is (equal (list (instant "2026-10-21T05:00:00Z") "2026-10-21T07:00")
-                 (previous "2026-10-21T10:00:00Z"))
-          "07:00 in summer time is 05:00 UTC")
-      (is (equal (list (instant "2026-10-23T05:00:00Z") "2026-10-23T07:00")
-                 (previous "2026-10-24T10:00:00Z"))
-          "on Saturday, the Friday before")
-      (is (equal (list (instant "2026-11-02T06:00:00Z") "2026-11-02T07:00")
-                 (next "2026-10-30T12:00:00Z"))
-          "in winter time 06:00 UTC, on the Monday after")
-      (is (equal (list (instant "2026-10-21T05:00:00Z") "2026-10-21T07:00")
-                 (previous "2026-10-21T05:00:00Z"))
-          "an occurrence at the instant itself counts"))))
+  (in-oslo
+    (let ((weekdays (tun.jobs:parse-cron "0 7 * * 1-5")))
+      (flet ((previous (at)
+               (multiple-value-list (tun.jobs:previous-occurrence weekdays (instant at))))
+             (next (at) (multiple-value-list (tun.jobs:next-occurrence weekdays (instant at)))))
+        (is (equal (list (instant "2026-10-21T05:00:00Z") "2026-10-21T07:00")
+                   (previous "2026-10-21T10:00:00Z"))
+            "07:00 in summer time is 05:00 UTC")
+        (is (equal (list (instant "2026-10-23T05:00:00Z") "2026-10-23T07:00")
+                   (previous "2026-10-24T10:00:00Z"))
+            "on Saturday, the Friday before")
+        (is (equal (list (instant "2026-11-02T06:00:00Z") "2026-11-02T07:00")
+                   (next "2026-10-30T12:00:00Z"))
+            "in winter time 06:00 UTC, on the Monday after")
+        (is (equal (list (instant "2026-10-21T05:00:00Z") "2026-10-21T07:00")
+                   (previous "2026-10-21T05:00:00Z"))
+            "an occurrence at the instant itself counts")))))
 
 (test a-time-in-the-spring-gap-runs-at-the-first-valid-minute
   ;; 2026-03-29: 02:00 CET jumps to 03:00 CEST, at 01:00 UTC.
-  (is (= (instant "2026-03-29T01:00:00Z") (tun.jobs:wall-time-instant "2026-03-29" 2 30)))
-  (is (equal (list (instant "2026-03-29T01:00:00Z") "2026-03-29T02:30")
-             (multiple-value-list (tun.jobs:next-occurrence (tun.jobs:parse-cron "30 2 * * *")
-                                                            (instant "2026-03-28T23:00:00Z"))))))
+  (in-oslo
+    (is (= (instant "2026-03-29T01:00:00Z") (tun.jobs:wall-time-instant "2026-03-29" 2 30)))
+    (is (equal (list (instant "2026-03-29T01:00:00Z") "2026-03-29T02:30")
+               (multiple-value-list (tun.jobs:next-occurrence (tun.jobs:parse-cron "30 2 * * *")
+                                                              (instant "2026-03-28T23:00:00Z")))))))
 
 (test a-time-in-the-autumn-overlap-runs-once
   ;; 2026-10-25: 03:00 CEST falls back to 02:00 CET, at 01:00 UTC, so 02:30
   ;; happens at 00:30 and again at 01:30 UTC.
-  (let ((cron (tun.jobs:parse-cron "30 2 * * *")))
-    (is (= (instant "2026-10-25T00:30:00Z") (tun.jobs:wall-time-instant "2026-10-25" 2 30))
-        "the first of the two")
-    (is (equal (list (instant "2026-10-25T00:30:00Z") "2026-10-25T02:30")
-               (multiple-value-list (tun.jobs:previous-occurrence cron (instant "2026-10-25T01:45:00Z"))))
-        "during the second 02:30 the latest occurrence is still the first, so it is not run again")))
+  (in-oslo
+    (let ((cron (tun.jobs:parse-cron "30 2 * * *")))
+      (is (= (instant "2026-10-25T00:30:00Z") (tun.jobs:wall-time-instant "2026-10-25" 2 30))
+          "the first of the two")
+      (is (equal (list (instant "2026-10-25T00:30:00Z") "2026-10-25T02:30")
+                 (multiple-value-list
+                  (tun.jobs:previous-occurrence cron (instant "2026-10-25T01:45:00Z"))))
+          "during the second 02:30 the latest occurrence is still the first, so not run again"))))
 
 ;;; ------------------------------------------------------------------
 ;;; A schedule in a tenant
@@ -110,6 +125,7 @@ of files (spec/files.md 5.1), which the clock running past it also runs."
                    (tun.jobs:define-schedule test-on-time "0 7 * * *" mark-job :text "presis"
                      :catch-up nil))
     (with-test-app ()
+      (set-time-zone "Europe/Oslo")
       (is (null (marks)) "07:00 today was before the schedules existed")
       (is (zerop (clock-to "2026-03-02T05:59:00Z")))
       (is (= 2 (clock-to "2026-03-02T06:00:00Z")) "07:00 CET, both schedules")
@@ -130,6 +146,30 @@ of files (spec/files.md 5.1), which the clock running past it also runs."
       (is (= 1 (drain-jobs)) "run now, outside the timetable")
       (is (equal "not_found" (nth-value 1 (call "schedules_run" "admin:root" "name" "nothing"))))
       (is (equal "forbidden" (nth-value 1 (call "schedules_list" "employee:kari")))))))
+
+(test a-change-of-time-zone-never-runs-an-occurrence-twice-nor-one-before-the-last
+  ;; spec/i18n.md 6.1, jobs.md 8.  The test clock starts at 2026-03-01T09:00Z,
+  ;; in winter time: London is UTC, Oslo an hour ahead.
+  (with-schedules ((tun.jobs:define-schedule test-daily "0 7 * * *" mark-job :text "daily"))
+    (with-test-app ()
+      (flet ((zone (name) (call-ok "settings_set" "admin:root" "key" "locale.time_zone"
+                                   "value" name)))
+        (zone "Europe/London")
+        (is (= 1 (clock-to "2026-03-02T07:00:00Z")) "07:00 in London")
+        (is (zerop (clock-to "2026-03-03T06:30:00Z")) "06:30 in London: nothing due")
+        (zone "Europe/Oslo")
+        (is (= 1 (clock-to "2026-03-03T06:30:30Z"))
+            "today's 07:00 in Oslo (06:00 UTC) lies between the last run and now: it runs at once")
+        (is (zerop (clock-to "2026-03-03T07:00:00Z")) "and only once")
+        (zone "Europe/London")
+        (is (zerop (clock-to "2026-03-03T06:59:00Z"))
+            "back in London, yesterday's 07:00 is before the last run, so it never runs")
+        (is (= 1 (clock-to "2026-03-03T07:00:00Z")) "07:00 in London is later: it runs")
+        (zone "Europe/Oslo")
+        (is (zerop (clock-to "2026-03-04T05:59:00Z"))
+            "Oslo's 07:00 of the day before is earlier than the last run")
+        (is (= 1 (clock-to "2026-03-04T06:00:00Z")) "Oslo's next 07:00 runs")
+        (is (equal '("daily" "daily" "daily" "daily") (marks)))))))
 
 (test a-schedule-whose-job-is-wrong-stops-the-start
   (with-schedules ((tun.jobs:define-schedule test-no-job "@daily" no-such-job))
@@ -193,7 +233,7 @@ of files (spec/files.md 5.1), which the clock running past it also runs."
           (is (equal "trigger_item" (jget trigger "entity")))
           (is (equal "test_remind" (jget trigger "job")))
           (is (eql 0 (jget trigger "last_enqueued")))
-          (is (equal "hvert 10. minutt" (jget trigger "description"))))
+          (is (equal "every 10 minutes" (jget trigger "description"))))
         (change-trigger-item fresh :asked-at (- (with-application (*app*) (now)) (* 2 86400)))
         (is (= 1 (length (run-schedule-now "test_remind"))) "run now sweeps at once")
         (is (null (run-schedule-now "test_remind"))
@@ -204,7 +244,7 @@ of files (spec/files.md 5.1), which the clock running past it also runs."
         (is (equal '("gammel") *reminded*) "the record no longer met the condition when its job ran")
         (let ((job (first (call-ok-items "jobs_list" "kind" "test_remind" "state" "cancelled"))))
           (is (equal fresh (jget (jget job "arguments") "record_id")))
-          (is (search "vilkår" (jget job "note"))))))))
+          (is (search "condition" (jget job "note"))))))))
 
 (test a-trigger-sweep-enqueues-at-most-its-limit
   (with-schedules ((tun.jobs:define-trigger test-limited (trigger-item)

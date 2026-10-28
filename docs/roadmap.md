@@ -93,7 +93,7 @@ exists.
 | Retries | Oban `max_attempts`, backoff / `$tries`, `backoff()` | attempts, Oban's backoff with jitter or a list, `cancel-job`, `snooze-job`, `fail-job`, a failed state admins see and retry (`jobs_retry`) | |
 | Queues and concurrency | Oban queues / named queues, Horizon | named queues with a limit each, `(:queues (:mail 1))`; presence locks recover a lost process's jobs | |
 | Unique jobs | Oban `unique` / `ShouldBeUnique` | `:unique` by arguments, period and states | |
-| Recurring tasks | Oban cron / scheduler | **`define-schedule`**: cron in Norwegian time, once per occurrence across processes, bounded catch-up | |
+| Recurring tasks | Oban cron / scheduler | **`define-schedule`**: cron in the tenant's time zone, once per occurrence across processes, bounded catch-up | |
 | Work per record | AshOban triggers / (scheduled commands) | **`define-trigger`**: a job for every record meeting a condition, unique by the record, cancelled when the record no longer meets it | |
 | Multi-step work | Reactor / job chains, batches | ports record intent and outcome | Chains and compensation; later |
 
@@ -118,7 +118,7 @@ workflows and the messaging outbox on them: Tun has one queue. Triggers
 | Page state | LiveView / Livewire | full page loads; plain forms | Partial updates for small interactions (add a comment without a reload); later |
 
 The public page dispatcher in core still knows one module's path
-(`tilbud/.../apne`); routing would remove that.
+(`offer/.../open`); routing would remove that.
 
 ### Mail and notifications
 

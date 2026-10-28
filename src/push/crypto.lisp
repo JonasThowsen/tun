@@ -174,13 +174,12 @@ PUSH-MESSAGE-NOT-AUTHENTIC when the tag does not verify."
 ;;; ------------------------------------------------------------------
 ;;; VAPID (RFC 8292) and Tun's key (spec/push.md 6.2, 6.3)
 
-(defparameter +vapid-secret-setting+ "push.hemmelighet"
+(defparameter +vapid-secret-setting+ "push.secret"
   "The secret setting Tun's key pair is derived from.")
 
-(define-setting "push.hemmelighet"
+(define-setting "push.secret"
     (:type "secret"
-           :description "Tuns nøkkel for varsler på telefonen (VAPID) lages av denne. Endres den, må
-hver enhet slå på varsler igjen."))
+           :description "Tun's key for notifications on the phone (VAPID) is made from this. If it changes, every device must turn notifications on again."))
 
 (defun vapid-private-key (secret)
   "The private key derived from SECRET, a text: 1 + (HMAC-SHA-256 under the
@@ -193,7 +192,7 @@ so it is never 0 and below n."
 
 (defun vapid-keys ()
   "Values Tun's private and public key, derived from the setting
-push.hemmelighet as it is now."
+push.secret as it is now."
   (let ((private (vapid-private-key (setting-value-at-use +vapid-secret-setting+))))
     (values private (p256-public-key private))))
 

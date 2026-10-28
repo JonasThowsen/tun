@@ -1,6 +1,6 @@
 # notifications
 
-Requires customers, orders and staffing, and core >= 1.2.0, < 2.0. Public interface:
+Requires customers, orders and staffing, and core >= 2.0.0, < 3.0. Public interface:
 `publish-notification` publishes atomically in the caller's transaction;
 `notification-recipients` resolves active admins and active assignees.
 Identity is `(type, event_id, recipient)`. Read operations and marking read
@@ -35,7 +35,7 @@ of the orders and staffing modules itself.
 - `recipient` is the employee's actor text (`employee:kari`).
 - Identity is `(type, event_id, recipient)`: publishing the same event again
   to the same recipient does nothing and keeps `read_at`. `event_id` is the
-  id of what caused it (a henvendelse, an assignment, a delivery, or the
+  id of what caused it (an inquiry, an assignment, a delivery, or the
   request that answered, confirmed or expired a quote).
 - `publish-notification` writes in the caller's transaction: a notification
   that cannot be written fails the operation, and none is kept for an
@@ -50,13 +50,13 @@ assigned to it (staffing README §3), each once.
 
 | Type | Published by | Recipients | `text` | `link` |
 |---|---|---|---|---|
-| `henvendelse_mottatt` | inbox, a new request (inbox README §6) | admins | `Du har fått en ny henvendelse.` | `/henvendelser/<id>` |
-| `kundesvar_mottatt` | inbox, a reply or feedback threaded to an order (inbox README §5) | admins and the order's assignees | `Kunden har svart på ordre <id>.` | `/orders/<id>` |
-| `tilbud_akseptert`, `tilbud_avslått` | after `quotes_respond`; after `orders_accept` (accepted) | admins and the order's assignees | `Tilbudet på ordre <id> er akseptert.` / `… er avslått.` | `/orders/<id>` |
-| `tilbud_utløpt` | the orders seam `quote_expired` | admins and the order's assignees | `Tilbudet på ordre <id> er utløpt.` | `/orders/<id>` |
-| `ordre_bekreftet` | after `orders_confirm` | the order's assignees except the actor who confirmed | `Ordre <id> er bekreftet.` | `/orders/<id>` |
-| `oppgave_tildelt` | staffing's `assignment_created`, manual or automatic | the assignee | `Du er tildelt en ny oppgave.` | `/orders/<id>` |
-| `leveranse_feilet` | messaging, a delivery `failed` or `outcome_unknown` (messaging README §9) | admins | `En e-post til <name> kunne ikke sendes.` | `/orders/<id>` or `/customers/<id>` |
+| `inquiry_received` | inbox, a new request (inbox README §6) | admins | `Du har fått en ny henvendelse.` | `/inquiries/<id>` |
+| `customer_reply_received` | inbox, a reply or feedback threaded to an order (inbox README §5) | admins and the order's assignees | `Kunden har svart på ordre <id>.` | `/orders/<id>` |
+| `quote_accepted`, `quote_declined` | after `quotes_respond`; after `orders_accept` (accepted) | admins and the order's assignees | `Tilbudet på ordre <id> er akseptert.` / `… er avslått.` | `/orders/<id>` |
+| `quote_expired` | the orders seam `quote_expired` | admins and the order's assignees | `Tilbudet på ordre <id> er utløpt.` | `/orders/<id>` |
+| `order_confirmed` | after `orders_confirm` | the order's assignees except the actor who confirmed | `Ordre <id> er bekreftet.` | `/orders/<id>` |
+| `assignment_created` | staffing's `assignment_created`, manual or automatic | the assignee | `Du er tildelt en ny oppgave.` | `/orders/<id>` |
+| `delivery_failed` | messaging, a delivery `failed` or `outcome_unknown` (messaging README §9) | admins | `En e-post til <name> kunne ikke sendes.` | `/orders/<id>` or `/customers/<id>` |
 
 ### 4. Reading
 
@@ -74,14 +74,14 @@ asking for another employee's notification gets `not_found`.
 ### 5. Erasure
 
 On `customer_erasing` (customers README §5) the customer's name is replaced
-by `[slettet]` in the text of `leveranse_feilet` and `kundesvar_mottatt`
+by `[slettet]` in the text of `delivery_failed` and `customer_reply_received`
 notifications that link to the customer or concern one of the customer's
 orders, and the stored results of their receipts are redacted. Recipient,
 identity and read state stay.
 
 ### 6. Screen
 
-`/varsler` (spec/ui.md) shows the actor's notifications, newest first, each
+`/notifications` (spec/ui.md) shows the actor's notifications, newest first, each
 `Ulest` or `Lest`, with `Marker som lest` while unread, and the number
 unread. The menu entry shows the unread count, `99+` when capped.
 

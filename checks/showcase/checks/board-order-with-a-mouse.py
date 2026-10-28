@@ -47,52 +47,52 @@ def posts_of(page):
 def run(t):
     page = t.desktop()
     page.sign_in("employee:anna")
-    page.goto("/saker")
+    page.goto("/items")
     posts = posts_of(page)
-    t.check(titles(page, "ny")[:3] == ["Haster: kunden får ikke logget inn", "Sak nummer 1", "Sak nummer 2"],
-            f"the board shows the order the page gives: {titles(page, 'ny')[:3]}")
+    t.check(titles(page, "new")[:3] == ["Urgent: the customer cannot sign in", "Item 1", "Item 2"],
+            f"the board shows the order the page gives: {titles(page, 'new')[:3]}")
 
-    drag_before(page, "Sak nummer 4", "Sak nummer 2")
-    t.check(titles(page, "ny")[1:4] == ["Sak nummer 1", "Sak nummer 4", "Sak nummer 2"],
-            f"while it is dragged up, the card sits between the two: {titles(page, 'ny')[:5]}")
-    post = drop(page, "/saker/flytt")
-    t.check("column=ny" in post.body and f"before={card_id(page, 'Sak nummer 2')}" in post.body,
+    drag_before(page, "Item 4", "Item 2")
+    t.check(titles(page, "new")[1:4] == ["Item 1", "Item 4", "Item 2"],
+            f"while it is dragged up, the card sits between the two: {titles(page, 'new')[:5]}")
+    post = drop(page, "/items/move")
+    t.check("column=new" in post.body and f"before={card_id(page, 'Item 2')}" in post.body,
             f"the drop posts its own column and the card below: {post.body}")
-    t.check(titles(page, "ny")[1:4] == ["Sak nummer 1", "Sak nummer 4", "Sak nummer 2"],
-            f"the answer has it there: {titles(page, 'ny')[:5]}")
-    t.check(status(page) == "Flyttet «Sak nummer 4» til plass 3 av 26 i Ny.",
+    t.check(titles(page, "new")[1:4] == ["Item 1", "Item 4", "Item 2"],
+            f"the answer has it there: {titles(page, 'new')[:5]}")
+    t.check(status(page) == "Moved “Item 4” to place 3 of 26 in New.",
             f"and says where it went: «{status(page)}»")
 
-    drag_before(page, "Sak nummer 1", "Sak nummer 3")
-    post = drop(page, "/saker/flytt")
-    t.check(f"before={card_id(page, 'Sak nummer 3')}" in post.body, f"dragged down, the card below: {post.body}")
-    t.check(titles(page, "ny")[1:5] == ["Sak nummer 4", "Sak nummer 2", "Sak nummer 1", "Sak nummer 3"],
-            f"and the answer has it there: {titles(page, 'ny')[:6]}")
+    drag_before(page, "Item 1", "Item 3")
+    post = drop(page, "/items/move")
+    t.check(f"before={card_id(page, 'Item 3')}" in post.body, f"dragged down, the card below: {post.body}")
+    t.check(titles(page, "new")[1:5] == ["Item 4", "Item 2", "Item 1", "Item 3"],
+            f"and the answer has it there: {titles(page, 'new')[:6]}")
 
     page.reload()
-    t.check(titles(page, "ny")[1:5] == ["Sak nummer 4", "Sak nummer 2", "Sak nummer 1", "Sak nummer 3"],
+    t.check(titles(page, "new")[1:5] == ["Item 4", "Item 2", "Item 1", "Item 3"],
             "the page kept the order")
 
-    drag_before(page, "Sak nummer 5", "Eksport til regnskap")
-    t.check(titles(page, "planlagt") == ["Ny side for fakturaer", "Sak nummer 5", "Eksport til regnskap",
-                                         "Varsel på e-post"],
-            f"over another column it sits between two cards there: {titles(page, 'planlagt')}")
-    post = drop(page, "/saker/flytt")
-    t.check("column=planlagt" in post.body and f"before={card_id(page, 'Eksport til regnskap')}" in post.body,
+    drag_before(page, "Item 5", "Export to accounting")
+    t.check(titles(page, "planned") == ["New page for invoices", "Item 5", "Export to accounting",
+                                         "Notification by email"],
+            f"over another column it sits between two cards there: {titles(page, 'planned')}")
+    post = drop(page, "/items/move")
+    t.check("column=planned" in post.body and f"before={card_id(page, 'Export to accounting')}" in post.body,
             f"the drop posts that column and the card below: {post.body}")
-    t.check(titles(page, "planlagt")[1] == "Sak nummer 5", f"the answer has it there: {titles(page, 'planlagt')}")
+    t.check(titles(page, "planned")[1] == "Item 5", f"the answer has it there: {titles(page, 'planned')}")
 
-    last = page.card("Varsel på e-post").bounding_box()
-    press(page, "Sak nummer 6")
+    last = page.card("Notification by email").bounding_box()
+    press(page, "Item 6")
     page.mouse.move(last["x"] + last["width"] / 2, last["y"] + last["height"] + 12, steps=10)
-    post = drop(page, "/saker/flytt")
-    t.check("column=planlagt" in post.body and "before=&" in post.body + "&",
+    post = drop(page, "/items/move")
+    t.check("column=planned" in post.body and "before=&" in post.body + "&",
             f"dropped under the last card, before= is empty: {post.body}")
-    t.check(titles(page, "planlagt")[-1] == "Sak nummer 6", f"and it is last: {titles(page, 'planlagt')}")
+    t.check(titles(page, "planned")[-1] == "Item 6", f"and it is last: {titles(page, 'planned')}")
 
     count = len(posts)
-    box = page.card("Sak nummer 7").bounding_box()
-    press(page, "Sak nummer 7")
+    box = page.card("Item 7").bounding_box()
+    press(page, "Item 7")
     page.mouse.move(box["x"] + 30, box["y"] + 22, steps=4)
     page.mouse.up()
     page.wait_for_timeout(600)
@@ -100,18 +100,18 @@ def run(t):
 
     plain = t.desktop()
     plain.sign_in("employee:anna")
-    plain.goto("/tavle")
+    plain.goto("/board")
     posts = posts_of(plain)
-    before = titles(plain, "ny")
-    drag_before(plain, "Sak nummer 8", "Sak nummer 7")
+    before = titles(plain, "new")
+    drag_before(plain, "Item 8", "Item 7")
     plain.mouse.up()
     plain.wait_for_timeout(600)
-    t.check(not posts and titles(plain, "ny") == before,
+    t.check(not posts and titles(plain, "new") == before,
             "on a board that is not ordered, a card dropped in its own column goes back, unposted")
-    target = plain.column("under_arbeid").bounding_box()
-    press(plain, "Sak nummer 8")
+    target = plain.column("in_progress").bounding_box()
+    press(plain, "Item 8")
     plain.mouse.move(target["x"] + target["width"] / 2, target["y"] + 80, steps=10)
-    post = drop(plain, "/tavle/flytt")
-    t.check("column=under_arbeid" in post.body and "before" not in post.body,
+    post = drop(plain, "/board/move")
+    t.check("column=in_progress" in post.body and "before" not in post.body,
             f"and one dropped in another column posts card and column alone: {post.body}")
-    t.check(status(plain) == "Flyttet «Sak nummer 8» til Under arbeid.", f"which is said: «{status(plain)}»")
+    t.check(status(plain) == "Moved “Item 8” to In progress.", f"which is said: «{status(plain)}»")

@@ -103,8 +103,8 @@ the process still has the request in memory.
 
 `(:error-mail address...)` names who hears of new errors; each address is a
 string or `(:env NAME)`. When an error is new, or open again after being
-resolved, core sends each address a mail in the recording write: «Ny feil i
-Saker: …», with the message, where it happened, how many times, and a link
+resolved, core sends each address a mail in the recording write, in the
+tenant's language: «New error in Saker: …» («Ny feil i Saker: …»), with the message, where it happened, how many times, and a link
 to its page at the public URL. At most one mail per error an hour, so an
 error that flaps is one mail. Without `:error-mail`, nothing is sent, and
 the errors are on the page and in the tools.
@@ -140,10 +140,10 @@ and the REPL write none.
 The `dashboard` module (`modules/dashboard/README.md`) gains two pages for
 admins:
 
-- **«Feil»** at `/feil`: the errors by status, each with its count and
+- **«Errors»** («Feil») at `/errors`: the errors by status, each with its count and
   when it was first and last seen; one error with its backtrace, its
   occurrences, and buttons to resolve, ignore or open it again.
-- **«Logg»** at `/logg`: the requests the process has in memory, newest
+- **«Log»** («Logg») at `/log`: the requests the process has in memory, newest
   first, narrowed to errors, refusals or slow ones and to one kind; one
   request with its input, its steps in time order, drawn against the
   request's whole time, and its backtrace.

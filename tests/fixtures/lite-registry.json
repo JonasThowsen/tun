@@ -152,9 +152,9 @@
      "input": true,
      "computed": false,
      "values": [
-      "utleie",
-      "forbruk",
-      "tjeneste"
+      "rental",
+      "consumable",
+      "service"
      ]
     },
     {
@@ -167,7 +167,7 @@
      "computed": false
     },
     {
-     "name": "unit_price_ore",
+     "name": "unit_price_minor",
      "type": "integer",
      "label": "Enhetspris (øre)",
      "required": true,
@@ -239,11 +239,11 @@
      "input": false,
      "computed": false,
      "values": [
-      "mottak",
-      "justering",
-      "forbruk",
-      "reservasjon",
-      "frigivelse"
+      "receipt",
+      "adjustment",
+      "consumption",
+      "reservation",
+      "release"
      ]
     },
     {
@@ -390,8 +390,8 @@
      "input": false,
      "computed": false,
      "values": [
-      "planlagt",
-      "sendt"
+      "planned",
+      "sent"
      ]
     }
    ],
@@ -457,9 +457,9 @@
      "input": false,
      "computed": false,
      "values": [
-      "planlagt",
-      "utført",
-      "avbrutt"
+      "planned",
+      "executed",
+      "cancelled"
      ]
     },
     {
@@ -518,7 +518,7 @@
      "computed": false
     },
     {
-     "name": "unit_price_ore",
+     "name": "unit_price_minor",
      "type": "integer",
      "label": "Enhetspris (øre)",
      "required": false,
@@ -527,7 +527,7 @@
      "computed": false
     },
     {
-     "name": "line_total_ore",
+     "name": "line_total_minor",
      "type": "integer",
      "label": "Linjesum (øre)",
      "required": false,
@@ -608,12 +608,12 @@
      "input": false,
      "computed": false,
      "values": [
-      "utkast",
-      "tilbud_sendt",
-      "akseptert",
-      "bekreftet",
-      "fullført",
-      "avbrutt"
+      "draft",
+      "quote_sent",
+      "accepted",
+      "confirmed",
+      "completed",
+      "cancelled"
      ]
     },
     {
@@ -655,7 +655,7 @@
      "items": "order_line"
     },
     {
-     "name": "subtotal_ore",
+     "name": "subtotal_minor",
      "type": "integer",
      "label": "Sum før rabatt (øre)",
      "required": false,
@@ -664,7 +664,7 @@
      "computed": false
     },
     {
-     "name": "discount_ore",
+     "name": "discount_minor",
      "type": "integer",
      "label": "Rabatt (øre)",
      "required": false,
@@ -673,7 +673,7 @@
      "computed": false
     },
     {
-     "name": "total_ore",
+     "name": "total_minor",
      "type": "integer",
      "label": "Totalt (øre)",
      "required": false,
@@ -737,7 +737,7 @@
      "computed": false
     },
     {
-     "name": "unit_price_ore",
+     "name": "unit_price_minor",
      "type": "integer",
      "label": "Enhetspris (øre)",
      "required": false,
@@ -746,7 +746,7 @@
      "computed": false
     },
     {
-     "name": "line_total_ore",
+     "name": "line_total_minor",
      "type": "integer",
      "label": "Linjesum (øre)",
      "required": false,
@@ -791,8 +791,8 @@
      "input": false,
      "computed": false,
      "values": [
-      "utkast",
-      "sendt"
+      "draft",
+      "sent"
      ]
     },
     {
@@ -815,7 +815,7 @@
      "items": "invoice_line"
     },
     {
-     "name": "subtotal_ore",
+     "name": "subtotal_minor",
      "type": "integer",
      "label": "Sum før rabatt (øre)",
      "required": false,
@@ -824,7 +824,7 @@
      "computed": false
     },
     {
-     "name": "discount_ore",
+     "name": "discount_minor",
      "type": "integer",
      "label": "Rabatt (øre)",
      "required": false,
@@ -833,7 +833,7 @@
      "computed": false
     },
     {
-     "name": "total_ore",
+     "name": "total_minor",
      "type": "integer",
      "label": "Totalt (øre)",
      "required": false,
@@ -1235,12 +1235,12 @@
  ],
  "message_templates": [
   {
-   "name": "tilbud",
+   "name": "quote",
    "label": "Tilbud (standard)",
    "source": "core"
   },
   {
-   "name": "faktura",
+   "name": "invoice",
    "label": "Faktura (standard)",
    "source": "core"
   },

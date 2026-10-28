@@ -11,13 +11,13 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity fake-accounting-call (:json-name "fake_accounting_call" :label "Regnskapskall (fake)"
+(define-entity fake-accounting-call (:json-name "fake_accounting_call" :label "Accounting call (fake)"
                                      :id-prefix "fac" :table "fake_accounting_calls" :internal t
                                      :indexes (("intent_id") ("invoice_id")))
   ((intent-id :type (string :max 200) :input nil)
    (invoice-id :type id :input nil)
    (external-ref :type (string :max 200) :input nil)
-   (total-ore :type integer :input nil)
+   (total-minor :type money :input nil)
    (at :type timestamp :input nil)))
 
 (defun environment-latency-ms ()
@@ -45,7 +45,7 @@ FAKE_ACCOUNTING_LATENCY_MS from the environment, else 0.")))
       (insert (make-instance 'fake-accounting-call :intent-id (intent-id intent)
                                                    :invoice-id (intent-invoice-id intent)
                                                    :external-ref ref
-                                                   :total-ore (intent-total-ore intent)
+                                                   :total-minor (intent-total-minor intent)
                                                    :at (now)))
       ref)))
 

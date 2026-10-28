@@ -25,6 +25,8 @@
   :components ((:module "core"
                 :components ((:file "package")
                              (:file "util")
+                             (:file "i18n")
+                             (:file "zones")
                              (:file "counts")
                              (:file "json")
                              (:file "conditions")
@@ -32,6 +34,7 @@
                              (:file "trace")
                              (:file "module")
                              (:file "types")
+                             (:file "formats")
                              (:file "sql-text")
                              (:file "entity")
                              (:file "deadline")
@@ -45,7 +48,8 @@
                              (:file "execution")
                              (:file "waiting")
                              (:file "registry")
-                             (:file "settings")))))
+                             (:file "settings")
+                             (:file "core-migration")))))
 
 (defsystem "tun/memory"
   :pathname "src"
@@ -123,6 +127,12 @@
                              (:file "web-app")
                              (:file "push")
                              (:file "files")))
+               ;; The Norwegian catalogues of the kernel's copy (spec/i18n.md 3.2).
+               (:module "i18n" :components ((:file "nb-core") (:file "nb-platform")
+                                            (:file "nb-jobs") (:file "nb-mail")
+                                            (:file "nb-files") (:file "nb-auth")
+                                            (:file "nb-push") (:file "nb-agent")
+                                            (:file "nb-web") (:file "nb-ui")))
                (:file "runtime")
                (:file "public")))
 
@@ -141,6 +151,8 @@
                              (:file "safety-tests")
                              (:file "mcp-tests")
                              (:file "store-tests")
+                             (:file "core-migration-tests")
+                             (:file "i18n-tests")
                              (:file "query-tests")
                              (:file "record-policy-tests")
                              (:file "files-tests")

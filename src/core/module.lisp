@@ -17,7 +17,7 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +core-version+ "1.23.1"
+(defparameter +core-version+ "2.0.0"
   "The kernel's version.  Modules declare the range they build against; the
 client build (flake.nix, lib.buildClient) and DEFINE-MODULE both refuse a
 module whose range does not contain it.  The first versioned core was 0.1.0.")
@@ -434,6 +434,55 @@ nearest declaring superclass's) (:web-app ...), with its :ICONS read, or NIL
 without one (spec/ui.md 4.2)."
   (values (declared-option *application-web-app* application)))
 
+;;; A tenant's language, currency and time zone (spec/i18n.md 2.2)
+
+(defvar *application-locale* (make-hash-table :test 'eq)
+  "Application class name -> its (:locale ...) checked, as a plist of
+:LANGUAGES, :SOURCE-LANGUAGE, :CURRENCY and :TIME-ZONE.")
+
+(defun locale-options (name options)
+  "OPTIONS, the plist of (:locale ...) in the definition of NAME, checked,
+with the defaults filled in (spec/i18n.md 2.2)."
+  (unless (and (evenp (length options))
+               (loop for key in options by #'cddr
+                     always (member key '(:languages :source-language :currency :time-zone))))
+    (error "define-application ~s: (:locale ...) takes :languages, :source-language, ~
+            :currency and :time-zone, not ~s" name options))
+  (destructuring-bind (&key (languages '("en" "nb")) source-language (currency "EUR")
+                         (time-zone "UTC"))
+      options
+    (unless (and (consp languages)
+                 (every (lambda (l) (member l +languages+ :test #'equal)) languages)
+                 (= (length languages) (length (remove-duplicates languages :test #'equal))))
+      (error "define-application ~s: :languages is a list of ~{~s~^ and ~}, without repeats, ~
+              not ~s" name +languages+ languages))
+    (let ((source-language (or source-language (first languages))))
+      (unless (member source-language languages :test #'equal)
+        (error "define-application ~s: :source-language ~s is not one of :languages ~s"
+               name source-language languages))
+      (unless (currency-p currency)
+        (error "define-application ~s: :currency ~s is not a currency Tun knows ~
+                (spec/i18n.md 5.1)" name currency))
+      (unless (time-zone-p time-zone)
+        (error "define-application ~s: :time-zone ~s is not a time zone Tun knows ~
+                (spec/i18n.md 6.1)" name time-zone))
+      (list :languages languages :source-language source-language
+            :currency currency :time-zone time-zone))))
+
+(defun application-locale-options (application)
+  "The checked (:locale ...) of APPLICATION's class, or of the nearest
+superclass that declares one, else Tun's defaults."
+  (or (declared-option *application-locale* application)
+      (locale-options 'application '())))
+
+(defun application-languages (application)
+  "The languages a tenant of APPLICATION may be set to, its default first."
+  (getf (application-locale-options application) :languages))
+
+(defun application-source-language (application)
+  "The language APPLICATION's client writes its own copy in."
+  (getf (application-locale-options application) :source-language))
+
 (defmacro define-application (name (&rest features) &body options)
   "Define the client's application class NAME: its FEATURES (mixins carrying
 its methods, most specific first) on top of APPLICATION, which inherits the
@@ -454,8 +503,10 @@ text...) tells agents how to work with the client's tools, after Tun's own
 instructions in MCP's initialize, as spec/waiting.md 4 describes.  (:web-app
 :icons directory ...) lets people install the application as an app, as
 spec/ui.md 4.2 describes; the directory is relative to this file, and its
-icons are read when the form is compiled.  Other
-OPTIONS are DEFCLASS options."
+icons are read when the form is compiled.  (:locale :languages ... :currency
+... :time-zone ...) gives the languages a tenant may be set to and a new
+tenant's language, currency and time zone, as spec/i18n.md 2.2 describes.
+Other OPTIONS are DEFCLASS options."
   (let* ((modules (mapcar (lambda (m) (string-downcase (string m)))
                           (rest (assoc :modules options))))
          (on-open (rest (assoc :on-open options)))
@@ -465,9 +516,11 @@ OPTIONS are DEFCLASS options."
          (error-mail (rest (assoc :error-mail options)))
          (instructions (rest (assoc :instructions options)))
          (web-app (assoc :web-app options))
+         (locale (assoc :locale options))
          (class-options (remove-if (lambda (o) (member (first o) '(:modules :on-open :sign-in :mail
                                                                    :queues :error-mail
-                                                                   :instructions :web-app)))
+                                                                   :instructions :web-app
+                                                                   :locale)))
                                    options)))
     (dolist (strategy (rest sign-in))
       (unless (and (consp strategy) (keywordp (first strategy)))
@@ -511,6 +564,9 @@ OPTIONS are DEFCLASS options."
                                              (merge-pathnames (uiop:ensure-directory-pathname icons)
                                                               (source-directory)))))))
             `(remhash ',name *application-web-app*))
+       ,(if locale
+            `(setf (gethash ',name *application-locale*) ',(locale-options name (rest locale)))
+            `(remhash ',name *application-locale*))
        ',name)))
 
 (defun declared-option (table application)

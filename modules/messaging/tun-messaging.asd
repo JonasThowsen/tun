@@ -5,4 +5,4 @@
   :version "1.0.0"
   :depends-on ("tun" "tun-orders" "tun-customers" "tun-notifications" "tun-inbox")
   :serial t
-  :components ((:file "messaging") (:file "outbox") (:file "web")))
+  :components ((:file "messaging") (:file "outbox") (:file "web") (:file "nb")))

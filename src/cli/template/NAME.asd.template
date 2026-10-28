@@ -7,7 +7,8 @@
   :depends-on ("tun"{{module-systems}})
   :serial t
   :components ((:file "package")
-               (:file "application")))
+               (:file "application")
+               (:file "nb")))
 
 (defsystem "{{name}}/tests"
   :description "The client's test-suite, with the public-interface check."

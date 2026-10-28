@@ -18,19 +18,21 @@
   (:local-nicknames (#:ui #:tun.ui))
   (:export #:order #:order-revision #:order-status #:order-customer-id #:order-event-date
            #:order-end-date #:order-delivery-address #:order-lines #:order-tags #:order-department #:order-open-questions
-           #:order-price-mode #:order-catalog-total-ore #:order-subtotal-ore #:order-discount-ore
-           #:order-adjustment-ore #:order-total-ore #:order-requirements #:order-created-at #:record-order-request #:aggregate-order-communication
+           #:order-price-mode #:order-catalog-total-minor #:order-subtotal-minor
+           #:order-discount-minor
+           #:order-adjustment-minor #:order-total-minor #:order-requirements #:order-created-at #:record-order-request #:aggregate-order-communication
            #:order-bookings #:order-logistics #:order-pickup #:order-return-record
            #:order-line #:order-line-id #:order-line-product-id #:order-line-quantity
-           #:order-line-unit-price-ore #:order-line-line-total-ore #:order-line-line-effective-ore
-           #:order-line-notes
+           #:order-line-unit-price-minor #:order-line-line-total-minor
+           #:order-line-line-effective-minor
+           #:order-line-notes #:logistics-method-label
            #:requirement #:requirement-product-id #:requirement-quantity
            #:booking #:booking-order-id #:booking-product-id #:booking-quantity
            #:booking-from #:booking-to
            #:+final-statuses+ #:+locked-statuses+ #:+calendar-active-statuses+ #:status-label
            #:find-order #:order-customer #:order-final-p #:order-locked-p #:order-dateless-p
            #:order-period #:order-last-date #:order-requires-pickup-p #:touch-order #:check-order-not-locked
-           #:+lock-message+ #:order-line-choices #:requirement-article-id
+           #:refuse-locked-order #:order-line-choices #:requirement-article-id
            #:logistics-settled-p #:logistics-summary #:side-summary #:order-logistics-object
            #:order-discount #:compute-order-requirements #:booking-window #:order-suggestions
            #:order-checklist-items #:order-departments #:order-department-changed #:order-closure-check
@@ -56,27 +58,39 @@
 
 (define-module orders
   (:depends-on customers catalog inventory reviews)
-  (:core ">= 1.2.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:on-open repair-quote-receipts)
   (:documentation "Orders: quotes, pricing, logistics, statuses, checklists, bookings and reservations."))
 
 ;;; Statuses (README §2.1) and their groups.
 (defparameter +statuses+
-  '("utkast" "tilbud_sendt" "akseptert" "bekreftet" "hentet" "returnert" "send_faktura" "fullført" "avbrutt"))
-(defparameter +status-labels+
-  '(("utkast" . "UTKAST") ("tilbud_sendt" . "TILBUD SENDT") ("akseptert" . "AKSEPTERT AV KUNDE")
-    ("bekreftet" . "BEKREFTET") ("hentet" . "HENTET") ("returnert" . "RETURNERT")
-    ("send_faktura" . "SEND FAKTURA") ("avbrutt" . "AVLYST") ("fullført" . "FERDIG")))
-(defparameter +final-statuses+ '("fullført" "avbrutt")
+  '("draft" "quote_sent" "accepted" "confirmed" "picked_up" "returned" "ready_for_invoice" "completed" "cancelled"))
+(defparameter +final-statuses+ '("completed" "cancelled")
   "Final statuses: orders_update refused (README §1.4).")
-(defparameter +locked-statuses+ '("send_faktura" "fullført"))
-(defparameter +not-started-statuses+ '("utkast" "tilbud_sendt" "akseptert"))
-(defparameter +active-statuses+ '("bekreftet" "hentet" "returnert" "send_faktura"))
-(defparameter +closed-statuses+ '("avbrutt" "fullført"))
-(defparameter +calendar-active-statuses+ '("utkast" "tilbud_sendt" "akseptert" "bekreftet"))
+(defparameter +locked-statuses+ '("ready_for_invoice" "completed"))
+(defparameter +not-started-statuses+ '("draft" "quote_sent" "accepted"))
+(defparameter +active-statuses+ '("confirmed" "picked_up" "returned" "ready_for_invoice"))
+(defparameter +closed-statuses+ '("cancelled" "completed"))
+(defparameter +calendar-active-statuses+ '("draft" "quote_sent" "accepted" "confirmed"))
 
-(defparameter +lock-message+
-  "Ordren er låst (send faktura eller fullført). Åpne ordren for redigering først.")
+(defun refuse-locked-order ()
+  "Refuse a change to a locked order with the lock message (README §2.3)."
+  (fail :conflict "The order is locked (ready for invoice or completed). Reopen the order for editing first."))
 
 (defun status-label (status)
-  (or (cdr (assoc status +status-labels+ :test #'string=)) status))
+  "The order STATUS as the calendar shows it, in capitals (README §2.1), in
+the current language; an unknown status as it is."
+  (cond ((string= status "draft") (tr "DRAFT"))
+        ((string= status "quote_sent") (tr "QUOTE SENT"))
+        ((string= status "accepted") (tr "ACCEPTED BY CUSTOMER"))
+        ((string= status "confirmed") (tr "CONFIRMED"))
+        ((string= status "picked_up") (tr "PICKED UP"))
+        ((string= status "returned") (tr "RETURNED"))
+        ((string= status "ready_for_invoice") (tr "SEND INVOICE"))
+        ((string= status "cancelled") (tr "CANCELLED"))
+        ((string= status "completed") (tr "COMPLETED"))
+        (t status)))
+
+(defun status-text (status)
+  "The order STATUS as a message's argument: its label (spec/i18n.md 3.1)."
+  (label "order" "status" status))

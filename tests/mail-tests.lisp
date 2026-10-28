@@ -32,12 +32,12 @@ to signal, or :SILENT to answer too late.  Then (:SENT \"ok\").")
 (define-operation mail-test-send ((to :type string) (subject :type string) (text :type string)
                                   (html :type string) (reply-to :type string) (key :type string)
                                   (then-fail :type boolean))
-    (:kind :update :policy :employee :title "Send e-post (test)")
+    (:kind :update :policy :employee :title "Send a mail (test)")
   ;; A tree cannot travel as JSON: HTML is the text of a paragraph.
   (let ((mail (tun.mail:send-mail :to to :subject subject :text text :html (and html `(:p ,html))
                                   :reply-to reply-to :key key)))
     (when then-fail
-      (fail :conflict "Arbeidet feilet etter at e-posten ble lagt i køen"))
+      (fail :conflict "The work failed after the mail was queued"))
     (jobj "id" (entity-id mail))))
 
 (defmacro with-mail ((adapter &rest outcomes) &body body)

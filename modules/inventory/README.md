@@ -3,9 +3,9 @@
 ASDF system `tun-inventory`, package `tun.inventory`; pinned by clients through
 `flake.nix` in this directory (tun-platform.md §2, §4).
 
-- **Owns:** stock articles and their ledger (`aapning`, `mottak`, `justering`, `telling`, `forbruk`), reservations and the consumption synchroniser (keyed by opaque order ids), department transfers; `articles_*`, `transfers_list`, the product-keyed `inventory_*` tools (on the product's article, or `article_id`), `inventory_forecast`, `inventory_purchase_suggestions`, `inventory_availability_grid` (§2–§11). At start it adopts an older core's per-product stock levels as articles (§14). A balance above 10¹² is `invalid_input` (§3.3); a recount wins until a newer receipt (§6.4).
+- **Owns:** stock articles and their ledger (`opening`, `receipt`, `adjustment`, `recount`, `consumption`), reservations and the consumption synchroniser (keyed by opaque order ids), department transfers; `articles_*`, `transfers_list`, the product-keyed `inventory_*` tools (on the product's article, or `article_id`), `inventory_forecast`, `inventory_purchase_suggestions`, `inventory_availability_grid` (§2–§11). At start it adopts an older core's per-product stock levels as articles (§14). A balance above 10¹² is `invalid_input` (§3.3); a recount wins until a newer receipt (§6.4).
 - **Depends on:** `catalog`. It knows no order status (§1).
-- **Core range:** builds against core `>= 1.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** seams `article_demand` (with `from`: orders dated from then on) and `bookings_on` (orders answers them for the forecast and the grid); `purchase-suggestions` for the client's warehouse alert. Its exported symbols are its interface for
@@ -41,7 +41,7 @@ fractional digits (core.md §2.1).
 
 #### 2.1 Fields
 
-`article = {"id","revision","name","sku","unit","package_size","balance","movement_revision","min_level","max_level","cost_price_ore","supplier":{"name","contact","article_no","order_url"},"lead_days","department","department_revision","active","product_id","created_at"}`.
+`article = {"id","revision","name","sku","unit","package_size","balance","movement_revision","min_level","max_level","cost_price_minor","supplier":{"name","contact","article_no","order_url"},"lead_days","department","department_revision","active","product_id","created_at"}`.
 
 | Field | Rule |
 |---|---|
@@ -49,7 +49,7 @@ fractional digits (core.md §2.1).
 | `sku` | optional, unique among all articles, else `conflict` `Varenummeret <sku> er allerede i bruk` |
 | `package_size` | optional decimal > 0: the purchasing package in the article's unit |
 | `min_level`, `max_level` | optional, ≥ 0; `min_level` raises a purchase suggestion (§9) |
-| `cost_price_ore` | optional integer ≥ 0 |
+| `cost_price_minor` | optional integer ≥ 0 |
 | `supplier` | an object with only `name`, `contact`, `article_no`, `order_url`, each a string or null (≤ 200; `order_url` ≤ 2000); merged over the stored one; a blank value is stored as null |
 | `supplier.order_url` | must match `^https?://[^@\s/:?#]+(:\d+)?([/?#]\S*)?$` (http(s), no user or password), else `invalid_input` `Bestillingslenken må være en http- eller https-adresse uten brukernavn eller passord` |
 | `lead_days` | integer 0..3650, default 0 |
@@ -61,10 +61,10 @@ fractional digits (core.md §2.1).
 
 #### 2.2 Tools
 
-- `articles_create {name, unit, sku?, package_size?, min_level?, max_level?, cost_price_ore?, supplier?, lead_days?, department?, opening_balance?=0}`
+- `articles_create {name, unit, sku?, package_size?, min_level?, max_level?, cost_price_minor?, supplier?, lead_days?, department?, opening_balance?=0}`
   (create, admin): `department` is checked as in catalog README §4;
   `opening_balance ≥ 0` (`Startbeholdningen kan ikke være negativ`) is
-  written as one `aapning` movement in the same transaction, also when 0.
+  written as one `opening` movement in the same transaction, also when 0.
 - `articles_get {id}` (read).
 - `articles_list {query?, department?, active?=true, limit?}` (read): sorted
   by name; `query` is a case-insensitive substring of `name` in which `%`
@@ -77,7 +77,7 @@ fractional digits (core.md §2.1).
   `active: true` reactivates an archived article. Bumps `revision`.
 - `articles_archive {id}` (update, admin): `active` false; the ledger is
   kept, and consumption may still be written and reversed (§6).
-- `articles_recount` writes a `telling` (§3.1); `articles_transfer` §11.
+- `articles_recount` writes a `recount` (§3.1); `articles_transfer` §11.
 
 ### 3. The ledger
 
@@ -87,14 +87,14 @@ fractional digits (core.md §2.1).
 
 | Kind | Written by | Balance | Rules |
 |---|---|---|---|
-| `aapning` | `articles_create` only | `:= quantity` | once per article, quantity ≥ 0 |
-| `mottak` | `inventory_receive` | `+ quantity` | integer 1..10⁶; article active |
-| `justering` | `inventory_adjust` | `+ delta` | signed integer, ≠ 0, \|delta\| ≤ 10⁶, reason required; article active; a negative result is `insufficient_stock` |
-| `telling` | `articles_recount {article_id, quantity, reason}` (create, admin) | `:= quantity` | quantity ≥ 0 (`Talt mengde kan ikke være negativ`), reason required (`Oppgi årsaken til lagerkorrigeringen`); article active |
-| `forbruk` | the consumption sync only (§6) | `− quantity` when `balance_updated` | quantity > 0, `order_id` set, at most one per (order, article) |
-| `reservasjon`, `frigivelse` | never written; readable when an older core stored them | none | |
+| `opening` | `articles_create` only | `:= quantity` | once per article, quantity ≥ 0 |
+| `receipt` | `inventory_receive` | `+ quantity` | integer 1..10⁶; article active |
+| `adjustment` | `inventory_adjust` | `+ delta` | signed integer, ≠ 0, \|delta\| ≤ 10⁶, reason required; article active; a negative result is `insufficient_stock` |
+| `recount` | `articles_recount {article_id, quantity, reason}` (create, admin) | `:= quantity` | quantity ≥ 0 (`Talt mengde kan ikke være negativ`), reason required (`Oppgi årsaken til lagerkorrigeringen`); article active |
+| `consumption` | the consumption sync only (§6) | `− quantity` when `balance_updated` | quantity > 0, `order_id` set, at most one per (order, article) |
+| `reservation`, `release` | never written; readable when an older core stored them | none | |
 
-A movement on an archived article (except `forbruk`) is `invalid_input`
+A movement on an archived article (except `consumption`) is `invalid_input`
 `Lagerartikkelen er arkivert`. `product_id` is the article's product, if
 any.
 
@@ -125,9 +125,9 @@ stock tracked: the writes refuse it (`invalid_input` `Produktet <name> er
 ikke lagerført`), the reads answer zeros.
 
 - `inventory_receive {product_id | article_id, quantity, reason?}` (create,
-  employee): `mottak`.
+  employee): `receipt`.
 - `inventory_adjust {product_id | article_id, delta, reason}` (create,
-  admin): `justering`; `delta` 0 is `invalid_input` `Justeringen kan ikke
+  admin): `adjustment`; `delta` 0 is `invalid_input` `Justeringen kan ikke
   være 0`; `insufficient_stock` names the article and quantities (`Ikke nok
   <name> på lager: <balance> på lager, trenger <n>`).
 - `inventory_balance {product_id | article_id}` (read):
@@ -140,7 +140,7 @@ ikke lagerført`), the reads answer zeros.
   `{"items":[movement]}`, highest `revision` first.
 
 The article that `products_create` makes for a stock-tracked product (the
-`stock_article` seam, §12) writes no `aapning`, so its first receipt has
+`stock_article` seam, §12) writes no `opening`, so its first receipt has
 revision 1, as the product-keyed ledger always numbered.
 
 ### 5. Reservations
@@ -162,7 +162,7 @@ Orders applies an order's consumption as one synchronising command
 `expected` a list of `(article_id . quantity)`. The expected map is the
 positive sum per article; its fingerprint is the SHA-256 of the canonical
 JSON of the sorted `[article_id, quantity]` list. An order's consumption is
-**applied** when at least one `forbruk` row with its `order_id` exists
+**applied** when at least one `consumption` row with its `order_id` exists
 (`consumption-applied-p`). When orders consumes, reverses and re-syncs is
 orders' rule (orders README, reservation and consumption).
 
@@ -178,7 +178,7 @@ versjonen` and nothing changes.
 #### 6.3 Replacement
 
 Otherwise the affected articles are locked in id order and the order's
-`forbruk` rows are replaced wholesale: every existing row is reversed (its
+`consumption` rows are replaced wholesale: every existing row is reversed (its
 quantity added back, unless §6.4 says the count wins) and deleted, and new
 rows are written in article-id order. The whole sync runs in the caller's
 write transaction; a failure leaves the prior consumption intact. An empty
@@ -186,10 +186,10 @@ write transaction; a failure leaves the prior consumption intact. An empty
 
 #### 6.4 A recount wins
 
-An article is **recounted** for an order's row when a `telling` with a
+An article is **recounted** for an order's row when a `recount` with a
 higher `revision` than the row exists, or when the row already had
-`balance_updated: false` and the article's latest `telling` is still what
-its balance rests on (no `mottak`, `justering` or `aapning` with a higher
+`balance_updated: false` and the article's latest `recount` is still what
+its balance rests on (no `receipt`, `adjustment` or `opening` with a higher
 revision). A recounted article's old row is not added back, and its new row
 has `balance_updated: false` and reason `Reservert for ordre (beholdning
 manuelt justert)`: it does not deduct. Other new rows have
@@ -280,7 +280,7 @@ ownership only; stock never moves.
 Answered for the catalog (catalog README §12):
 
 - `stock_article`: creates the article of a new stock-tracked product (its
-  name and unit, no `aapning`, §4);
+  name and unit, no `opening`, §4);
 - `article_reference`: an article's name, unit and active flag;
 - `product_transferred`: writes the product's transfer (§11).
 
@@ -294,7 +294,7 @@ Published (core.md §1.1), answered by orders:
 Functions other modules use: `find-article`, `on-hand`, `reserved-quantity`,
 `set-order-reservations`, `release-order-reservations`, `sync-consumption`,
 `consumption-applied-p`, `received-since-p` (whether an article has a
-`mottak` after an instant), `forecast-demand`, `purchase-suggestions`,
+`receipt` after an instant), `forecast-demand`, `purchase-suggestions`,
 `article-key-product` (the id a product-keyed view shows for an article).
 
 ### 13. Tools

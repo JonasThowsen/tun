@@ -5,7 +5,7 @@ ASDF system `tun-customers`, package `tun.customers`; pinned by clients through
 
 - **Owns:** `customer` (name, email, phone, notes, completed orders); `customers_create`, `customers_get`, `customers_list`.
 - **Depends on:** none.
-- **Core range:** builds against core `>= 1.2.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`). Its exported symbols are its interface for
@@ -67,22 +67,22 @@ There is no `customers_update`.
 ### 3. Completed orders
 
 `completed_orders` is the number of the customer's orders that are
-`fullført` now. The orders module keeps it: `orders_complete` adds one
-(`record-completed-order`), `orders_reopen` from `fullført` takes one away
+`completed` now. The orders module keeps it: `orders_complete` adds one
+(`record-completed-order`), `orders_reopen` from `completed` takes one away
 (`record-reopened-order`, never below 0). An order completed, reopened and
 completed again counts once. A client's loyalty rule reads this count.
 
 ### 4. Marketing consent
 
-`marketing_consent` (default false), `consent_source` (`manuelt`, `epost`,
-`kontaktskjema`, `avmelding` or null) and `consent_at` record whether the
+`marketing_consent` (default false), `consent_source` (`manual`, `email`,
+`contact_form`, `unsubscribe` or null) and `consent_at` record whether the
 customer may get marketing mail and how that was decided.
 
-- `customers_create` with `marketing_consent: true` sets source `manuelt`.
+- `customers_create` with `marketing_consent: true` sets source `manual`.
 - `customers_set_consent` sets all three; an erased customer →
   `invalid_input` `kunden er slettet`. The audit entry carries the source as
   its reason.
-- The inbox's contact form sets consent with source `kontaktskjema` and never
+- The inbox's contact form sets consent with source `contact_form` and never
   unsets it (inbox README §6).
 - The unsubscribe link (§6) is the only change a customer makes.
 
@@ -98,7 +98,7 @@ one transaction:
    and anonymises its own records of the customer there: the orders module
    refuses while the customer has an open order (`conflict` `kunden kan ikke
    slettes fordi kunden har en åpen ordre`, or `… har N åpne ordrer`), clears
-   the customer from quote snapshots and cancels pending `neste_år`
+   the customer from quote snapshots and cancels pending `next_year`
    workflows; messaging, inbox and notifications redact their content
    (their READMEs). A refusal fails the whole erasure.
 2. Retained request traces that name the customer are redacted (core.md
@@ -116,17 +116,17 @@ anonymised. Sends to an erased customer are refused (messaging README
 
 ### 6. The unsubscribe page
 
-`/avmeld/<token>`, a public page (no actor). The token is the link token of
+`/unsubscribe/<token>`, a public page (no actor). The token is the link token of
 kind `avmeld` for the customer's id (core.md §5.4), compared in constant
 time.
 
 | Request | Result |
 |---|---|
-| `GET /avmeld/<token>` | 200, a page saying what unsubscribing means, with the button `Meld meg av` |
-| `POST /avmeld/<token>` | `marketing_consent` false, `consent_source` `avmelding`, `consent_at` now; 200 `Du er avmeldt.`. Runs as `customer:<customer id>`, audited with reason `avmelding`. A second post changes nothing. |
+| `GET /unsubscribe/<token>` | 200, a page saying what unsubscribing means, with the button `Meld meg av` |
+| `POST /unsubscribe/<token>` | `marketing_consent` false, `consent_source` `unsubscribe`, `consent_at` now; 200 `Du er avmeldt.`. Runs as `customer:<customer id>`, audited with reason `unsubscribe`. A second post changes nothing. |
 | an unknown token, an erased customer, or a longer path | 404 `Siden finnes ikke` / `Kontroller lenken i e-posten.` |
 
-Messages carry the link as the template value `lenke.avmeld` (messaging
+Messages carry the link as the template value `link.unsubscribe` (messaging
 README §3).
 
 ### 7. Screen

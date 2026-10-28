@@ -72,7 +72,7 @@ developer's dashboard (modules/dashboard/README.md).")
     (flet ((check (text)
              (public-interface-violations text :package "TUN.ORDERS" :public-packages public)))
       ;; orders does not depend on messaging or staffing
-      (is (check "(tun.messaging:send-message \"tilbud\")"))
+      (is (check "(tun.messaging:send-message \"quote\")"))
       (is (check "(defpackage #:x (:use #:tun.invoicing))"))
       ;; an internal symbol of a dependency, or any ::
       (is (check "(tun.inventory::stock-row \"p\")"))

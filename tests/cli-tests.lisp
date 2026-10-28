@@ -67,7 +67,7 @@
 (test a-new-client-has-every-file-filled-in
   (let ((files (tun.cli:client-files "acme" '() "git+file:///srv/tun")))
     (is (equal '(".envrc" ".gitignore" "AGENTS.md" "README.md" "acme.asd" "application.lisp"
-                 "bin/serve" "bin/test" "deploy.nix" "flake.nix" "package.lisp"
+                 "bin/serve" "bin/test" "deploy.nix" "flake.nix" "nb.lisp" "package.lisp"
                  "tests/package.lisp" "tests/run.lisp" "tests/scenarios.lisp" "tests/tests.lisp")
                (sort (mapcar #'first files) #'string<)))
     (is (notany (lambda (file) (search "{{" (second file))) files))

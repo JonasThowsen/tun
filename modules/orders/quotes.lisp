@@ -67,7 +67,7 @@ would tell by its timing how much of a guess was right)."
   (jarr (mapcar (lambda (line)
                   (jobj "name" (product-name (find-product (order-line-product-id line)))
                         "quantity" (order-line-quantity line)
-                        "line_effective_ore" (or (order-line-line-effective-ore line) (order-line-line-total-ore line))))
+                        "line_effective_minor" (or (order-line-line-effective-minor line) (order-line-line-total-minor line))))
                 (order-lines order))))
 
 (defun quote-snapshot (order &optional (customer (order-customer order)))
@@ -77,13 +77,13 @@ would tell by its timing how much of a guess was right)."
         "event_date" (or (order-event-date order) :null)
         "end_date" (or (order-end-date order) :null)
         "site_address" (or (order-delivery-address order) :null)
-        "total_ore" (order-total-ore order)
+        "total_minor" (order-total-minor order)
         "lines" (snapshot-lines order)))
 
 (defun quote-basis (order)
   "What the offer rests on: the total, both dates, the site address and every
 field of every line (servings and the client's fields included), canonical."
-  (to-json-string (jobj "total_ore" (order-total-ore order)
+  (to-json-string (jobj "total_minor" (order-total-minor order)
                         "event_date" (or (order-event-date order) :null)
                         "end_date" (or (order-end-date order) :null)
                         "site_address" (or (order-delivery-address order) :null)
@@ -107,13 +107,13 @@ back to awaiting_response, a new snapshot, valid 14 days, the same code."
                 (order-quote-status quote) "awaiting_response"
                 (order-quote-responded-at quote) nil
                 (order-quote-offered-at quote) now
-                (order-quote-expires-at quote) (+ now (* (setting-value-at-use "tilbud.gyldig_dager" +quote-validity-days+) 86400))
+                (order-quote-expires-at quote) (+ now (* (setting-value-at-use "quotes.valid_days" +quote-validity-days+) 86400))
                 (order-quote-snapshot quote) (quote-snapshot order customer)
                 (order-quote-basis quote) (quote-basis order))
           (save quote))
         (insert (make-instance 'order-quote :order-id (entity-id order) :revision 1
                                             :status "awaiting_response" :offered-at now
-                                            :expires-at (+ now (* (setting-value-at-use "tilbud.gyldig_dager" +quote-validity-days+) 86400))
+                                            :expires-at (+ now (* (setting-value-at-use "quotes.valid_days" +quote-validity-days+) 86400))
                                             :snapshot (quote-snapshot order customer)
                                             :basis (quote-basis order)
                                             :access-code (new-access-code))))))
@@ -127,42 +127,44 @@ back to awaiting_response, a new snapshot, valid 14 days, the same code."
           (gethash "access_code" json) (if (eq :admin (actor-role *actor*)) (order-quote-access-code quote) :null))
     json))
 
-(define-operation quotes-get ((order-id :type (id order) :required t :label "Ordre-ID"))
-    (:entity order-quote :kind :read :title "Hent tilbud"
-     :description "Ordrens tilbud: revisjon, status (awaiting_response, accepted, declined, expired), sendt, utløper, svar, innholdet som ble sendt og om ordren er endret siden (stale). Tilgangskoden vises bare for admin.")
+(define-operation quotes-get ((order-id :type (id order) :required t :label "Order ID"))
+    (:entity order-quote :kind :read :title "Get the quote"
+     :description "The order's quote: revision, status (awaiting_response, accepted, declined, expired), when it was sent, when it expires, the answer, the content that was sent and whether the order has changed since (stale). The access code is shown to an admin only.")
   (find-order order-id)
   (let ((quote (quote-for-order order-id)))
-    (unless quote (fail :not-found "Ordre ~a har ikke noe tilbud" order-id))
+    (unless quote (fail :not-found "Order ~a has no quote" order-id))
     (quote->json quote)))
 
-(define-operation quotes-preview ((order-id :type (id order) :required t :label "Ordre-ID"))
-    (:entity order-quote :kind :read :title "Forhåndsvis tilbud"
-     :description "Innholdet neste utsending av tilbudet ville fryse, uten å sende noe.")
+(define-operation quotes-preview ((order-id :type (id order) :required t :label "Order ID"))
+    (:entity order-quote :kind :read :title "Preview the quote"
+     :description "The content the next send of the quote would freeze, without sending anything.")
   (jobj "order_id" order-id "snapshot" (quote-snapshot (find-order order-id))))
 
-(define-operation quotes-respond ((quote-id :type (id order-quote) :required t :label "Tilbuds-ID")
-                                  (revision :type integer :required t :label "Tilbudets revisjon")
-                                  (access-code :type (string :min 1 :max 100) :required t :label "Tilgangskode")
-                                  (response :type (enum "accept" "decline") :required t :label "Svar"))
-    (:entity order-quote :kind :transition :policy :viewer :viewer-mutation t :title "Svar på tilbud"
-     :description "Kundens svar på tilbudet (accept eller decline), autorisert av tilgangskoden. Aksept gjør ordren akseptert; avslag lar ordren stå som tilbud_sendt. Gjelder bare tilbudets gjeldende revisjon før det utløper.")
+(define-operation quotes-respond ((quote-id :type (id order-quote) :required t :label "Quote ID")
+                                  (revision :type integer :required t :label "The quote's revision")
+                                  (access-code :type (string :min 1 :max 100) :required t :label "Access code")
+                                  (response :type (enum "accept" "decline") :required t :label "Answer"))
+    (:entity order-quote :kind :transition :policy :viewer :viewer-mutation t :title "Answer the quote"
+     :description "The customer's answer to the quote (accept or decline), authorised by the access code. Accepting makes the order accepted; declining leaves it quote_sent. Applies only to the quote's current revision, before it expires.")
   (let* ((quote (fetch! 'order-quote quote-id))
          (order (find-order (order-quote-order-id quote))))
     (when (access-code-throttled-p quote-id)
       (reject-as (format nil "customer:~a" quote-id) :forbidden
-                 "For mange feil tilgangskoder for tilbudet; prøv igjen om ~d minutter" (floor +access-code-window+ 60)))
+                 "Too many wrong access codes for the quote; try again in ~d minutes" (floor +access-code-window+ 60)))
     (unless (same-code-p (normalise-access-code access-code) (order-quote-access-code quote))
       (note-wrong-code quote-id)
-      (reject-as (format nil "customer:~a" quote-id) :forbidden "Feil tilgangskode for tilbudet"))
+      (reject-as (format nil "customer:~a" quote-id) :forbidden "Wrong access code for the quote"))
     (check-order-not-locked order)
     (unless (= revision (order-quote-revision quote))
-      (fail :conflict "tilbudet er endret; last siden på nytt"))
+      (fail :conflict "the quote has changed; reload the page"))
     (when (quote-expired-p quote)
-      (fail :conflict "tilbudet er utløpt; send et nytt tilbud"))
+      (fail :conflict "the quote has expired; send a new quote"))
     (unless (string= (order-quote-status quote) "awaiting_response")
-      (fail :invalid-transition "Tilbudet er allerede besvart (~a)" (order-quote-status quote)))
-    (unless (string= (order-status order) "tilbud_sendt")
-      (fail :invalid-transition "Ordren har status ~a og venter ikke på svar" (order-status order)))
+      (fail :invalid-transition "The quote is already answered (~a)"
+            (label "quote" "status" (order-quote-status quote))))
+    (unless (string= (order-status order) "quote_sent")
+      (fail :invalid-transition "The order is ~a and is not waiting for an answer"
+            (status-text (order-status order))))
     (audit-as :actor (format nil "customer:~a" quote-id))
     (if (string= response "accept")
         (accept-order order)
@@ -183,22 +185,22 @@ back to awaiting_response, a new snapshot, valid 14 days, the same code."
 (register-extension-protocol 'quote-expired "after" :point "quote_expired"
   :description "Dependent modules publish an expiry notification atomically.")
 
-(define-workflow expire-quote (:kind "tilbud_utløp" :label "Tilbud utløper") (wf)
+(define-workflow expire-quote (:kind "quote_expiry" :label "Quote expires") (wf)
   (let ((quote (fetch 'order-quote (tun.workflows:workflow-subject-id wf))))
     (if (and quote (equal (order-quote-status quote) "awaiting_response")
              (equal (tun.workflows:workflow-key wf) (format nil "~a:~d" (entity-id quote) (order-quote-revision quote))))
         (progn (setf (order-quote-status quote) "expired") (save quote)
-               (tun.workflows:cancel-workflows (order-quote-order-id quote) :kinds '("tilbud_påminnelse"))
+               (tun.workflows:cancel-workflows (order-quote-order-id quote) :kinds '("quote_reminder"))
                (quote-expired *application* quote))
-        (tun.workflows:note-workflow-run "ikke nødvendig: tilbudet er ikke åpent"))))
+        (tun.workflows:note-workflow-run (tr "not needed: the quote is not open")))))
 (defun cancel-quote-expiry (order-id)
   (let ((quote (quote-for-order order-id)))
-    (when quote (tun.workflows:cancel-subject-workflows (entity-id quote) :kinds '("tilbud_utløp")))))
+    (when quote (tun.workflows:cancel-subject-workflows (entity-id quote) :kinds '("quote_expiry")))))
 (defmethod orders-send-quote :after ((app orders-module) input)
   (declare (ignore input))
   (let ((quote (quote-for-order (entity-id (operation-result)))))
     (cancel-quote-expiry (order-quote-order-id quote))
-    (tun.workflows:schedule-workflow "tilbud_utløp" :subject-id (entity-id quote)
+    (tun.workflows:schedule-workflow "quote_expiry" :subject-id (entity-id quote)
       :key (format nil "~a:~d" (entity-id quote) (order-quote-revision quote)) :due-at (order-quote-expires-at quote))))
 (defmethod orders-accept :after ((app orders-module) input)
   (declare (ignore input)) (cancel-quote-expiry (entity-id (operation-result))))
@@ -217,17 +219,18 @@ back to awaiting_response, a new snapshot, valid 14 days, the same code."
 
 (defmethod customer-erasing ((application orders-module) customer)
   (call-next-method)
-  (tun.workflows:cancel-customer-workflows (entity-id customer) :kinds '("neste_år"))
+  (tun.workflows:cancel-customer-workflows (entity-id customer) :kinds '("next_year"))
   (let* ((orders (select 'order :where `(:= "customer_id" ,(entity-id customer))))
          (open (count-if-not #'order-final-p orders)))
-    (when (plusp open)
-      (fail :conflict (if (= open 1) "kunden kan ikke slettes fordi kunden har en åpen ordre"
-                         "kunden kan ikke slettes fordi kunden har ~d åpne ordrer") open))
+    (cond ((= open 1)
+           (fail :conflict "the customer cannot be erased while they have an open order"))
+          ((plusp open)
+           (fail :conflict "the customer cannot be erased while they have ~d open orders" open)))
     (dolist (order orders)
       (let ((quote (quote-for-order (entity-id order))))
         (when quote
-          (setf (gethash "customer_name" (order-quote-snapshot quote)) "[slettet]"
-                (gethash "customer_email" (order-quote-snapshot quote)) "[slettet]")
+          (setf (gethash "customer_name" (order-quote-snapshot quote)) (tr "[erased]")
+                (gethash "customer_email" (order-quote-snapshot quote)) (tr "[erased]"))
           (save quote) (redact-quote-receipts quote))))))
 
 (defun mask-quote-credentials (json order-id)

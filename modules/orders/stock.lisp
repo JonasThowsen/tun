@@ -6,7 +6,8 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +committed-statuses+ '("bekreftet" "hentet" "returnert" "send_faktura" "fullført")
+(defparameter +committed-statuses+
+  '("confirmed" "picked_up" "returned" "ready_for_invoice" "completed")
   "Orders whose demand the forecast counts by default (README §2.1, §12.1).")
 
 ;;; ------------------------------------------------------------------
@@ -33,7 +34,7 @@
 
 (defmethod product-booked-peak ((application orders-module) product)
   ;; The most units booked on one date by calendar-active orders (only
-  ;; bekreftet ones hold bookings among them), cleaning windows included.
+  ;; confirmed ones hold bookings among them), cleaning windows included.
   (let* ((bookings (remove-if-not (lambda (b)
                                     (let ((order (fetch 'order (booking-order-id b))))
                                       (and order (member (order-status order) +calendar-active-statuses+

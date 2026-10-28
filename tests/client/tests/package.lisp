@@ -28,7 +28,7 @@
 
 (defun rental (name &key (cleaning-days 1))
   "The id of a new rental product, one unit owned."
-  (product "name" name "kind" "utleie" "unit" "stk" "unit_price_ore" 100000
+  (product "name" name "kind" "rental" "unit" "stk" "unit_price_minor" 100000
            "stock_tracked" nil "units_owned" 1 "cleaning_days" cleaning-days))
 
 (defun lines-of (&rest lines)

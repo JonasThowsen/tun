@@ -199,11 +199,7 @@ Fractional seconds are truncated."
 (defun date< (a b) (string< a b))
 
 ;;; ------------------------------------------------------------------
-;;; Norwegian time without a tz database (core.md §2.2).
-;;; CET is +01:00, CEST +02:00; summer time runs from the last Sunday of
-;;; March 01:00 UTC to the last Sunday of October 01:00 UTC (exclusive).
-;;; This is the instant -> local direction; local -> instant (to_utc, with
-;;; its non-existent and ambiguous times) is the staffing module's.
+;;; The calendar of European summer time (core/zones.lisp uses it)
 
 (defun last-sunday (year month)
   "Universal time of 00:00Z on the last Sunday of MONTH in YEAR."
@@ -213,26 +209,6 @@ Fractional seconds are truncated."
          (last-day (- first-of-next 86400))
          (weekday (nth-value 6 (decode-universal-time last-day 0)))) ; 0 = Monday, 6 = Sunday
     (- last-day (* 86400 (mod (- weekday 6) 7)))))
-
-(defun summer-time-p (ut)
-  "True when the instant UT falls in Norwegian summer time (CEST)."
-  (let ((year (nth-value 5 (decode-universal-time ut 0))))
-    (and (<= (+ (last-sunday year 3) 3600) ut)
-         (< ut (+ (last-sunday year 10) 3600)))))
-
-(defun oslo-offset (ut)
-  "Seconds Norwegian local time is ahead of UTC at the instant UT."
-  (if (summer-time-p ut) 7200 3600))
-
-(defun local-date-of (ut)
-  "The Norwegian local calendar date of the instant UT."
-  (format-date (+ ut (oslo-offset ut))))
-
-(defun local-time-of (ut)
-  "The Norwegian local wall-clock time HH:MM of the instant UT."
-  (multiple-value-bind (s m h) (decode-universal-time (+ ut (oslo-offset ut)) 0)
-    (declare (ignore s))
-    (format nil "~2,'0d:~2,'0d" h m)))
 
 (defun unicode-digit-p (character)
   "A Unicode decimal digit (general category Nd)."

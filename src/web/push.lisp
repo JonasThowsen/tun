@@ -42,7 +42,7 @@ there is no such path."
             ((not (eq method :post)) nil)
             ((null *actor*)
              (answer-json 401 (jobj "error" (jobj "code" "unauthenticated"
-                                                  "message" "Logg inn først"))))
+                                                  "message" (tr "Sign in first")))))
             ((string= path "/push/subscription")
              (let ((device (tun.push:device-name (hunchentoot:header-in* :user-agent))))
                (push-tool-answer "push_subscribe"

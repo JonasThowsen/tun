@@ -19,10 +19,10 @@
 ;;; ------------------------------------------------------------------
 ;;; Processes (spec/jobs.md 7)
 
-(define-entity job-process (:label "Jobbprosess" :id-prefix "jpr" :table "job_processes"
+(define-entity job-process (:label "Job process" :id-prefix "jpr" :table "job_processes"
                                    :internal t)
-  ((started-at :type timestamp :input nil :label "Startet")
-   (lock-key :type integer :input nil :label "Lås"
+  ((started-at :type timestamp :input nil :label "Started")
+   (lock-key :type integer :input nil :label "Lock"
              :description "The presence lock the process holds while it runs (spec/store.md 3).")))
 
 (defparameter +rescue-seconds+ 10 "How often a process looks for the jobs of processes that are gone.")
@@ -82,15 +82,18 @@ when the application closes, after its workers have stopped."
 (defun lost-job (job)
   "Record that JOB's process stopped during its attempt: retrying, or failed
 when its kind says :after-crash :fail or it has no attempts left."
-  (let ((definition (find-job-definition (job-kind job))))
-    (note-failure job "Prosessen stoppet under forsøket; utfallet er ukjent")
+  (let ((definition (find-job-definition (job-kind job)))
+        ;; The note is for people, in the tenant's language, outside a request too.
+        (*locale* (or *locale* (request-locale))))
+    (note-failure job "The process stopped during the attempt; its outcome is unknown")
     (if (and definition (eq (job-definition-after-crash definition) :retry)
              (< (job-attempts job) (job-max-attempts job)))
         (setf (job-state job) "retrying"
               (job-due-at job) (now))
         (setf (job-state job) "failed"
               (job-finished-at job) (now)
-              (job-note job) "Prosessen stoppet under forsøket; sjekk utfallet før jobben kjøres igjen"))
+              (job-note job)
+              (tr "The process stopped mid-attempt; check what it did before running it again")))
     (save job)))
 
 (defun rescue-orphaned-jobs ()
@@ -268,13 +271,14 @@ reason, :given-up and the reason, or :snoozed and the seconds."
     (job-snoozed (c) (values :snoozed (job-snoozed-seconds c)))
     (job-given-up (c) (values :given-up (job-given-up-reason c)))
     (deadline-exceeded ()
-      (let ((text (format nil "Forsøket tok mer enn ~d sekunder" (attempt-timeout definition))))
+      (let ((text (format nil "The attempt took more than ~d second~:p"
+                          (attempt-timeout definition))))
         (set-request-outcome record "error" :code :deadline-exceeded :message text)
         (values :failed text)))
     (serious-condition (e)
       (choose-request-backtrace record e)
       ;; Printing a condition runs its report function, which can fail too.
-      (let ((text (or (ignore-errors (princ-to-string e)) "ukjent feil")))
+      (let ((text (or (ignore-errors (princ-to-string e)) "unknown error")))
         (set-request-outcome record "error" :code :job-failed :message text)
         (values :failed text)))))
 
@@ -298,7 +302,7 @@ or :yielded for a snooze of 0 seconds, which ends this pass of its queue."
             (multiple-value-bind (outcome detail)
                 (if definition
                     (attempt record definition job)
-                    (values :failed (format nil "Jobbtypen ~a finnes ikke" (job-kind job))))
+                    (values :failed (format nil "The job kind ~a does not exist" (job-kind job))))
               (unless (eq outcome :succeeded)
                 (with-transaction (:write)
                   (record-outcome job outcome detail)))

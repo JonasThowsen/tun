@@ -19,7 +19,8 @@
            #:define-page #:web-call #:error-alert #:timestamp-text #:htmx-request-p
            #:staff-page-extras #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
-           #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity))
+           #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
+           #:page-texts))
 
 (in-package #:tun.web)
 
@@ -83,6 +84,7 @@ people POLICY admits (spec/ui.md 8): a function of the request's METHOD
 (:GET or :POST), PATH (the parts after the prefix), FORM and QUERY (JSON
 objects) that returns (values STATUS TITLE BODY [HEADER]), HEADER a plist of
 :DESCRIPTION, :ACTIONS, :BREADCRUMBS and :TRIGGER, or (values 303 PATH), or
+(values 301 PATH) for a page that moved to PATH for good, or
 (values STATUS :FRAGMENT BODY [HEADER]) to answer htmx with BODY alone
 (spec/ui.md 8.1).  TITLE and ICON are its menu entry; NAVIGATION nil keeps
 it out of the menu, GROUP :SYSTEM puts it under «System», WIDTH :WIDE
@@ -192,9 +194,9 @@ after it keeps it (spec/ui.md 4.1)."
     (when (and page (page-available-p page))
       (unless (and *actor* (actor-permits-p *actor* (staff-page-policy page)))
         (return-from dispatch-staff-page
-          (respond 403 "Ingen tilgang"
-                   (list (ui:alert (:variant :warning :title "Denne siden er ikke for deg")
-                                   "Siden krever en ansatt med en annen rolle enn din.")))))
+          (respond 403 (tr "No access")
+                   (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
+                                   (tr "The page needs a role other than yours."))))))
       (let ((form (jobj)) (query (jobj)))
         (when (eq method :post)
           (dolist (pair (hunchentoot:post-parameters*))
@@ -216,12 +218,13 @@ after it keeps it (spec/ui.md 4.1)."
               ;; An error the page does not catch: its alert, alone to htmx.
               (operation-error (e)
                 (values (error-status (operation-error-code e))
-                        (if (htmx-request-p) :fragment (staff-page-title page))
+                        (if (htmx-request-p) :fragment (translate (staff-page-title page)))
                         (list (error-alert (operation-error-json e))))))
           (destructuring-bind (&key description actions breadcrumbs trigger) header
             (when trigger
               (setf (hunchentoot:header-out "HX-Trigger") trigger))
             (cond ((eql status 303) (see-other title))
+                  ((eql status 301) (moved-permanently title))
                   ((eq title :declined) (answer-declined-preload))
                   ((eq title :fragment) (respond-fragment status body))
                   (t (respond status title body :description description :actions actions
@@ -275,8 +278,8 @@ menu, its title linking back to the page itself."
       (setf (hunchentoot:header-out "Referrer-Policy") "no-referrer")
       (let ((form (jobj))
             (session (public-session-for-request (and (eq method :post) (= (length parts) 3)
-                                                      (equal (first parts) "tilbud")
-                                                      (equal (third parts) "apne")))))
+                                                      (equal (first parts) "offer")
+                                                      (equal (third parts) "open")))))
         (when (eq method :post)
           (dolist (pair (hunchentoot:post-parameters*))
             (setf (gethash (car pair) form) (cdr pair))))
@@ -285,19 +288,19 @@ menu, its title linking back to the page itself."
               (handler-case (funcall handler method (rest parts) form
                                      (public-session-values session))
                 (operation-error (e)
-                  (values 422 "Meldingen kunne ikke lagres"
+                  (values 422 (tr "The message could not be saved")
                           (list (ui:alert (:variant :destructive)
                                           (operation-error-message e))))))
             (respond status heading body :guest t :home (public-home parts))))))))
 
 (defun public-home (parts)
   "Where the title of the public page at PARTS leads: the page itself, as
-/tilbud/ID is for every step of answering an offer."
+/offer/ID is for every step of answering an offer."
   (format nil "/~{~a~^/~}" (subseq parts 0 (min 2 (length parts)))))
 
 (defparameter +form-line-rows+ 3 "Empty rows offered for list inputs such as order lines.")
 
-;;; A resource: URL path, entity, list and create tools, Norwegian title, the
+;;; A resource: URL path, entity, list and create tools, its title, the
 ;;; list screen, and optionally a detail screen (GET <path>/<id>) whose
 ;;; record is passed to RENDER-SCREEN as DETAIL-KEY.  ICON is its icon in the
 ;;; menu.
@@ -306,6 +309,13 @@ menu, its title linking back to the page itself."
   (icon :file-text))
 
 (defvar *resources* '() "Registered resources, in registration (dependency) order.")
+
+(defun route-within-p (outer inner)
+  "True when the path INNER is OUTER or under it, part by part: /log/x is
+under /log, /login is not."
+  (and (string-prefix-p outer inner)
+       (or (= (length outer) (length inner))
+           (char= #\/ (char inner (length outer))))))
 
 (defun check-http-route-conflicts ()
   "Refuse overlapping resource, staff, public and JSON routes before serving requests."
@@ -323,8 +333,8 @@ menu, its title linking back to the page itself."
                tun.http::*json-endpoints*))
     (loop for rest on routes for left = (first rest)
           do (dolist (right (rest rest))
-               (when (or (string-prefix-p (first left) (first right))
-                         (string-prefix-p (first right) (first left)))
+               (when (or (route-within-p (first left) (first right))
+                         (route-within-p (first right) (first left)))
                  (extension-error "Refusing to start; HTTP routes overlap: ~a (~a) and ~a (~a)"
                                   (first left) (second left) (first right) (second right)))))
     t))
@@ -352,6 +362,20 @@ ICON (a design system icon name) are its entry in the menu."
 (defun web-resources ()
   "The registered resources, in registration order."
   *resources*)
+
+(defun page-texts ()
+  "The titles of the staff pages and resources the menu shows, each as
+(TITLE OWNER PACKAGE), PACKAGE the name of the package that defined it, for
+the checks of spec/i18n.md 3.7."
+  (flet ((package-of (symbol) (and (symbolp symbol) (package-name (symbol-package symbol)))))
+    (append (loop for page being the hash-values of *staff-pages*
+                  when (staff-page-navigation page)
+                    collect (list (staff-page-title page) (staff-page-module page)
+                                  (package-of (staff-page-handler page))))
+            (mapcar (lambda (resource)
+                      (list (resource-title resource) (resource-module resource)
+                            (package-of (resource-entity resource))))
+                    *resources*))))
 
 ;;; ------------------------------------------------------------------
 ;;; Request context
@@ -406,24 +430,33 @@ rather than as aborted."
             (hunchentoot:header-out :location) path))
   "")
 
+(defun moved-permanently (path)
+  "Answer 301 to PATH: the page has a new address for good, as a page whose
+path was renamed answers its old one."
+  (setf (hunchentoot:return-code*) 301
+        (hunchentoot:header-out :location) path)
+  "")
+
 (defun screen (name &rest arguments)
   "Render screen NAME (extension output: confirm tools cannot be asked for)."
   (let ((*inside-operation* t))
     (untrusted (apply #'render-screen *web-app* name arguments))))
 
 (defun web-call (tool arguments)
-  "Call TOOL as the logged-in actor. Values: JSON result and the error code (or NIL)."
-  (handler-case (values (call-tool tool arguments :application *web-app* :actor *actor*) nil)
-    (operation-error (e) (values (operation-error-json e) (operation-error-code e)))))
+  "Call TOOL as the logged-in actor. Values: JSON result and the error code (or NIL).
+An amount given as text is read as a person writes it (spec/i18n.md 5.4)."
+  (let ((*written-amounts* t))
+    (handler-case (values (call-tool tool arguments :application *web-app* :actor *actor*) nil)
+      (operation-error (e) (values (operation-error-json e) (operation-error-code e))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The page: a document around an app-shell
 
 (defparameter +navigation-count+ "^(.*\\S)\\s*\\(([0-9]+\\+?)\\)$"
-  "A menu title that ends in a count in parentheses, such as Varsler (3).")
+  "A menu title that ends in a count in parentheses, such as Notifications (3).")
 
 (defun navigation-label (text)
-  "TEXT, a menu title that may end in a count in parentheses (\"Varsler (3)\",
+  "TEXT, a menu title that may end in a count in parentheses (\"Notifications (3)\",
 from STAFF-NAVIGATION-TITLE), as values the label and the count, or NIL for
 no count or a count of zero."
   (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings +navigation-count+ text)
@@ -460,12 +493,13 @@ see, as (PREFIX . PAGE), by OWNER-RANK and then in the order registered."
   "The nav-list item of ENTRY, a (PREFIX . PAGE) of MENU-PAGES."
   (destructuring-bind (prefix . page) entry
     (multiple-value-bind (label count)
-        (navigation-label (staff-navigation-title *web-app* prefix (staff-page-title page)))
+        (navigation-label (staff-navigation-title *web-app* prefix
+                                                  (translate (staff-page-title page))))
       (list :label label :href (format nil "/~a" prefix)
             :icon (staff-page-icon page) :count count))))
 
 (defun resource-entry (resource)
-  (list :label (resource-title resource) :href (resource-path resource)
+  (list :label (translate (resource-title resource)) :href (resource-path resource)
         :icon (resource-icon resource)))
 
 (defun navigation ()
@@ -479,7 +513,7 @@ the kernel's pages; then, under «System», the pages about the system."
                         (mapcar #'page-entry (remove-if clients-p work))))
          (system (mapcar #'page-entry (menu-pages :system))))
     (remove nil (list (and items (list :items items))
-                      (and system (list :heading "System" :items system))))))
+                      (and system (list :heading (tr "System") :items system))))))
 
 (defun navigation-items ()
   "Every entry of the staff menu, in its order."
@@ -507,7 +541,7 @@ another page's do not, so signing in leaves for the provider's page."
 (defun page-document (title frame)
   "The whole HTML document of a page titled TITLE around FRAME."
   (list (trusted "<!doctype html>")
-        `(:html (:@ :lang "no")
+        `(:html (:@ :lang ,(page-language))
                 (:head (:meta (:@ :charset "utf-8"))
                        (:meta (:@ :name "viewport" :content "width=device-width, initial-scale=1"))
                        (:meta (:@ :name "htmx-config" :content ,(ui:htmx-config)))
@@ -517,6 +551,11 @@ another page's do not, so signing in leaves for the provider's page."
                        (:script (:@ :defer t :src ,(ui:htmx-path)))
                        (:script (:@ :defer t :src ,(ui:script-path))))
                 (:body ,frame))))
+
+(defun page-language ()
+  "The code a page's <html lang> carries: the language it is written in."
+  (let ((language (current-language)))
+    (if (stringp language) language "en")))
 
 (defun respond (status title body &key description actions breadcrumbs guest (home "/")
                                     (width :default))
@@ -555,19 +594,18 @@ deploy that changed them, the next page is loaded in full."
 ;;; ------------------------------------------------------------------
 ;;; Errors
 
-(defparameter +error-titles+
-  '((:forbidden . "Du har ikke tilgang til dette")
-    (:not-found . "Finnes ikke")
-    (:conflict . "Noen andre har endret dette")
-    (:idempotency-conflict . "Skjemaet er allerede sendt")
-    (:invalid-transition . "Dette kan ikke gjøres nå")
-    (:unavailable . "Ikke tilgjengelig")
-    (:insufficient-stock . "Ikke nok på lager")
-    (:invalid-input . "Noe må rettes"))
-  "The heading of an error the page shows, by its code; others get the last.")
-
 (defun error-title (code)
-  (or (cdr (assoc code +error-titles+)) "Det gikk ikke"))
+  "The heading of an error the page shows, by its CODE."
+  (case code
+    (:forbidden (tr "You do not have access to this"))
+    (:not-found (tr "Not found"))
+    (:conflict (tr "Someone else has changed this"))
+    (:idempotency-conflict (tr "The form has already been sent"))
+    (:invalid-transition (tr "This cannot be done now"))
+    (:unavailable (tr "Not available"))
+    (:insufficient-stock (tr "Not enough in stock"))
+    (:invalid-input (tr "Something needs correcting"))
+    (t (tr "That did not work"))))
 
 (defun error-code-keyword (json)
   "The code of the error document JSON as a keyword, :invalid_input as :INVALID-INPUT."
@@ -596,8 +634,8 @@ data-code: a refusal that belongs to no form, or a form not on this page."
 
 (defun field-error-sentence (label message)
   "An error MESSAGE about the field LABEL as a sentence for an error summary:
-a fragment such as \"må fylles ut\" follows the label, a sentence of its own
-stands alone."
+a fragment such as \"must be filled in\" follows the label, a sentence of its
+own stands alone."
   (if (and (plusp (length message)) (lower-case-p (char message 0)))
       (format nil "~a ~a" label message)
       message))
@@ -605,94 +643,45 @@ stands alone."
 ;;; ------------------------------------------------------------------
 ;;; Showing values
 
-(defparameter +value-labels+
-  '(("active" . "Aktiv") ("disabled" . "Deaktivert") ("revoked" . "Trukket tilbake")
-    ("expired" . "Utløpt") ("person" . "Person") ("agent" . "Agent")
-    ("admin" . "Administrator") ("employee" . "Ansatt") ("viewer" . "Lesetilgang"))
-  "Norwegian labels for the kernel's own English values (accounts and tokens).")
-
 (defparameter +status-variants+
-  '(("utkast" . :outline) ("tilbud_sendt" . :info) ("akseptert" . :info)
-    ("bekreftet" . :success) ("hentet" . :secondary) ("returnert" . :secondary)
-    ("send_faktura" . :warning) ("fullført" . :success) ("avbrutt" . :destructive)
-    ("ny" . :info) ("behandlet" . :success) ("avvist" . :destructive)
+  '(("draft" . :outline) ("quote_sent" . :info) ("accepted" . :info)
+    ("confirmed" . :success) ("picked_up" . :secondary) ("returned" . :secondary)
+    ("ready_for_invoice" . :warning) ("completed" . :success) ("cancelled" . :destructive)
+    ("new" . :info) ("handled" . :success) ("dismissed" . :destructive)
     ("active" . :success) ("disabled" . :outline) ("revoked" . :destructive)
     ("expired" . :outline))
   "The badge variant of the status words Tun's modules and the kernel use;
 any other status is secondary.  The badge's text says what it is, so the
 colour is never the only difference (spec/ui.md, badge).")
 
-(defun humanize (value)
-  "VALUE, a stored word such as tilbud_sendt or active, as a label:
-Tilbud sendt, Aktiv."
-  (let ((value (princ-to-string value)))
-    (or (cdr (assoc value +value-labels+ :test #'string=))
-        (sentence (substitute #\Space #\_ value)))))
+(defun humanize (value &optional context)
+  "VALUE, a stored word such as quote_sent, as a person reads it in the
+current language: Quote sent, Tilbud sendt.  CONTEXT, ENTITY.FIELD, is the
+label's context when one word needs two translations (spec/i18n.md 3.1)."
+  (if context
+      (destructuring-bind (entity field) (cl-ppcre:split "\\." context :limit 2)
+        (render-text (label entity field value)))
+      (translate (humanize-value value))))
 
-(defun status-badge (value)
-  "A badge for the status VALUE."
+(defun status-badge (value &optional context)
+  "A badge for the status VALUE, labelled in CONTEXT as HUMANIZE labels it."
   (ui:badge (:variant (or (cdr (assoc value +status-variants+ :test #'equal)) :secondary))
-            (humanize value)))
+            (humanize value context)))
 
-(defun group-thousands (n)
-  "The natural number N with a no-break space between each group of three digits."
-  (let ((digits (princ-to-string n)))
-    (with-output-to-string (out)
-      (loop for char across digits
-            for left downfrom (length digits)
-            do (write-char char out)
-            (when (and (> left 1) (zerop (mod (1- left) 3)))
-              (write-char #\No-break_space out))))))
-
-(defun kroner-text (ore)
-  "An amount in øre as Norwegians write kroner: 12 450,00 kr."
-  (multiple-value-bind (kroner rest) (floor (abs ore) 100)
-    (format nil "~:[~;−~]~a,~2,'0d kr" (minusp ore) (group-thousands kroner) rest)))
-
-(defun date-text (date)
-  "DATE, YYYY-MM-DD, as DD.MM.YYYY; anything else as it is."
-  (if (and (stringp date) (valid-date-string-p date))
-      (format nil "~a.~a.~a" (subseq date 8 10) (subseq date 5 7) (subseq date 0 4))
-      (princ-to-string date)))
-
-(defun timestamp-text (value)
-  "The RFC 3339 instant VALUE in Norwegian local time: 13.10.2026 kl. 14:32."
-  (let ((ut (parse-rfc3339 value)))
-    (if ut
-        (format nil "~a kl. ~a" (date-text (local-date-of ut)) (local-time-of ut))
-        (princ-to-string value))))
-
-(defun number-text (value)
-  "A number with a decimal comma: 12,5."
-  (substitute #\, #\. (if (integerp value) (princ-to-string value) (format-quantity value 3))))
-
-(defun money-field-p (type json-name)
-  "True for an amount: an integer field whose name ends in _ore (Tun keeps
-money as integer øre)."
-  (and (typep type 'integer-type)
-       (let ((suffix "_ore"))
-         (and (> (length json-name) (length suffix))
-              (string= suffix json-name :start2 (- (length json-name) (length suffix)))))))
-
-(defun shown-label (label)
-  "LABEL as a heading over shown values: an amount shown in kroner drops the
-\"(øre)\" it is stored in."
-  (let ((suffix " (øre)"))
-    (if (and (> (length label) (length suffix))
-             (string= suffix label :start2 (- (length label) (length suffix))))
-        (subseq label 0 (- (length label) (length suffix)))
-        label)))
+(defun money-field-p (type)
+  "True for an amount: a field of the money type (spec/i18n.md 5.2)."
+  (typep type 'money-type))
 
 (defun display-value (value)
   "VALUE of unknown type as text: yes and no, lists by their length or joined."
   (cond ((json-null-p value) "")
-        ((eq value t) "Ja")
-        ((null value) "Nei")
+        ((eq value t) (yes-no-text t))
+        ((null value) (yes-no-text nil))
         ((hash-table-p value) (to-json-string value))
         ((json-array-p value)
          (if (every #'stringp value)
              (format nil "~{~a~^, ~}" (coerce value 'list))
-             (format nil "~d element" (length value))))
+             (tr "~d item~:p" (length value))))
         ((realp value) (number-text value))
         ((and (stringp value) (valid-date-string-p value)) (date-text value))
         ((and (stringp value) (<= 20 (length value) 35) (parse-rfc3339 value))
@@ -753,46 +742,54 @@ LINK, a link to its page when it has one."
       (and (null value) (not (typep type 'boolean-type)))
       (and (stringp value) (zerop (length value)))))
 
-(defun value-markup (type json-name value &key link)
-  "VALUE of the field JSON-NAME of TYPE as it is shown: a status as a badge,
-amounts in kroner, dates the Norwegian way, a reference by the name of the
-record (LINK makes it a link)."
+(defun value-markup (type json-name value &key link context)
+  "VALUE of the field JSON-NAME of TYPE as it is shown, in the tenant's
+language: a status as a badge, an amount in the tenant's currency, a date as
+the language writes it, a reference by the name of the record (LINK makes it
+a link).  CONTEXT, ENTITY.FIELD, labels a stored word (HUMANIZE)."
   (cond ((empty-value-p type value) "–")
-        ((typep type 'boolean-type) (if (eq value t) "Ja" "Nei"))
-        ((and (typep type 'enum-type) (string= json-name "status")) (status-badge value))
-        ((typep type 'enum-type) (humanize value))
-        ((money-field-p type json-name) (kroner-text value))
+        ((typep type 'boolean-type) (yes-no-text (eq value t)))
+        ((and (typep type 'enum-type) (string= json-name "status")) (status-badge value context))
+        ((typep type 'enum-type) (humanize value context))
+        ((and (money-field-p type) (integerp value)) (money-text value))
         ((typep type 'date-type) (date-text value))
         ((typep type 'timestamp-type) (timestamp-text value))
         ((and (typep type 'id-type) (id-references type) (stringp value))
          (reference-markup type value :link link))
         ((and (typep type 'list-type) (json-array-p value)
               (typep (list-element type) 'enum-type))
-         (format nil "~{~a~^, ~}" (map 'list #'humanize value)))
+         (format nil "~{~a~^, ~}" (map 'list (lambda (v) (humanize v context)) value)))
         (t (display-value value))))
 
 ;;; ------------------------------------------------------------------
 ;;; Tables
 
-(defstruct (column (:constructor make-column (name label type)))
-  "A column of a table of records: the field's JSON name, its heading and type."
-  name label type)
+(defstruct (column (:constructor make-column (name label type &optional context)))
+  "A column of a table of records: the field's JSON name, its heading (in the
+current language), its type, and ENTITY.FIELD, its stored words' context."
+  name label type context)
 
 (defun column-spec (column)
   "COLUMN as the table component's column: amounts and numbers to the right."
   (let ((type (column-type column)))
-    (if (or (money-field-p type (column-name column))
-            (typep type '(or integer-type decimal-type)))
+    (if (typep type '(or integer-type decimal-type))
         (list (column-label column) :align :end)
         (column-label column))))
 
 (defun scalar-type-p (type)
   (not (typep type '(or list-type json-type))))
 
-(defun field-column (field)
+(defun field-context (class field)
+  "ENTITY.FIELD of FIELD of CLASS, the context of its stored words' labels."
+  (and class (format nil "~a.~a" (entity-json-name class) (field-json-name field))))
+
+(defun field-column (field &optional class)
   (make-column (field-json-name field)
-               (shown-label (or (field-label field) (field-json-name field)))
-               (field-type field)))
+               (if (field-label field)
+                   (translate-in-context (field-label field) (field-context class field))
+                   (field-json-name field))
+               (field-type field)
+               (field-context class field)))
 
 (defun string-length-limit (type)
   "The longest text a field of the string TYPE takes."
@@ -816,7 +813,7 @@ then other short inputs."
           ((and (typep type 'enum-type) (string= name "status")) 0)
           ((and (typep type 'id-type) (id-references type)) 1)
           ((typep type 'date-type) 2)
-          ((money-field-p type name) (when (string= name "total_ore") 3))
+          ((money-field-p type) (when (string= name "total_minor") 3))
           ((and (field-input-p field) (field-required-p field)) 4)
           ((field-input-p field) 5))))
 
@@ -832,12 +829,12 @@ date only."
                               :key #'list-column-rank))
          (dated nil))
     (cons (if name
-              (field-column name)
-              (make-column "id" (entity-label class) nil))
+              (field-column name class)
+              (make-column "id" (translate (entity-label class)) nil))
           (loop for field in ranked
                 for date-p = (typep (field-type field) 'date-type)
                 unless (and date-p dated)
-                collect (field-column field) into columns
+                collect (field-column field class) into columns
                 and do (when date-p (setf dated t))
                 finally (return (subseq columns 0 (min (1- limit) (length columns))))))))
 
@@ -850,19 +847,21 @@ ITEMS."
                                    (mapcar (lambda (column)
                                              (value-markup (column-type column)
                                                            (column-name column)
-                                                           (jget item (column-name column))))
+                                                           (jget item (column-name column))
+                                                           :context (column-context column)))
                                            columns))
                                  items)
                    :row-href (when link (mapcar link items))
-                   :empty (or empty "Ingen."))))
+                   :empty (or empty (tr "None.")))))
 
 (defun json-table (items &key columns link)
-  "A table of JSON objects ITEMS whose keys are the headings.  COLUMNS
+  "A table of JSON objects ITEMS whose keys are the headings, as the caller
+wrote them in the current language (with TR).  COLUMNS
 defaults to the keys of the first item.  LINK, a function of an item, gives
 the page its row leads to.  A list of plain values is shown one per line."
   (let* ((items (coerce items 'list))
          (columns (or columns (and items (hash-table-p (first items)) (jkeys (first items))))))
-    (cond ((null items) '(:p "Ingen."))
+    (cond ((null items) `(:p ,(tr "None.")))
           ((not (every #'hash-table-p items))
            (apply #'ui:stack* (list :gap :xs)
                   (mapcar (lambda (item) `(:p ,(display-value item))) items)))
@@ -883,12 +882,12 @@ then its computed fields that hold one value."
   (append (loop for field in (entity-fields class)
                 for type = (field-type field)
                 when (and (field-label field) (not (typep type 'json-type)) (not (row-list-p type)))
-                collect (field-column field))
+                collect (field-column field class))
           (loop for computed in (entity-computed-fields class)
                 for type = (computed-field-type computed)
                 when (scalar-type-p type)
                 collect (make-column (computed-field-json-name computed)
-                                     (shown-label (computed-field-label computed))
+                                     (translate (computed-field-label computed))
                                      type))))
 
 (defun field-has-value-p (field item)
@@ -903,7 +902,7 @@ to first, and not their own ids."
                      when (and (field-label field) (scalar-type-p (field-type field))
                                (string/= (field-json-name field) "id")
                                (some (lambda (item) (field-has-value-p field item)) items))
-                     collect (field-column field))
+                     collect (field-column field class))
                #'< :key (lambda (column)
                           (let ((type (column-type column)))
                             (if (and (typep type 'id-type) (id-references type)) 0 1)))))
@@ -914,7 +913,7 @@ to first, and not their own ids."
     (if items
         (let ((class (find-entity-class (list-element type))))
           (record-table items (element-columns class items)))
-        '(:p "Ingen."))))
+        `(:p ,(tr "None.")))))
 
 (defun entity-detail (class json)
   "Generic detail view of an entity's JSON: the fields that have a value in
@@ -922,7 +921,7 @@ a summary list (each value marked with data-field), lists of records as
 tables, and computed JSON folded away below."
   (let ((class (if (symbolp class) (find-entity-class class) class)))
     (list
-     (section "Opplysninger"
+     (section (tr "Details")
               (ui:summary-list
                (:rows (loop for column in (summary-columns class)
                             for type = (column-type column)
@@ -932,22 +931,26 @@ tables, and computed JSON folded away below."
                             collect (list (column-label column)
                                           `(:span (:@ :data-field ,(column-name column))
                                                   ,(value-markup type (column-name column)
-                                                                 value :link t)))))))
+                                                                 value :link t
+                                                                 :context (column-context column))))))))
      (loop for field in (entity-fields class)
            when (row-list-p (field-type field))
-           collect (section (or (field-label field) (field-json-name field))
+           collect (section (if (field-label field)
+                                (translate-in-context (field-label field)
+                                                      (field-context class field))
+                                (field-json-name field))
                             (list-field-view (field-type field)
                                              (jget json (field-json-name field)))))
      (let ((derived (loop for computed in (entity-computed-fields class)
                           for value = (jget json (computed-field-json-name computed))
                           when (and (typep (computed-field-type computed) 'json-type)
                                     (json-value-shown-p value))
-                          collect (list :title (computed-field-label computed)
+                          collect (list :title (translate (computed-field-label computed))
                                         :content (json-view value)))))
        ;; Folded away: what the record's modules work out from it, which
        ;; matters now and then rather than every time.
        (when derived
-         (section "Mer om posten" (ui:accordion (:items derived))))))))
+         (section (tr "More about this record") (ui:accordion (:items derived))))))))
 
 (defun json-value-shown-p (value)
   (not (or (null value) (json-null-p value))))
@@ -965,12 +968,23 @@ tables, and computed JSON folded away below."
 ;;; ------------------------------------------------------------------
 ;;; Forms generated from an operation's input
 
-(defstruct (input-spec (:conc-name spec-)) name label type required description)
+(defstruct (input-spec (:conc-name spec-))
+  "An input of a generated form: its name, its label and description as the
+definition writes them (translated where they are shown), its type, whether
+it is required, and ENTITY.FIELD for a field's stored words."
+  name label type required description context)
 
-(defun field-input-spec (field)
+(defun field-input-spec (field &optional class)
   (make-input-spec :name (field-json-name field) :label (field-label field)
                    :type (field-type field) :required (field-required-p field)
-                   :description (field-description field)))
+                   :description (field-description field)
+                   :context (field-context class field)))
+
+(defun spec-label-text (spec)
+  "The label of SPEC in the current language, else its name."
+  (if (spec-label spec)
+      (translate-in-context (spec-label spec) (spec-context spec))
+      (spec-name spec)))
 
 (defun parameter-input-spec (parameter)
   (let ((label (or (parameter-label parameter) (parameter-json-name parameter)))
@@ -990,12 +1004,14 @@ parameters.  A parameter named like a draft field takes that field's place
     (flet ((parameter (name) (find name parameters :key #'spec-name :test #'string=)))
       (let ((draft (when (operation-draft-p op)
                      (mapcar (lambda (field)
-                               (or (parameter (field-json-name field)) (field-input-spec field)))
+                               (or (parameter (field-json-name field))
+                                   (field-input-spec field (find-entity-class (operation-entity op)))))
                              (entity-input-fields (find-entity-class (operation-entity op)))))))
         (append draft (remove-if (lambda (spec) (member spec draft)) parameters))))))
 
 (defun element-inputs (list-type)
-  (mapcar #'field-input-spec (entity-input-fields (find-entity-class (list-element list-type)))))
+  (let ((class (find-entity-class (list-element list-type))))
+    (mapcar (lambda (field) (field-input-spec field class)) (entity-input-fields class))))
 
 (defun row-list-p (type)
   "True for a list input whose items are records, entered as rows."
@@ -1057,12 +1073,12 @@ the full width."
          (let ((max (string-length-limit type)))
            (cond ((<= max 10) 10) ((<= max 20) 20) (t nil))))))
 
-(defun enum-choices (type)
-  (mapcar (lambda (value) (list value (humanize value))) (enum-values type)))
+(defun enum-choices (type &optional context)
+  (mapcar (lambda (value) (list value (humanize value context))) (enum-values type)))
 
 (defun nothing-yet (class)
   "The hint of an input that refers to CLASS, of which there are no records yet."
-  (format nil "Det finnes ingen ~(~a~) ennå." (entity-label class)))
+  (tr "There is no ~(~a~) yet." (translate (entity-label class))))
 
 (defun form-control (spec name id &key values error options (required (spec-required spec))
                                     (optional (not (spec-required spec))))
@@ -1070,14 +1086,15 @@ the full width."
 from its type, labelled, with its description as the hint, its value from
 VALUES (the posted form) and its ERROR.  OPTIONS, (id . label) pairs, are
 when given the only choices an id input offers, and one must be made.
-REQUIRED marks the control required; OPTIONAL labels it «(valgfritt)»."
+REQUIRED marks the control required; OPTIONAL labels it «(optional)».
+An amount is written as a person writes it, with the currency beside it."
   (let* ((type (spec-type spec))
-         (label (or (spec-label spec) (spec-name spec)))
-         (hint (spec-description spec))
+         (label (spec-label-text spec))
+         (hint (and (spec-description spec) (translate (spec-description spec))))
          (value (posted name values))
          (common (list :label label :name name :id id :hint hint :error error
                        :optional optional)))
-    (flet ((choose (choices &key (prompt "Velg"))
+    (flet ((choose (choices &key (prompt (tr "Choose")))
              (ui:select* (append common (list :options choices :selected value :prompt prompt
                                               :required required))))
            (text (&rest more)
@@ -1090,13 +1107,13 @@ REQUIRED marks the control required; OPTIONAL labels it «(valgfritt)»."
              (ui:select* (append (list :options (mapcar (lambda (option)
                                                           (list (car option) (cdr option)))
                                                         options)
-                                       :selected value :prompt "Velg" :required t :optional nil)
+                                       :selected value :prompt (tr "Choose") :required t :optional nil)
                                  common)))
             ((typep type 'boolean-type)
              (ui:checkbox (:label label :name name :id id :hint hint :error error
                                   :checked (and value t))))
             ((typep type 'enum-type)
-             (let ((choices (enum-choices type)))
+             (let ((choices (enum-choices type (spec-context spec))))
                (if (and required (<= (length choices) 4))
                    (ui:radios* (list :legend label :name name :id id :hint hint :error error
                                      :choices choices :selected value :required t
@@ -1117,6 +1134,10 @@ REQUIRED marks the control required; OPTIONAL labels it «(valgfritt)»."
                                                       :hint (nothing-yet class))
                                                 common))))
                      (t (text :width 30)))))
+            ((money-field-p type)
+             (ui:input-group* (append common (list :value value :required required
+                                                   :suffix (current-currency)
+                                                   :inputmode "decimal" :width 10))))
             ((typep type 'integer-type) (text :type :number :inputmode "numeric" :width 10))
             ((typep type 'decimal-type) (text :inputmode "decimal" :width 10))
             ((typep type 'date-type) (text :type :date))
@@ -1161,20 +1182,23 @@ and its other inputs folded away unless one of them has a value or an error."
              (ui:fieldset (:legend (row-legend element-class row))
                (apply #'ui:grid* (list :min :sm) (mapcar #'cdr main))
                (when more
-                 (ui:accordion (:items (list (list :title "Flere valg" :open (and open t)
+                 (ui:accordion (:items (list (list :title (tr "More options") :open (and open t)
                                                    :content (apply #'ui:stack* (list :gap :lg)
                                                                    (mapcar #'cdr more)))))))))))
 
 (defun row-legend (element-class row)
-  "The heading of row ROW (from 0) of a list of ELEMENT-CLASS records: Ordrelinje 1."
-  (format nil "~a ~d" (or (entity-label element-class) "Rad") (1+ row)))
+  "The heading of row ROW (from 0) of a list of ELEMENT-CLASS records: Order line 1."
+  (format nil "~a ~d" (if (entity-label element-class)
+                          (translate (entity-label element-class))
+                          (tr "Row"))
+          (1+ row)))
 
 (defun row-input-label (name specs)
   "The label of the control NAME among the inputs SPECS, as an error summary
-names it: Kunde, or for a row of a list, Antall i ordrelinje 1."
+names it: Customer, or for a row of a list, Quantity in order line 1."
   (let* ((top (subseq name 0 (or (position #\[ name) (length name))))
          (spec (find top specs :key #'spec-name :test #'string=))
-         (label (or (and spec (spec-label spec)) name)))
+         (label (if spec (spec-label-text spec) name)))
     (cl-ppcre:register-groups-bind ((#'parse-integer row) input)
         ("^[^\\[]+\\[([0-9]+)\\]\\[([^\\]]+)\\]$" name)
       (when (and spec (row-list-p (spec-type spec)))
@@ -1182,8 +1206,8 @@ names it: Kunde, or for a row of a list, Antall i ordrelinje 1."
                              :test #'string=))
               (class (find-entity-class (list-element (spec-type spec)))))
           (return-from row-input-label
-            (format nil "~a i ~(~a~)" (or (and element (spec-label element)) input)
-                    (row-legend class row))))))
+            (tr "~a in ~(~a~)" (if element (spec-label-text element) input)
+                (row-legend class row))))))
     label))
 
 (defun form-error-summary (error-json form-id specs)
@@ -1194,7 +1218,7 @@ refused: each field error links to its control, with the field's label."
     (flet ((label-of (name)
              (row-input-label name specs)))
       (ui:error-summary* (list :title (if errors
-                                          "For å gå videre må du rette opp følgende feil:"
+                                          (tr "There is a problem")
                                           (error-title (error-code-keyword error-json)))
                                :errors (mapcar (lambda (entry)
                                                  (list (control-id form-id (car entry))
@@ -1213,7 +1237,8 @@ them: yes-or-no questions last, after what the record is."
                  (and (not (typep (spec-type a) 'boolean-type))
                       (typep (spec-type b) 'boolean-type)))))
 
-(defun operation-form (op action &key (title (operation-title op)) (submit title) omit choices
+(defun operation-form (op action &key (title (translate (operation-title op))) (submit title)
+                                     omit choices
                                    values error-json id cancel description)
   "A card with a <form> for OP, generated from its input schema (client
 fields included), without the inputs named in OMIT.  CHOICES, an alist of
@@ -1247,8 +1272,9 @@ a list of records, else FORM-CONTROL's.  CHOICES as for OPERATION-FORM."
   (let ((name (spec-name spec)))
     (if (row-list-p (spec-type spec))
         (apply #'ui:fieldset*
-               (list :legend (or (spec-label spec) name) :legend-size :section
-                     :hint (spec-description spec) :error (field-error-message name errors)
+               (list :legend (spec-label-text spec) :legend-size :section
+                     :hint (and (spec-description spec) (translate (spec-description spec)))
+                     :error (field-error-message name errors)
                      :id (control-id form-id name))
                (loop for row below (row-count name values)
                      collect (row-fieldset spec form-id row :values values :errors errors)))
@@ -1257,16 +1283,14 @@ a list of records, else FORM-CONTROL's.  CHOICES as for OPERATION-FORM."
                       :options (cdr (assoc name choices :test #'string=))))))
 
 (defun parse-decimal (text)
-  "TEXT, a decimal number with a comma or a point (12,5), as the exact
-rational, or NIL."
-  (let ((text (remove #\Space (substitute #\. #\, (trim text)))))
-    (when (cl-ppcre:scan "^-?[0-9]+(\\.[0-9]+)?$" text)
-      (let* ((negative (char= (char text 0) #\-))
-             (digits (remove #\- text))
-             (dot (position #\. digits))
-             (decimals (if dot (- (length digits) dot 1) 0)))
-        (* (if negative -1 1)
-           (/ (parse-integer (remove #\. digits)) (expt 10 decimals)))))))
+  "TEXT, a decimal number as a person writes it in the current language
+(12,5 in Norwegian, 12.5 in English), as the exact rational, or NIL."
+  (multiple-value-bind (sign whole fraction) (read-decimal-text text)
+    (and sign
+         (* sign (+ (parse-integer whole)
+                    (if (plusp (length fraction))
+                        (/ (parse-integer fraction) (expt 10 (length fraction)))
+                        0))))))
 
 (defun row-value (list-type name row params)
   "Row ROW of the list input NAME, of LIST-TYPE, decoded from PARAMS into a
@@ -1300,6 +1324,9 @@ JSON object of the values that were filled in."
           ((and (or (typep type 'integer-type) (typep type 'decimal-type))
                 (long-number-text-p (remove #\Space (trim raw))))
            raw)
+          ;; An amount goes on as written; the money type reads it
+          ;; (spec/i18n.md 5.4).
+          ((money-field-p type) raw)
           ((typep type 'integer-type)
            (handler-case (parse-integer (remove #\Space (trim raw))) (error () raw)))
           ((typep type 'decimal-type) (or (parse-decimal raw) raw))
@@ -1340,12 +1367,12 @@ its application class (and may include the default via CALL-NEXT-METHOD)."))
                      (not (eq (actor-role *actor*) :viewer))
                      (find-operation-by-tool (resource-create-tool resource)))))
     (ui:empty-state (:icon (resource-icon resource)
-                           :title (format nil "Ingen ~(~a~) ennå" (resource-title resource))
+                           :title (tr "No ~(~a~) yet" (translate (resource-title resource)))
                            :description (if create
-                                            "Det du oppretter, vises her."
-                                            "Det som blir opprettet, vises her."))
+                                            (tr "What you create shows here.")
+                                            (tr "What is created shows here.")))
                     (when create
-                      (ui:button (:href "#ny" :icon :plus) (operation-title create))))))
+                      (ui:button (:href "#new" :icon :plus) (translate (operation-title create)))))))
 
 (defmethod render-screen (app screen &rest arguments &key items &allow-other-keys)
   ;; The generated default of every registered screen, least specific of
@@ -1385,7 +1412,7 @@ and the forms a menu's items submit, which must be on the page too."
                                     ,(action-button op)))
                           ops)
                   nil)
-          (values (list (ui:dropdown-menu (:label "Handlinger" :align :end
+          (values (list (ui:dropdown-menu (:label (tr "Actions") :align :end
                                                   :items (action-menu-items ops))))
                   `(:div (:@ :hidden t)
                          ,@(mapcar (lambda (op)
@@ -1397,7 +1424,7 @@ and the forms a menu's items submit, which must be on the page too."
   "The button that submits the status operation OP."
   (ui:button (:type "submit" :variant :outline
                     :attributes (list :data-tool (operation-tool op)))
-             (operation-title op)))
+             (translate (operation-title op))))
 
 (defun action-form-id (op)
   "The id of the hidden form a menu item for the status operation OP submits."
@@ -1408,7 +1435,7 @@ and the forms a menu's items submit, which must be on the page too."
 record comes last, apart and marked."
   (flet ((item (op)
            (let ((tool (operation-tool op)))
-             (list :label (operation-title op)
+             (list :label (translate (operation-title op))
                    :variant (when (destructive-tool-p tool) :destructive)
                    :attributes (list :type "submit" :form (action-form-id op)
                                      :data-tool tool)))))
@@ -1420,30 +1447,25 @@ record comes last, apart and marked."
 ;;; ------------------------------------------------------------------
 ;;; Handlers
 
-(defparameter +claimed-login-text+
-  "Denne serveren lar deg velge hvem du er: /login?actor=rolle:navn, med rollen admin,
-employee eller viewer."
-  "What the login page says on a server with claimed identity.")
-
 (defun claimed-login-hint ()
   "On a server with claimed identity: how to log in as anyone, and links that do."
   (when (claimed-identity-p *web-app*)
     (flet ((as (actor label)
              (ui:button (:href (format nil "/login?actor=~a" actor) :variant :outline) label)))
-      (ui:card (:title "Testinnlogging" :heading-level 2
-                       :description +claimed-login-text+)
+      (ui:card (:title (tr "Test sign-in") :heading-level 2
+                       :description (tr "This server lets you choose who you are: /login?actor=role:name, with the role admin, employee or viewer."))
                (ui:cluster ()
-                           (as "admin:demo" "Som administrator")
-                           (as "employee:demo" "Som ansatt")
-                           (as "viewer:demo" "Med lesetilgang"))))))
+                           (as "admin:demo" (tr "As an administrator"))
+                           (as "employee:demo" (tr "As an employee"))
+                           (as "viewer:demo" (tr "With read access")))))))
 
 (defun require-login ()
   "A 401 page when no one is logged in, else NIL."
   (unless *actor*
-    (respond 401 "Logg inn"
-             (list (ui:alert (:variant :info :title "Du er ikke innlogget")
-                             "Logg inn for å se denne siden.")
-                   (ui:cluster () (ui:button (:href "/login" :icon :log-in) "Logg inn"))
+    (respond 401 (tr "Sign in")
+             (list (ui:alert (:variant :info :title (tr "You are not signed in"))
+                             (tr "Sign in to see this page."))
+                   (ui:cluster () (ui:button (:href "/login" :icon :log-in) (tr "Sign in")))
                    (claimed-login-hint)))))
 
 (defun resource-page (resource &key error-json values (status 200))
@@ -1453,21 +1475,22 @@ after a refused submission, the form with VALUES and ERROR-JSON."
          (create-op (find-operation-by-tool (resource-create-tool resource)))
          (viewer (eq (actor-role *actor*) :viewer))
          (form-p (and create-op (not viewer))))
-    (respond status (resource-title resource)
+    (respond status (translate (resource-title resource))
              (list (when (and error-json (not form-p)) (error-alert error-json))
                    (when viewer
-                     (ui:alert (:variant :info :title "Du har lesetilgang")
-                               "Du er innlogget som lesetilgang (viewer); innsending blir avvist."))
+                     (ui:alert (:variant :info :title (tr "You have read access"))
+                               (tr "You are signed in with read access (viewer); anything you send is refused.")))
                    (if (jget list-json "error")
                        (error-alert list-json)
                        (screen (resource-list-screen resource)
                                :items (coerce (jget list-json "items") 'list)))
                    (when form-p
-                     (operation-form create-op (resource-path resource) :id "ny"
+                     (operation-form create-op (resource-path resource) :id "new"
                                      :values values :error-json error-json)))
              ;; An empty list offers the same button itself.
              :actions (when (and form-p (plusp (length (jget list-json "items" #()))))
-                        (list (ui:button (:href "#ny" :icon :plus) (operation-title create-op)))))))
+                        (list (ui:button (:href "#new" :icon :plus)
+                                         (translate (operation-title create-op))))))))
 
 (defun handle-resource (resource method)
   (or (require-login)
@@ -1489,16 +1512,17 @@ after a refused submission, the form with VALUES and ERROR-JSON."
   (let ((name (jget record "name")))
     (if (and (stringp name) (plusp (length name)))
         name
-        (format nil "~a ~a" (entity-label class) id))))
+        (format nil "~a ~a" (translate (entity-label class)) id))))
 
 (defun record-breadcrumbs (resource title)
-  (list (list :label (resource-title resource) :href (resource-path resource))
+  (list (list :label (translate (resource-title resource)) :href (resource-path resource))
         (list :label title)))
 
 (defun detail-page (resource id &key error-json (status 200))
   (multiple-value-bind (record code) (web-call (resource-get-tool resource) (jobj "id" id))
     (if code
-        (respond (error-status code) (resource-title resource) (list (error-alert record))
+        (respond (error-status code) (translate (resource-title resource))
+                 (list (error-alert record))
                  :breadcrumbs (record-breadcrumbs resource id))
         (let* ((class (find-entity-class (resource-entity resource)))
                (title (record-title class record id))
@@ -1510,7 +1534,9 @@ after a refused submission, the form with VALUES and ERROR-JSON."
                                    (screen (resource-detail-screen resource)
                                            (resource-detail-key resource) record))
                              (render-resource-extras *web-app* (resource-entity resource) record))
-                     :description (when (stringp status-value) (status-badge status-value))
+                     :description (when (stringp status-value)
+                                    (status-badge status-value
+                                                  (format nil "~a.status" (entity-json-name class))))
                      :breadcrumbs (record-breadcrumbs resource title)
                      :actions actions))))))
 
@@ -1527,35 +1553,38 @@ after a refused submission, the form with VALUES and ERROR-JSON."
   "What a :confirm operation shows before it runs: its summary and a form
 that posts the confirmation token back."
   (let ((path (format nil "~a/~a" (resource-path resource) id))
-        (title (format nil "~a ~a" (entity-label (find-entity-class (resource-entity resource)))
+        (title (format nil "~a ~a"
+                       (translate (entity-label (find-entity-class (resource-entity resource))))
                        id))
+        (op-title (translate (operation-title op)))
         (expires (jget json "expires_at"))
         (destructive (destructive-tool-p (operation-tool op)))
         (token (jget json "confirmation_token")))
     (respond 200 title
-             (list (ui:confirm-panel (:title (format nil "~a?" (operation-title op))
+             (list (ui:confirm-panel (:title (format nil "~a?" op-title)
                                              :action (format nil "~a/~a" path (operation-tool op))
-                                             :confirm-label (operation-title op)
-                                             :cancel-href path :cancel-label "Gå tilbake"
+                                             :confirm-label op-title
+                                             :cancel-href path :cancel-label (tr "Go back")
                                              :variant (if destructive :destructive :primary)
                                              :icon (if destructive :triangle-alert :circle-check)
                                              :hidden (list (list "confirmation_token" token)))
                                      `(:p ,(jget json "summary"))
                                      (when (stringp expires)
-                                       `(:p ,(format nil "Bekreftelsen utløper ~a."
-                                                     (timestamp-text expires))))))
-             :breadcrumbs (list (list :label (resource-title resource)
+                                       `(:p ,(tr "The confirmation expires ~a."
+                                                 (timestamp-text expires))))))
+             :breadcrumbs (list (list :label (translate (resource-title resource))
                                       :href (resource-path resource))
                                 (list :label title :href path)
-                                (list :label (operation-title op))))))
+                                (list :label op-title)))))
 
 (defun handle-record-action (resource id tool)
   (let ((op (find-operation-by-tool tool))
         (path (resource-path resource)))
     (unless (and op (operation-visible-p op *web-app*) (transition-tool-p op resource))
       (return-from handle-record-action
-        (respond 404 "Ukjent handling"
-                 (list (ui:alert (:variant :warning) "Denne handlingen finnes ikke for posten.")))))
+        (respond 404 (tr "Unknown action")
+                 (list (ui:alert (:variant :warning)
+                                 (tr "This action does not exist for the record."))))))
     (let ((args (jobj "id" id))
           (token (hunchentoot:post-parameter "confirmation_token")))
       (when (and token (operation-confirm-p op)) (setf (gethash "confirmation_token" args) token))
@@ -1627,9 +1656,9 @@ uncached, so a page rendered before a deploy still gets styles."
                                                 (string= (resource-path r) (format nil "/~a" (first (split-path path))))))
                                *resources*)))
           (cond ((and (eq method :post) (cross-origin-post-p))
-                 (respond 403 "Avvist"
-                          (list (ui:alert (:variant :destructive :title "Skjemaet ble avvist")
-                                          "Skjemaet kom fra et annet nettsted og ble avvist."))))
+                 (respond 403 (tr "Refused")
+                          (list (ui:alert (:variant :destructive :title (tr "The form was refused"))
+                                          (tr "The form came from another site and was refused.")))))
                 ((and (eq method :get) (equal (first parts) "assets"))
                  (or (serve-asset path) (serve-icon path)))
                 ((and (eq method :get) (web-app-path-p path))
@@ -1664,47 +1693,74 @@ uncached, so a page rendered before a deploy still gets styles."
 ;;; Settings: admin edits through settings_set, with its audit and masking
 
 (defun setting-value-text (item)
+  "The value of the setting ITEM as «Settings» shows it: a language by its
+name, other text as it is."
   (let ((value (jget item "value")))
-    (cond ((json-null-p value) "Ikke satt")
+    (cond ((json-null-p value) (tr "Not set"))
+          ((and (stringp value) (equal (jget item "type") "language")) (language-name value))
           ((stringp value) value)
           (t (to-json-string value)))))
 
+(defun language-name (code)
+  "The language CODE by its own name, as a choice of languages shows it; a
+code Tun has no name for, such as the pseudo-language's, as it is."
+  (cond ((equal code "nb") (tr ("Norsk (bokmål)" :context "language name")))
+        ((equal code "en") (tr ("English" :context "language name")))
+        (t code)))
+
+(defun locale-setting-options (type)
+  "The choices of a locale setting of TYPE (spec/i18n.md 9): the
+application's languages by their own names, Tun's currencies, its zones."
+  (cond ((equal type "language")
+         (mapcar (lambda (code) (list code (language-name code)))
+                 (application-languages *web-app*)))
+        ((equal type "currency") (mapcar (lambda (c) (list (first c) (first c))) +currencies+))
+        (t (mapcar (lambda (z) (list (first z) (first z))) +time-zones+))))
+
 (defun setting-control (item id)
   "The control for a new value of the setting ITEM: yes and no for a bool, a
-number for an int, a password field for a secret, else text."
+choice for a locale setting, a number for an int, a password field for a
+secret, else text."
   (let ((type (jget item "type"))
         (value (jget item "value")))
     (cond ((equal type "bool")
-           (ui:select (:label "Ny verdi" :name "value" :id id
-                              :options '(("true" "Ja") ("false" "Nei"))
+           (ui:select (:label (tr "New value") :name "value" :id id
+                              :options (list (list "true" (yes-no-text t))
+                                             (list "false" (yes-no-text nil)))
                               :selected (if (eq value t) "true" "false"))))
+          ((member type '("language" "currency" "time_zone") :test #'equal)
+           (ui:select (:label (tr "New value") :name "value" :id id
+                              :options (locale-setting-options type)
+                              :selected value)))
           ((jget item "secret")
-           (ui:text-input (:label "Ny hemmelighet" :name "value" :id id :type :password
+           (ui:text-input (:label (tr "New secret") :name "value" :id id :type :password
                                   :autocomplete "new-password"
-                                  :hint "Den gamle vises aldri. Feltet er tomt med vilje.")))
+                                  :hint (tr "The old one is never shown. The field is empty on purpose."))))
           ((equal type "int")
-           (ui:text-input (:label "Ny verdi" :name "value" :id id :type :number :width 10
+           (ui:text-input (:label (tr "New value") :name "value" :id id :type :number :width 10
                                   :inputmode "numeric"
                                   :value (if (integerp value) (princ-to-string value) nil))))
           (t
-           (ui:text-input (:label "Ny verdi" :name "value" :id id
+           (ui:text-input (:label (tr "New value") :name "value" :id id
                                   :type (if (member type '("url" "email") :test #'equal)
                                             (intern (string-upcase type) :keyword)
                                             :text)
                                   :value (if (stringp value) value nil)
                                   :hint (when (member type '("url" "email" "actor") :test #'equal)
-                                          "Skriv null for å fjerne verdien.")))))))
+                                          (tr "Write null to remove the value."))))))))
 
 (defun setting-card (item)
   "A setting: its key, what it is for, its value now and the form that changes
 it; for one read from the environment, the variable instead of the form."
   (let* ((key (jget item "key"))
          (env (jget item "env"))
-         (now (ui:summary-list (:rows (list* (list "Nå" (setting-value-text item))
+         (now (ui:summary-list (:rows (list* (list (tr "Now") (setting-value-text item))
                                              (when env
-                                               (list (list "Leses fra" (format nil "miljøvariabelen ~a"
-                                                                               env)))))))))
-    (ui:card (:title key :description (jget item "description") :heading-level 2
+                                               (list (list (tr "Read from")
+                                                           (tr "the environment variable ~a" env)))))))))
+    (ui:card (:title key :description (let ((description (jget item "description")))
+                                        (and (plusp (length description)) (translate description)))
+                     :heading-level 2
                      :action (ui:badge (:variant :outline) (jget item "type")))
              (if env
                  now
@@ -1717,30 +1773,41 @@ it; for one read from the environment, the variable instead of the form."
                                                                             (substitute #\- #\. key)))
                                               (ui:cluster ()
                                                           (ui:button (:type "submit" :variant :outline)
-                                                                     "Lagre")))))))))
+                                                                     (tr "Save"))))))))))
 
 (defun staff-settings-page (method parts form query)
-  (declare (ignore parts query))
-  (let ((saved
-         (when (eq method :post)
-           (let* ((key (jget form "key"))
-                  (item (find key (coerce (jget (call-tool "settings_list" (jobj)) "items") 'list)
-                              :key (lambda (s) (jget s "key")) :test #'equal))
-                  (raw (jget form "value"))
-                  (value (if (or (member (jget item "type") '("int" "bool") :test #'equal)
-                                 (and (not (member (jget item "type") '("string" "secret")
-                                                   :test #'equal))
-                                      (equal raw "null")))
-                             (handler-case (parse-request-json raw)
-                               (error () (fail :invalid-input "Ugyldig innstillingsverdi")))
-                             raw)))
-             (call-tool "settings_set" (jobj "key" key "value" value))
-             key))))
-    (values 200 "Innstillinger"
-            (list (when saved (ui:flash () (format nil "Innstillingen ~a er lagret." saved)))
-                  (apply #'ui:grid* (list :min :md)
-                         (map 'list #'setting-card
-                              (jget (call-tool "settings_list" (jobj)) "items")))))))
+  "The settings, each with the form that changes it.  A post saves one and
+sends the browser back here, so the next page is in a new language at once
+when the language was what changed (spec/i18n.md 2.3)."
+  (declare (ignore parts))
+  (if (eq method :post)
+      (let* ((key (jget form "key"))
+             (item (find key (coerce (jget (call-tool "settings_list" (jobj)) "items") 'list)
+                         :key (lambda (s) (jget s "key")) :test #'equal))
+             (raw (jget form "value"))
+             (value (if (or (member (jget item "type") '("int" "bool") :test #'equal)
+                            (and (not (member (jget item "type")
+                                              '("string" "secret" "language" "currency"
+                                                "time_zone")
+                                              :test #'equal))
+                                 (equal raw "null")))
+                        (handler-case (parse-request-json raw)
+                          (error () (fail :invalid-input "Invalid setting value")))
+                        raw)))
+        (call-tool "settings_set" (jobj "key" key "value" value))
+        (let ((path (format nil "/settings?saved=~a" (hunchentoot:url-encode key :utf-8))))
+          (if (and (equal key "locale.language") (hunchentoot:header-in* :hx-request))
+              ;; A new language loads the whole page, so its <html lang>
+              ;; changes too: htmx swaps only the body.
+              (progn (setf (hunchentoot:header-out "HX-Redirect") path)
+                     (values 200 :fragment '()))
+              (values 303 path))))
+      (let ((saved (jget query "saved")))
+        (values 200 (tr "Settings")
+                (list (when (stringp saved) (ui:flash () (tr "The setting ~a is saved." saved)))
+                      (apply #'ui:grid* (list :min :md)
+                             (map 'list #'setting-card
+                                  (jget (call-tool "settings_list" (jobj)) "items"))))))))
 
-(register-staff-page "settings" #'staff-settings-page :policy :admin :title "Innstillinger"
+(register-staff-page "settings" #'staff-settings-page :policy :admin :title "Settings"
                      :icon :settings :group :system)

@@ -73,14 +73,17 @@ combination and that every job can carry its arguments, and restore the virtual 
     (tun.web:check-http-route-conflicts)
     (store-open store)
     ;; Migrate, refusing a database a newer core major has opened
-    ;; (spec/store.md 2, item 10), then check every record policy and query
+    ;; (spec/store.md 2, item 10) and a 1.x database core 2.0 cannot take
+    ;; (spec/i18n.md 4.3 to 4.5), then check every record policy and query
     ;; against the migrated schema (6.6, 5.7).  A refusal closes the
     ;; connections it opened once the migrate transaction has unwound,
-    ;; since that transaction holds the writer connection.
+    ;; since that transaction holds the writer connection.  The migration
+    ;; asks the application which languages it offers.
     (let ((checked nil))
       (unwind-protect
            (progn
-             (store-migrate store (all-entity-classes))
+             (let ((*application* app))
+               (store-migrate store (all-entity-classes)))
              (with-application (app)
                (check-record-policies)
                (check-queries))
@@ -187,6 +190,80 @@ parent's column) is outside TARGET (the older core's fields of that entity)."
                  (dolist (item value)
                    (preflight-record item item-class items entities findings (format nil "~a[]" where) t)))))))))
 
+(defun argv-database (argv)
+  "The database the server's ARGV names: --db, else DATABASE_URL."
+  (or (argument argv "--db") (uiop:getenv "DATABASE_URL")))
+
+(defun core-2-marked-p (db)
+  "True when the database DB names has core 2.0's mark (spec/i18n.md 4.6)."
+  (let ((store (make-store (database-designator db))))
+    (store-open store)
+    (unwind-protect
+         (let ((mark (nth-value 1 (core-major-mark 2))))
+           (some (lambda (migration)
+                   (and (equal (jget migration "module") +core-major-module+)
+                        (equal (jget migration "id") mark)))
+                 (coerce (nth-value 1 (store-describe-schema store)) 'list)))
+      (store-close store))))
+
+(defun revert-to-core-1 (db name)
+  "Undo core 2.0's migration of the database DB names (spec/i18n.md 4.6),
+saying on standard output or standard error what happened: the exit code,
+0 when it is undone, 2 when it is refused."
+  (unless db
+    (format *error-output* "~a: --db PATH|URL or DATABASE_URL is required~%" name)
+    (return-from revert-to-core-1 2))
+  (let ((store (make-store (database-designator db))))
+    (store-open store)
+    (unwind-protect
+         (handler-case
+             (progn (store-revert-to-core-1 store)
+                    (format t "~&~a: reverted to core 1: core 1.23.1 can open this database~%" name)
+                    (finish-output)
+                    0)
+           ((or newer-database database-refused) (refusal)
+             (format *error-output* "~&~a: ~a~%" name refusal)
+             (finish-output *error-output*)
+             2))
+      (store-close store))))
+
+(defun preflight-command (application-class db registry-path name)
+  "--rollback-preflight REGISTRY-PATH on the database DB names, saying what it
+found: the exit code, 0 when the older core can take the database, 3 when
+not, 2 without a database.  While core 2.0's mark is in the database it
+refuses before reading REGISTRY-PATH (spec/i18n.md 4.6)."
+  (cond ((null db)
+         (format *error-output* "~&~a: --rollback-preflight needs --db PATH|URL or DATABASE_URL~%"
+                 name)
+         (finish-output *error-output*)
+         2)
+        ((core-2-marked-p db)
+         (format t "~&rollback preflight: REFUSED, core 2.0 has migrated this database; ~
+                    run the server with --revert-to-core-1 first (spec/i18n.md 4.6)~%")
+         (finish-output)
+         3)
+        (t
+         (let ((findings (rollback-preflight application-class db registry-path)))
+           (if findings
+               (format t "~&rollback preflight: REFUSED, ~d record~:p or value~:p outside the older core's vocabulary:~%~:{  ~a: ~d~%~}"
+                       (reduce #'+ findings :key #'cdr)
+                       (mapcar (lambda (f) (list (car f) (cdr f))) findings))
+               (format t "~&rollback preflight: ok, every stored record is inside the older core's vocabulary~%"))
+           (finish-output)
+           (if findings 3 0)))))
+
+(defun open-for-serving (application-class name &rest initargs)
+  "OPEN-APPLICATION of APPLICATION-CLASS with INITARGS, or NIL when the
+database is refused, after saying why on standard error: one a newer core
+major has opened (spec/store.md 2, item 10), or one core 2.0 cannot take
+(spec/i18n.md 4.3 to 4.5).  The server then exits 2, as the other start
+checks do."
+  (handler-case (apply #'open-application application-class initargs)
+    ((or newer-database database-refused) (refusal)
+      (format *error-output* "~&~a: ~a~%" name refusal)
+      (finish-output *error-output*)
+      nil)))
+
 (defun rollback-preflight (application-class db registry-path)
   "Findings (a list of (kind . count), sorted) for rolling the database DB
 back to the core whose registry_describe is in REGISTRY-PATH; NIL when every
@@ -247,7 +324,7 @@ migration, one read transaction."
            (loop
              (handler-case
                  (with-application (app)
-                   (let ((*actor* (system-actor "planlegger")))
+                   (let ((*actor* (system-actor "scheduler")))
                      (tun.jobs:tend-jobs app)
                      (application-after-request app)))
                (serious-condition (e) (ignore-errors (format *error-output* "~&;; tun scheduler: ~a~%" e))))
@@ -393,24 +470,22 @@ server listens, so what it does is done before /health answers: a preview
 makes its scenario's records there (spec/preview.md 3)."
   (setf *read-eval* nil)
   (install-thread-guard)
-  ;; --rollback-preflight REGISTRY --db PATH: check, print, exit (0 when the
-  ;; older core can take the database, 3 when not).
+  ;; --revert-to-core-1 [--db PATH]: undo core 2.0's migration, with no
+  ;; server on the database, and exit (spec/i18n.md 4.6).
+  (when (member "--revert-to-core-1" argv :test #'string=)
+    (sb-ext:exit :code (revert-to-core-1 (argv-database argv) name)))
+  ;; --rollback-preflight REGISTRY [--db PATH]: check, print, exit (0 when
+  ;; the older core can take the database, 3 when not).  While core 2.0's
+  ;; mark is in the database, it refuses before reading REGISTRY.
   (let ((registry (argument argv "--rollback-preflight")))
     (when registry
-      (let ((findings (rollback-preflight application-class (argument argv "--db") registry)))
-        (if findings
-            (format t "~&rollback preflight: REFUSED, ~d record~:p or value~:p outside the older core's vocabulary:~%~:{  ~a: ~d~%~}"
-                    (reduce #'+ findings :key #'cdr)
-                    (mapcar (lambda (f) (list (car f) (cdr f))) findings))
-            (format t "~&rollback preflight: ok, every stored record is inside the older core's vocabulary~%"))
-        (finish-output)
-        (sb-ext:exit :code (if findings 3 0)))))
+      (sb-ext:exit :code (preflight-command application-class (argv-database argv) registry name))))
   (flet ((flag (option) (and (member option argv :test #'string=) t))
          (number (option default) (parse-integer (argument argv option (princ-to-string default)))))
     (let ((port (or (server-port argv)
                     (progn (format *error-output* "~a: --port or PORT is not a port number~%" name)
                            (sb-ext:exit :code 2))))
-          (db (or (argument argv "--db") (uiop:getenv "DATABASE_URL")))
+          (db (argv-database argv))
           (test-clock (flag "--test-clock"))
           (address (argument argv "--address" "127.0.0.1"))
           (max-inflight (number "--max-inflight" 64))
@@ -456,8 +531,7 @@ makes its scenario's records there (spec/preview.md 3)."
       (check-sign-in application-class (flag "--claimed-identity") name)
       (check-mail application-class (flag "--claimed-identity") name)
       (tun.errors:check-error-mail application-class name)
-      (let* ((app (handler-case
-                      (open-application application-class
+      (let* ((app (or (open-for-serving application-class name
                                         :store (make-store (database-designator db)
                                                            :synchronous synchronous
                                                            :group-commit group-commit)
@@ -468,11 +542,7 @@ makes its scenario's records there (spec/preview.md 3)."
                                         :public-url public-url
                                         :log-requests log
                                         :identity (if (flag "--claimed-identity") :claimed :authenticated))
-                    ;; A database a newer core major has opened (spec/store.md
-                    ;; 2, item 10) is refused as the other start checks are.
-                    (newer-database (refusal)
-                      (format *error-output* "~&~a: ~a~%" name refusal)
-                      (sb-ext:exit :code 2))))
+                      (sb-ext:exit :code 2)))
              (acceptor (progn
                          (when before-serving
                            (funcall before-serving app))

@@ -4,15 +4,21 @@
 
 (in-package #:showcase)
 
-(defparameter +columns+ '(("ny" "Ny") ("planlagt" "Planlagt") ("under_arbeid" "Under arbeid")
-                          ("ferdig" "Ferdig"))
-  "The board's columns: each status's key and title.")
+(defparameter +columns+ '("new" "planned" "in_progress" "done")
+  "The board's columns, by the status of the cards in them, in order.")
 
-(define-entity card (:label "Kort" :id-prefix "krt" :table "cards" :attachments (:max 20))
-  ((title :type (string :min 1 :max 200) :required t :label "Tittel")
-   (status :type (enum "ny" "planlagt" "under_arbeid" "ferdig") :initform "ny" :label "Status")
-   (place :type (string :max 1000) :input nil :label "Plass"
-          :description "Rangnøkkelen kortet sorteres etter i sin kolonne.")))
+(define-entity card (:label "Card" :id-prefix "crd" :table "cards" :attachments (:max 20))
+  ((title :type (string :min 1 :max 200) :required t :label "Title")
+   (status :type (enum "new" "planned" "in_progress" "done") :initform "new" :label "Status")
+   (reported-on :type date :label "Reported on")
+   (estimate-minor :type money :label "Estimate"
+                   :description "What the work is expected to cost.")
+   (place :type (string :max 1000) :input nil :label "Place"
+          :description "The rank key the card is sorted by in its column.")))
+
+(defun column-title (status)
+  "The title of the column STATUS: the status's label, in the current language."
+  (princ-to-string (label "card" "status" status)))
 
 (defun column-cards (status)
   "The cards in the column STATUS, in their order."
@@ -27,38 +33,40 @@ refused."
          (below (when before (member before others :key #'entity-id :test #'equal)))
          (above (car (last (ldiff others below)))))
     (when (and before (null below))
-      (fail :conflict "Kortet ble ikke flyttet: tavla er endret siden du åpnet den. ~
-                       Last den inn på nytt."))
+      (fail :conflict
+            "The card was not moved: the board has changed since you opened it. Reload it."))
     (rank-between (and above (card-place above)) (and below (card-place (first below))))))
 
-(define-operation cards-create ((:draft card)
-                                (screenshots :type (files :max 10) :label "Skjermbilder"
-                                             :description "Skjermbilder eller andre filer som viser
-saken: PNG, JPEG, WebP, GIF eller PDF."))
-    (:entity card :kind :create :policy :employee :title "Nytt kort"
-             :description "Et kort på tavla, sist i sin kolonne, med filene som er lagt ved.")
+(define-operation cards-create
+    ((:draft card)
+     (screenshots :type (files :max 10) :label "Screenshots"
+                  :description
+                  "Screenshots or other files that show the item: PNG, JPEG, WebP, GIF or PDF."))
+    (:entity card :kind :create :policy :employee :title "New card"
+             :description "A card on the board, last in its column, with the files attached.")
   (setf (card-place card) (place-before card (card-status card) nil))
   (insert card)
   (attach-files card screenshots)
   card)
 
-(define-operation cards-get ((id :type (id card) :required t :label "Kort"))
-    (:entity card :kind :read :policy :employee :title "Kort" :description "Ett kort.")
+(define-operation cards-get ((id :type (id card) :required t :label "Card"))
+    (:entity card :kind :read :policy :employee :title "Card" :description "One card.")
   (fetch! 'card id))
 
-(define-operation cards-move ((id :type (id card) :required t :label "Kort")
-                              (:field card status)
-                              (before :type (id card) :label "Før kortet"
-                                      :description "Kortet det skal stå rett over; uten står
-det nederst."))
-    (:entity card :kind :update :policy :employee :title "Flytt kort"
-             :description "Flytter et kort til en kolonne, rett over et annet kort eller nederst.")
+(define-operation cards-move
+    ((id :type (id card) :required t :label "Card")
+     (:field card status)
+     (before :type (id card) :label "Before the card"
+             :description "The card it goes directly above; without one, it goes last."))
+    (:entity card :kind :update :policy :employee :title "Move card"
+             :description "Moves a card to a column, directly above another card or to the
+bottom.")
   (let ((card (fetch! 'card id)))
     (setf (card-place card) (place-before card status before)
           (card-status card) status)
     (save card)))
 
 (define-operation cards-list ()
-    (:entity card :kind :read :policy :employee :title "Kort"
-             :description "Alle kortene, i rekkefølge.")
+    (:entity card :kind :read :policy :employee :title "Cards"
+             :description "All the cards, in order.")
   (jobj "items" (jarr (mapcar #'entity->json (select 'card :order-by '(("place" :asc)))))))

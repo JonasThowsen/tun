@@ -194,7 +194,7 @@ text and the headers."
             (is (search "\"aktiv\"" (to-json-string (jget answer "result"))))))
         (multiple-value-bind (status text) (mcp-wait-call port id 2)
           (is (= 200 status))
-          (is (cl-ppcre:scan "(?m)^: venter" text) "a comment without a progressToken")
+          (is (cl-ppcre:scan "(?m)^: waiting" text) "a comment without a progressToken")
           (is (= 7 (jget (car (last (event-data text))) "id"))))
         (multiple-value-bind (status text headers)
             (with-global (tun.http::+plain-wait-seconds+ 1)
@@ -236,7 +236,7 @@ text and the headers."
 
 (test instructions-reach-initialize
   (let ((text (jget (tun.mcp::handle-initialize 'waiting-instructions-app (jobj)) "instructions")))
-    (is (search "Alle verktøy er generert" text) "Tun's own first")
+    (is (search "Every tool is generated" text) "Tun's own after the locale's line")
     (is (search (format nil "~%~%Start med å si hvem du er.~%~%Vent på svaret med questions_wait.")
                 text)
         "then the client's paragraphs")))

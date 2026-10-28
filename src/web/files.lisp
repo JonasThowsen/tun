@@ -34,20 +34,22 @@
       (and (web-actor) t))))
 
 (defmethod tun.http:upload-refusal ((acceptor tun.http:tun-acceptor) status message)
+  ;; MESSAGE is a string or a TEXT, written here in the tenant's language.
   (let ((*web-app* (tun.http:acceptor-application acceptor)))
     (with-application (*web-app*)
       (let ((*actor* (web-actor))
-            (*reference-labels* nil))
-        (respond status "Skjemaet ble ikke sendt"
+            (*reference-labels* nil)
+            (*locale* (or *locale* (request-locale))))
+        (respond status (tr "The form was not sent")
                  (list (ui:alert (:variant (if (= status 503) :warning :destructive)
-                                           :title "Skjemaet ble ikke sendt")
-                         message)
+                                           :title (tr "The form was not sent"))
+                         (render-text message))
                        (if *actor*
                            (ui:cluster () (ui:button (:href (or (hunchentoot:referer) "/")
                                                             :variant :outline :icon :arrow-left)
-                                            "Tilbake"))
+                                            (tr "Back")))
                            (ui:cluster () (ui:button (:href "/login" :icon :log-in)
-                                            "Logg inn")))))))))
+                                            (tr "Sign in"))))))))))
 
 (defun add-posted-files (form)
   "Put the files this post carried into FORM, a page's posted fields: under
@@ -111,9 +113,9 @@ an attr-char percent-encoded."
             (rfc-5987-value name))))
 
 (defun file-not-found ()
-  (respond 404 "Fant ikke filen"
-           (list (ui:alert (:variant :warning :title "Fant ikke filen")
-                   "Filen finnes ikke, eller du har ikke tilgang til den."))))
+  (respond 404 (tr "File not found")
+           (list (ui:alert (:variant :warning :title (tr "File not found"))
+                   (tr "The file does not exist, or you do not have access to it.")))))
 
 (defun send-attachment (attachment method)
   "Answer ATTACHMENT's content with the headers of spec/files.md 5.3, sent a

@@ -7,4 +7,5 @@
   :serial t
   :components ((:file "catalog")
                (:file "requirements")
-               (:file "publish")))
+               (:file "publish")
+               (:file "nb")))

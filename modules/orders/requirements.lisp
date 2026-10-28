@@ -46,7 +46,7 @@
 
 (defun check-resolved (article-id quantity)
   (when (> quantity +max-resolved-quantity+)
-    (fail :invalid-input "Behovet for ~a blir ~a, mer enn ~d; reduser antall, porsjoner eller kravet"
+    (fail :invalid-input "The requirement for ~a comes to ~a, more than ~d; reduce the quantity, the servings or the requirement"
           (tun.inventory:article-name (tun.inventory:find-article article-id)) (format-quantity quantity)
           +max-resolved-quantity+))
   quantity)
@@ -115,7 +115,7 @@ from plan LINES."
                    (every (lambda (k) (let ((v (gethash k choices)))
                                         (and (json-array-p v) (every #'stringp v))))
                           (jkeys choices))))
-         (fail :invalid-input "choices må være et objekt med lister av oppskrift-id-er"))
+         (fail :invalid-input "choices must be an object of lists of recipe ids"))
         ((zerop (hash-table-count choices)) nil)
         (t choices)))
 

@@ -40,6 +40,9 @@ repository holds only {{name}}'s own code.
   moves Tun and every module to one newer revision; run `bin/test` before
   committing `flake.lock`. Never move one Tun input alone with `nix flake
   update`.
-- Code identifiers in English; Norwegian in labels, descriptions and copy.
+- Code identifiers in English. Copy is written in the first language of
+  `(:locale :languages …)` and translated in a catalogue per other language
+  (`nb.lisp`); the suite finds a text without a translation
+  ($TUN_SOURCE/spec/i18n.md).
 - No deployments, credentials, publishing or pushes without explicit
   authorization.

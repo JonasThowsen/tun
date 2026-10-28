@@ -5,7 +5,9 @@ Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
 (§4.2), 2026-10-22; ordering a board's cards within a column (§6.1),
 2026-10-26, core 1.18.0; push notifications in the service worker and
 `push-switch` (`push.md`), 2026-10-26, core 1.19.0; `file-input` and
-`attachments` (`files.md`), 2026-10-26, core 1.20.0. How every Tun
+`attachments` (`files.md`), 2026-10-26, core 1.20.0; pages in the
+person's language, amounts and dates by its formats (`i18n.md`),
+2026-10-27, core 2.0.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -47,8 +49,9 @@ licences require, and which Tun file uses which source.
   control has a label, errors are tied to their field
   (`aria-describedby`, `aria-invalid`), focus is always visible,
   `prefers-reduced-motion` stops motion.
-- **Norwegian.** Labels and copy are Norwegian bokmål; code identifiers
-  and class names are English.
+- **In the person's language.** Copy is written in English and shown in
+  the tenant's language (`i18n.md` §2.4, §3), Norwegian as bokmål; code
+  identifiers and class names are English.
 - **Plain CSS.** No build step, no Tailwind, no preprocessor. Modern CSS
   only: custom properties, `@layer`, nesting, `:has()`, `color-mix()`,
   container queries.
@@ -112,6 +115,8 @@ component has a dark-mode selector.
   set an element's style while it runs (placing a menu, a dragged card).
 - Every page has `<meta name="viewport" content="width=device-width,
   initial-scale=1">`.
+- The components' script holds no copy: a text it shows is in the markup
+  the server rendered, in the page's language (`i18n.md` §3.6).
 - A script that prepares elements once they are in the page (reveals a
   copy button, focuses an error summary) runs its setup through
   `tunOnContent(SETUP)`: once the page has loaded, and again after each
@@ -210,7 +215,8 @@ Without it, no page links a manifest and nothing is installed.
 - **The manifest.** `/manifest.webmanifest`, as
   `application/manifest+json` and `Cache-Control: no-cache`: `id`,
   `start_url` and `scope` `/`, `name` the application's title,
-  `short_name`, `display` `standalone`, `lang` `no`, `theme_color` (the
+  `short_name`, `display` `standalone`, `lang` the tenant's language,
+  `theme_color` (the
   light one), `background_color`, and the icons: the SVG (`sizes`
   `any`), the 192 and 512 PNGs, and the maskable one with `purpose`
   `maskable`.
@@ -221,7 +227,8 @@ Without it, no page links a manifest and nothing is installed.
   PNG, `rel=apple-touch-icon`, `apple-mobile-web-app-title` (the short
   name) and `mobile-web-app-capable` `yes`.
 - **The offline page.** `/offline` is a page for someone not logged in,
-  «Du er frakoblet», with «Prøv igjen», which loads the address again.
+  in the tenant's language: «You are offline» («Du er frakoblet»), with
+  «Try again» («Prøv igjen»), which loads the address again.
   It holds nothing about who is signed in.
 - **The service worker.** `/sw.js`, scope `/`, as
   `text/javascript` and `Cache-Control: no-cache`. The components'
@@ -254,10 +261,10 @@ A component is defined with `define-component` in the package `TUN.UI`:
 (define-component button ((&key (variant :primary) (size :default) (type "button")
                                 href name value disabled)
                           &rest children)
-  (:doc "En knapp for en handling, eller en lenke som ser ut som en.")
+  (:doc "A button for an action, or a link that looks like one.")
   (:source "Basecoat button (Vega)")
   (:css ".tun-button { ... }")
-  (:examples ("Varianter" (button () "Lagre") (button (:variant :outline) "Avbryt")))
+  (:examples ("Variants" (button () "Save") (button (:variant :outline) "Cancel")))
   ...markup...)
 ```
 
@@ -282,10 +289,12 @@ A component is defined with `define-component` in the package `TUN.UI`:
   `hx-disable`, `hx-sync`, `hx-preserve`, `hx-validate`. Any other `hx-`
   or `data-hx-` attribute (`hx-on`, `hx-headers`, `hx-config`,
   `hx-status`, …) is left out.
-- **Documented.** `:doc` (Norwegian, one or two sentences on when to use
+- **Documented.** `:doc` (English, one or two sentences on when to use
   it), `:source` (what it was converted from, §1) and at least one
   example are required. Examples are ordinary calls; the specimen shows
-  each one rendered and its source.
+  each one rendered, in the current language, and its source. A text a
+  component writes itself, such as a default label, is looked up
+  (`i18n.md` §3.1).
 - **Common options.** Every component takes `:id` and `:attributes`, a
   property list of further attributes for its root element (`aria-*`,
   `data-*`, `hx-*`, `popovertarget` and the like). There is no `:class`: a
@@ -302,12 +311,12 @@ A component is defined with `define-component` in the package `TUN.UI`:
 
 | Group (file in `src/web/ui/`) | Components |
 |---|---|
-| Handlinger (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
-| Skjema (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
+| Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
+| Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
 | Data (`data`, `board`, `files`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments` |
-| Tilbakemelding (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
-| Interaksjon (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
-| Oppsett og navigasjon (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
+| Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
+| Interaction (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
+| Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
 `files.md` §6.
@@ -353,7 +362,7 @@ another column.
                                 :cards (list (list :id "itm_1" :title "Eksporten feiler"
                                                    :href "/saker/itm_1"
                                                    :badges (list (ui:badge (:variant :destructive) "Feil"))
-                                                   :meta "Kari · 21.10.2026")))
+                                                   :meta (format nil "Kari · ~a" (date-text "2026-10-21")))))
                           (list :key "planlagt" :title "Planlagt" :cards '()))))
 ```
 
@@ -478,7 +487,7 @@ form of `field`s with an `error-summary`, a confirmation is a
 - **The page header on a phone.** The title and the actions share one
   row when they fit, centred on it; otherwise the actions go below.
 - **The frame.** A staff page is an `app-shell` with the menu, the actor
-  and «Logg ut». Its content is at most 72rem wide, 84rem from a
+  and «Sign out» («Logg ut»). Its content is at most 72rem wide, 84rem from a
   1440 px window, centred, with more space at the sides the wider the
   window; a page defined with `:width :wide` uses the whole width beside
   the menu, for a board or a wide overview. A client adds components to
@@ -489,10 +498,10 @@ form of `field`s with an `error-summary`, a confirmation is a
   order they are defined, the resources, then the modules' pages and the
   kernel's. Then, under the heading «System», the pages about the system
   rather than the work: those defined with `:group :system` (the
-  dashboard's «Jobber», «Feil» and «Logg»), then the kernel's
-  «Innstillinger» and «Tilgang». Each entry shows only to those its
-  page's policy admits, so a person who is not an admin sees only
-  «Tilgang» there. A page for someone not logged in
+  dashboard's «Jobs», «Errors» and «Log»), then the kernel's «Settings»
+  and «Access» («Innstillinger» and «Tilgang» in Norwegian). Each entry
+  shows only to those its page's policy admits, so a person who is not an
+  admin sees only «Access» there. A page for someone not logged in
   (login, setup, a public page) is an `app-shell`
   without the menu. A page with one short form (login, setup) is narrow
   and centred (`:width :narrow`): the form's card, then
@@ -509,17 +518,21 @@ form of `field`s with an `error-summary`, a confirmation is a
   number, date, a `select` or `radios` (four choices or fewer, required)
   for an enum, `checkboxes` for a list of an enum, a `checkbox` for a
   boolean, a `select` of the records an id refers to, a `textarea` for
-  long text and JSON, and a `fieldset` per row of a list of records, its
-  optional inputs folded away. The description is the hint; an optional
-  input says «(valgfritt)». A form with inputs carries `novalidate`, as
+  long text and JSON, an amount (`money`) as a person writes it in the
+  page's language, with the currency beside it (`i18n.md` §5.4), and a
+  `fieldset` per row of a list of records, its optional inputs folded
+  away. The description is the hint; an optional input says «(optional)»
+  («(valgfritt)»). A form with inputs carries `novalidate`, as
   GOV.UK's do: the server checks every submission, and its answer is
   shown in the page, where the browser's own bubble is easy to miss on a
   phone. A refused submission keeps what was typed, puts each field's
   error at the field and lists them in an `error-summary` that links to
   them.
-- **Values.** Amounts in øre are shown in kroner (12 450,00 kr), dates as
-  DD.MM.YYYY, instants in Norwegian time, stored words such as
-  `tilbud_sendt` as «Tilbud sendt», references by the record's name.
+- **Values.** In the page's language and the tenant's currency and time
+  zone (`i18n.md` §5.4, §6.2), the page's language being the tenant's: amounts as `€12,450.00` or `12 450,00 kr`,
+  dates as `21 Oct 2026` or `21.10.2026`, instants in the tenant's time
+  zone; stored words by their label, `quote_sent` as «Quote sent»
+  («Tilbud sendt»); references by the record's name.
 - **Modules** build their pages (staff pages, public pages, sections on a
   record) from the components through `TUN.UI`, one of the kernel's
   public packages for modules.
@@ -554,8 +567,9 @@ form of `field`s with an `error-summary`, a confirmation is a
      person, through the execution path. It returns the result, or the
      error document and its code; `error-alert` shows that document.
      An operation error the page does not catch is shown as that alert,
-     with the code's status. `timestamp-text` writes an instant in
-     Norwegian time.
+     with the code's status. `timestamp-text`, `date-text`,
+     `money-text` and `number-text` write a value as the generated pages
+     do (`i18n.md` §6.2).
   5. Evaluating the definition again, in a running server too, replaces
      the page; another definition with the same prefix is refused, as
      two modules' pages are.
@@ -616,7 +630,9 @@ form of `field`s with an `error-summary`, a confirmation is a
 ## 10. Evidence
 
 - `tests/ui-tests.lisp`: every component has its documentation, source
-  and examples; every example renders, and renders the same in
+  and examples; every example renders, in English and in Norwegian
+  without a missing translation, and in the pseudo-language with no text
+  that was not looked up (`i18n.md` §3.7), and renders the same in
   extension output (only allowed markup); every selector is scoped to
   its component; the stylesheet, the script and htmx are served with
   their hash and cache headers; pages have the viewport tag and htmx's

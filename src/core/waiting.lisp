@@ -100,11 +100,11 @@ whole one for the work after it.  Refused with unavailable, before it
 waits, past *MAX-WAITING* or its client's *MAX-WAITING-PER-CLIENT*."
   (when (>= (sb-ext:atomic-incf (car *waiting*)) *max-waiting*)
     (sb-ext:atomic-decf (car *waiting*))
-    (fail :unavailable "~d kall venter allerede; prøv igjen om litt" *max-waiting*))
+    (fail :unavailable "~d calls are already waiting; try again shortly" *max-waiting*))
   (let ((client *wait-client*))
     (when (and client (not (take-count *client-waits* client *max-waiting-per-client*)))
       (sb-ext:atomic-decf (car *waiting*))
-      (fail :unavailable "~d kall venter allerede fra samme adresse; prøv igjen om litt"
+      (fail :unavailable "~d calls are already waiting from the same address; try again shortly"
             *max-waiting-per-client*))
     (dolist (leave *waiting-leaves*)
       (funcall leave :leave))

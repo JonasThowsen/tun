@@ -1,5 +1,5 @@
 ;;;; modules/staffing/staffing.lisp -- the staffing module: employees and the
-;;;; client's departments (README §2), Norwegian local time to UTC (README §8),
+;;;; client's departments (README §2), the tenant's local time to UTC (README §8),
 ;;;; and the module's entities.
 ;;;;
 ;;;; Extension points it publishes:
@@ -32,64 +32,66 @@
 
 (define-module staffing
   (:depends-on orders)
-  (:core ">= 1.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:documentation "Staffing: employees, departments, assignments, unavailability, work sessions."))
 
 ;;; ------------------------------------------------------------------
 ;;; Entities
 
-(define-entity employee (:label "Ansatt" :id-prefix "emp" :table "employees" :unique (("actor"))
+(define-entity employee (:label "Employee" :id-prefix "emp" :table "employees" :unique (("actor"))
                          :indexes (("department")))
-  ((name :type (string :min 1 :max 120) :required t :label "Navn")
-   (actor :type (string :min 3 :max 200) :required t :label "Aktør"
-          :description "Den nøyaktige X-Tun-Actor-verdien, f.eks. employee:kari (unik).")
-   (role :type (enum "viewer" "employee" "admin") :required t :label "Rolle")
-   (department :type (string :max 100) :label "Avdeling")
-   (auto-assign-in-department :type boolean :initform nil :label "Tildeles automatisk i avdelingen")
-   (active :type boolean :initform t :label "Aktiv")
-   (created-at :type timestamp :input nil :label "Opprettet")))
+  ((name :type (string :min 1 :max 120) :required t :label "Name")
+   (actor :type (string :min 3 :max 200) :required t :label "Actor"
+          :description "The exact X-Tun-Actor value, such as employee:kari (unique).")
+   (role :type (enum "viewer" "employee" "admin") :required t :label "Role")
+   (department :type (string :max 100) :label "Department")
+   (auto-assign-in-department :type boolean :initform nil
+                              :label "Assigned automatically in the department")
+   (active :type boolean :initform t :label "Active")
+   (created-at :type timestamp :input nil :label "Created")))
 
-(define-entity assignment (:label "Tildeling" :id-prefix "asg" :table "assignments"
+(define-entity assignment (:label "Assignment" :id-prefix "asg" :table "assignments"
                            :indexes (("order_id") ("employee_id")))
-  ((order-id :type (id order) :input nil :label "Ordre")
-   (employee-id :type (id employee) :input nil :label "Ansatt")
-   (auto :type boolean :input nil :initform nil :label "Automatisk")
-   (auto-department :type (string :max 100) :input nil :label "Avdeling (automatisk)")
+  ((order-id :type (id order) :input nil :label "Order")
+   (employee-id :type (id employee) :input nil :label "Employee")
+   (auto :type boolean :input nil :initform nil :label "Automatic")
+   (auto-department :type (string :max 100) :input nil :label "Department (automatic)")
    (started-at :type timestamp :input nil :label "Start")
-   (ended-at :type timestamp :input nil :label "Slutt")))
+   (ended-at :type timestamp :input nil :label "End")))
 
-(define-entity assignment-override (:json-name "assignment_override" :label "Overstyring av utilgjengelighet"
+(define-entity assignment-override (:json-name "assignment_override"
+                                    :label "Unavailability override"
                                     :id-prefix "ovr" :table "assignment_overrides" :indexes (("order_id")))
-  ((assignment-id :type (id assignment) :input nil :label "Tildeling")
-   (order-id :type (id order) :input nil :label "Ordre")
-   (employee-id :type (id employee) :input nil :label "Ansatt")
-   (reason :type (string :max 500) :input nil :label "Begrunnelse")
-   (conflict-ids :type (list-of id) :input nil :label "Utilgjengeligheter")
-   (conflict-summary :type (string :max 5000) :input nil :label "Konflikter")
-   (created-by :type (string :max 200) :input nil :label "Overstyrt av")
-   (created-at :type timestamp :input nil :label "Opprettet")))
+  ((assignment-id :type (id assignment) :input nil :label "Assignment")
+   (order-id :type (id order) :input nil :label "Order")
+   (employee-id :type (id employee) :input nil :label "Employee")
+   (reason :type (string :max 500) :input nil :label "Reason")
+   (conflict-ids :type (list-of id) :input nil :label "Unavailabilities")
+   (conflict-summary :type (string :max 5000) :input nil :label "Conflicts")
+   (created-by :type (string :max 200) :input nil :label "Overridden by")
+   (created-at :type timestamp :input nil :label "Created")))
 
-(define-entity unavailability (:label "Utilgjengelighet" :id-prefix "una" :table "unavailabilities"
+(define-entity unavailability (:label "Unavailability" :id-prefix "una" :table "unavailabilities"
                                :indexes (("employee_id" "start_date")))
-  ((employee-id :type (id employee) :input nil :label "Ansatt")
-   (start-date :type date :input nil :label "Fra dato")
-   (end-date :type date :input nil :label "Til dato")
-   (whole-day :type boolean :input nil :initform t :label "Hele dager")
-   (start-time :type (string :max 5) :input nil :label "Fra klokken")
-   (end-time :type (string :max 5) :input nil :label "Til klokken")
-   (private-note :type (string :max 1000) :input nil :label "Privat merknad")
-   (version :type (integer :min 1) :input nil :initform 1 :label "Versjon")))
+  ((employee-id :type (id employee) :input nil :label "Employee")
+   (start-date :type date :input nil :label "From date")
+   (end-date :type date :input nil :label "To date")
+   (whole-day :type boolean :input nil :initform t :label "Whole days")
+   (start-time :type (string :max 5) :input nil :label "From time")
+   (end-time :type (string :max 5) :input nil :label "To time")
+   (private-note :type (string :max 1000) :input nil :label "Private note")
+   (version :type (integer :min 1) :input nil :initform 1 :label "Version")))
 
-(define-entity work-session (:json-name "work_session" :label "Arbeidsøkt" :id-prefix "wks" :table "work_sessions"
-                             :indexes (("order_id") ("employee_id" "ended_at")))
-  ((order-id :type (id order) :input nil :label "Ordre")
-   (assignment-id :type (id assignment) :input nil :label "Tildeling")
-   (employee-id :type (id employee) :input nil :label "Ansatt")
+(define-entity work-session (:json-name "work_session" :label "Work session" :id-prefix "wks"
+                             :table "work_sessions" :indexes (("order_id") ("employee_id" "ended_at")))
+  ((order-id :type (id order) :input nil :label "Order")
+   (assignment-id :type (id assignment) :input nil :label "Assignment")
+   (employee-id :type (id employee) :input nil :label "Employee")
    (started-at :type timestamp :input nil :label "Start")
-   (ended-at :type timestamp :input nil :label "Slutt")
-   (duration-seconds :type integer :input nil :label "Varighet (sekunder)")
-   (note :type (string :max 1000) :input nil :label "Merknad")
-   (source :type (enum "live" "manual") :input nil :initform "live" :label "Kilde")))
+   (ended-at :type timestamp :input nil :label "End")
+   (duration-seconds :type integer :input nil :label "Duration (seconds)")
+   (note :type (string :max 1000) :input nil :label "Note")
+   (source :type (enum "live" "manual") :input nil :initform "live" :label "Source")))
 
 ;;; ------------------------------------------------------------------
 ;;; Extension points
@@ -124,11 +126,13 @@ message (answered invalid_input).  A client adds a rule with a method.")
 
 (defun check-department (department)
   (when (and department (not (member department (departments *application*) :test #'string=)))
-    (fail :invalid-input "Ukjent avdeling ~a (gyldige: ~{~a~^, ~})" department (departments *application*))))
+    (fail :invalid-input "Unknown department ~a (valid: ~{~a~^, ~})"
+          department (departments *application*))))
 
 ;;; ------------------------------------------------------------------
-;;; Norwegian local time to UTC (README §8).  The other direction, and the rule
-;;; for when summer time applies, are the kernel's (OSLO-OFFSET, core.md §2.2).
+;;; The tenant's local time to UTC (README §8).  The other direction, the
+;;; zone and the rule for when summer time applies are the kernel's
+;;; (LOCAL-INSTANT, core.md §2.2).
 
 (defun parse-local-time (time)
   "Values hours and minutes of an HH:MM string, or NIL."
@@ -136,19 +140,11 @@ message (answered invalid_input).  A client adds a rule with a method.")
        (values (parse-integer time :end 2) (parse-integer time :start 3))))
 
 (defun to-utc (date time)
-  "Values the instant of Norwegian local DATE and TIME and :ok, or NIL and
-:nonexistent (in the spring gap) or :ambiguous (in the autumn overlap): of
-the CET and CEST readings, exactly one must be a real instant."
+  "Values the instant of the tenant's local DATE and TIME and :ok, or NIL and
+:nonexistent (in the spring gap) or :ambiguous (in the autumn overlap)."
   (multiple-value-bind (hours minutes) (parse-local-time time)
-    (let* ((wall (+ (parse-date date) (* 3600 hours) (* 60 minutes)))
-           (as-cet (- wall 3600))
-           (as-cest (- wall 7200))
-           (cet-p (= 3600 (oslo-offset as-cet)))
-           (cest-p (= 7200 (oslo-offset as-cest))))
-      (cond ((and cet-p cest-p) (values nil :ambiguous))
-            (cet-p (values as-cet :ok))
-            (cest-p (values as-cest :ok))
-            (t (values nil :nonexistent))))))
+    (multiple-value-bind (instant kind) (local-instant date hours minutes)
+      (values instant kind))))
 
 (defun local-midnight (date)
   (values (to-utc date "00:00")))
@@ -173,18 +169,18 @@ the CET and CEST readings, exactly one must be a real instant."
   (multiple-value-bind (first last) (order-period order)
     (and first (whole-days-interval first last))))
 
-(defun norwegian-date (date)
-  (format nil "~a.~a.~a" (subseq date 8 10) (subseq date 5 7) (subseq date 0 4)))
-
 (defun entry-summary (entry)
-  "dd.mm.yyyy[–dd.mm.yyyy] (hele dager) or dd.mm.yyyy (kl. HH:MM–HH:MM)."
+  "ENTRY's dates and times as an override stores them for people, in the
+tenant's language: 21 Jun 2026[–22 Jun 2026] (whole days), or 21 Jun 2026
+(10:00–12:00); in Norwegian 21.06.2026 (kl. 10:00–12:00)."
   (let ((dates (if (string= (unavailability-start-date entry) (unavailability-end-date entry))
-                   (norwegian-date (unavailability-start-date entry))
-                   (format nil "~a–~a" (norwegian-date (unavailability-start-date entry))
-                           (norwegian-date (unavailability-end-date entry))))))
+                   (date-text (unavailability-start-date entry))
+                   (format nil "~a–~a" (date-text (unavailability-start-date entry))
+                           (date-text (unavailability-end-date entry))))))
     (if (unavailability-whole-day entry)
-        (format nil "~a (hele dager)" dates)
-        (format nil "~a (kl. ~a–~a)" dates (unavailability-start-time entry) (unavailability-end-time entry)))))
+        (tr "~a (whole days)" dates)
+        (tr ("~a (~a–~a)" :context "time span") dates (unavailability-start-time entry)
+            (unavailability-end-time entry)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Employees (README §2)
@@ -207,25 +203,27 @@ the CET and CEST readings, exactly one must be a real instant."
 
 (defun check-employee (employee)
   (unless (parse-actor (employee-actor employee))
-    (fail :invalid-input "Aktør må være på formen rolle:navn (admin, employee eller viewer)"))
+    (fail :invalid-input "The actor must have the form role:name (admin, employee or viewer)"))
   (check-department (employee-department employee)))
 
 (define-operation employees-create ((:draft employee))
-    (:entity employee :kind :create :policy :admin :title "Opprett ansatt"
-     :description "Registrerer en ansatt med aktør (X-Tun-Actor-verdien, unik), rolle, avdeling og om den tildeles automatisk i avdelingen.")
+    (:entity employee :kind :create :policy :admin :title "Create an employee"
+             :description "Records an employee with an actor (the X-Tun-Actor value, unique), a
+role, a department and whether they are assigned automatically in the department.")
   (check-employee employee)
   (when (select-one 'employee :where `(:= "actor" ,(employee-actor employee)))
-    (fail :conflict "Aktøren ~a er allerede knyttet til en ansatt" (employee-actor employee)))
+    (fail :conflict "The actor ~a already belongs to an employee" (employee-actor employee)))
   (insert employee))
 
-(define-operation employees-get ((id :type (id employee) :required t :label "Ansatt-ID"))
-    (:entity employee :kind :read :title "Hent ansatt" :description "Henter én ansatt.")
+(define-operation employees-get ((id :type (id employee) :required t :label "Employee ID"))
+    (:entity employee :kind :read :title "Get an employee" :description "Gets one employee.")
   (fetch! 'employee id))
 
-(define-operation employees-list ((department :type (string :max 100) :label "Avdeling")
-                                  (active :type boolean :label "Aktiv")
-                                  (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity employee :kind :read :title "Ansatte" :description "Lister ansatte, eldste først; filter på avdeling og aktiv.")
+(define-operation employees-list ((department :type (string :max 100) :label "Department")
+                                  (active :type boolean :label "Active")
+                                  (limit :type (integer :min 1 :max 100) :default 20 :label "Limit"))
+    (:entity employee :kind :read :title "Employees"
+             :description "Lists employees, oldest first; filter on department and active.")
   (let ((where (remove nil (list (and department `(:= "department" ,department))
                                  (and (or (input-provided-p :active) (input-null-p :active))
                                       `(:= "active" ,(and active t)))))))

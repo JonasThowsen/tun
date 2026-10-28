@@ -29,25 +29,25 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity mail (:label "E-post" :id-prefix "mail" :table "mails" :internal t
+(define-entity mail (:label "Email" :id-prefix "mail" :table "mails" :internal t
                             :indexes (("status") ("key") ("to")))
-  ((to :type (email :max 320) :required t :input nil :label "Til")
-   (subject :type (string :min 1 :max 998) :required t :input nil :label "Emne")
-   (text :type (string :min 1 :max 100000) :required t :input nil :label "Tekst")
+  ((to :type (email :max 320) :required t :input nil :label "To")
+   (subject :type (string :min 1 :max 998) :required t :input nil :label "Subject")
+   (text :type (string :min 1 :max 100000) :required t :input nil :label "Text")
    (html :type (string :max 500000) :input nil :label "HTML")
-   (reply-to :type (email :max 320) :input nil :label "Svar til")
-   (key :type (string :max 200) :input nil :label "Nøkkel"
+   (reply-to :type (email :max 320) :input nil :label "Reply to")
+   (key :type (string :max 200) :input nil :label "Key"
         :description "Makes the send once only: a second send with the key returns the first mail.")
    (status :type (enum "queued" "sending" "sent" "failed") :input nil :initform "queued"
            :label "Status")
-   (attempts :type integer :input nil :initform 0 :label "Forsøk")
-   (job-id :type id :input nil :label "Jobb"
+   (attempts :type integer :input nil :initform 0 :label "Attempts")
+   (job-id :type id :input nil :label "Job"
            :description "The job that delivers it; jobs_get shows when it tries next.")
-   (last-error :type (string :max 2000) :input nil :label "Siste feil")
-   (provider :type (string :max 64) :input nil :label "Leverandør")
-   (provider-id :type (string :max 200) :input nil :label "Leverandørens ID")
-   (created-at :type timestamp :input nil :label "Opprettet")
-   (sent-at :type timestamp :input nil :label "Sendt")))
+   (last-error :type (string :max 2000) :input nil :label "Last error")
+   (provider :type (string :max 64) :input nil :label "Provider")
+   (provider-id :type (string :max 200) :input nil :label "Provider's ID")
+   (created-at :type timestamp :input nil :label "Created")
+   (sent-at :type timestamp :input nil :label "Sent")))
 
 ;;; ------------------------------------------------------------------
 ;;; Sending
@@ -56,7 +56,7 @@
   "VALUE checked as the mail's field NAME checks its input, or NIL; an
 error is collected for COLLECTING-INPUT-ERRORS."
   (if (null value)
-      (when required (input-error name "må fylles ut"))
+      (when required (input-error name "must be filled in"))
       (coerce-input (field-type (find-field (find-class 'mail) name)) value name)))
 
 (defun send-mail (&key to subject text html reply-to key)
@@ -240,29 +240,29 @@ provider, with the mail's id as the idempotency key (spec/mail.md 3)."
 
 (define-operation mail-list ((status :type (enum "queued" "sending" "sent" "failed")
                                      :label "Status")
-                             (to :type (email :max 320) :label "Til"))
-    (:entity mail :kind :read :policy :admin :title "E-post"
-             :description "De siste 100 e-postene, nyeste først, uten tekst: mottaker, emne,
-status, forsøk og siste feil. Kan begrenses til én status eller én mottaker.")
+                             (to :type (email :max 320) :label "To"))
+    (:entity mail :kind :read :policy :admin :title "Email"
+             :description "The last 100 mails, newest first, without their text: recipient,
+subject, status, attempts and last error. Can be limited to one status or one recipient.")
   (let ((conditions (remove nil (list (and status `(:= "status" ,status))
                                       (and to `(:= "to" ,to))))))
     (jobj "items" (jarr (mapcar #'mail->json
                                 (select 'mail :where (and conditions `(:and ,@conditions))
                                         :order-by '(("seq" :desc)) :limit 100))))))
 
-(define-operation mail-get ((id :type (id mail) :required t :label "E-post"))
-    (:entity mail :kind :read :policy :admin :title "Les e-post"
-             :description "Én e-post med tekst og HTML.")
+(define-operation mail-get ((id :type (id mail) :required t :label "Email"))
+    (:entity mail :kind :read :policy :admin :title "Read an email"
+             :description "One mail with its text and HTML.")
   (mail->json (fetch! 'mail id) :with-text t))
 
-(define-operation mail-retry ((id :type (id mail) :required t :label "E-post"))
-    (:entity mail :kind :update :policy :admin :title "Send e-post på nytt"
-             :description "Legger en e-post som feilet i køen igjen, med forsøkene nullstilt.
-Den sendes straks.")
+(define-operation mail-retry ((id :type (id mail) :required t :label "Email"))
+    (:entity mail :kind :update :policy :admin :title "Send an email again"
+             :description "Queues a mail that failed again, with its attempts set to zero. It
+is sent at once.")
   (let ((mail (fetch! 'mail id)))
     (unless (equal (mail-status mail) "failed")
-      (fail :invalid-transition "Bare en e-post som feilet kan sendes på nytt; denne er ~a"
-            (mail-status mail)))
+      (fail :invalid-transition "Only an email that failed can be sent again; this one is ~a"
+            (label "mail" "status" (mail-status mail))))
     (setf (mail-status mail) "queued"
           (mail-attempts mail) 0)
     (mail->json (queue-delivery mail))))

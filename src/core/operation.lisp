@@ -82,7 +82,10 @@ string written out: a spec is data, so +TEXT+ would not be evaluated."
         (options (if (eq (first spec) :field) (cdddr spec) (rest spec))))
     (check-written-text (format nil "Parameter ~(~a~)" name) :label (getf options :label))
     (check-written-text (format nil "Parameter ~(~a~)" name) :description
-                        (getf options :description))))
+                        (getf options :description))
+    (when (and (not (eq (first spec) :field)) (getf options :type))
+      (check-money-name (getf options :type) (json-name-of name)
+                        (format nil "Parameter ~(~a~)" name)))))
 
 (defun parse-parameter-spec (spec)
   "SPEC is (NAME &key TYPE REQUIRED DEFAULT LABEL DESCRIPTION SECRET) or
@@ -239,11 +242,11 @@ eval-only tools need --allow-eval."
     (when (operation-mutating-p op)
       (setf (gethash "request_key" properties)
             (jobj "type" "string" "minLength" 1 "maxLength" 64
-                  "description" "Idempotensnøkkel: samme nøkkel og input gir samme resultat.")))
+                  "description" "Idempotency key: the same key with the same input gives the same result.")))
     (when (operation-confirm-p op)
       (setf (gethash "confirmation_token" properties)
             (jobj "type" "string"
-                  "description" "Token fra første kall; uten token returneres en bekreftelsesforespørsel.")))
+                  "description" "The token from the first call; without it the call answers with a request for confirmation.")))
     (setf (gethash "required" base) (jarr (remove-duplicates required :test #'string= :from-end t)))
     base))
 
@@ -261,19 +264,19 @@ Signals invalid_input listing every problem."
       (when (operation-confirm-p op) (push "confirmation_token" meta))
       (collecting-input-errors
         (unless (hash-table-p args)
-          (input-error "input" "må være et JSON-objekt")
+          (input-error "input" "must be a JSON object")
           (return-from parse-operation-input nil))
         ;; Meta arguments.
         (multiple-value-bind (key present) (jget args "request_key")
           (when (and present (not (json-null-p key)) (member "request_key" meta :test #'string=))
             (if (and (stringp key) (< 0 (length key) 65))
                 (setf (input-request-key input) key)
-                (input-error "request_key" "må være en tekst på 1–64 tegn"))))
+                (input-error "request_key" "must be text of 1–64 characters"))))
         (multiple-value-bind (token present) (jget args "confirmation_token")
           (when (and present (not (json-null-p token)) (member "confirmation_token" meta :test #'string=))
             (if (and (stringp token) (< 0 (length token) 200))
                 (setf (input-confirmation-token input) token)
-                (input-error "confirmation_token" "må være en tekst"))))
+                (input-error "confirmation_token" "must be text"))))
         (let ((param-names (mapcar #'parameter-json-name params)))
           (if (operation-draft-p op)
               (setf (input-draft input)
@@ -290,7 +293,7 @@ Signals invalid_input listing every problem."
               (push (parameter-keyword p) (input-nulls input)))
             (cond ((or (not present) (json-null-p value))
                    (if (parameter-required-p p)
-                       (input-error (parameter-json-name p) "må fylles ut")
+                       (input-error (parameter-json-name p) "must be filled in")
                        (setf (getf (input-values input) (parameter-keyword p)) (parameter-default p))))
                   (t (let* ((before (length *input-errors*))
                             (coerced (coerce-input (parameter-type p) value (parameter-json-name p))))

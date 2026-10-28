@@ -142,6 +142,13 @@ cannot claim to be core."
           (errorp (error "~s does not name an entity" name))
           (t nil))))
 
+(defun entity-label-text (class)
+  "The label of the entity CLASS as a TEXT, an argument a message writes in
+its own language: \"Order\", or its translation."
+  (if (entity-label class)
+      (make-text (entity-label class) '())
+      (deferred-tr ("Record" :context "entity"))))
+
 (defun all-entity-classes ()
   (mapcar #'find-class *entities*))
 
@@ -189,6 +196,8 @@ each extension's fields in registration order."
       spec
     (check-written-text (format nil "Field ~(~a~) of ~(~a~)" name entity) :label label)
     (check-written-text (format nil "Field ~(~a~) of ~(~a~)" name entity) :description description)
+    (check-money-name type (or json-name (json-name-of name))
+                      (format nil "Field ~(~a~) of ~(~a~)" name entity))
     (when (files-type-p (parse-field-type type))
       (error "Field ~(~a~) of ~(~a~): files are attached to a record (spec/files.md 1), ~
               not stored in a field; (files ...) is for an operation's parameters"
@@ -481,18 +490,27 @@ changed a core-owned field of an entity among OBJECTS."
    (module :initarg :module :initform "core" :reader rule-module)
    (location :initarg :location :initform nil :reader rule-location)))
 
+(defparameter +invalid-rule-text+ "is invalid"
+  "The error of a record a rule refuses, when the rule gives no message.")
+
+(note-text +invalid-rule-text+ nil "core" "entity.lisp")
+
 (defmacro define-rule (name (entity var) (&key field message) &body body)
   "Define validation rule NAME on ENTITY.  BODY returns true when VAR is valid;
-otherwise the write is rejected with invalid_input on FIELD with MESSAGE.
+otherwise the write is rejected with invalid_input on FIELD with MESSAGE, a
+literal text in the definer's source language, translated where it is shown.
 Rules run on every insert and update of the entity, whichever operation writes."
+  (check-written-text (format nil "Rule ~(~a~)" name) :message message)
   (let ((source (current-definition-source))
         (module (current-definition-module))
-        (location (current-source-location)))
+        (location (current-source-location))
+        (place (definition-place)))
     `(progn
+       ,@(when message `((load-time-value (note-text ,message nil ,module ,place))))
        (defun ,name (,var) ,@body)
        (register-rule ',entity ',name #',name
                       :field ,(if field (json-name-of field) nil)
-                      :message ,(or message "er ugyldig")
+                      :message ,(or message '+invalid-rule-text+)
                       :source ,source :module ,module :location ,location)
        ',name)))
 
@@ -638,7 +656,7 @@ and in registry_describe."
          (fields (if fields-p fields (entity-input-fields class)))
          (instance (make-instance class-name)))
     (if (not (hash-table-p object))
-        (input-error (if (string= path "") "input" path) "må være et objekt")
+        (input-error (if (string= path "") "input" path) "must be an object")
         (progn
           (unknown-names-errors
            path (remove-if (lambda (key)
@@ -650,7 +668,7 @@ and in registry_describe."
               (multiple-value-bind (value present) (jget object (field-json-name field))
                 (if (or (not present) (json-null-p value))
                     (when (field-required-p field)
-                      (input-error field-path "må fylles ut"))
+                      (input-error field-path "must be filled in"))
                     (let* ((before (length *input-errors*))
                            (coerced (coerce-input (field-type field) value field-path)))
                       (when (= before (length *input-errors*))
@@ -679,7 +697,7 @@ and in registry_describe."
       (when (and (field-required-p field)
                  (not (typep (field-type field) 'boolean-type))
                  (null (field-value entity field)))
-        (push (cons (field-json-name field) "må fylles ut") errors)))
+        (push (cons (field-json-name field) (deferred-tr "must be filled in")) errors)))
     (loop for rule in (entity-rules class)
           for order from 1
           do (unless (with-step (:rule :name (json-name-of (rule-name rule)) :source (rule-source rule)
@@ -689,7 +707,9 @@ and in registry_describe."
                             (list entity) (format nil "Rule ~a" (json-name-of (rule-name rule)))
                             (lambda () (funcall (rule-function rule) entity)))
                            (funcall (rule-function rule) entity)))
-               (push (cons (or (rule-field rule) (entity-json-name class)) (rule-message rule)) errors)))
+               (push (cons (or (rule-field rule) (entity-json-name class))
+                           (make-text (rule-message rule) '()))
+                     errors)))
     (when errors (fail-fields (reverse errors)))
     entity))
 
@@ -707,11 +727,11 @@ and in registry_describe."
                     (type-json-schema (list-element type)))))
 
 (defmethod coerce-input ((type list-type) value path)
-  (cond ((not (json-array-p value)) (input-error path "må være en liste"))
+  (cond ((not (json-array-p value)) (input-error path "must be a list"))
         ((> (length value) (list-max-items type))
-         (input-error path "kan ha høyst ~d elementer" (list-max-items type)))
+         (input-error path "can have at most ~d items" (list-max-items type)))
         ((< (length value) (list-min-items type))
-         (input-error path "må ha minst ~d element" (list-min-items type)))
+         (input-error path "must have at least ~d item~:p" (list-min-items type)))
         (t (loop for item across value
                  for i from 0
                  for item-path = (format nil "~a[~d]" path i)

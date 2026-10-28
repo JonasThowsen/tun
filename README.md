@@ -115,8 +115,9 @@ bin/drift          the code a running server has loaded, against this checkout
 
 ## Conventions
 
-- Code identifiers in English. Norwegian in labels, descriptions and
-  user-facing copy. Preserve `æ`, `ø` and `å`.
+- Code identifiers in English, stored values and keys included. Copy is
+  written in English and translated in catalogues per language, Norwegian
+  among them; preserve `æ`, `ø` and `å` (`spec/i18n.md`).
 - A client extends through published extension points only. The build
   refuses a client that reaches into internals.
 - Behaviour that matters is in `spec/` first and in a test or check second.

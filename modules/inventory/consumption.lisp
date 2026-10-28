@@ -3,19 +3,19 @@
 ;;;;   {order_id, order_revision, effective_date, lines [(article, quantity)]}.
 ;;;; The newest applied command per order is remembered; an older one, or the
 ;;;; same revision with an earlier date, is a no-op; the same revision and
-;;;; date with another payload is a conflict.  Otherwise the order's forbruk
-;;;; rows are replaced wholesale: every row is reversed (unless a telling came
+;;;; date with another payload is a conflict.  Otherwise the order's consumption
+;;;; rows are replaced wholesale: every row is reversed (unless a recount came
 ;;;; after it: the count wins) and deleted, and new rows are written, which do
 ;;;; not deduct from an article recounted since the old row.
 ;;;;
-;;;; "Consumption applied" for an order: at least one forbruk row with its
+;;;; "Consumption applied" for an order: at least one consumption row with its
 ;;;; order_id exists (README §6.1).  Orders are opaque ids here.
 
 (in-package #:tun.inventory)
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity consumption-command (:json-name "consumption_command" :label "Forbrukskommando" :id-prefix "fbk"
+(define-entity consumption-command (:json-name "consumption_command" :label "Consumption command" :id-prefix "fbk"
                                     :table "consumption_commands" :internal t :unique (("order_id")))
   ((order-id :type id :input nil)
    (order-revision :type integer :input nil)
@@ -23,34 +23,34 @@
    (fingerprint :type (string :max 64) :input nil)))
 
 (defun order-consumption-rows (order-id)
-  (select 'inventory-movement :where `(:and (:= "order_id" ,order-id) (:= "kind" "forbruk"))))
+  (select 'inventory-movement :where `(:and (:= "order_id" ,order-id) (:= "kind" "consumption"))))
 
 (defun consumption-applied-p (order-id)
-  (and (select-one 'inventory-movement :where `(:and (:= "order_id" ,order-id) (:= "kind" "forbruk"))) t))
+  (and (select-one 'inventory-movement :where `(:and (:= "order_id" ,order-id) (:= "kind" "consumption"))) t))
 
 (defun later-recount-p (article-id revision)
-  "True when ARTICLE-ID has a telling after ledger REVISION."
+  "True when ARTICLE-ID has a recount after ledger REVISION."
   (find-if (lambda (m) (> (inventory-movement-revision m) revision))
-           (select 'inventory-movement :where `(:and (:= "article_id" ,article-id) (:= "kind" "telling")))))
+           (select 'inventory-movement :where `(:and (:= "article_id" ,article-id) (:= "kind" "recount")))))
 
 (defun counted-since-recount-p (article-id)
-  "True when ARTICLE-ID's latest telling is still what its balance rests on:
-there is one, and no mottak, justering or aapning with a higher revision
-(README §6.4).  A forbruk row a recount made not deduct stays recounted while
+  "True when ARTICLE-ID's latest recount is still what its balance rests on:
+there is one, and no receipt, adjustment or opening with a higher revision
+(README §6.4).  A consumption row a recount made not deduct stays recounted while
 this holds: the sync that replaces it writes a row that does not deduct."
   (let ((recount (reduce #'max (select 'inventory-movement :where `(:and (:= "article_id" ,article-id)
-                                                                         (:= "kind" "telling")))
+                                                                         (:= "kind" "recount")))
                          :key #'inventory-movement-revision :initial-value 0)))
     (and (plusp recount)
          (not (select-one 'inventory-movement
-                          :where `(:and (:= "article_id" ,article-id) (:in "kind" ("mottak" "justering" "aapning"))
+                          :where `(:and (:= "article_id" ,article-id) (:in "kind" ("receipt" "adjustment" "opening"))
                                         (:> "revision" ,recount)))))))
 
 (defun command-key< (revision-a date-a revision-b date-b)
   (or (< revision-a revision-b) (and (= revision-a revision-b) (string< date-a date-b))))
 
 (defun sync-consumption (order-id order-revision effective-date expected)
-  "Make ORDER-ID's forbruk rows match EXPECTED, a list of (article-id .
+  "Make ORDER-ID's consumption rows match EXPECTED, a list of (article-id .
 quantity), as the command at ORDER-REVISION and EFFECTIVE-DATE (README §6).
 insufficient_stock (a deducting row needs more than the balance) aborts the
 caller's transaction, leaving the prior consumption intact."
@@ -71,7 +71,7 @@ caller's transaction, leaving the prior consumption intact."
         (when (and (= order-revision last-revision) (string= effective-date last-date))
           (if (string= fingerprint (consumption-command-fingerprint last))
               (return-from sync-consumption nil)
-              (fail :conflict "Lagerforbruk er allerede registrert for denne versjonen")))))
+              (fail :conflict "Stock consumption is already recorded for this version")))))
     (let* ((rows (sort (order-consumption-rows order-id) #'string< :key #'inventory-movement-article-id))
            (recounted '()))
       ;; Lock every affected article in id order.
@@ -79,8 +79,8 @@ caller's transaction, leaving the prior consumption intact."
                                            :test #'string=)
                         #'string<))
         (lock-row 'article id))
-      ;; Reverse and delete the order's rows; a later telling wins, and a row
-      ;; a telling already made not deduct stays recounted (README §6.4).
+      ;; Reverse and delete the order's rows; a later recount wins, and a row
+      ;; a recount already made not deduct stays recounted (README §6.4).
       (dolist (row rows)
         (let* ((article (find-article (inventory-movement-article-id row)))
                (later (later-recount-p (entity-id article) (inventory-movement-revision row))))
@@ -96,13 +96,14 @@ caller's transaction, leaving the prior consumption intact."
       (loop for (article-id . quantity) in totals
             for article = (find-article article-id)
             do (if (member article-id recounted :test #'string=)
-                   (ledger-row article "forbruk" quantity :balance-updated nil :order-id order-id
-                                                          :reason "Reservert for ordre (beholdning manuelt justert)")
+                   (ledger-row article "consumption" quantity :balance-updated nil
+                                                              :order-id order-id
+                                                              :reason (tr "Reserved for order (balance adjusted by hand)"))
                    (progn
                      (when (> quantity (article-balance article))
                        (insufficient article quantity))
-                     (ledger-row article "forbruk" quantity :balance (- (article-balance article) quantity)
-                                                            :order-id order-id :reason "Reservert for ordre"))))
+                     (ledger-row article "consumption" quantity :balance (- (article-balance article) quantity)
+                                                            :order-id order-id :reason (tr "Reserved for order")))))
       ;; What was given back stays within the bound (README §3.3).
       (dolist (row rows)
         (check-balance-bound (article-balance (find-article (inventory-movement-article-id row)))))

@@ -2,14 +2,16 @@
 ;;;; documentation and its examples, rendered and as Lisp (spec/ui.md 7).
 ;;;;
 ;;;; The same pages are served at /ui and written as standalone files (the
-;;;; stylesheet and script inline) for screenshots and for sharing.
+;;;; stylesheet and script inline) for screenshots and for sharing.  The
+;;;; specimen's own chrome is developer documentation, in English and not
+;;;; translated; the examples are in the current language (spec/i18n.md 3.6).
 
 (in-package #:tun.ui)
 
 (declaim (optimize (safety 3) (debug 2)))
 
 (defparameter +groups+
-  '("Handlinger" "Skjema" "Data" "Tilbakemelding" "Interaksjon" "Oppsett og navigasjon")
+  '("Actions" "Forms" "Data" "Feedback" "Interaction" "Layout and navigation")
   "The specimen's groups in the order it shows them; other groups come after.")
 
 (define-component specimen ((&key) &rest children)
@@ -162,7 +164,7 @@
 (defun specimen-links (link current)
   `(:div (:@ :class "tun-specimen-links")
          (:a (:@ :href ,(funcall link nil) :aria-current ,(unless current "page"))
-             "Alle komponenter")
+             "All components")
          ,@(loop for (group . members) in (grouped-components)
                  collect `(:section
                            (:h2 ,group)
@@ -189,18 +191,18 @@
              (:h2 (:a (:@ :class "tun-specimen-name" :href ,(funcall link component))
                       ,(component-slug component)))
              (:p (:@ :class "tun-specimen-doc") ,(component-doc component))
-             (:p (:@ :class "tun-specimen-source") "Kilde: " ,(component-source component))
+             (:p (:@ :class "tun-specimen-source") "Source: " ,(component-source component))
              ,@(mapcar #'example-markup (component-examples component))))
 
 (defun theme-switch ()
-  `(:div (:@ :class "tun-specimen-themes" :role "group" :aria-label "Tema")
-         ,@(loop for (theme label) in '(("light" "Lys") ("dark" "Mørk") ("system" "System"))
+  `(:div (:@ :class "tun-specimen-themes" :role "group" :aria-label "Theme")
+         ,@(loop for (theme label) in '(("light" "Light") ("dark" "Dark") ("system" "System"))
                  for attributes = (list :data-tun-theme theme :aria-pressed "false")
                  collect (button (:variant :ghost :size :sm :attributes attributes) label))))
 
 (defun specimen-document (title body inline)
   (list (trusted "<!doctype html>")
-        `(:html (:@ :lang "no")
+        `(:html (:@ :lang ,(specimen-language))
                 (:head (:meta (:@ :charset "utf-8"))
                        (:meta (:@ :name "viewport" :content "width=device-width, initial-scale=1"))
                        (:title ,title)
@@ -210,6 +212,12 @@
                              `((:link (:@ :rel "stylesheet" :href ,(stylesheet-path)))
                                (:script (:@ :defer t :src ,(script-path))))))
                 (:body ,body))))
+
+(defun specimen-language ()
+  "The code the specimen's <html lang> carries: the language its examples
+are written in."
+  (let ((language (current-language)))
+    (if (stringp language) language "en")))
 
 (defun specimen-html (&key component inline (link (lambda (component)
                                                     (if component
@@ -223,19 +231,19 @@ component, or NIL for the overview, to its URL."
     (render-html
      (specimen-document
       (if component
-          (format nil "~a – Tun designsystem" (component-slug component))
-          "Tun designsystem")
+          (format nil "~a – Tun design system" (component-slug component))
+          "Tun design system")
       (specimen ()
                 `(:header (:@ :class "tun-specimen-header")
                           (:a (:@ :class "tun-specimen-title" :href ,(funcall link nil))
-                              "Tun designsystem")
+                              "Tun design system")
                           ,(theme-switch))
                 `(:div (:@ :class "tun-specimen-body")
-                       (:nav (:@ :class "tun-specimen-nav" :aria-label "Komponenter")
+                       (:nav (:@ :class "tun-specimen-nav" :aria-label "Components")
                              ,(specimen-links link component))
                        (:div
                         (:details (:@ :class "tun-specimen-jump")
-                                  (:summary "Komponenter")
+                                  (:summary "Components")
                                   ,(specimen-links link component))
                         (:main (:@ :class "tun-specimen-main")
                                ,@(mapcar (lambda (shown-component)

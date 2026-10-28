@@ -23,18 +23,18 @@
         (make-employee "Ada" :role "admin")
         (let* ((customer (make-customer))
                (order (jget (new-order customer "lines" (lines (make-product) 1)) "id")))
-          (call-ok "customers_set_consent" "employee:e" "id" customer "marketing_consent" t "source" "manuelt")
+          (call-ok "customers_set_consent" "employee:e" "id" customer "marketing_consent" t "source" "manual")
           (let ((message (queue-review-message order (if erasure "unit_note" "unit_marketing"))))
             (is (equal "queued" (jget (review-delivery message) "status")))
             (if erasure
                 (progn (two-step "orders_cancel" "employee:e" "id" order)
                        (two-step "customers_erase" "admin:a" "id" customer))
-                (call-ok "customers_set_consent" "employee:e" "id" customer "marketing_consent" nil "source" "avmelding"))
+                (call-ok "customers_set_consent" "employee:e" "id" customer "marketing_consent" nil "source" "unsubscribe"))
             (drain-review-outbox)
             (let ((delivery (review-delivery message)))
               (is (equal "failed" (jget delivery "status")))
               (is (equal "suppressed" (jget delivery "error_code")))
-              (is (equal "Meldingen ble ikke sendt: kunden har trukket samtykket eller er slettet."
+              (is (equal "The message was not sent: the customer has withdrawn consent or been erased."
                          (jget delivery "safe_error_message")))
               (is (= 0 (jget delivery "attempt_count"))))
             (is (= 0 (jget (call-ok "messaging_provider_get" "admin:a") "calls")))
@@ -44,8 +44,8 @@
 
 (test s3r3-38-inbound-and-outbound-mask-both-code-representations
   (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
-    (tun.core::register-message-template "ordremelding" 'unit-quoted :source :client :manual t
-      :subject "Quoted reply" :text "{{melding}}" :variables '("melding"))
+    (tun.core::register-message-template "order_message" 'unit-quoted :source :client :manual t
+      :subject "Quoted reply" :text "{{message}}" :variables '("message"))
     (with-test-server (port)
       (let* ((order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id")))
       (call-ok "orders_send_quote" "employee:e" "id" order)
@@ -53,10 +53,10 @@
              (dashed (format nil "~a-~a" (subseq raw 0 5) (subseq raw 5)))
              (body (format nil "Quoted ~a and ~a" raw dashed))
              (item (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "reply@example.no"
-                           "subject" (format nil "[ref:~a] ~a ~a" order raw dashed) "body" body) "henvendelse"))
+                           "subject" (format nil "[ref:~a] ~a ~a" order raw dashed) "body" body) "inquiry"))
              (id (jget item "id"))
-             (preview (call-ok "messages_preview" "admin:a" "template" "ordremelding" "order_id" order "text" body))
-             (outbound (jget (call-ok "messages_send" "admin:a" "template" "ordremelding" "order_id" order "text" body
+             (preview (call-ok "messages_preview" "admin:a" "template" "order_message" "order_id" order "text" body))
+             (outbound (jget (call-ok "messages_send" "admin:a" "template" "order_message" "order_id" order "text" body
                                     "snapshot_hash" (jget preview "snapshot_hash")) "id")))
         (dolist (actor '("viewer:v" "employee:e"))
           (dolist (json (list (call-ok "messages_get" actor "id" outbound) (call-ok "messages_get" actor "id" id)
@@ -66,7 +66,7 @@
         (dolist (message-id (list id outbound))
           (let ((admin (call-ok "messages_get" "admin:a" "id" message-id)))
             (is (search raw (jget admin "body"))) (is (search dashed (jget admin "body")))))
-        (dolist (path (list (format nil "/orders/~a" order) (format nil "/henvendelser/~a" id) "/henvendelser"))
+        (dolist (path (list (format nil "/orders/~a" order) (format nil "/inquiries/~a" id) "/inquiries"))
           (multiple-value-bind (status html) (web-request port path :jar (web-login port "employee:e"))
             (is (= 200 status)) (is (not (search raw html))) (is (not (search dashed html))))))))))
 
@@ -78,14 +78,14 @@
              (dashed (format nil "~a-~a" (subseq raw 0 5) (subseq raw 5)))
              (item (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "forwarded@example.no"
                            "subject" "A forwarded offer without a reference"
-                           "body" (format nil "~a ~a" raw dashed)) "henvendelse"))
+                           "body" (format nil "~a ~a" raw dashed)) "inquiry"))
              (id (jget item "id")))
         (dolist (json (list (call-ok "messages_get" "viewer:v" "id" id)
-                           (call-ok "messages_list" "employee:e" "kind" "innkommende")
-                           (call-ok "henvendelser_get" "employee:e" "id" id)))
+                           (call-ok "messages_list" "employee:e" "kind" "inbound")
+                           (call-ok "inquiries_get" "employee:e" "id" id)))
           (is (not (search raw (to-json-string json))))
           (is (not (search dashed (to-json-string json)))))
-        (dolist (path (list "/henvendelser" (format nil "/henvendelser/~a" id)))
+        (dolist (path (list "/inquiries" (format nil "/inquiries/~a" id)))
           (multiple-value-bind (status html) (web-request port path :jar (web-login port "employee:e"))
             (is (= 200 status)) (is (not (search raw html))) (is (not (search dashed html)))))
         (is (search raw (jget item "body"))) (is (search dashed (jget item "body")))))))
@@ -127,10 +127,10 @@
   (with-test-app ()
     (let* ((customer (make-customer)) (order (jget (new-order customer "lines" (lines (make-product) 1)) "id"))
            (item (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "reply@example.no"
-                       "subject" (format nil "[ref:~a]" order) "body" "Private original message") "henvendelse")))
+                       "subject" (format nil "[ref:~a]" order) "body" "Private original message") "inquiry")))
       (two-step "orders_cancel" "employee:e" "id" order)
       (two-step "customers_erase" "admin:a" "id" customer)
-      (let ((record (call-ok "introspect_record" "admin:a" "entity" "henvendelse" "id" (jget item "id"))))
+      (let ((record (call-ok "introspect_record" "admin:a" "entity" "inquiry" "id" (jget item "id"))))
         (is (equal "[slettet]" (jget (jget record "stored") "body")))
         (is (not (search "Private original message" (to-json-string record))))))))
 
@@ -207,6 +207,12 @@
             (tun.http:register-json-endpoint (second paths) 'identity))
           (with-test-app () nil))))))
 
+(test routes-overlap-by-whole-path-parts
+  (is (tun.web::route-within-p "/log" "/log"))
+  (is (tun.web::route-within-p "/log" "/log/req_1"))
+  (is (not (tun.web::route-within-p "/log" "/login")) "/log and /login are two routes")
+  (is (not (tun.web::route-within-p "/log/req_1" "/log"))))
+
 (test s3r3-42-unicode-postcode-boundaries-and-signoffs
   (is (equal '("2040" "7010") (tun.inbox::request-postcodes "😀2040☃ _7010_")))
   (dolist (text '("Å2040" "2040中" "٤2040" "2040٤" "20.06.2027" "2027-06-20"))
@@ -214,7 +220,7 @@
   (is (equal '("٢٠٤٠") (tun.inbox::request-postcodes "😀٢٠٤٠😀")))
   (is (tun.inbox::request-text-matches-p "\\d+\\s*gjester" (format nil "٤٢~c~cgjester" #\Return #\Newline)))
   (dolist (signoff '("Hilsen—" "mvh؛" "Vennlig hilsen…" "Med vennlig hilsen！？"))
-    (let ((item (make-instance 'tun.inbox:henvendelse :from-email "fallback@example.no"
+    (let ((item (make-instance 'tun.inbox:inquiry :from-email "fallback@example.no"
                               :body (format nil "Hello~%~a~c~cUnicode Person" signoff #\Return #\Newline))))
       (is (equal "Unicode Person" (tun.inbox::request-name item))))))
 
@@ -226,7 +232,7 @@
 
 (test s3r3-42-signoffs-ignore-unicode-dashes-outside-punctuation
   (dolist (code '(#x2212 #x207b #x208b))
-    (let ((item (make-instance 'tun.inbox:henvendelse :from-email "fallback@example.no"
+    (let ((item (make-instance 'tun.inbox:inquiry :from-email "fallback@example.no"
                   :body (format nil "Hilsen~c~%Ada Example" (code-char code)))))
       (is (equal "Ada Example" (tun.inbox::request-name item))))))
 

@@ -4,10 +4,14 @@
 
 (defun read-button (item)
   "The form that marks the notification ITEM read."
-  `(:form (:@ :method "post" :action "/varsler")
+  `(:form (:@ :method "post" :action "/notifications")
           (:input (:@ :type "hidden" :name "id" :value ,(jget item "id")))
           ,(ui:button (:type "submit" :variant :outline :size :sm :icon :check)
-                      "Marker som lest")))
+                      (tr "Mark as read"))))
+
+(defun read-state (unread)
+  "Whether a notification is read, as its badge says it."
+  (if unread (tr "Unread") (tr ("Read" :context "notification"))))
 
 (defun notification-row (item)
   "One notification: its text (a link to what it is about), whether it is
@@ -22,7 +26,7 @@ read, and while it is unread the button that marks it read."
                                        `(:p ,(jget item "text")))
                                    (ui:cluster ()
                                                (ui:badge (:variant (if unread :info :outline))
-                                                         (if unread "Ulest" "Lest"))))
+                                                         (read-state unread))))
                          (when unread (read-button item))))))
 
 (defun staff-notifications-page (method parts form query)
@@ -31,16 +35,17 @@ read, and while it is unread the button that marks it read."
   (let* ((count (call-tool "notifications_unread_count" (jobj)))
          (items (coerce (jget (call-tool "notifications_list" (jobj "limit" 100)) "items") 'list))
          (unread (if (jget count "capped") "99+" (princ-to-string (jget count "count")))))
-    (values 200 "Varsler"
-            (list `(:p "Uleste: " (:strong ,unread))
+    (values 200 (tr "Notifications")
+            (list `(:p ,(tr "Unread:") " " (:strong ,unread))
                   (if items
                       (apply #'ui:stack* (list :gap :sm) (mapcar #'notification-row items))
-                      (ui:empty-state (:icon :bell :title "Ingen varsler"
-                                             :description "Det som trenger deg, kommer hit.")))))))
+                      (ui:empty-state (:icon :bell :title (tr "No notifications")
+                                             :description (tr "What needs you arrives here."))))))))
 
-(tun.web:register-staff-page "varsler" #'staff-notifications-page :title "Varsler" :icon :bell)
+(tun.web:register-staff-page "notifications" #'staff-notifications-page
+                             :title "Notifications" :icon :bell)
 (defmethod tun.web:staff-navigation-title ((app notifications-module) prefix title)
-  (if (and (equal prefix "varsler") (actor-permits-p *actor* :employee))
+  (if (and (equal prefix "notifications") (actor-permits-p *actor* :employee))
       (let ((count (call-tool "notifications_unread_count" (jobj))))
         (format nil "~a (~a)" title (if (jget count "capped") "99+" (jget count "count"))))
       (call-next-method)))

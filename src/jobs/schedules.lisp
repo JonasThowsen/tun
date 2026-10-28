@@ -55,7 +55,7 @@ schedule that catches nothing up: a tick, a busy minute.")
 
 (defmacro define-schedule (name cron job &rest arguments)
   "Define the schedule NAME: at each occurrence of CRON, five cron fields or
-an alias such as @daily read in Norwegian time, enqueue a job of JOB, the
+an alias such as @daily read in the tenant's time zone, enqueue a job of JOB, the
 symbol DEFINE-JOB named, with ARGUMENTS, keyword arguments evaluated when
 the schedule is defined.  :catch-up SECONDS (a day) is how old a missed
 occurrence may be and still run, once; NIL runs none (spec/jobs.md 8)."
@@ -98,16 +98,16 @@ Returns the jobs it enqueued.")
 ;;; ------------------------------------------------------------------
 ;;; Runs
 
-(define-entity job-schedule (:label "Tidsplan" :id-prefix "jsc" :table "job_schedules"
+(define-entity job-schedule (:label "Schedule" :id-prefix "jsc" :table "job_schedules"
                                     :internal t :unique (("name")))
-  ((name :type (string :max 100) :required t :input nil :label "Navn")
-   (first-seen-at :type timestamp :input nil :label "Først sett"
+  ((name :type (string :max 100) :required t :input nil :label "Name")
+   (first-seen-at :type timestamp :input nil :label "First seen"
                   :description "When a process first knew the schedule: earlier occurrences never run.")
-   (last-occurrence :type (string :max 16) :input nil :label "Siste forekomst"
+   (last-occurrence :type (string :max 16) :input nil :label "Last occurrence"
                     :description "The wall-clock time of the latest occurrence recorded, such as 2026-10-21T07:00.")
-   (last-occurrence-at :type timestamp :input nil :label "Siste forekomst, tidspunkt")
-   (last-job-id :type id :input nil :label "Siste jobb")
-   (last-enqueued :type (integer :min 0) :input nil :label "Siste antall jobber"
+   (last-occurrence-at :type timestamp :input nil :label "Last occurrence, instant")
+   (last-job-id :type id :input nil :label "Last job")
+   (last-enqueued :type (integer :min 0) :input nil :label "Jobs last enqueued"
                   :description "How many jobs the latest occurrence enqueued: one for a schedule, any number for a trigger.")))
 
 (defun find-schedule-row (schedule)
@@ -120,6 +120,16 @@ is recent enough (spec/jobs.md 8)."
   (and (>= at (job-schedule-first-seen-at row))
        (<= (- (now) at) (or (schedule-catch-up schedule) +on-time-seconds+))))
 
+(defun new-occurrence-p (row at key)
+  "True when the occurrence KEY at AT comes after the one ROW records: its
+instant is later than the recorded one's, so a change of the tenant's time
+zone runs no occurrence twice nor one before the last (spec/jobs.md 8).  A
+row with no recorded instant compares the keys."
+  (let ((recorded-at (job-schedule-last-occurrence-at row)))
+    (if recorded-at
+        (and at (> at recorded-at))
+        (not (equal key (job-schedule-last-occurrence row))))))
+
 (defun record-occurrence (schedule at key)
   "In a write transaction: record SCHEDULE's occurrence KEY at AT unless it is
 recorded already, running it when it should run.  True when it ran."
@@ -130,7 +140,7 @@ recorded already, running it when it should run.  True when it ran."
                                                 :first-seen-at (now)
                                                 :last-occurrence key :last-occurrence-at at))
            nil)
-          ((equal key (job-schedule-last-occurrence row)) nil)
+          ((not (new-occurrence-p row at key)) nil)
           (t (let ((runs (occurrence-runs-p schedule row at)))
                (setf (job-schedule-last-occurrence row) key
                      (job-schedule-last-occurrence-at row) at)
@@ -146,7 +156,7 @@ recorded already, running it when it should run.  True when it ran."
   (multiple-value-bind (at key) (previous-occurrence (schedule-cron schedule) (now))
     (let ((row (with-transaction (:read) (find-schedule-row schedule))))
       ;; Most ticks find the occurrence recorded and write nothing.
-      (when (or (null row) (and key (not (equal key (job-schedule-last-occurrence row)))))
+      (when (or (null row) (and key (new-occurrence-p row at key)))
         (with-transaction (:write)
           (record-occurrence schedule at key))))))
 
@@ -179,16 +189,16 @@ clock_set in test mode and the application when it opens."
       json)))
 
 (define-operation schedules-list ()
-    (:entity job-schedule :kind :read :policy :admin :title "Tidsplaner"
-             :description "Hver tidsplan og utløser: når den går, i ord og som cron i norsk tid,
-jobben den legger i køen, siste forekomst og jobb, og neste forekomst. En utløser (kind trigger)
-viser også entiteten den går gjennom og hvor mange jobber siste gjennomgang la i køen.")
+    (:entity job-schedule :kind :read :policy :admin :title "Schedules"
+             :description "Each schedule and trigger: when it runs, in words and as cron in the
+tenant's time zone, the job it queues, its last occurrence and job, and its next occurrence. A
+trigger (kind trigger) also shows the entity it sweeps and how many jobs its last sweep queued.")
   (jobj "items" (jarr (mapcar #'schedule->json (schedules)))))
 
-(define-operation schedules-run ((name :type (string :min 1 :max 100) :required t :label "Tidsplan"))
-    (:entity job-schedule :kind :update :policy :admin :destructive nil :title "Kjør tidsplan nå"
-             :description "Legger tidsplanens jobb i køen nå, utenom tidsplanen, eller går
-gjennom en utløsers poster nå. Svarer med jobbene den la i køen. Neste forekomst går som før.")
+(define-operation schedules-run ((name :type (string :min 1 :max 100) :required t :label "Schedule"))
+    (:entity job-schedule :kind :update :policy :admin :destructive nil :title "Run a schedule now"
+             :description "Queues the schedule's job now, outside its times, or sweeps a
+trigger's records now. Answers with the jobs it queued. The next occurrence runs as before.")
   (let ((schedule (or (find-schedule name)
-                      (fail :not-found "Det finnes ingen tidsplan ~a" name))))
+                      (fail :not-found "There is no schedule ~a" name))))
     (jobj "jobs" (jarr (mapcar #'entity->json (run-occurrence schedule))))))

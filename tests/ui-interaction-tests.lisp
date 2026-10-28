@@ -91,7 +91,7 @@
   (let* ((markup (tun.ui:dialog (:id "ny-kunde" :title "Ny kunde")))
          (close (first (nodes-with :command "close" markup))))
     (is (string= "ny-kunde" (node-attribute close :commandfor)))
-    (is (string= "Lukk" (node-attribute close :aria-label)))
+    (is (string= "Close" (node-attribute close :aria-label)))
     (is (null (node-attribute (first (nodes-with :class "tun-dialog" markup))
                               :aria-describedby))
         "no description, no aria-describedby")))

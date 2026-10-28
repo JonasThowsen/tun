@@ -142,8 +142,8 @@
     (s1r-eval `(defclass ,app (,feature application) ()))
     (let ((method (s1r-eval `(defmethod tun.orders:order-discount ((app ,feature) order customer)
                                (declare (ignore customer))
-                               (when (find "utleie" (coerce (tun.orders:order-tags order) 'list) :test #'equal)
-                                 (setf (tun.orders:order-status order) "bekreftet"))
+                               (when (find "rental" (coerce (tun.orders:order-tags order) 'list) :test #'equal)
+                                 (setf (tun.orders:order-status order) "confirmed"))
                                (call-next-method)))))
       (unwind-protect
            (with-test-app (:class app)
@@ -153,14 +153,14 @@
                     (id (jget order "id")))
                (signals extension-error
                  (call "orders_update" "employee:anna" "id" id "revision" (jget order "revision")
-                       "tags" (jarr (list "utleie"))))
+                       "tags" (jarr (list "rental"))))
                (let ((stored (order-of id)))
-                 (is (equal "utkast" (jget stored "status")))
+                 (is (equal "draft" (jget stored "status")))
                  (is (equalp #() (jget stored "bookings")))
                  (is (equalp #() (jget stored "tags")) "nothing of the update was stored"))
                ;; The same order updated without the trigger works: computing is fine.
-               (is (equal "utkast" (jget (call-ok "orders_update" "employee:anna" "id" id
-                                                  "revision" (jget order "revision") "tags" (jarr (list "underholdning")))
+               (is (equal "draft" (jget (call-ok "orders_update" "employee:anna" "id" id
+                                                  "revision" (jget order "revision") "tags" (jarr (list "entertainment")))
                                          "status")))))
         (remove-method #'tun.orders:order-discount method))))
   ;; A client rule on order that "fixes" a field in passing.
@@ -222,9 +222,12 @@
     ;; Its order still fits lite; the new delivery intentionally prevents
     ;; returning to a messaging implementation without outcome tracking.
     (let ((findings (tun.runtime::rollback-preflight 'application compatible (lite-registry-path))))
-      (is (= 1 (length findings)))
-      (is (search "delivery:" (caar findings))))
-    ;; The same, plus orders in hentet, returnert and send_faktura and one
+      (is (search "delivery:" (caar findings)))
+      ;; Core 2.0 renamed the workflow statuses, which the older core cannot read.
+      (is (every (lambda (f) (or (search "delivery:" (car f)) (search "workflow.status = " (car f))))
+                 findings)
+          "~s" findings))
+    ;; The same, plus orders in picked_up, returned and ready_for_invoice and one
     ;; with a fixed discount.
     (with-test-app (:db slice1)
       (let* ((customer (make-customer))
@@ -238,16 +241,17 @@
           (dolist (id (list returned invoicing))
             (call-ok "orders_register_return" "employee:anna" "id" id "condition" "ok"))
           (call-ok "orders_ready_for_invoice" "employee:anna" "id" invoicing))
-        (new-order customer "price_mode" "fast_rabatt" "discount_ore_input" 5000 "price_reason" "Fast kunde"
+        (new-order customer "price_mode" "fixed_discount" "discount_input_minor" 5000 "price_reason" "Fast kunde"
                    "lines" (jarr (list (line machine 1))))
         ;; A line discount: the lite core's next write of the order drops it.
-        (new-order customer "lines" (jarr (list (line machine 1 "price_mode" "prosent_rabatt" "discount_percent" 10))))))
+        (new-order customer "lines" (jarr (list (line machine 1 "price_mode" "percent_discount" "discount_percent" 10))))))
     (let ((findings (tun.runtime::rollback-preflight 'application slice1 (lite-registry-path))))
-      (dolist (kind '("order.status = hentet" "order.status = returnert" "order.status = send_faktura"
-                      "order.price_mode set (fast_rabatt)" "order.lines[].discount_percent set"))
+      (dolist (kind '("order.status = picked_up" "order.status = returned"
+                      "order.status = ready_for_invoice"
+                      "order.price_mode set (fixed_discount)" "order.lines[].discount_percent set"))
         (let ((finding (find-if (lambda (f) (eql 0 (search kind (car f)))) findings)))
           (is (and finding (= 1 (cdr finding))) "~a counted once: ~s" kind findings)))
-      (is (null (find-if (lambda (f) (search "bekreftet" (car f))) findings)) "the lite-compatible orders pass"))))
+      (is (null (find-if (lambda (f) (search "confirmed" (car f))) findings)) "the lite-compatible orders pass"))))
 
 ;;; Finding 11: calendar_list read every order with event_date <= to (no lower
 ;;; bound, no cap).
@@ -288,9 +292,9 @@
                  (call "quotes_respond" "viewer:kunde" "quote_id" id "revision" 1 "access_code" access
                        "response" "accept")))
           (dotimes (i 5)
-            (is-error "forbidden" "Feil tilgangskode for tilbudet" (respond "AAAAAAAAAA")))
+            (is-error "forbidden" "Wrong access code for the quote" (respond "AAAAAAAAAA")))
           (is-error "forbidden" nil (respond code))
-          (is (equal "tilbud_sendt" (jget (order-of order) "status")) "the right code waits for the window")
+          (is (equal "quote_sent" (jget (order-of order) "status")) "the right code waits for the window")
           (call-ok "clock_set" "admin:a" "now" (format-rfc3339 (+ (now-of *app*) (* 16 60))))
           (is (equal "accepted" (jget (respond code) "status")) "after the window the right code works")
-          (is (equal "akseptert" (jget (order-of order) "status"))))))))
+          (is (equal "accepted" (jget (order-of order) "status"))))))))

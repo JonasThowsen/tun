@@ -1,6 +1,7 @@
 ;;;; tests/staffing-tests.lisp -- staffing README §2–§8 and its invariants (§9)
 ;;;; they carry: assignments (8), automatic assignment (9), overrides (10),
-;;;; work sessions (11), Norwegian time (12), dateless orders (13).
+;;;; work sessions (11), local time (12), dateless orders (13).  The tests of
+;;;; local time run in a tenant in Europe/Oslo; one shows Europe/Helsinki.
 
 (in-package #:tun.tests)
 
@@ -24,53 +25,81 @@
            "actor" (format nil "~a:~a" role (string-downcase name)) "role" role
            "department" (or department :null) "auto_assign_in_department" (and auto t)))
 
+(defun tenant-in-oslo ()
+  "Set the test tenant's time zone to Europe/Oslo."
+  (call-ok "settings_set" "admin:jonas" "key" "locale.time_zone" "value" "Europe/Oslo"))
+
 (defun assignment-ids (order &rest args)
   (map 'list (lambda (a) (jget a "employee_id"))
        (jget (apply #'call-ok "assignments_list" "viewer:vera" "order_id" order args) "items")))
 
 ;;; ------------------------------------------------------------------
-;;; §9.2 Norwegian time, invariant 12
+;;; §9.2 local time, invariant 12
+
+(defun utc-of (date time)
+  "The instant of the tenant's local DATE and TIME in RFC 3339, or the
+keyword that says why there is none."
+  (multiple-value-bind (instant status) (tun.staffing:to-utc date time)
+    (if instant (format-rfc3339 instant) status)))
 
 (test norwegian-local-time-is-defined-without-a-tz-database
-  (flet ((utc (date time) (multiple-value-bind (instant status) (tun.staffing:to-utc date time)
-                            (if instant (format-rfc3339 instant) status))))
-    (is (string= "2026-01-15T08:00:00Z" (utc "2026-01-15" "09:00")))
-    (is (string= "2026-07-15T07:00:00Z" (utc "2026-07-15" "09:00")))
-    (is (eq :nonexistent (utc "2026-03-29" "02:30")))
-    (is (string= "2026-03-29T00:59:00Z" (utc "2026-03-29" "01:59")))
-    (is (string= "2026-03-29T01:00:00Z" (utc "2026-03-29" "03:00")))
-    (is (eq :ambiguous (utc "2026-10-25" "02:30")))
-    (is (string= "2026-10-25T02:00:00Z" (utc "2026-10-25" "03:00"))))
-  (flet ((hours (date) (let ((i (tun.staffing:whole-days-interval date date))) (/ (- (cdr i) (car i)) 3600))))
-    (is (= 23 (hours "2026-03-29")))
-    (is (= 25 (hours "2026-10-25")))
-    (is (= 24 (hours "2026-06-01"))))
-  (is (string= "2026-06-30" (local-date-of (parse-rfc3339 "2026-06-29T22:30:00Z"))) "today is the local date")
-  (is (string= "2026-12-31" (local-date-of (parse-rfc3339 "2026-12-31T22:59:00Z")))))
+  (let ((*locale* (make-locale :time-zone "Europe/Oslo")))
+    (is (string= "2026-01-15T08:00:00Z" (utc-of "2026-01-15" "09:00")))
+    (is (string= "2026-07-15T07:00:00Z" (utc-of "2026-07-15" "09:00")))
+    (is (eq :nonexistent (utc-of "2026-03-29" "02:30")))
+    (is (string= "2026-03-29T00:59:00Z" (utc-of "2026-03-29" "01:59")))
+    (is (string= "2026-03-29T01:00:00Z" (utc-of "2026-03-29" "03:00")))
+    (is (eq :ambiguous (utc-of "2026-10-25" "02:30")))
+    (is (string= "2026-10-25T02:00:00Z" (utc-of "2026-10-25" "03:00")))
+    (flet ((hours (date)
+             (let ((i (tun.staffing:whole-days-interval date date))) (/ (- (cdr i) (car i)) 3600))))
+      (is (= 23 (hours "2026-03-29")))
+      (is (= 25 (hours "2026-10-25")))
+      (is (= 24 (hours "2026-06-01"))))
+    (is (string= "2026-06-30" (local-date-of (parse-rfc3339 "2026-06-29T22:30:00Z")))
+        "today is the local date")
+    (is (string= "2026-12-31" (local-date-of (parse-rfc3339 "2026-12-31T22:59:00Z"))))))
+
+(test helsinki-local-time-is-an-hour-earlier-than-oslo
+  (let ((*locale* (make-locale :time-zone "Europe/Helsinki")))
+    (is (string= "2026-01-15T07:00:00Z" (utc-of "2026-01-15" "09:00")))
+    (is (string= "2026-07-15T06:00:00Z" (utc-of "2026-07-15" "09:00")))
+    (is (eq :nonexistent (utc-of "2026-03-29" "03:30")) "the spring gap is 03:00–04:00 there")
+    (is (string= "2026-03-29T00:59:00Z" (utc-of "2026-03-29" "02:59")))
+    (is (string= "2026-03-29T01:00:00Z" (utc-of "2026-03-29" "04:00")))
+    (is (string= "2026-03-29T00:30:00Z" (utc-of "2026-03-29" "02:30")) "Oslo's gap is not Helsinki's")
+    (is (eq :ambiguous (utc-of "2026-10-25" "03:30")) "the autumn overlap is 03:00–04:00 there")
+    (is (string= "2026-10-24T23:30:00Z" (utc-of "2026-10-25" "02:30"))
+        "Oslo's overlap is not Helsinki's")
+    (is (string= "2026-10-25T02:00:00Z" (utc-of "2026-10-25" "04:00")))
+    (is (string= "2026-06-30" (local-date-of (parse-rfc3339 "2026-06-29T21:30:00Z"))))
+    (is (string= "2026-06-29" (local-date-of (parse-rfc3339 "2026-06-29T20:59:00Z"))))))
 
 ;;; ------------------------------------------------------------------
 ;;; §9.1 unavailability
 
 (test unavailability-validates-in-local-time-and-never-overlaps
   (with-test-app (:class 'staffed-app)
+    (tenant-in-oslo)
     (let* ((kari (make-employee "Kari"))
            (per (make-employee "Per")))
       (flet ((create (actor &rest args)
                (apply #'call "unavailability_create" actor
                       (if (member "whole_day" args :test #'equal) args (append args (list "whole_day" t))))))
-        (is-error "invalid_input" "Fyll inn både fra- og til-dato" (create "employee:kari" "start_date" "2026-06-01"))
-        (is-error "invalid_input" "Til-dato kan ikke være før fra-dato"
+        (is-error "invalid_input" "Fill in both the from date and the to date"
+                  (create "employee:kari" "start_date" "2026-06-01"))
+        (is-error "invalid_input" "The to date cannot be before the from date"
                   (create "employee:kari" "start_date" "2026-06-02" "end_date" "2026-06-01"))
-        (is-error "invalid_input" "Fyll inn et gyldig klokkeslett"
+        (is-error "invalid_input" "Fill in a valid time"
                   (create "employee:kari" "start_date" "2026-06-01" "end_date" "2026-06-01" "whole_day" nil
                           "start_time" "9:00" "end_time" "11:00"))
-        (is-error "invalid_input" "Sluttid må være etter starttid"
+        (is-error "invalid_input" "The end time must be after the start time"
                   (create "employee:kari" "start_date" "2026-06-01" "end_date" "2026-06-01" "whole_day" nil
                           "start_time" "11:00" "end_time" "11:00"))
-        (is-error "invalid_input" "Klokkeslettet finnes ikke på grunn av overgang til sommertid"
+        (is-error "invalid_input" "The time does not exist because of the change to summer time"
                   (create "employee:kari" "start_date" "2026-03-29" "end_date" "2026-03-29" "whole_day" nil
                           "start_time" "02:30" "end_time" "05:00"))
-        (is-error "invalid_input" "Klokkeslettet forekommer to ganger ved overgang til vintertid"
+        (is-error "invalid_input" "The time occurs twice at the change to winter time"
                   (create "employee:kari" "start_date" "2026-10-25" "end_date" "2026-10-25" "whole_day" nil
                           "start_time" "01:00" "end_time" "02:30"))
         ;; Someone else's: forbidden for an employee, fine for an admin.
@@ -88,7 +117,7 @@
           (is (jget (call-ok "unavailability_create" "employee:kari" "start_date" "2026-07-15" "end_date" "2026-07-15"
                              "whole_day" nil "start_time" "11:00" "end_time" "12:00")
                     "id"))
-          (is-error "conflict" "Registreringen overlapper en eksisterende utilgjengelighet"
+          (is-error "conflict" "The entry overlaps an existing unavailability"
                     (create "employee:kari" "start_date" "2026-07-15" "end_date" "2026-07-15" "whole_day" nil
                             "start_time" "10:59" "end_time" "11:30"))
           ;; The private note: owner and admin only.
@@ -104,7 +133,7 @@
             (is (json-null-p (note "viewer:vera")))
             (is (json-null-p (note "employee:per"))))
           ;; Versions.
-          (is-error "conflict" "Endringen er basert på en utdatert versjon. Last siden på nytt."
+          (is-error "conflict" "The change is based on an old version. Reload the page."
                     (call "unavailability_update" "employee:kari" "id" (jget whole "id") "version" 7 "end_date" "2026-07-18"))
           (is-error "forbidden" nil (call "unavailability_update" "employee:per" "id" (jget whole "id") "version" 1))
           (let ((updated (call-ok "unavailability_update" "employee:kari" "id" (jget whole "id") "version" 1
@@ -114,12 +143,13 @@
 
 (test unavailability-list-is-capped
   (with-test-app (:class 'staffed-app)
+    (tenant-in-oslo)
     (let ((kari (make-employee "Kari")))
       (declare (ignore kari))
       (loop for day from 0 below 201
             do (call-ok "unavailability_create" "employee:kari" "whole_day" t
                         "start_date" (date-add-days "2027-01-01" day) "end_date" (date-add-days "2027-01-01" day)))
-      (is-error "invalid_input" "For mange registreringer; avgrens perioden"
+      (is-error "invalid_input" "Too many entries; narrow the period"
                 (call "unavailability_list" "viewer:vera" "from" "2027-01-01" "to" "2027-12-31"))
       (is (= 200 (length (jget (call-ok "unavailability_list" "viewer:vera" "from" "2027-01-01" "to" "2027-07-19") "items")))))))
 
@@ -128,8 +158,9 @@
 
 (test assignments-overrides-and-their-guards
   (with-test-app (:class 'staffed-app)
+    (tenant-in-oslo)
     (let* ((customer (make-customer))
-           (p (make-product :name "Tjeneste" :kind "tjeneste" :units-owned 0))
+           (p (make-product :name "Tjeneste" :kind "service" :units-owned 0))
            (kari (make-employee "Kari" :department "nord"))
            (sondre (make-employee "Sondre" :department "sør"))
            (order (jget (new-order customer "event_date" "2026-06-20" "end_date" "2026-06-21"
@@ -139,9 +170,9 @@
                "whole_day" nil "start_time" "10:00" "end_time" "12:00")
       (flet ((assign (&rest args) (apply #'call "assignments_create" "admin:jonas" "order_id" order args)))
         (is-error "forbidden" nil (call "assignments_create" "employee:kari" "order_id" order "employee_id" (jget kari "id")))
-        (is-error "invalid_input" "Begrunnelse er påkrevd ved overstyring av utilgjengelighet"
+        (is-error "invalid_input" "A reason is required to override unavailability"
                   (assign "employee_id" (jget kari "id")))
-        (is-error "invalid_input" "Begrunnelsen kan ikke være lengre enn 500 tegn"
+        (is-error "invalid_input" "The reason cannot be longer than 500 characters"
                   (assign "employee_id" (jget kari "id") "override_reason" (make-string 501 :initial-element #\x)))
         (is-error "invalid_input" "Ansatte i en annen avdeling kan ikke tildeles"
                   (assign "employee_id" (jget sondre "id")))
@@ -151,7 +182,8 @@
           (is (eq nil (jget a "auto")))
           (is (= (1+ rev) (jget (order-of order) "revision")) "assigning revises the order")
           (let ((override (aref (jget (call-ok "assignment_overrides_list" "admin:jonas" "order_id" order) "items") 0)))
-            (is (string= "21.06.2026 (kl. 10:00–12:00)" (jget override "conflict_summary")))
+            (is (string= "21 Jun 2026 (10:00–12:00)" (jget override "conflict_summary"))
+                "stored in the tenant's language")
             (is (= 1 (length (jget override "conflict_ids"))))
             (is (string= "admin:jonas" (jget override "created_by"))))
           (is-error "conflict" nil (assign "employee_id" (jget kari "id")))
@@ -161,12 +193,12 @@
                           (jget (call-ok "assignments_list" "employee:kari" "mine" t) "items"))))
           (is (equalp #() (jget (call-ok "assignments_list" "viewer:nobody" "mine" t) "items")) "no employee, no mine")
           ;; Unavailability cannot be registered over an active assignment.
-          (is-error "conflict" "Perioden overlapper en aktiv ordretildeling. Fjern tildelingen før utilgjengeligheten registreres."
+          (is-error "conflict" "The period overlaps an active assignment to an order. Remove the assignment before you record the unavailability."
                     (call "unavailability_create" "employee:kari" "start_date" "2026-06-20" "end_date" "2026-06-20"
                           "whole_day" t))
           ;; Ending keeps the row; ending twice is invalid_transition.
           (call-ok "assignments_end" "admin:jonas" "id" (jget a "id"))
-          (is-error "invalid_transition" "Tildelingen er allerede avsluttet" (call "assignments_end" "admin:jonas" "id" (jget a "id")))
+          (is-error "invalid_transition" "The assignment has already ended" (call "assignments_end" "admin:jonas" "id" (jget a "id")))
           (is (null (assignment-ids order)))
           (is (equal (list (jget kari "id")) (assignment-ids order "active" nil)) "ended rows are kept")))
       ;; Dateless orders have no period and no conflicts.
@@ -183,8 +215,9 @@
 
 (test automatic-assignment-by-department
   (with-test-app (:class 'departments-app)
+    (tenant-in-oslo)
     (let* ((customer (make-customer))
-           (p (make-product :name "Tjeneste" :kind "tjeneste" :units-owned 0))
+           (p (make-product :name "Tjeneste" :kind "service" :units-owned 0))
            (a (make-employee "Anne" :department "nord" :auto t))
            (b (make-employee "Bjorn" :department "nord" :auto t))
            (c (make-employee "Cato" :department "nord" :auto nil))
@@ -223,11 +256,11 @@
                                       :key (lambda (x) (jget x "employee_id")) :test #'string=)))
           (call-ok "work_sessions_start" "employee:bjorn" "order_id" order "assignment_id" (jget bjorn-assignment "id"))
           (let ((rev (jget (order-of order) "revision")))
-            (is-error "conflict" "Stopp aktiv timer før tildelingen avsluttes"
+            (is-error "conflict" "Stop the running timer before the assignment ends"
                       (call "orders_update" "employee:anna" "id" order "revision" rev "department" "sør"))
             (is (= rev (jget (order-of order) "revision")) "nothing changed")
             (is (string= "nord" (jget (order-of order) "department"))))
-          (is-error "conflict" "Stopp aktiv timer før tildelingen avsluttes"
+          (is-error "conflict" "Stop the running timer before the assignment ends"
                     (call "employees_update" "admin:jonas" "id" (jget b "id") "department" "sør")))))))
 
 ;;; ------------------------------------------------------------------
@@ -235,8 +268,9 @@
 
 (test work-sessions-block-closure-and-run-one-at-a-time
   (with-test-app (:class 'staffed-app)
+    (tenant-in-oslo)
     (let* ((customer (make-customer))
-           (p (make-product :name "Tjeneste" :kind "tjeneste" :units-owned 0))
+           (p (make-product :name "Tjeneste" :kind "service" :units-owned 0))
            (kari (make-employee "Kari"))
            (per (make-employee "Per"))
            (order (confirmed-order customer p "2026-06-20"))
@@ -248,20 +282,20 @@
       (is-error "not_found" nil (call "work_sessions_stop" "employee:kari"))
       (let ((session (call-ok "work_sessions_start" "employee:kari" "order_id" order "assignment_id" (jget a "id"))))
         (is (string= "live" (jget session "source")))
-        (is-error "conflict" "Du har allerede en aktiv timer"
+        (is-error "conflict" "You already have a running timer"
                   (call "work_sessions_start" "employee:kari" "order_id" other "assignment_id" (jget a2 "id")))
         ;; Closure guards and ending the assignment.
-        (is-error "conflict" "Stopp aktive timer før ordren avsluttes" (call "orders_complete" "employee:anna" "id" order))
-        (is-error "conflict" "Stopp aktive timer før ordren avsluttes" (call "orders_ready_for_invoice" "employee:anna" "id" order))
-        (is-error "conflict" "Stopp aktive timer før ordren avsluttes" (two-step "orders_cancel" "employee:anna" "id" order))
-        (is-error "conflict" "Stopp aktiv timer før tildelingen avsluttes" (call "assignments_end" "admin:jonas" "id" (jget a "id")))
+        (is-error "conflict" "Stop the running timers before the order is closed" (call "orders_complete" "employee:anna" "id" order))
+        (is-error "conflict" "Stop the running timers before the order is closed" (call "orders_ready_for_invoice" "employee:anna" "id" order))
+        (is-error "conflict" "Stop the running timers before the order is closed" (two-step "orders_cancel" "employee:anna" "id" order))
+        (is-error "conflict" "Stop the running timer before the assignment ends" (call "assignments_end" "admin:jonas" "id" (jget a "id")))
         (call-ok "clock_set" "admin:jonas" "now" (format-rfc3339 (+ (now-of *app*) 90)))
         (let ((stopped (call-ok "work_sessions_stop" "employee:kari")))
           (is (= 90 (jget stopped "duration_seconds")))))
-      (is (string= "fullført" (jget (call-ok "orders_complete" "employee:anna" "id" order) "status")))
+      (is (string= "completed" (jget (call-ok "orders_complete" "employee:anna" "id" order) "status")))
       (is-error "invalid_transition" nil (call "work_sessions_start" "employee:kari" "order_id" order "assignment_id" (jget a "id")))
       ;; Manual sessions: own assignment, end after start, at least a minute.
-      (is-error "invalid_input" "Sluttid må være etter starttid"
+      (is-error "invalid_input" "The end time must be after the start time"
                 (call "work_sessions_create_manual" "employee:kari" "order_id" other "assignment_id" (jget a2 "id")
                       "started_at" "2026-06-21T10:00:00Z" "ended_at" "2026-06-21T10:00:00Z"))
       (let ((manual (call-ok "work_sessions_create_manual" "employee:kari" "order_id" other "assignment_id" (jget a2 "id")
@@ -269,3 +303,92 @@
         (is (= 60 (jget manual "duration_seconds")))
         (is (string= "manual" (jget manual "source"))))
       (is (= 2 (length (jget (call-ok "work_sessions_list" "employee:kari" "mine" t) "items")))))))
+
+;;; ------------------------------------------------------------------
+;;; In Norwegian: the business modules' copy on a Norwegian tenant
+
+(defun refusal-in-norwegian (tool actor &rest keys-and-values)
+  "The message of TOOL's refusal as ACTOR, written in Norwegian as a page
+shows it; NIL when TOOL does not refuse."
+  (handler-case (progn (call-tool tool (apply #'jobj keys-and-values)
+                                  :application *app* :actor (parse-actor actor))
+                       nil)
+    (operation-error (e) (with-language ("nb") (operation-error-message e)))))
+
+(defun owner-texts (owner)
+  "The (SOURCE CONTEXT) of every text OWNER writes."
+  (loop for (source context text-owner) in (known-texts)
+        when (equal owner text-owner) collect (list source context)))
+
+(defmacro with-missing-norwegian ((missing &rest owners) &body body)
+  "Run BODY with MISSING bound to a list that collects each text of OWNERS'
+looked up and not found while it runs, in this thread."
+  (let ((texts (gensym "TEXTS")))
+    `(let* ((,missing '())
+            (,texts (mapcan #'owner-texts (list ,@owners)))
+            (*missing-translation-hook*
+             (lambda (language source context)
+               (declare (ignore language))
+               (when (member (list source context) ,texts :test #'equal)
+                 (pushnew (list source context) ,missing :test #'equal)))))
+       ,@body)))
+
+(test staffing-writes-norwegian-on-a-norwegian-tenant
+  (with-test-app (:class 'staffed-app)
+    (tenant-in-oslo)
+    (call-ok "settings_set" "admin:jonas" "key" "locale.language" "value" "nb")
+    (with-missing-norwegian (missing "staffing")
+      (let* ((customer (make-customer))
+             (p (make-product :name "Tjeneste" :kind "service" :units-owned 0))
+             (kari (make-employee "Kari" :department "nord"))
+             (order (jget (new-order customer "event_date" "2026-06-20" "end_date" "2026-06-21"
+                                     "department" "nord" "lines" (jarr (list (line p 1))))
+                          "id")))
+        (call-ok "unavailability_create" "employee:kari" "start_date" "2026-06-21"
+                 "end_date" "2026-06-21" "whole_day" nil "start_time" "10:00" "end_time" "12:00")
+        (call-ok "unavailability_create" "employee:kari" "start_date" "2026-06-19"
+                 "end_date" "2026-06-20" "whole_day" t)
+        (is (equal "Begrunnelse er påkrevd ved overstyring av utilgjengelighet"
+                   (refusal-in-norwegian "assignments_create" "admin:jonas" "order_id" order
+                                         "employee_id" (jget kari "id"))))
+        (call-ok "assignments_create" "admin:jonas" "order_id" order "employee_id" (jget kari "id")
+                 "override_reason" "Hun rekker det")
+        (let ((override (aref (jget (call-ok "assignment_overrides_list" "admin:jonas"
+                                             "order_id" order)
+                                    "items")
+                              0)))
+          (is (equal "21.06.2026 (kl. 10:00–12:00); 19.06.2026–20.06.2026 (hele dager)"
+                     (jget override "conflict_summary"))
+              "stored in the tenant's language, whoever caused it"))
+        (is (equal "Klokkeslettet finnes ikke på grunn av overgang til sommertid"
+                   (refusal-in-norwegian "unavailability_create" "employee:kari"
+                                         "start_date" "2026-03-29" "end_date" "2026-03-29"
+                                         "whole_day" nil "start_time" "02:30" "end_time" "05:00"))))
+      (is (null missing) "no Norwegian for ~s" missing))))
+
+(test calendar-warehouse-and-invoicing-write-norwegian-on-a-norwegian-tenant
+  (with-test-app (:class 'departments-app)
+    (call-ok "settings_set" "admin:jonas" "key" "locale.language" "value" "nb")
+    (with-missing-norwegian (missing "calendar" "warehouse" "invoicing")
+      (call-ok "calendar_events_create" "admin:jonas" "title" "Messe" "start_date" "2026-06-02")
+      (let ((entries (jget (call-ok "calendar_list" "admin:jonas" "from" "2026-06-01"
+                                    "to" "2026-06-30")
+                           "items")))
+        (is (equalp #("Hendelse") (jget (aref entries 0) "labels"))))
+      (is (equal "Perioden kan være høyst 366 dager"
+                 (refusal-in-norwegian "calendar_list" "viewer:vera" "from" "2026-01-01"
+                                       "to" "2027-06-30")))
+      (is (equal "Velg avdeling for lageroppgaven"
+                 (refusal-in-norwegian "tasks_create" "admin:jonas" "title" "Telle beger")))
+      (let* ((customer (make-customer))
+             (machine (make-product))
+             (order (jget (call-ok "orders_create" "employee:anna" "customer_id" customer
+                                   "event_date" "2026-06-20" "lines" (jarr (list (line machine 1))))
+                          "id")))
+        (advance-to-accepted order)
+        (two-step "orders_confirm" "employee:anna" "id" order)
+        (call-ok "invoices_create_from_order" "employee:anna" "order_id" order)
+        (is (equal (format nil "Ordre ~a er allerede fakturert" order)
+                   (refusal-in-norwegian "invoices_create_from_order" "employee:anna"
+                                         "order_id" order))))
+      (is (null missing) "no Norwegian for ~s" missing))))

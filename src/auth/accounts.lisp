@@ -11,36 +11,36 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity account (:label "Konto" :id-prefix "acc" :table "accounts"
+(define-entity account (:label "Account" :id-prefix "acc" :table "accounts"
                                :unique (("name") ("email")))
-  ((name :type (string :min 1 :max 64) :required t :label "Navn"
-         :description "Aktørnavnet: små bokstaver, sifre, punktum, understrek eller bindestrek.")
-   (display-name :type (string :max 120) :label "Visningsnavn")
+  ((name :type (string :min 1 :max 64) :required t :label "Name"
+         :description "The actor's name: lower-case letters, digits, full stops, underscores or hyphens.")
+   (display-name :type (string :max 120) :label "Display name")
    (kind :type (enum "person" "agent") :required t :label "Type"
-         :description "person logger inn i nettleseren; agent bruker bare tilgangsnøkler.")
-   (role :type (enum "admin" "employee" "viewer") :required t :label "Rolle")
-   (email :type email :label "E-post" :description "Adressen en person logger inn med.")
+         :description "A person signs in in the browser; an agent uses access tokens only.")
+   (role :type (enum "admin" "employee" "viewer") :required t :label "Role")
+   (email :type email :label "Email" :description "The address a person signs in with.")
    (status :type (enum "active" "disabled") :input nil :initform "active" :label "Status")
-   (created-at :type timestamp :input nil :label "Opprettet")
-   (created-by :type (string :max 200) :input nil :label "Opprettet av")
-   (invited-at :type timestamp :input nil :label "Invitert"
-               :description "Når den siste invitasjonen på e-post ble sendt.")))
+   (created-at :type timestamp :input nil :label "Created")
+   (created-by :type (string :max 200) :input nil :label "Created by")
+   (invited-at :type timestamp :input nil :label "Invited"
+               :description "When the last invitation by email was sent.")))
 
-(define-entity access-token (:label "Tilgangsnøkkel" :id-prefix "tok" :table "access_tokens"
+(define-entity access-token (:label "Access token" :id-prefix "tok" :table "access_tokens"
                                     :unique (("token_hash")) :indexes (("account_id")))
-  ((account-id :type (id account) :required t :input nil :label "Konto")
-   (label :type (string :min 1 :max 120) :input nil :label "Beskrivelse")
-   (role :type (enum "admin" "employee" "viewer") :input nil :label "Rolle")
+  ((account-id :type (id account) :required t :input nil :label "Account")
+   (label :type (string :min 1 :max 120) :input nil :label "Description")
+   (role :type (enum "admin" "employee" "viewer") :input nil :label "Role")
    (prefix :type (string :max 16) :input nil :label "Start"
-           :description "De første tegnene etter tun_, for å kjenne igjen nøkkelen.")
-   (token-hash :type (string :max 64) :input nil :secret t :label "SHA-256 av nøkkelen")
-   (expires-at :type timestamp :input nil :label "Utløper")
-   (created-at :type timestamp :input nil :label "Opprettet")
-   (created-by :type (string :max 200) :input nil :label "Opprettet av")
-   (last-used-at :type timestamp :input nil :label "Sist brukt")
-   (revoked-at :type timestamp :input nil :label "Trukket tilbake")))
+           :description "The first characters after tun_, to recognise the token by.")
+   (token-hash :type (string :max 64) :input nil :secret t :label "SHA-256 of the token")
+   (expires-at :type timestamp :input nil :label "Expires")
+   (created-at :type timestamp :input nil :label "Created")
+   (created-by :type (string :max 200) :input nil :label "Created by")
+   (last-used-at :type timestamp :input nil :label "Last used")
+   (revoked-at :type timestamp :input nil :label "Revoked")))
 
-(define-entity session (:label "Økt" :id-prefix "ses" :table "sessions" :internal t
+(define-entity session (:label "Session" :id-prefix "ses" :table "sessions" :internal t
                                :unique (("token_hash")) :indexes (("account_id")))
   ((account-id :type (id account) :required t :input nil)
    (token-hash :type (string :max 64) :input nil :secret t)

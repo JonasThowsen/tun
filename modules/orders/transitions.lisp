@@ -24,28 +24,28 @@
 ;;; ------------------------------------------------------------------
 ;;; Quote, acceptance, confirmation
 
-(define-operation orders-send-quote ((id :type (id order) :required t :label "Ordre-ID")
-                                     (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Send tilbud"
-     :description "utkast eller tilbud_sendt → tilbud_sendt. Lager tilbudet (revisjon 1) eller sender det på nytt (revisjon + 1, samme kode), og sender det til kunden. Kan sendes uten dato.")
-  ;; Allowed only from utkast and tilbud_sendt, never locked: any other status
+(define-operation orders-send-quote ((id :type (id order) :required t :label "Order ID")
+                                     (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Send the quote"
+     :description "draft or quote_sent → quote_sent. Creates the quote (revision 1) or issues it again (revision + 1, the same code), and sends it to the customer. Can be sent without a date.")
+  ;; Allowed only from draft and quote_sent, never locked: any other status
   ;; is invalid_transition (the lock message is for what a locked order allows).
   (let ((order (load-for-transition id revision))
         (customer nil))
-    (transition order '("utkast" "tilbud_sendt") "tilbud_sendt")
+    (transition order '("draft" "quote_sent") "quote_sent")
     (setf customer (order-customer order))
     (when (blank-p (customer-email customer))
-      (fail :invalid-transition "Kunden har ingen e-postadresse; tilbudet kan ikke sendes"))
+      (fail :invalid-transition "The customer has no email address; the quote cannot be sent"))
     (issue-quote order customer)
     (setf (order-accepted-snapshot-stale order) nil)
     (save order)
     ;; Through the kernel's messaging port: nothing is sent without messaging.
-    (notify "tilbud" :order order :customer customer)
+    (notify "quote" :order order :customer customer)
     order))
 
 (defun accept-order (order)
-  "tilbud_sendt -> akseptert, recording the answer on the quote."
-  (transition order '("tilbud_sendt") "akseptert")
+  "quote_sent -> accepted, recording the answer on the quote."
+  (transition order '("quote_sent") "accepted")
   (let ((quote (quote-for-order (entity-id order))))
     (when quote
       (when (quote-stale-p quote order) (setf (order-accepted-snapshot-stale order) t))
@@ -54,10 +54,10 @@
       (save quote)))
   order)
 
-(define-operation orders-accept ((id :type (id order) :required t :label "Ordre-ID")
-                                 (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Aksepter tilbud"
-     :description "tilbud_sendt → akseptert: kunden har akseptert tilbudet (registrert av en ansatt). Tilbudet merkes akseptert.")
+(define-operation orders-accept ((id :type (id order) :required t :label "Order ID")
+                                 (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Accept the quote"
+     :description "quote_sent → accepted: the customer has accepted the quote (registered by an employee). The quote is marked accepted.")
   (let ((order (load-for-transition id revision)))
     (accept-order order)
     (save order)))
@@ -65,19 +65,20 @@
 (defun confirm-summary ()
   (let* ((order (find-order (input-value :id)))
          (customer (order-customer order)))
-    (format nil "Bekreft ordre ~a for ~a, arrangement ~a, totalt ~a kr. Utstyr bookes og forbruksvarer reserveres."
-            (entity-id order) (customer-name customer) (or (order-event-date order) "(ingen dato)")
-            (format-kroner (order-total-ore order)))))
+    (tr "Confirm order ~a for ~a, event ~a, total ~a. Equipment is booked and consumables reserved."
+        (entity-id order) (customer-name customer)
+        (if (order-event-date order) (date-text (order-event-date order)) (tr "(no date)"))
+        (money-text (order-total-minor order)))))
 
-(define-operation orders-confirm ((id :type (id order) :required t :label "Ordre-ID")
-                                  (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :confirm t :destructive t :title "Bekreft ordre"
+(define-operation orders-confirm ((id :type (id order) :required t :label "Order ID")
+                                  (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :confirm t :destructive t :title "Confirm the order"
      :summary confirm-summary
-     :description "akseptert → bekreftet. Krever arrangementsdato; booker utleieutstyr (unavailable ved kapasitetsmangel), reserverer forbruksvarer og planlegger kundens arbeidsflyt. Krever bekreftelse.")
+     :description "accepted → confirmed. Needs an event date; books the rental equipment (unavailable when capacity is short), reserves consumables and schedules the customer's workflows. Needs confirmation.")
   (let ((order (load-for-transition id revision)))
     ;; The active plan is reserved (README §10.1); a catalog change reaches the order
-    ;; through katalog_endring, not through confirmation.
-    (transition order '("akseptert") "bekreftet")
+    ;; through catalog_change, not through confirmation.
+    (transition order '("accepted") "confirmed")
     (book-order order)
     (sync-reservations order)
     (setf (order-accepted-snapshot-stale order) nil)
@@ -88,26 +89,26 @@
 
 (defun check-requires-pickup (order)
   (unless (order-requires-pickup-p order)
-    (fail :invalid-transition "henting/retur gjelder bare ordrer med produkter av type utleie")))
+    (fail :invalid-transition "pickup and return apply only to orders with rental products")))
 
 (defun handover-record (at &rest keys-and-values)
   (apply #'jobj "at" (format-rfc3339 (or at (now))) (append keys-and-values (list "by" (actor-string *actor*)))))
 
-(define-operation orders-register-pickup ((id :type (id order) :required t :label "Ordre-ID")
-                                          (condition :type (string :min 1 :max 500) :required t :label "Tilstand"
-                                                     :description "Utstyrets tilstand ved henting.")
-                                          (at :type timestamp :label "Tidspunkt" :description "Standard: nå.")
-                                          (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Registrer henting"
-     :description "bekreftet → hentet: utleieutstyret er hentet. Bare ordrer med utleieprodukter. Frigir bookingene og reservasjonene og trekker forbruket i den aktive kravplanen fra lageret (insufficient_stock avbryter).")
+(define-operation orders-register-pickup ((id :type (id order) :required t :label "Order ID")
+                                          (condition :type (string :min 1 :max 500) :required t :label "Condition"
+                                                     :description "The equipment's condition at pickup.")
+                                          (at :type timestamp :label "Time" :description "Default: now.")
+                                          (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Register the pickup"
+     :description "confirmed → picked_up: the rental equipment is picked up. Only orders with rental products. Releases the bookings and reservations and takes the active requirement plan's consumption from stock (insufficient_stock aborts).")
   (let ((order (load-for-transition id revision :lock t)))
-    (when (string= (order-status order) "bekreftet") (check-requires-pickup order))
-    (transition order '("bekreftet") "hentet")
+    (when (string= (order-status order) "confirmed") (check-requires-pickup order))
+    (transition order '("confirmed") "picked_up")
     ;; A new pickup starts a new rental: an earlier cycle's return is history.
     (setf (order-pickup order) (handover-record at "condition" condition)
           (order-return-record order) nil)
     ;; The machine is out: no booking, and no reservation either (only
-    ;; bekreftet reserves; README §10.1).  The consumables go with it:
+    ;; confirmed reserves; README §10.1).  The consumables go with it:
     ;; the active plan is consumed now (README §10.2; insufficient_stock
     ;; aborts the pickup).
     (release-bookings order)
@@ -115,39 +116,39 @@
     (sync-reservations order)
     (save order)))
 
-(define-operation orders-register-return ((id :type (id order) :required t :label "Ordre-ID")
-                                          (condition :type (string :min 1 :max 500) :required t :label "Tilstand")
-                                          (damages :type (string :max 2000) :label "Skader")
-                                          (fee-ore :type (integer :min 0 :max 9007199254740991) :label "Gebyr (øre)")
-                                          (at :type timestamp :label "Tidspunkt" :description "Standard: nå.")
-                                          (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Registrer retur"
-     :description "hentet → returnert: utleieutstyret er levert tilbake, med tilstand, eventuelle skader og gebyr.")
+(define-operation orders-register-return ((id :type (id order) :required t :label "Order ID")
+                                          (condition :type (string :min 1 :max 500) :required t :label "Condition")
+                                          (damages :type (string :max 2000) :label "Damages")
+                                          (fee-minor :type (money :min 0 :max 9007199254740991) :label "Fee")
+                                          (at :type timestamp :label "Time" :description "Default: now.")
+                                          (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Register the return"
+     :description "picked_up → returned: the rental equipment is back, with its condition, any damages and a fee.")
   (let ((order (load-for-transition id revision :lock t)))
     (check-requires-pickup order)
-    (transition order '("hentet") "returnert")
+    (transition order '("picked_up") "returned")
     (setf (order-return-record order)
-          (handover-record at "condition" condition "damages" (or damages :null) "fee_ore" (or fee-ore 0)))
+          (handover-record at "condition" condition "damages" (or damages :null) "fee_minor" (or fee-minor 0)))
     (save order)))
 
-(define-operation orders-ready-for-invoice ((id :type (id order) :required t :label "Ordre-ID")
-                                            (force :type boolean :label "Tving (admin)"
-                                                   :description "Fakturer utleie før retur er registrert; krever admin og begrunnelse.")
-                                            (reason :type (string :max 500) :label "Begrunnelse")
-                                            (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Klar til fakturering"
-     :description "bekreftet eller returnert → send_faktura (med force også fra hentet). Utleieordrer krever registrert retur, unntatt når en admin tvinger med begrunnelse. Låser ordren og frigir bookingene.")
+(define-operation orders-ready-for-invoice ((id :type (id order) :required t :label "Order ID")
+                                            (force :type boolean :label "Force (admin)"
+                                                   :description "Invoice a rental before its return is registered; needs an admin and a reason.")
+                                            (reason :type (string :max 500) :label "Reason")
+                                            (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Ready for invoicing"
+     :description "confirmed or returned → ready_for_invoice (with force also from picked_up). A rental order needs a registered return, unless an admin forces it with a reason. Locks the order and releases the bookings.")
   (let ((order (load-for-transition id revision)))
     (when (and force (not (actor-admin-p)))
-      (reject :forbidden "Bare admin kan tvinge fakturering"))
-    ;; From hentet only by force: without it the missing return is the refusal below.
-    (transition order '("bekreftet" "returnert" "hentet") "send_faktura")
+      (reject :forbidden "Only an admin can force invoicing"))
+    ;; From picked_up only by force: without it the missing return is the refusal below.
+    (transition order '("confirmed" "returned" "picked_up") "ready_for_invoice")
     (close-guard order "orders_ready_for_invoice")
     (when (and (order-requires-pickup-p order) (null (order-return-record order)))
       (cond ((not force)
-             (fail :invalid-transition "kan ikke fakturere før retur er registrert; utleie-ordrer krever retur før faktura"))
+             (fail :invalid-transition "cannot invoice before the return is registered; a rental order needs its return before the invoice"))
             ((blank-p reason)
-             (fail :invalid-input "Begrunnelse er påkrevd for å tvinge fakturering før retur"))
+             (fail :invalid-input "A reason is required to force invoicing before the return"))
             (t (audit-as :reason (trim reason)))))
     (release-bookings order)
     ;; Consumed at the first of pickup, invoicing readiness and completion (§10.2).
@@ -158,16 +159,16 @@
 ;;; ------------------------------------------------------------------
 ;;; Completion and cancellation
 
-(define-operation orders-complete ((id :type (id order) :required t :label "Ordre-ID")
-                                   (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Fullfør ordre"
-     :description "bekreftet eller send_faktura → fullført. Trekker reservert forbruk fra lageret (insufficient_stock avbryter alt), øker kundens antall fullførte ordrer og låser ordren.")
+(define-operation orders-complete ((id :type (id order) :required t :label "Order ID")
+                                   (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Complete the order"
+     :description "confirmed or ready_for_invoice → completed. Takes the reserved consumption from stock (insufficient_stock aborts everything), adds one to the customer's completed orders and locks the order.")
   (let ((order (load-for-transition id revision)))
-    (transition order '("bekreftet" "send_faktura") "fullført")
+    (transition order '("confirmed" "ready_for_invoice") "completed")
     (close-guard order "orders_complete")
     ;; Completion's ledger effects, once, from the active plan (README
     ;; §10.2): consumed at the first of pickup, invoicing readiness and
-    ;; completion, so from send_faktura nothing more.
+    ;; completion, so from ready_for_invoice nothing more.
     (consume order)
     (sync-reservations order)
     (record-completed-order (order-customer-id order))
@@ -175,16 +176,17 @@
 
 (defun cancel-summary ()
   (let ((order (find-order (input-value :id))))
-    (format nil "Avbryt ordre ~a (status ~a). Bookinger og reservasjoner frigis, planlagte arbeidsflyter avbrytes."
-            (entity-id order) (order-status order))))
+    (tr "Cancel order ~a (status ~a). Bookings and reservations are released, and planned workflows cancelled."
+        (entity-id order) (status-text (order-status order)))))
 
-(define-operation orders-cancel ((id :type (id order) :required t :label "Ordre-ID")
-                                 (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :confirm t :destructive t :title "Avbryt ordre"
+(define-operation orders-cancel ((id :type (id order) :required t :label "Order ID")
+                                 (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :confirm t :destructive t :title "Cancel the order"
      :summary cancel-summary
-     :description "utkast, tilbud_sendt, akseptert, bekreftet eller send_faktura → avbrutt. Frigir bookinger og reservasjoner og avbryter planlagte arbeidsflyter. Krever bekreftelse.")
+     :description "draft, quote_sent, accepted, confirmed or ready_for_invoice → cancelled. Releases bookings and reservations and cancels planned workflows. Needs confirmation.")
   (let ((order (load-for-transition id revision)))
-    (transition order '("utkast" "tilbud_sendt" "akseptert" "bekreftet" "send_faktura") "avbrutt")
+    (transition order '("draft" "quote_sent" "accepted" "confirmed" "ready_for_invoice")
+                "cancelled")
     (close-guard order "orders_cancel")
     (release-bookings order)
     ;; A consumed order's consumption is reversed (a later recount wins).
@@ -198,32 +200,32 @@
 
 (defun reopen-summary ()
   (let ((order (find-order (input-value :id))))
-    (format nil "Åpne ordre ~a (status ~a) for redigering igjen: den blir bekreftet, utstyr bookes på nytt og sjekklisten nullstilles."
-            (entity-id order) (order-status order))))
+    (tr "Reopen order ~a (status ~a) for editing: it becomes confirmed, the equipment is booked again and the checklist reset."
+        (entity-id order) (status-text (order-status order)))))
 
-(define-operation orders-reopen ((id :type (id order) :required t :label "Ordre-ID")
-                                 (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :confirm t :destructive t :policy :admin :title "Åpne ordre igjen"
+(define-operation orders-reopen ((id :type (id order) :required t :label "Order ID")
+                                 (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :confirm t :destructive t :policy :admin :title "Reopen the order"
      :summary reopen-summary
-     :description "send_faktura eller fullført → bekreftet (admin). Låser opp, booker utstyr på nytt (unavailable om kapasiteten er borte), reserverer forbruk igjen og nullstiller sjekklisten. Forbruk som er trukket fra lageret, føres ikke tilbake. Fra fullført telles kundens fullførte ordrer ned igjen.")
+     :description "ready_for_invoice or completed → confirmed (admin). Unlocks, books the equipment again (unavailable if the capacity is gone), reserves the consumption again and resets the checklist. Consumption taken from stock is not put back. From completed, the customer's completed orders are counted down again.")
   (let* ((order (load-for-transition id revision))
-         (was-completed (string= (order-status order) "fullført")))
-    (transition order '("send_faktura" "fullført") "bekreftet")
+         (was-completed (string= (order-status order) "completed")))
+    (transition order '("ready_for_invoice" "completed") "confirmed")
     ;; Completion counts once per order: the next orders_complete counts it again.
     (when was-completed
       (record-reopened-order (order-customer-id order)))
     (book-order order)
-    ;; Reserved again unless consumed (reopen from fullført does not reverse it).
+    ;; Reserved again unless consumed (reopen from completed does not reverse it).
     (sync-reservations order)
     (reset-checklist order)
     (save order)))
 
-(define-operation orders-reactivate ((id :type (id order) :required t :label "Ordre-ID")
-                                     (revision :type integer :label "Revisjon"))
-    (:entity order :kind :transition :title "Gjenoppta som utkast"
-     :description "avbrutt, akseptert eller bekreftet → utkast. Frigir bookinger og reservasjoner, avbryter planlagte arbeidsflyter, og et tilbud som venter på svar merkes avslått.")
+(define-operation orders-reactivate ((id :type (id order) :required t :label "Order ID")
+                                     (revision :type integer :label "Revision"))
+    (:entity order :kind :transition :title "Resume as a draft"
+     :description "cancelled, accepted or confirmed → draft. Releases bookings and reservations, cancels planned workflows, and a quote awaiting an answer is marked declined.")
   (let ((order (load-for-transition id revision)))
-    (transition order '("avbrutt" "akseptert" "bekreftet") "utkast")
+    (transition order '("cancelled" "accepted" "confirmed") "draft")
     (release-bookings order)
     ;; A consumed order is editable again: its consumption is reversed (§10.2).
     (reverse-consumption order)

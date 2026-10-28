@@ -165,7 +165,7 @@ rather than registering a second implementation under the same name.
 ```lisp
 (defmethod order-discount ((app request-note-feature) order customer)
   (declare (ignore customer))
-  (round (* (order-subtotal-ore order) 1/20)))
+  (round (* (order-subtotal-minor order) 1/20)))
 ```
 
 Use `call-next-method` when augmenting a seam's default behavior. Returning a
@@ -177,15 +177,15 @@ A template takes keyword context and returns subject and body strings. A client
 may replace a module's non-final template with the same template key.
 
 ```lisp
-(define-message-template company-quote (:template "tilbud" :label "Quote")
+(define-message-template company-quote (:template "quote" :label "Quote")
     (&key order customer)
   (values "Your offer" (format nil "Hello ~a, order ~a."
                               (customer-name customer) (entity-id order))))
 
 (define-workflow note-reminder (:kind "note_reminder" :label "Reminder"
-                                :templates ("tilbud")) (wf)
+                                :templates ("quote")) (wf)
   (let ((order (find-order (workflow-order-id wf))))
-    (send-message "tilbud" :order order :customer (order-customer order))))
+    (send-message "quote" :order order :customer (order-customer order))))
 ```
 
 `schedule-workflow` accepts `:order`, or opaque `:order-id`/`:subject-id`, and
@@ -289,7 +289,7 @@ two neighbours; moving a card changes only its own key:
 ```lisp
 (define-entity item (:id-prefix "itm" :label "Sak")
   ((title :type (string :min 1 :max 200) :required t :label "Tittel")
-   (status :type (enum "ny" "planlagt" "ferdig") :initform "ny" :label "Status")
+   (status :type (enum "new" "planned" "done") :initform "new" :label "Status")
    (place :type string :input nil :label "Plass")))   ; a rank key
 
 (defun column-items (status)
@@ -668,7 +668,7 @@ if the operation commits.
   `:queue` and `(:queues (:mail 1))` in `define-application` say how many
   run at once.
 - `define-schedule` enqueues a job at each occurrence of a cron time, in
-  Norwegian time, once whatever runs: `(define-schedule daily-summary
+  the tenant's time zone, once whatever runs: `(define-schedule daily-summary
   "0 7 * * 1-5" send-daily-summary)`. After downtime the latest missed
   occurrence runs if it is less than a day old (`:catch-up`, or `nil`).
   `schedules_list` shows the last and next occurrence; `schedules_run`
@@ -749,6 +749,46 @@ A request for a change runs the feature loop (`docs/loop.md`,
 `tun loop show` puts the verified tree at a shared preview with
 screenshots. Its record, `loops/NAME.md`, is committed with the change.
 
+## Languages, copy and money
+
+A tenant has a language, a currency and a time zone, settings an admin
+changes on «Settings»; `(:locale ...)` in `define-application` names the
+languages a tenant of the client may be set to and a new tenant's
+(`spec/i18n.md`). A client writes its copy in its first language and
+translates it in a catalogue per other language, `nb.lisp` in a client
+`tun new` made:
+
+```lisp
+(define-application notes-client ()
+  (:locale :languages ("en" "nb") :currency "NOK" :time-zone "Europe/Oslo"))
+
+(define-operation notes-share (...)
+    (:entity note :kind :update :title "Share a note")
+  (fail :conflict "The note ~a has been deleted" note-id)    ; fail translates itself
+  (send-mail :to email :subject (tr "~a shared a note with you" (actor-name *actor*)) ...))
+
+;; nb.lisp
+(define-translations "nb"
+  ("Share a note" "Del notat")
+  ("The note ~a has been deleted" "Notatet ~a er slettet")
+  ("~a shared a note with you" "~a delte et notat med deg"))
+```
+
+- `(tr "Text ~a" arg)` writes a literal text in the tenant's language;
+  `fail` and the other refusals translate their own message. Labels,
+  titles and descriptions in definitions are translated where they are
+  shown. A stored value in a message is passed as `(label "note" "status"
+  status)`, never as the raw value.
+- What the client stores for people (a mail, a notification) is in the
+  tenant's language when it is stored; what it answers an agent or another
+  system, an error document, is its source text.
+- Its suite's `every-text-has-a-translation-into-each-language-offered`
+  finds a text without one, and an entry nothing uses.
+- An amount is an integer of minor units in a field of type `money` named
+  `…-minor`: `(total-minor :type money :label "Total")`. `money-text`,
+  `date-text`, `timestamp-text` and `number-text` write a value as the
+  tenant's language writes it.
+
 ## Declared settings
 
 Settings are typed declarations, separate from their durable values. A key must
@@ -783,7 +823,7 @@ A client may supply a first-start value for a module setting without replacing
 its declaration or a tenant's stored choice:
 
 ```lisp
-(define-setting-initial-value "avsender.navn" "Nordvik Utleie AS")
+(define-setting-initial-value "sender.name" "Nordvik Utleie AS")
 ```
 
 Message templates may be declarative data. The version advances when a client
@@ -792,8 +832,8 @@ overrides a module template; final templates refuse an override:
 ```lisp
 (define-message-template company-reminder
     (:template "påminnelse" :label "Reminder" :manual t :marketing nil
-     :subject "A reminder" :text "Hello {{kunde.navn}}"
-     :variables ("kunde.navn")) (&key order customer))
+     :subject "A reminder" :text "Hello {{customer.name}}"
+     :variables ("customer.name")) (&key order customer))
 ```
 
 `messages_preview` returns a frozen copy and `snapshot_hash`; submit that hash

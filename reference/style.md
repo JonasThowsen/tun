@@ -49,7 +49,9 @@ Lisp. Code that is obvious beats code that is clever.
 ## Naming
 
 - **Lowercase words joined by hyphens,** spelled out: `order-total`, not
-  `ord-tot`. Identifiers are English. Labels and messages are Norwegian.
+  `ord-tot`. Identifiers are English, and so are stored values and keys.
+  Labels and messages are written in English and translated in
+  catalogues (`spec/i18n.md` §3).
 - **Predicates end in `-p`,** as in `blank-p` and `marketing-allowed-p`.
   Common Lisp's own one-word predicates, such as `evenp`, drop the hyphen.
   Tun's names keep it throughout.
@@ -111,9 +113,10 @@ Lisp. Code that is obvious beats code that is clever.
 
 ## Errors and conditions
 
-- **A domain refusal is `fail` with an error code** and a Norwegian message
-  for the user. `fail` is declared with the error-code type, so a misspelled
-  code is a compile-time warning.
+- **A domain refusal is `fail` with an error code** and an English message
+  for the user, which `fail` translates (`spec/i18n.md` §3.1). `fail` is
+  declared with the error-code type, so a misspelled code is a
+  compile-time warning.
 - **Kernel conditions are `define-condition` subclasses** with readers for
   everything a handler needs. Never signal a bare string with `error` from
   kernel code.
@@ -171,7 +174,8 @@ Lisp. Code that is obvious beats code that is clever.
   declaration is an assertion under Tun's safety policy, but under
   `(safety 0)` it becomes a promise the compiler trusts. Contracts that
   callers must meet use `check-type`, which always checks.
-- **Money is integer øre.** Never floats. Quantities that need fractions use
+- **Money is an integer of minor units,** in a `money` field named
+  `…-minor` (`spec/i18n.md` §5). Never floats. Quantities that need fractions use
   the `decimal` field type, which is exact, or rationals in computation.
 - **Avoid consing in loops that run per request:** prefer `loop ... sum` to
   building a list and reducing it.
@@ -185,7 +189,7 @@ Lisp. Code that is obvious beats code that is clever.
 - **Property lists for keyword options,** hash tables with an explicit
   `:test` for lookups, alists only for short fixed tables.
 - **Time is universal time inside the image** and RFC 3339 at the boundary.
-  Norwegian local time comes from `summer-time-p` in `src/core/util.lisp`.
+  Local time is the tenant's time zone's, from `src/core/zones.lisp`.
 
 ## Concurrency
 

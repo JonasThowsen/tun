@@ -263,7 +263,7 @@ return its values once the batch is durable."
       (when commit-start
         (note-step :commit :name "group commit" :source :core :started commit-start
                            :duration (- (trace-clock-us) commit-start)
-                           :detail (format nil "medlem ~d i batchen; COMMIT når batchen er full eller ingen venter"
+                           :detail (format nil "member ~d of the batch; COMMIT when the batch is full or nothing waits"
                                            members))))
     (values-list values)))
 
@@ -354,7 +354,7 @@ return its values once the batch is durable."
   `(handler-case (progn ,@body)
      (sqlite:sqlite-constraint-error (e)
        (declare (ignore e))
-       (fail :conflict "Finnes allerede (unik verdi brutt)"))))
+       (fail :conflict "Already exists (a unique value was repeated)"))))
 
 (defmethod store-insert ((store sqlite-store) entity)
   (let* ((class (class-of entity))
@@ -472,20 +472,28 @@ migration columns (recorded as the kernel's own first migrations)."
 (defun column-owner (field)
   (field-module field))
 
-(defun record-core-major ()
-  (ensure-core-major
-   (mapcar #'first (query "SELECT \"migration\" FROM \"schema_history\" WHERE \"module\" = ?"
-                          +core-major-module+))
-   (lambda (statement migration)
-     (exec "INSERT INTO \"schema_history\" (\"statement\", \"applied_at\", \"module\", \"migration\") VALUES (?, ?, ?, ?)"
-           statement (format-rfc3339 (get-universal-time)) +core-major-module+ migration))))
+(defun migration-access ()
+  "This connection's SQL, as core 2.0's migration takes it (core/core-migration.lisp)."
+  (make-database-access :query #'query :run #'exec
+                        :table-p (lambda (table) (and (existing-columns table) t))))
+
+(defmethod store-revert-to-core-1 ((store sqlite-store))
+  (store-call-in-transaction
+   store
+   (lambda ()
+     (ensure-schema-history)
+     (revert-database store (migration-access)))
+   :write))
 
 (defmethod store-migrate ((store sqlite-store) classes)
   (store-call-in-transaction
    store
    (lambda ()
      (ensure-schema-history)
-     (record-core-major)
+     ;; A newer major refused, a 1.x database checked and core's own data
+     ;; renamed, with the major's mark (spec/i18n.md 4.4), before anything
+     ;; is added.
+     (prepare-database store (migration-access))
      ;; Two passes: the kernel's and the modules' tables and columns in
      ;; dependency order (the order the classes were defined), then the
      ;; client's (tun-platform.md 2.6 and 2.7).

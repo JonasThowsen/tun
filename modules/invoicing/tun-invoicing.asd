@@ -4,4 +4,4 @@
   :description "tun module invoicing: invoices from orders, the accounting port."
   :version "1.0.0"
   :depends-on ("tun" "tun-orders")
-  :components ((:file "invoicing")))
+  :components ((:file "invoicing") (:file "nb")))

@@ -9,7 +9,7 @@ below).
   `tasks_get`, `task_events_list`.
 - **Depends on:** `staffing` (employees and the client's departments). A
   task knows no order and is never created from one (§1).
-- **Core range:** builds against core `>= 1.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source).
 - **Publishes:** the kernel's extension kinds on `task` (core.md §1.1); no
   seam. Every list is bounded (`limit` up to 100,

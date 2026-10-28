@@ -208,8 +208,8 @@ parsed body (NIL when empty) and the headers."
             (is (= 303 status))
             (multiple-value-bind (status body) (web-request port "/access" :jar jar)
               (is (= 200 status))
-              (is (search "Ny nøkkel for meg" body))
-              (is (not (search "Kontoer" body)) "accounts are for admins"))
+              (is (search "New token for me" body))
+              (is (not (search "All access tokens" body)) "accounts are for admins"))
             (let* ((body (nth-value 1 (web-request port "/access/tokens" :method :post :jar jar
                                                    :parameters '(("label" . "Claude Code")
                                                                  ("request_key" . "web_per")))))
@@ -390,10 +390,10 @@ parsed body (NIL when empty) and the headers."
       (is (null (gethash "password_link" kari)) "no password link")
       (is (= 1 (length mails)))
       (is (equal "kari@example.no" (first (first mails))))
-      (is (equal (format nil "Du har fått tilgang til ~a" (application-title *app*))
+      (is (equal (format nil "You have been given access to ~a" (application-title *app*))
                  (second (first mails))))
-      (is (search "root har gitt deg tilgang til" text))
-      (is (search (format nil "Logg inn med Google og e-postadressen kari@example.no:~%~
+      (is (search "root has given you access to" text))
+      (is (search (format nil "Sign in with Google and the email address kari@example.no:~%~
                                https://tun.example/login")
                   text))
       (call-ok "accounts_create" "admin:root" "name" "kari" "kind" "person"
@@ -402,6 +402,23 @@ parsed body (NIL when empty) and the headers."
       (is (= 1 (length (mail-texts))) "a replay sends nothing more"))
     (is (string= "invalid_input" (refusal "accounts_create" "name" "bot" "kind" "agent"
                                           "role" "viewer" "invite" t)))))
+
+(test an-invitation-is-in-the-tenants-language
+  ;; spec/i18n.md 3.5, 8: written in the tenant's language when it is
+  ;; stored, though the call that sent it came in over MCP.
+  (with-test-app (:public-url "https://tun.example")
+    (setf (tun.auth:sign-in-strategies *app*)
+          (list (make-instance 'tun.auth:google-strategy :client-id "id" :client-secret "s")))
+    (call-ok "settings_set" "admin:root" "key" "locale.language" "value" "nb")
+    (call-ok "accounts_create" "admin:root" "name" "kari" "kind" "person"
+             "role" "employee" "email" "kari@example.no" "invite" t)
+    (destructuring-bind (to subject text) (first (mail-texts))
+      (is (equal "kari@example.no" to))
+      (is (equal (format nil "Du har fått tilgang til ~a" (application-title *app*)) subject))
+      (is (search "root har gitt deg tilgang til" text))
+      (is (search (format nil "Logg inn med Google og e-postadressen kari@example.no:~%~
+                               https://tun.example/login")
+                  text)))))
 
 (test an-invitation-can-be-sent-again
   (with-test-app ()
@@ -503,14 +520,14 @@ parsed body (NIL when empty) and the headers."
               (post "/access/accounts" '(("name" . "ola") ("kind" . "person") ("role" . "admin")
                                          ("email" . "ola@example.no")))
             (is (= 200 status))
-            (is (search "ola logger inn med Testleverandør med e-posten ola@example.no" body)))
+            (is (search "ola signs in with Testleverandør with the email ola@example.no" body)))
           (is (= 409 (post "/access/accounts" '(("name" . "ola") ("kind" . "agent")
                                                 ("role" . "viewer")))))
           (multiple-value-bind (status body)
               (post "/access/accounts" '(("name" . "eva") ("kind" . "person") ("role" . "employee")
                                          ("email" . "eva@example.no") ("invite" . "on")))
             (is (= 200 status))
-            (is (search "eva har fått en invitasjon på eva@example.no" body))
+            (is (search "eva has been sent an invitation at eva@example.no" body))
             (is (equal '("eva@example.no") (mapcar #'first (mail-texts)))))
           (let ((kari (find "kari" (admin-items "accounts_list")
                             :key (lambda (item) (jget item "name")) :test #'equal)))

@@ -3,7 +3,7 @@
 
 (in-package #:tun.catalog)
 
-(publish '(product product-name product-kind product-unit product-unit-price-ore
+(publish '(product product-name product-kind product-unit product-unit-price-minor
            product-stock-tracked product-units-owned product-revision product-article-id
            product-department product-requirements product-lite-requirement-id
            find-product rental-product-p consumable-product-p stock-tracked-consumable-p

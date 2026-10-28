@@ -12,10 +12,10 @@
 
 (define-component cluster ((&key (gap :sm) (justify :start) (align :center) id attributes)
                            &rest children)
-  (:group "Oppsett og navigasjon")
-  (:doc "Legger innholdet side om side og bryter til en ny linje når plassen tar slutt: knapper,
-merkelapper, filtre. JUSTIFY (start, center, end, between) og ALIGN (start, center, end,
-baseline, stretch) styrer plasseringen.")
+  (:group "Layout and navigation")
+  (:doc "Puts its content side by side and wraps to a new line when the room runs out:
+buttons, badges, filters. JUSTIFY (start, center, end, between) and ALIGN (start, center,
+end, baseline, stretch) set where things go.")
   (:source "Every Layout cluster, Tailwind's flex utilities")
   (:css "
 .tun-cluster {
@@ -37,19 +37,19 @@ baseline, stretch) styrer plasseringen.")
   &[data-align='stretch'] { align-items: stretch; }
 }")
   (:examples
-   (("Knapper" :layout :stack)
+   (("Buttons" :layout :stack)
     (cluster ()
-             (button (:icon :plus) "Ny ordre")
-             (button (:variant :outline :icon :download) "Eksporter")
-             (button (:variant :ghost) "Flere valg"))
+             (button (:icon :plus) "New order")
+             (button (:variant :outline :icon :download) "Export")
+             (button (:variant :ghost) "More options"))
     (cluster (:justify :end)
-             (button (:variant :outline) "Avbryt")
-             (button () "Lagre tilbud")))
-   (("Fordelt og på grunnlinjen" :layout :stack)
+             (button (:variant :outline) "Cancel")
+             (button () "Save the quote")))
+   (("Spread out and on the baseline" :layout :stack)
     (cluster (:justify :between :align :baseline)
-             '(:strong "Faktura 2024-118")
-             '(:span "Forfaller 30. oktober")
-             '(:strong "12 450 kr"))))
+             '(:strong "Invoice 2024-118")
+             '(:span "Due on 30 October")
+             '(:strong "€12,450"))))
   (check-type gap (member :xs :sm :md :lg :xl))
   (check-type justify (member :start :center :end :between))
   (check-type align (member :start :center :end :baseline :stretch))
@@ -60,9 +60,9 @@ baseline, stretch) styrer plasseringen.")
          ,@children))
 
 (define-component stack ((&key (gap :md) id attributes) &rest children)
-  (:group "Oppsett og navigasjon")
-  (:doc "Legger innholdet under hverandre med lik avstand (GAP: xs, sm, md, lg eller xl). Bruk
-den i stedet for marger når deler av en side skal ha luft mellom seg.")
+  (:group "Layout and navigation")
+  (:doc "Puts its content one under another with an even space (GAP: xs, sm, md, lg or xl).
+Use it instead of margins when parts of a page need room between them.")
   (:source "Every Layout stack, Tailwind's spacing scale")
   (:css "
 .tun-stack {
@@ -76,23 +76,23 @@ den i stedet for marger når deler av en side skal ha luft mellom seg.")
   &[data-gap='xl'] { gap: calc(var(--spacing) * 8); }
 }")
   (:examples
-   (("Avstander" :layout :stack)
+   (("Spaces" :layout :stack)
     (stack (:gap :xs)
-           '(:strong "Ole Hansen AS")
+           '(:strong "Ole Hansen Ltd")
            '(:span "Storgata 12, 0155 Oslo")
-           '(:span "ole@example.no"))
+           '(:span "ole@example.com"))
     (stack (:gap :lg)
-           '(:p "Ordren er pakket og sendt med Bring.")
-           '(:p "Kunden får sporingsnummeret på e-post når pakken er registrert.")
-           (cluster () (button (:variant :outline) "Vis ordre") (button () "Send faktura")))))
+           '(:p "The order has been packed and sent with Bring.")
+           '(:p "The customer gets the tracking number by email when the parcel is registered.")
+           (cluster () (button (:variant :outline) "Show the order") (button () "Send invoice")))))
   (check-type gap (member :xs :sm :md :lg :xl))
   `(:div ,(attrs (list :class "tun-stack" :id id :data-gap (option-string gap)) attributes)
          ,@children))
 
 (define-component grid ((&key (min :md) (gap :md) id attributes) &rest children)
-  (:group "Oppsett og navigasjon")
-  (:doc "Et rutenett som fyller raden med så mange kolonner som får plass, hver minst MIN bred
-(xs 10rem, sm 14rem, md 18rem, lg 24rem). På en telefon blir det én kolonne av seg selv.")
+  (:group "Layout and navigation")
+  (:doc "A grid that fills the row with as many columns as fit, each at least MIN wide (xs
+10rem, sm 14rem, md 18rem, lg 24rem). On a phone it becomes one column by itself.")
   (:source "Every Layout grid (auto-fit and minmax)")
   (:css "
 .tun-grid {
@@ -110,17 +110,17 @@ den i stedet for marger når deler av en side skal ha luft mellom seg.")
   &[data-gap='xl'] { gap: calc(var(--spacing) * 8); }
 }")
   (:examples
-   (("Smale kolonner (xs)" :layout :stack)
+   (("Narrow columns (xs)" :layout :stack)
     (grid (:min :xs :gap :sm)
-          '(:p "Åpne ordre: 7")
-          '(:p "Til fakturering: 3")
-          '(:p "Forfalt: 1")
-          '(:p "Sendt i dag: 12")))
-   (("Brede kolonner (md)" :layout :stack)
+          '(:p "Open orders: 7")
+          '(:p "To be invoiced: 3")
+          '(:p "Overdue: 1")
+          '(:p "Sent today: 12")))
+   (("Wide columns (md)" :layout :stack)
     (grid ()
-          (stack (:gap :xs) '(:strong "Ole Hansen AS") '(:span "Storgata 12, 0155 Oslo"))
+          (stack (:gap :xs) '(:strong "Ole Hansen Ltd") '(:span "Storgata 12, 0155 Oslo"))
           (stack (:gap :xs) '(:strong "Fjord Catering") '(:span "Bryggen 3, 5003 Bergen"))
-          (stack (:gap :xs) '(:strong "Nordlys Event og Teltutleie") '(:span "Tromsø")))))
+          (stack (:gap :xs) '(:strong "Northern Lights Events and Tents") '(:span "Tromsø")))))
   (check-type min (member :xs :sm :md :lg))
   (check-type gap (member :xs :sm :md :lg :xl))
   `(:div ,(attrs (list :class "tun-grid" :id id :data-min (option-string min)
@@ -145,10 +145,10 @@ the current page, a chevron between them, and the current page last."
                                (:span (:@ :aria-current "page") ,label))))))
 
 (define-component breadcrumbs ((&key items id attributes))
-  (:group "Oppsett og navigasjon")
-  (:doc "Viser hvor siden ligger: nivåene over den som lenker og siden selv til slutt. ITEMS er
-en liste av (:label TEKST :href STI); den siste er siden du står på. På en smal skjerm vises
-bare en lenke tilbake til nivået over.")
+  (:group "Layout and navigation")
+  (:doc "Shows where the page is: the levels above it as links and the page itself last.
+ITEMS is a list of (:label TEXT :href PATH); the last is the page you are on. On a narrow
+screen only a link back to the level above shows.")
   (:source "Basecoat breadcrumb (Vega); GOV.UK back link on a phone")
   (:css "
 .tun-breadcrumbs {
@@ -198,32 +198,33 @@ bare en lenke tilbake til nivået over.")
   }
 }")
   (:examples
-   (("Tre nivåer" :layout :stack)
-    (breadcrumbs (:items '((:label "Kunder" :href "/kunder")
-                           (:label "Ole Hansen AS" :href "/kunder/42")
-                           (:label "Rediger kunde")))))
-   (("Mange nivåer og lang tekst" :layout :stack)
-    (breadcrumbs (:items '((:label "Oversikt" :href "/")
-                           (:label "Ordre" :href "/ordre")
-                           (:label "Ordre 1042 – Nordlys Event og Teltutleie AS"
-                            :href "/ordre/1042")
-                           (:label "Pakkseddel og fraktbrev")))))
-   (("Bare siden selv" :layout :stack)
-    (breadcrumbs (:items '((:label "Oversikt"))))))
+   (("Three levels" :layout :stack)
+    (breadcrumbs (:items '((:label "Customers" :href "/customers")
+                           (:label "Ole Hansen Ltd" :href "/customers/42")
+                           (:label "Edit the customer")))))
+   (("Many levels and a long text" :layout :stack)
+    (breadcrumbs (:items '((:label "Overview" :href "/")
+                           (:label "Orders" :href "/orders")
+                           (:label "Order 1042 – Northern Lights Events and Tents Ltd"
+                            :href "/orders/1042")
+                           (:label "Packing slip and waybill")))))
+   (("Only the page itself" :layout :stack)
+    (breadcrumbs (:items '((:label "Overview"))))))
   (check-type items cons)
   (let ((parent (when (rest items) (first (last items 2)))))
-    `(:nav ,(attrs (list :class "tun-breadcrumbs" :id id :aria-label "Brødsmuler") attributes)
+    `(:nav ,(attrs (list :class "tun-breadcrumbs" :id id :aria-label (tr "Breadcrumbs"))
+                   attributes)
            ,@(when parent
                (list `(:a (:@ :class "tun-breadcrumbs-back" :href ,(getf parent :href))
                           ,(icon (:name :arrow-left))
-                          "Tilbake til " ,(getf parent :label))))
+                          ,(tr "Back to ~a" (getf parent :label)))))
            (:ol ,@(breadcrumbs-trail items)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Lists of links
 
 (defun path-below-p (path href)
-  "True when PATH is a page below HREF: /kunder/42 is below /kunder, and
+  "True when PATH is a page below HREF: /customers/42 is below /customers, and
 nothing is below the front page /."
   (and (> (length path) (length href))
        (string= href path :end2 (length href))
@@ -262,11 +263,11 @@ below and \"true\" (GOV.UK's active section), else NIL."
                   ,@(mapcar (lambda (item) (nav-list-link item marked mark)) items))))))
 
 (define-component nav-list ((&key label items groups current id attributes))
-  (:group "Oppsett og navigasjon")
-  (:doc "En loddrett liste av lenker, til en meny i siden eller en innstillingsside. ITEMS er
-lenker (:label :href :icon :count); GROUPS er grupper (:heading TEKST :items LENKER). Lenken til
-CURRENT er merket; finnes den ikke, merkes den nærmeste lenken over (/kunder for /kunder/42).
-LABEL navngir menyen for skjermlesere.")
+  (:group "Layout and navigation")
+  (:doc "A vertical list of links, for a menu in the page or a settings page. ITEMS are links
+(:label :href :icon :count); GROUPS are groups (:heading TEXT :items LINKS). The link to
+CURRENT is marked; when there is none, the nearest link above it is (/customers for
+/customers/42). LABEL names the menu for screen readers.")
   (:source "Basecoat sidebar menu (Vega); GOV.UK service navigation for aria-current")
   (:css "
 .tun-nav-list {
@@ -334,30 +335,30 @@ LABEL navngir menyen for skjermlesere.")
   }
 }")
   (:examples
-   (("Innstillinger i grupper" :layout :stack)
-    (nav-list (:label "Innstillinger"
-                      :current "/innstillinger/brukere"
-                      :groups '((:heading "Firma"
-                                 :items ((:label "Firmaopplysninger" :href "/innstillinger/firma"
+   (("Settings in groups" :layout :stack)
+    (nav-list (:label "Settings"
+                      :current "/settings/users"
+                      :groups '((:heading "Company"
+                                 :items ((:label "Company details" :href "/settings/company"
                                                  :icon :building)
-                                         (:label "Brukere" :href "/innstillinger/brukere"
+                                         (:label "Users" :href "/settings/users"
                                                  :icon :users :count 4)
-                                         (:label "Tilgang og roller" :href "/innstillinger/tilgang"
+                                         (:label "Access and roles" :href "/settings/access"
                                                  :icon :shield-check)))
-                                (:heading "Salg"
-                                 :items ((:label "Faktura og betalingsvilkår"
-                                                 :href "/innstillinger/faktura" :icon :receipt)
-                                         (:label "Frakt" :href "/innstillinger/frakt" :icon :truck)
-                                         (:label "Eksport av regnskapsdata til regnskapsfører"
-                                                 :href "/innstillinger/eksport" :icon :download
+                                (:heading "Sales"
+                                 :items ((:label "Invoices and terms of payment"
+                                                 :href "/settings/invoices" :icon :receipt)
+                                         (:label "Shipping" :href "/settings/shipping" :icon :truck)
+                                         (:label "Exporting accounting data to the accountant"
+                                                 :href "/settings/export" :icon :download
                                                  :count 12)))))))
-   (("Uten ikoner, under en side som er valgt" :layout :stack)
-    (nav-list (:label "Kunde"
-                      :current "/kunder/42/ordre/1042"
-                      :items '((:label "Oversikt" :href "/kunder/42")
-                               (:label "Ordre" :href "/kunder/42/ordre" :count 18)
-                               (:label "Faktura" :href "/kunder/42/faktura" :count 2)
-                               (:label "Notater" :href "/kunder/42/notater"))))))
+   (("Without icons, below a chosen page" :layout :stack)
+    (nav-list (:label "Customer"
+                      :current "/customers/42/orders/1042"
+                      :items '((:label "Overview" :href "/customers/42")
+                               (:label "Orders" :href "/customers/42/orders" :count 18)
+                               (:label "Invoices" :href "/customers/42/invoices" :count 2)
+                               (:label "Notes" :href "/customers/42/notes"))))))
   (check-type label string)
   `(:nav ,(attrs (list :class "tun-nav-list" :id id :aria-label label) attributes)
          ,@(let ((groups (or groups (list (list :items items)))))
@@ -373,10 +374,11 @@ LABEL navngir menyen for skjermlesere.")
 
 (define-component page-header ((&key title description breadcrumbs actions id attributes)
                                &rest children)
-  (:group "Oppsett og navigasjon")
-  (:doc "Toppen av en side: brødsmuler (BREADCRUMBS, eller som barn), tittelen som eneste h1, en
-kort beskrivelse og sidens handlinger (ACTIONS, en liste av knapper). Handlingene står til høyre
-for tittelen når de får plass ved siden av den, også på en telefon, og ellers under.")
+  (:group "Layout and navigation")
+  (:doc "The top of a page: breadcrumbs (BREADCRUMBS, or as children), the title as the only
+h1, a short description and the page's actions (ACTIONS, a list of buttons). The actions
+stand to the right of the title when they fit beside it, on a phone too, and under it
+otherwise.")
   (:source "shadcn/ui dashboard page heading, in Basecoat's tokens")
   (:css "
 .tun-page-header {
@@ -424,20 +426,21 @@ for tittelen når de får plass ved siden av den, også på en telefon, og eller
   }
 }")
   (:examples
-   (("Med brødsmuler, beskrivelse og handlinger" :layout :stack)
-    (page-header (:title "Ole Hansen AS"
-                         :description "Kunde siden mars 2021. Faktureres månedlig, 14 dager."
-                         :breadcrumbs '((:label "Kunder" :href "/kunder") (:label "Ole Hansen AS"))
-                         :actions (list (button (:variant :outline :icon :pencil) "Rediger")
-                                        (button (:icon :plus) "Ny ordre")))))
-   (("Bare tittel" :layout :stack)
-    (page-header (:title "Kunder")))
-   (("Lang tittel" :layout :stack)
-    (page-header (:title "Tilbud 2024-031: Sommerfest med telt og lysrigg for Fjord Catering"
-                         :breadcrumbs '((:label "Tilbud" :href "/tilbud")
-                                        (:label "Tilbud 2024-031"))
-                         :actions (list (button (:variant :outline) "Forhåndsvis")
-                                        (button (:icon :send) "Send til kunden"))))))
+   (("With breadcrumbs, a description and actions" :layout :stack)
+    (page-header (:title "Ole Hansen Ltd"
+                         :description "A customer since March 2021. Invoiced monthly, 14 days."
+                         :breadcrumbs '((:label "Customers" :href "/customers")
+                                        (:label "Ole Hansen Ltd"))
+                         :actions (list (button (:variant :outline :icon :pencil) "Edit")
+                                        (button (:icon :plus) "New order")))))
+   (("Only a title" :layout :stack)
+    (page-header (:title "Customers")))
+   (("A long title" :layout :stack)
+    (page-header (:title "Quote 2024-031: A summer party with a tent for Fjord Catering"
+                         :breadcrumbs '((:label "Quotes" :href "/quotes")
+                                        (:label "Quote 2024-031"))
+                         :actions (list (button (:variant :outline) "Preview")
+                                        (button (:icon :send) "Send to the customer"))))))
   (check-type title (not null))
   `(:header ,(attrs (list :class "tun-page-header" :id id) attributes)
             ,@(when breadcrumbs (list (breadcrumbs (:items breadcrumbs))))
@@ -453,10 +456,10 @@ for tittelen når de får plass ved siden av den, også på en telefon, og eller
 
 (define-component section ((&key title description actions (level 2) id attributes)
                            &rest children)
-  (:group "Oppsett og navigasjon")
-  (:doc "En del av en side med egen overskrift (h2, eller h3 med LEVEL 3), en kort beskrivelse og
-handlinger som gjelder bare denne delen. I en app-shell eller en stack får seksjonene luft mellom
-seg.")
+  (:group "Layout and navigation")
+  (:doc "A part of a page with a heading of its own (h2, or h3 with LEVEL 3), a short
+description and actions that concern only this part. In an app-shell or a stack the sections
+get room between them.")
   (:source "Basecoat card header (Vega), without the card")
   (:css "
 .tun-section {
@@ -503,25 +506,25 @@ seg.")
   }
 }")
   (:examples
-   (("Med beskrivelse og handling" :layout :stack)
-    (section (:title "Kontaktpersoner"
-                     :description "Den første får ordrebekreftelser og faktura på e-post."
+   (("With a description and an action" :layout :stack)
+    (section (:title "Contacts"
+                     :description "The first gets order confirmations and invoices by email."
                      :actions (list (button (:variant :outline :size :sm :icon :user-plus)
-                                            "Legg til")))
-             '(:p "Kari Nordmann, daglig leder – kari@example.no – 912 34 567")
-             '(:p "Per Olsen, innkjøp – per@example.no")))
-   (("To seksjoner i en stack, den siste med h3" :layout :stack)
+                                            "Add")))
+             '(:p "Kari Nordmann, managing director – kari@example.com – 912 34 567")
+             '(:p "Per Olsen, purchasing – per@example.com")))
+   (("Two sections in a stack, the last with h3" :layout :stack)
     (stack (:gap :xl)
-           (section (:title "Leveringsadresse")
+           (section (:title "Delivery address")
                     '(:p "Storgata 12, 0155 Oslo"))
-           (section (:title "Merknader til sjåføren" :level 3)
-                    '(:p "Ring på forhånd. Porten er låst etter kl. 16."))))
-   (("Lang tittel og flere handlinger" :layout :stack)
-    (section (:title "Ordrelinjer som venter på varer fra leverandøren"
-                     :actions (list (button (:variant :ghost :size :sm) "Vis alle")
+           (section (:title "Notes for the driver" :level 3)
+                    '(:p "Call ahead. The gate is locked after 4 pm."))))
+   (("A long title and several actions" :layout :stack)
+    (section (:title "Order lines waiting for goods from the supplier"
+                     :actions (list (button (:variant :ghost :size :sm) "Show all")
                                     (button (:variant :outline :size :sm :icon :refresh-cw)
-                                            "Sjekk lager")))
-             '(:p "3 linjer venter. Forventet levering 18. oktober."))))
+                                            "Check the stock")))
+             '(:p "3 lines are waiting. Delivery expected on 18 October."))))
   (check-type title (not null))
   (check-type level (member 2 3))
   `(:section ,(attrs (list :class "tun-section" :id id) attributes)
@@ -546,25 +549,26 @@ seg.")
                             (:span (:@ :class "tun-app-shell-avatar") ,(icon (:name :user)))
                             (:span (:@ :class "tun-app-shell-who")
                                    (:span (:@ :class "tun-app-shell-signed-in")
-                                          "Innlogget som")
+                                          ,(tr "Signed in as"))
                                    (:span (:@ :class "tun-app-shell-name") ,user)))))
            ,@(when logout-action
                (list `(:form (:@ :class "tun-app-shell-logout" :method "post"
                                  :action ,logout-action)
                              ,(button (:type "submit" :variant :outline :icon :log-out)
-                                      "Logg ut")))))))
+                                      (tr "Sign out"))))))))
 
 (define-component app-shell ((&key title (home "/") nav nav-groups current user logout-action
-                                   (width :default) (main-id "hovedinnhold") id attributes)
+                                   (width :default) (main-id "main-content") id attributes)
                              &rest children)
-  (:group "Oppsett og navigasjon")
-  (:doc "Rammen rundt hver side for de ansatte: en lenke forbi menyen, appens navn, hovedmenyen
-(NAV, lenker som i nav-list, med CURRENT merket), hvem som er innlogget og «Logg ut». På en
-telefon ligger menyen bak en menyknapp og virker uten JavaScript. Fra 64rem er den en sidemeny,
-ikke en meny i toppen: seks punkter med ikon og antall får ikke plass ved siden av navnet og
-brukeren på en smalere skjerm, og en sidemeny har plass til flere moduler. Med :width :narrow
-står innholdet smalt og midt på siden, for en side med ett kort skjema som innloggingen; med
-:width :wide bruker det hele bredden ved siden av menyen, for en tavle eller en bred oversikt.")
+  (:group "Layout and navigation")
+  (:doc "The frame around every page for the staff: a link past the menu, the app's name, the
+main menu (NAV, links as in nav-list, with CURRENT marked), who is signed in and «Sign out».
+On a phone the menu is behind a menu button and works without JavaScript. From 64rem it is a
+sidebar, not a menu at the top: six entries with an icon and a count do not fit beside the
+name and the user on a narrower screen, and a sidebar has room for more modules. With :width
+:narrow the content stands narrow in the middle of the page, for a page with one short form
+such as signing in; with :width :wide it uses the whole width beside the menu, for a board or
+a wide overview.")
   (:source "Basecoat sidebar (Vega); GOV.UK skip link and service navigation")
   (:css "
 .tun-app-shell {
@@ -835,66 +839,66 @@ wide.addEventListener('change', () => {
     panel.hidePopover();
 });")
   (:examples
-   (("En hel side" :layout :stack)
-    (app-shell (:title "Nordvik Utleie"
-                       :nav '((:label "Kunder" :href "/kunder" :icon :users :count 128)
-                              (:label "Ordre" :href "/ordre" :icon :shopping-cart :count 7)
-                              (:label "Tilbud" :href "/tilbud" :icon :file-text :count 3)
-                              (:label "Lager" :href "/lager" :icon :package)
-                              (:label "Innstillinger" :href "/innstillinger" :icon :settings)
-                              (:label "Tilgang" :href "/tilgang" :icon :shield-check))
-                       :current "/kunder/42"
+   (("A whole page" :layout :stack)
+    (app-shell (:title "Nordvik Rentals"
+                       :nav '((:label "Customers" :href "/customers" :icon :users :count 128)
+                              (:label "Orders" :href "/orders" :icon :shopping-cart :count 7)
+                              (:label "Quotes" :href "/quotes" :icon :file-text :count 3)
+                              (:label "Stock" :href "/stock" :icon :package)
+                              (:label "Settings" :href "/settings" :icon :settings)
+                              (:label "Access" :href "/access" :icon :shield-check))
+                       :current "/customers/42"
                        :user "admin:jonas"
                        :logout-action "/logout")
-               (page-header (:title "Ole Hansen AS"
-                                    :description "Kunde siden mars 2021. Faktureres månedlig."
-                                    :breadcrumbs '((:label "Kunder" :href "/kunder")
-                                                   (:label "Ole Hansen AS"))
+               (page-header (:title "Ole Hansen Ltd"
+                                    :description "A customer since March 2021. Invoiced monthly."
+                                    :breadcrumbs '((:label "Customers" :href "/customers")
+                                                   (:label "Ole Hansen Ltd"))
                                     :actions (list (button (:variant :outline :icon :pencil)
-                                                           "Rediger")
-                                                   (button (:icon :plus) "Ny ordre"))))
-               (section (:title "Kontakt")
+                                                           "Edit")
+                                                   (button (:icon :plus) "New order"))))
+               (section (:title "Contact")
                         (grid (:min :sm)
                               (stack (:gap :xs)
                                      '(:strong "Kari Nordmann")
-                                     '(:span "Daglig leder")
-                                     '(:span "kari@example.no · 912 34 567"))
+                                     '(:span "Managing director")
+                                     '(:span "kari@example.com · 912 34 567"))
                               (stack (:gap :xs)
-                                     '(:strong "Fakturaadresse")
+                                     '(:strong "Invoice address")
                                      '(:span "Storgata 12")
                                      '(:span "0155 Oslo"))))
-               (section (:title "Siste ordre"
-                                :description "Ordre fra de siste 90 dagene."
+               (section (:title "Latest orders"
+                                :description "Orders from the last 90 days."
                                 :actions (list (button (:variant :outline :size :sm
-                                                                 :href "/ordre?kunde=42")
-                                                       "Vis alle")))
+                                                                 :href "/orders?customer=42")
+                                                       "Show all")))
                         (stack (:gap :sm)
                                (cluster (:justify :between)
-                                        '(:span "Ordre 1042, 3. oktober")
-                                        '(:strong "12 450 kr"))
+                                        '(:span "Order 1042, 3 October")
+                                        '(:strong "€12,450"))
                                (cluster (:justify :between)
-                                        '(:span "Ordre 1031, 14. september")
-                                        '(:strong "4 800 kr"))))))
-   (("Uten bruker og meny, smal" :layout :stack)
-    (app-shell (:title "Nordvik Utleie" :width :narrow)
-               (page-header (:title "Logg inn" :description "Logg inn i Nordvik Utleie."))
+                                        '(:span "Order 1031, 14 September")
+                                        '(:strong "€4,800"))))))
+   (("Without a user and a menu, narrow" :layout :stack)
+    (app-shell (:title "Nordvik Rentals" :width :narrow)
+               (page-header (:title "Sign in" :description "Sign in to Nordvik Rentals."))
                (card ()
                      (form-actions ()
-                       (button (:type "submit" :icon :log-in) "Logg inn"))))))
+                       (button (:type "submit" :icon :log-in) "Sign in"))))))
   (check-type title string)
   (check-type width (member :default :narrow :wide))
   (let* ((menu-p (or nav nav-groups user logout-action))
          (menu-id (element-id "tun-app-shell-menu"))
-         (open-button (button (:variant :ghost :size :icon :label "Meny"
+         (open-button (button (:variant :ghost :size :icon :label (tr "Menu")
                                         :attributes (list :popovertarget menu-id))
                               (icon (:name :menu))))
-         (close-button (button (:variant :ghost :size :icon :label "Lukk menyen"
+         (close-button (button (:variant :ghost :size :icon :label (tr "Close the menu")
                                          :attributes (list :popovertarget menu-id
                                                            :popovertargetaction "hide"))
                                (icon (:name :x)))))
     `(:div ,(attrs (list :class "tun-app-shell" :id id) attributes)
            (:a (:@ :class "tun-app-shell-skip" :href ,(format nil "#~a" main-id))
-               "Hopp til hovedinnholdet")
+               ,(tr "Skip to the main content"))
            (:header (:@ :class "tun-app-shell-header")
                     (:div (:@ :class "tun-app-shell-bar")
                           ,@(when menu-p (list open-button))
@@ -907,11 +911,11 @@ wide.addEventListener('change', () => {
                          `(:div (:@ :class "tun-app-shell-panel" :id ,menu-id :popover "auto"
                                     :data-tun-app-shell-menu t)
                                 (:div (:@ :class "tun-app-shell-panel-head")
-                                      (:span "Meny")
+                                      (:span ,(tr "Menu"))
                                       ,close-button)
                                 ,@(when (or nav nav-groups)
                                     (list `(:div (:@ :class "tun-app-shell-nav")
-                                                 ,(nav-list (:label "Hovedmeny" :items nav
+                                                 ,(nav-list (:label (tr "Main menu") :items nav
                                                                     :groups nav-groups
                                                                     :current current)))))
                                 ,@(when (or user logout-action)

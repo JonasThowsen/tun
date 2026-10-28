@@ -92,16 +92,16 @@ function from a row (its cells) to its URL or NIL."
     ((or function symbol) (mapcar row-href rows))))
 
 (define-component table ((&key columns rows row-href sort-href footer caption caption-hidden
-                               (empty "Ingen oppføringer.") id attributes))
+                               (empty (tr "No entries.")) id attributes))
   (:group "Data")
-  (:doc "En liste med poster, som ordre, kunder eller fakturaer. Første kolonne er det som
-kjenner igjen posten: på en smal skjerm blir den tittelen på et kort, og de andre verdiene står
-med kolonnens navn. Med ROW-HREF er hele raden en lenke til posten; beløp og tall høyrestilles
-med :align :end. En kolonne med :sort NØKKEL kan sorteres: overskriften blir en lenke til
-SORT-HREF (en funksjon av nøkkelen og \"asc\" eller \"desc\", eller en formatstreng), og
-:sorted :asc eller :desc viser hvordan radene er sortert. Siden sorterer; tabellen viser bare
-overskriftene.")
-  (:source "Basecoat table (Vega); kort på mobil etter GOV.UK og Aksel")
+  (:doc "A list of records, such as orders, customers or invoices. The first column is what
+identifies the record: on a narrow screen it becomes the title of a card, and the other
+values stand with their column's name. With ROW-HREF the whole row is a link to the record;
+amounts and numbers are right-aligned with :align :end. A column with :sort KEY can be
+sorted: its header becomes a link to SORT-HREF (a function of the key and \"asc\" or
+\"desc\", or a format string), and :sorted :asc or :desc shows how the rows are sorted. The
+page sorts; the table only shows the headers.")
+  (:source "Basecoat table (Vega); cards on a phone after GOV.UK and Aksel")
   (:css "
 .tun-table {
   container: tun-table / inline-size;
@@ -294,39 +294,41 @@ overskriftene.")
   & .tun-table-empty td:has(> .tun-empty-state) { padding: 0; }
 }")
   (:examples
-   (("Ordreliste" :layout :stack)
-    (table (:caption "Ordre siste uke"
-                     :columns '(("Ordre" :width :min) "Kunde" ("Dato" :width :min) "Status"
-                                ("Beløp" :align :end))
-                     :rows '(("10482" "Fjordkaffe AS" "12.10.2026" "Ny" "4 380,00 kr")
-                             ("10481" "Hansen Bygg og Anlegg AS" "11.10.2026" "Under arbeid"
-                              "128 950,00 kr")
-                             ("10480" "Kari Nordmann" "10.10.2026" "Sendt" "649,00 kr")
-                             ("10479" "Tromsø Sykkelverksted" "09.10.2026" "Fakturert"
-                              "12 400,00 kr")
-                             ("10478" "Bakeriet på Hjørnet" "08.10.2026" "Kansellert" "0,00 kr"))
-                     :row-href (lambda (row) (format nil "/ordre/~a" (first row))))))
-   (("Fakturalinjer med sum og skjult tekst" :layout :stack)
-    (table (:caption "Linjer på faktura 2026-0193" :caption-hidden t
-                     :columns '(("Beskrivelse" :wrap t) ("Antall" :align :end :width :min)
-                                ("Pris" :align :end :width :min) ("Sum" :align :end :width :min))
-                     :rows '(("Montering av kjøkkenskap, inkludert justering av dører og skuffer"
-                              "6 t" "850,00 kr" "5 100,00 kr")
-                             ("Benkeplate i eik, 240 cm" "1" "4 990,00 kr" "4 990,00 kr")
-                             ("Kjøring" "38 km" "5,00 kr" "190,00 kr"))
-                     :footer '("Totalt eks. mva." nil nil "10 280,00 kr"))))
-   (("Sorterbare kolonner" :layout :stack)
-    (table (:caption "Saker"
-                     :columns '(("Sak" :sort "title") ("Kunde" :sort "customer")
-                                ("Opprettet" :sort "created" :sorted :desc :width :min) "Status")
-                     :rows '(("Eksporten til regnskap feiler" "Fjordkaffe AS" "21.10.2026" "Ny")
-                             ("Vis lager på ordren" "Hansen Bygg AS" "20.10.2026" "Planlagt"))
-                     :sort-href "/saker?sort=~a&retning=~a")))
-   (("Uten rader" :layout :stack)
-    (table (:caption "Fakturaer til forfall"
-                     :columns '("Faktura" "Kunde" "Forfall" ("Beløp" :align :end))
+   (("A list of orders" :layout :stack)
+    (table (:caption "Orders in the last week"
+                     :columns '(("Order" :width :min) "Customer" ("Date" :width :min) "Status"
+                                ("Amount" :align :end))
+                     :rows '(("10482" "Fjord Coffee Ltd" "12 Oct 2026" "New" "€4,380.00")
+                             ("10481" "Hansen Building and Construction Ltd" "11 Oct 2026"
+                              "In progress" "€128,950.00")
+                             ("10480" "Kari Nordmann" "10 Oct 2026" "Sent" "€649.00")
+                             ("10479" "Tromsø Bicycle Workshop" "9 Oct 2026" "Invoiced"
+                              "€12,400.00")
+                             ("10478" "The Corner Bakery" "8 Oct 2026" "Cancelled" "€0.00"))
+                     :row-href (lambda (row) (format nil "/orders/~a" (first row))))))
+   (("Invoice lines with a total and a hidden caption" :layout :stack)
+    (table (:caption "Lines on invoice 2026-0193" :caption-hidden t
+                     :columns '(("Description" :wrap t) ("Quantity" :align :end :width :min)
+                                ("Price" :align :end :width :min) ("Total" :align :end :width :min))
+                     :rows '(("Fitting kitchen cabinets, including adjusting doors and drawers"
+                              "6 h" "€850.00" "€5,100.00")
+                             ("Oak worktop, 240 cm" "1" "€4,990.00" "€4,990.00")
+                             ("Driving" "38 km" "€5.00" "€190.00"))
+                     :footer '("Total excluding VAT" nil nil "€10,280.00"))))
+   (("Sortable columns" :layout :stack)
+    (table (:caption "Items"
+                     :columns '(("Item" :sort "title") ("Customer" :sort "customer")
+                                ("Created" :sort "created" :sorted :desc :width :min) "Status")
+                     :rows '(("The export to accounting fails" "Fjord Coffee Ltd" "21 Oct 2026"
+                              "New")
+                             ("Show stock on the order" "Hansen Building Ltd" "20 Oct 2026"
+                              "Planned"))
+                     :sort-href "/items?sort=~a&direction=~a")))
+   (("Without rows" :layout :stack)
+    (table (:caption "Invoices falling due"
+                     :columns '("Invoice" "Customer" "Due" ("Amount" :align :end))
                      :rows '()
-                     :empty "Ingen fakturaer forfaller de neste 14 dagene."))))
+                     :empty "No invoices fall due in the next 14 days."))))
   (let ((columns (mapcar #'table-column columns))
         (hrefs (table-row-hrefs row-href rows)))
     `(:div ,(attrs (list :class "tun-table" :id id) attributes)
@@ -358,16 +360,16 @@ overskriftene.")
            (:dd (:@ :class "tun-summary-list-value") ,value)
            ,@(when href
                ;; The key follows the action for a screen reader, which
-               ;; hears every «Endre» on its own when it lists the links.
+               ;; hears every «Change» on its own when it lists the links.
                `((:dd (:@ :class "tun-summary-list-action")
                       (:a (:@ :href ,href)
                           ,action
                           (:span (:@ :class "tun-summary-list-hidden") " " ,key))))))))
 
-(define-component summary-list ((&key rows (action "Endre") id attributes))
+(define-component summary-list ((&key rows (action (tr "Change")) id attributes))
   (:group "Data")
-  (:doc "Detaljene i én post, som en kunde eller en ordre: et navn og en verdi per rad, og
-gjerne en lenke for å endre verdien. På mobil står navnet over verdien.")
+  (:doc "The details of one record, such as a customer or an order: a name and a value per
+row, and often a link to change the value. On a phone the name stands above the value.")
   (:source "GOV.UK summary list, Basecoat look")
   (:css "
 .tun-summary-list {
@@ -426,21 +428,21 @@ gjerne en lenke for å endre verdien. På mobil står navnet over verdien.")
   }
 }")
   (:examples
-   (("Kunde" :layout :stack)
+   (("A customer" :layout :stack)
     (summary-list
-     (:rows '(("Navn" "Hansen Bygg og Anlegg AS" :href "/kunder/412/endre#navn")
-              ("Organisasjonsnummer" "912 345 678")
-              ("Kontaktperson" "Ole Hansen" :href "/kunder/412/endre#kontakt")
-              ("E-post" "ole.hansen@example.no" :href "/kunder/412/endre#e-post")
-              ("Telefon" "+47 912 34 567" :href "/kunder/412/endre#telefon")
-              ("Fakturaadresse" ((:p "Industriveien 14") (:p "7080 Heimdal"))
-               :href "/kunder/412/endre#adresse")))))
-   (("Uten lenker" :layout :stack)
+     (:rows '(("Name" "Hansen Building and Construction Ltd" :href "/customers/412/edit#name")
+              ("Organisation number" "912 345 678")
+              ("Contact" "Ole Hansen" :href "/customers/412/edit#contact")
+              ("Email" "ole.hansen@example.com" :href "/customers/412/edit#email")
+              ("Phone" "+47 912 34 567" :href "/customers/412/edit#phone")
+              ("Invoice address" ((:p "Industriveien 14") (:p "7080 Heimdal"))
+               :href "/customers/412/edit#address")))))
+   (("Without links" :layout :stack)
     (summary-list
-     (:rows '(("Ordre" "10481")
-              ("Bestilt" "11. oktober 2026 kl. 14.32")
-              ("Levering" "Hentes i butikken, Storgata 3, Tromsø")
-              ("Betalingsmåte" "Faktura, 14 dager"))))))
+     (:rows '(("Order" "10481")
+              ("Ordered" "11 October 2026 at 14:32")
+              ("Delivery" "Collected in the shop, Storgata 3, Tromsø")
+              ("Payment" "Invoice, 14 days"))))))
   `(:dl ,(attrs (list :class "tun-summary-list" :id id) attributes)
         ,@(mapcar (lambda (row) (summary-list-row row action)) rows)))
 
@@ -451,9 +453,9 @@ gjerne en lenke for å endre verdien. På mobil står navnet over verdien.")
                               (size :default) id attributes)
                         &rest children)
   (:group "Data")
-  (:doc "En ramme rundt innhold som hører sammen, med tittel, beskrivelse, innhold og bunn.
-Med HREF er hele kortet en lenke (tittelen er lenketeksten); ACTION er en knapp eller lenke
-øverst i hjørnet.")
+  (:doc "A frame around content that belongs together, with a title, a description, content
+and a footer. With HREF the whole card is a link (the title is the link's text); ACTION is a
+button or a link in the top corner.")
   (:source "Basecoat card (Vega)")
   (:css "
 .tun-card {
@@ -539,28 +541,30 @@ Med HREF er hele kortet en lenke (tittelen er lenketeksten); ACTION er en knapp 
   }
 }")
   (:examples
-   (("Med tittel, handling og bunn" :layout :stack)
-    (card (:title "Hansen Bygg og Anlegg AS"
-                  :description "Kunde siden mars 2021"
-                  :action (button (:variant :outline :size :sm :href "/kunder/412/endre"
+   (("With a title, an action and a footer" :layout :stack)
+    (card (:title "Hansen Building and Construction Ltd"
+                  :description "A customer since March 2021"
+                  :action (button (:variant :outline :size :sm :href "/customers/412/edit"
                                             :icon :pencil)
-                                  "Endre")
-                  :footer (list (button (:href "/ordre/ny?kunde=412" :icon :plus) "Ny ordre")
-                                (button (:variant :ghost :href "/kunder/412/ordre") "Alle ordre")))
-          (summary-list (:rows '(("Kontaktperson" "Ole Hansen")
-                                 ("Telefon" "+47 912 34 567")
-                                 ("Utestående" "18 400,00 kr"))))))
-   ("Kort som lenker"
-    (card (:title "Oppdrag uke 42" :href "/oppdrag?uke=42" :size :sm
-                  :description "12 oppdrag, 3 uten ansvarlig")
-          '(:p "Neste: montering hos Kari Nordmann, tirsdag kl. 08.00."))
-    (card (:title "Fakturaer til forfall" :href "/faktura?status=forfall" :size :sm
-                  :description "4 fakturaer, 31 250,00 kr")
-          '(:p "Eldste forfalt 3. oktober.")))
-   ("Bare innhold"
+                                  "Edit")
+                  :footer (list (button (:href "/orders/new?customer=412" :icon :plus)
+                                        "New order")
+                                (button (:variant :ghost :href "/customers/412/orders")
+                                        "All orders")))
+          (summary-list (:rows '(("Contact" "Ole Hansen")
+                                 ("Phone" "+47 912 34 567")
+                                 ("Outstanding" "€18,400.00"))))))
+   ("Cards that are links"
+    (card (:title "Jobs in week 42" :href "/jobs?week=42" :size :sm
+                  :description "12 jobs, 3 with no one responsible")
+          '(:p "Next: fitting at Kari Nordmann's, Tuesday at 08:00."))
+    (card (:title "Invoices falling due" :href "/invoices?status=due" :size :sm
+                  :description "4 invoices, €31,250.00")
+          '(:p "The oldest fell due on 3 October.")))
+   ("Content only"
     (card ()
-          '(:p "Kortet uten tittel er bare en ramme rundt innholdet, for eksempel et notat om
-kunden: «Ring før levering, porten er låst etter kl. 16.»"))))
+          '(:p "A card without a title is only a frame around its content, for example a note
+about the customer: “Call before delivery, the gate is locked after 4 pm.”"))))
   (when (and href (null title))
     (error "A card that is a link needs :title, which is the link's text"))
   `(:div ,(attrs (list :class "tun-card" :id id
@@ -587,7 +591,7 @@ kunden: «Ring før levering, porten er låst etter kl. 16.»"))))
 ;;; Stat
 
 (defun change-direction (change)
-  "Whether the change CHANGE, a string such as \"+12 %\" or \"−3 %\", is :UP,
+  "Whether the change CHANGE, a string such as \"+12%\" or \"−3%\", is :UP,
 :DOWN or neither (NIL), by its sign."
   (let ((first (find-if-not (lambda (char) (char= char #\Space)) change)))
     (case first
@@ -596,9 +600,9 @@ kunden: «Ring før levering, porten er låst etter kl. 16.»"))))
 
 (define-component stat ((&key label value change change-tone note icon id attributes))
   (:group "Data")
-  (:doc "Et nøkkeltall på en oversikt, som omsetning eller antall åpne ordre, med endring
-og en kort merknad. Endringen er grønn når den går opp og rød når den går ned; sett
-CHANGE-TONE når opp er dårlig, som for utestående beløp.")
+  (:doc "A key figure on an overview, such as turnover or the number of open orders, with
+its change and a short note. The change is green when it goes up and red when it goes down;
+set CHANGE-TONE when up is bad, as for amounts outstanding.")
   (:source "shadcn/ui dashboard cards, Basecoat card (Vega)")
   (:css "
 .tun-stat {
@@ -654,18 +658,18 @@ CHANGE-TONE når opp er dårlig, som for utestående beløp.")
   }
 }")
   (:examples
-   ("Oversikt"
-    (stat (:label "Omsetning i oktober" :value "184 250 kr" :change "+12 %"
-                  :note "fra september" :icon :banknote))
-    (stat (:label "Åpne ordre" :value "23" :change "−3" :note "fra forrige uke"
+   ("An overview"
+    (stat (:label "Turnover in October" :value "€184,250" :change "+12%"
+                  :note "from September" :icon :banknote))
+    (stat (:label "Open orders" :value "23" :change "−3" :note "from last week"
                   :icon :shopping-cart))
-    (stat (:label "Utestående" :value "31 250 kr" :change "+8 %" :change-tone :destructive
-                  :note "4 fakturaer" :icon :receipt))
-    (stat (:label "Oppdrag denne uken" :value "12" :note "3 uten ansvarlig" :icon :wrench)))
-   ("Uten endring og ikon"
-    (stat (:label "Kunder" :value "1 204"))
-    (stat (:label "Gjennomsnittlig ordreverdi" :value "2 940 kr" :change "0 %"
-                  :note "uendret"))))
+    (stat (:label "Outstanding" :value "€31,250" :change "+8%" :change-tone :destructive
+                  :note "4 invoices" :icon :receipt))
+    (stat (:label "Jobs this week" :value "12" :note "3 with no one responsible" :icon :wrench)))
+   ("Without a change and an icon"
+    (stat (:label "Customers" :value "1,204"))
+    (stat (:label "Average order value" :value "€2,940" :change "0%"
+                  :note "unchanged"))))
   (let* ((direction (and change (change-direction change)))
          (tone (or change-tone (case direction (:up :success) (:down :destructive)
                                      (t :neutral)))))
@@ -695,8 +699,8 @@ CHANGE-TONE når opp er dårlig, som for utestående beløp.")
                                      (variant :default) id attributes)
                                &rest children)
   (:group "Data")
-  (:doc "Det som vises der det ennå ikke finnes noe, som en tom ordreliste: hva som mangler,
-hvorfor, og knappene for å komme i gang. Variant outline gir en stiplet ramme.")
+  (:doc "What shows where there is nothing yet, such as an empty list of orders: what is
+missing, why, and the buttons to get started. The variant outline gives a dashed border.")
   (:source "Basecoat empty (Vega)")
   (:css "
 .tun-empty-state {
@@ -758,23 +762,23 @@ hvorfor, og knappene for å komme i gang. Variant outline gir en stiplet ramme."
   }
 }")
   (:examples
-   (("Ingen ordre ennå" :layout :stack)
-    (empty-state (:icon :shopping-cart :title "Ingen ordre ennå"
-                        :description "Når en kunde bestiller, kommer ordren hit. Du kan også
-registrere en ordre selv.")
-                 (button (:href "/ordre/ny" :icon :plus) "Ny ordre")
-                 (button (:variant :outline :href "/ordre/importer" :icon :upload) "Importer")))
-   (("Med ramme, uten handlinger" :layout :stack)
-    (empty-state (:variant :outline :icon :search :title "Ingen kunder passer søket"
-                           :description "Sjekk stavemåten, eller søk på organisasjonsnummer
-eller telefonnummer.")))
-   (("I en tabell" :layout :stack)
-    (table (:columns '("Ordre" "Kunde" "Dato" ("Beløp" :align :end))
+   (("No orders yet" :layout :stack)
+    (empty-state (:icon :shopping-cart :title "No orders yet"
+                        :description "When a customer orders, the order comes here. You can
+also register an order yourself.")
+                 (button (:href "/orders/new" :icon :plus) "New order")
+                 (button (:variant :outline :href "/orders/import" :icon :upload) "Import")))
+   (("With a border, without actions" :layout :stack)
+    (empty-state (:variant :outline :icon :search :title "No customers match the search"
+                           :description "Check the spelling, or search by organisation number
+or phone number.")))
+   (("In a table" :layout :stack)
+    (table (:columns '("Order" "Customer" "Date" ("Amount" :align :end))
                      :rows '()
-                     :empty (empty-state (:icon :shopping-cart :title "Ingen ordre ennå"
-                                                :description "Ordrene dine vises her.")
-                                         (button (:size :sm :href "/ordre/ny" :icon :plus)
-                                                 "Ny ordre"))))))
+                     :empty (empty-state (:icon :shopping-cart :title "No orders yet"
+                                                :description "Your orders show here.")
+                                         (button (:size :sm :href "/orders/new" :icon :plus)
+                                                 "New order"))))))
   (check-type title string)
   `(:div ,(attrs (list :class "tun-empty-state" :id id
                        :data-variant (unless (eq variant :default) (option-string variant)))
@@ -810,12 +814,12 @@ first page, the last, and the pages around PAGE."
     (string (format nil href page))
     ((or function symbol) (funcall href page))))
 
-(define-component pagination ((&key page pages href (label "Sidenavigering") id attributes))
+(define-component pagination ((&key page pages href (label (tr "Pagination")) id attributes))
   (:group "Data")
-  (:doc "Lenker mellom sidene i en lang liste. HREF er en formatstreng med ~d eller en
-funksjon fra sidenummer til adresse. På mobil vises bare Forrige, Neste og «Side 3 av 12».
-Med bare én side blir det ingen sidenavigering.")
-  (:source "Basecoat pagination (Vega); ordlyd fra Designsystemet")
+  (:doc "Links between the pages of a long list. HREF is a format string with ~d or a
+function from a page number to its address. On a phone only Previous, Next and «Page 3 of 12»
+show. With only one page there is no pagination.")
+  (:source "Basecoat pagination (Vega); wording from Designsystemet")
   (:css "
 .tun-pagination {
   container: tun-pagination / inline-size;
@@ -862,14 +866,14 @@ Med bare én side blir det ingen sidenavigering.")
   }
 }")
   (:examples
-   (("Side 3 av 12" :layout :stack)
-    (pagination (:page 3 :pages 12 :href "/ordre?side=~d")))
-   (("Midt i, med en funksjon for adressen" :layout :stack)
+   (("Page 3 of 12" :layout :stack)
+    (pagination (:page 3 :pages 12 :href "/orders?page=~d")))
+   (("In the middle, with a function for the address" :layout :stack)
     (pagination (:page 7 :pages 24
-                       :href (lambda (page) (format nil "/kunder?side=~d&sortering=navn" page)))))
-   (("Første og siste side" :layout :stack)
-    (pagination (:page 1 :pages 5 :href "/faktura?side=~d"))
-    (pagination (:page 5 :pages 5 :href "/faktura?side=~d"))))
+                       :href (lambda (page) (format nil "/customers?page=~d&sort=name" page)))))
+   (("The first and the last page" :layout :stack)
+    (pagination (:page 1 :pages 5 :href "/invoices?page=~d"))
+    (pagination (:page 5 :pages 5 :href "/invoices?page=~d"))))
   (check-type pages integer)
   (check-type page integer)
   (unless (<= 1 page (max pages 1))
@@ -880,28 +884,28 @@ Med bare én side blir det ingen sidenavigering.")
                 (:li (:@ :class "tun-pagination-previous")
                      ,(button (:variant :ghost :href (page-url href (max 1 (1- page)))
                                         :icon :chevron-left
-                                        :disabled (= page 1) :label "Forrige side")
-                              "Forrige"))
+                                        :disabled (= page 1) :label (tr "Previous page"))
+                              (tr "Previous")))
                 ,@(loop for item in (pagination-items page pages)
                         collect (if (eq item :gap)
                                     `(:li (:@ :class "tun-pagination-gap")
                                           ,(icon (:name :ellipsis))
                                           (:span (:@ :class "tun-pagination-hidden")
-                                                 "Flere sider"))
+                                                 ,(tr "More pages")))
                                     `(:li (:@ :class "tun-pagination-page")
                                           ,(button (:variant (if (= item page) :outline :ghost)
                                                              :size :icon :href (page-url href item)
-                                                             :label (format nil "Side ~d" item)
+                                                             :label (tr "Page ~d" item)
                                                              :attributes (when (= item page)
                                                                            '(:aria-current "page")))
                                                    (princ-to-string item)))))
                 (:li (:@ :class "tun-pagination-status")
-                     ,(format nil "Side ~d av ~d" page pages))
+                     ,(tr "Page ~d of ~d" page pages))
                 (:li (:@ :class "tun-pagination-next")
                      ,(button (:variant :ghost :href (page-url href (min pages (1+ page)))
                                         :icon-end :chevron-right :disabled (= page pages)
-                                        :label "Neste side")
-                              "Neste"))))))
+                                        :label (tr "Next page"))
+                              (tr "Next")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Timeline
@@ -930,8 +934,8 @@ Med bare én side blir det ingen sidenavigering.")
 
 (define-component timeline ((&key entries label id attributes))
   (:group "Data")
-  (:doc "Det som har skjedd med en post, som historikken til en ordre: hvem som gjorde hva,
-og når. Nyeste først eller eldste først, men det samme overalt i løsningen.")
+  (:doc "What has happened to a record, such as an order's history: who did what, and when.
+Newest first or oldest first, but the same everywhere in the product.")
   (:source "shadcn/ui activity feed, Basecoat look")
   (:css "
 .tun-timeline {
@@ -1005,29 +1009,31 @@ og når. Nyeste først eller eldste først, men det samme overalt i løsningen."
   }
 }")
   (:examples
-   (("Historikken til en ordre" :layout :stack)
+   (("An order's history" :layout :stack)
     (timeline
-     (:label "Historikk for ordre 10481"
-             :entries '((:time "11. okt. 2026 kl. 14.32" :datetime "2026-10-11T14:32+02:00"
-                         :actor "Ole Hansen" :text "bestilte i nettbutikken" :icon :shopping-cart)
-                        (:time "11. okt. 2026 kl. 15.05" :datetime "2026-10-11T15:05+02:00"
-                         :actor "Kari Nordmann" :text "bekreftet ordren og sendte e-post til kunden"
+     (:label "History of order 10481"
+             :entries '((:time "11 Oct 2026 at 14:32" :datetime "2026-10-11T14:32+02:00"
+                         :actor "Ole Hansen" :text "ordered in the web shop" :icon :shopping-cart)
+                        (:time "11 Oct 2026 at 15:05" :datetime "2026-10-11T15:05+02:00"
+                         :actor "Kari Nordmann"
+                         :text "confirmed the order and emailed the customer"
                          :icon :mail :variant :info)
-                        (:time "12. okt. 2026 kl. 09.40" :datetime "2026-10-12T09:40+02:00"
-                         :actor "Kari Nordmann" :text "la til en kommentar" :icon :message-square
-                         :detail "Kunden vil ha levering etter kl. 16, porten er låst før det.")
-                        (:time "13. okt. 2026 kl. 07.15" :datetime "2026-10-13T07:15+02:00"
-                         :actor "Bring" :text "meldte at pakken er forsinket én dag"
+                        (:time "12 Oct 2026 at 09:40" :datetime "2026-10-12T09:40+02:00"
+                         :actor "Kari Nordmann" :text "added a comment" :icon :message-square
+                         :detail "The customer wants delivery after 4 pm; the gate is locked
+before then.")
+                        (:time "13 Oct 2026 at 07:15" :datetime "2026-10-13T07:15+02:00"
+                         :actor "Bring" :text "reported that the parcel is a day late"
                          :icon :truck :variant :warning)
-                        (:time "14. okt. 2026 kl. 16.48" :datetime "2026-10-14T16:48+02:00"
-                         :actor "Jonas Berg" :text "leverte ordren" :icon :circle-check
+                        (:time "14 Oct 2026 at 16:48" :datetime "2026-10-14T16:48+02:00"
+                         :actor "Jonas Berg" :text "delivered the order" :icon :circle-check
                          :variant :success)))))
-   (("Uten ikoner" :layout :stack)
+   (("Without icons" :layout :stack)
     (timeline
-     (:entries '((:time "I dag kl. 10.12" :datetime "2026-10-13T10:12+02:00"
-                  :actor "Tun" :text "sendte purring på faktura 2026-0187")
-                 (:time "I går kl. 08.00" :datetime "2026-10-12T08:00+02:00"
-                  :actor "Tun" :text "markerte faktura 2026-0187 som forfalt"
+     (:entries '((:time "Today at 10:12" :datetime "2026-10-13T10:12+02:00"
+                  :actor "Tun" :text "sent a reminder for invoice 2026-0187")
+                 (:time "Yesterday at 08:00" :datetime "2026-10-12T08:00+02:00"
+                  :actor "Tun" :text "marked invoice 2026-0187 as overdue"
                   :variant :destructive))))))
   `(:ol ,(attrs (list :class "tun-timeline" :id id :aria-label label) attributes)
         ,@(mapcar #'timeline-entry entries)))
@@ -1035,12 +1041,12 @@ og når. Nyeste først eller eldste først, men det samme overalt i løsningen."
 ;;; ------------------------------------------------------------------
 ;;; Code block
 
-(define-component code-block ((&key title wrap (copy t) (copy-label "Kopier") id attributes)
+(define-component code-block ((&key title wrap (copy t) (copy-label (tr "Copy")) id attributes)
                               &rest children)
   (:group "Data")
-  (:doc "Tekst som skal kopieres nøyaktig, som en tilgangsnøkkel eller en kommando, med en
-knapp som kopierer den. Uten JavaScript er knappen skjult, og teksten kan merkes og kopieres
-som vanlig. WRAP bryter lange linjer i stedet for å rulle sidelengs.")
+  (:doc "Text to be copied exactly, such as an access token or a command, with a button that
+copies it. Without JavaScript the button is hidden, and the text can be selected and copied
+as usual. WRAP breaks long lines instead of scrolling sideways.")
   (:source "shadcn/ui code block, Basecoat look")
   (:css "
 .tun-code-block {
@@ -1113,8 +1119,8 @@ som vanlig. WRAP bryter lange linjer i stedet for å rulle sidelengs.")
 }")
   (:script "
 // The copy buttons: [data-tun-copy=ID] copies the text of the element ID and
-// says so in [data-tun-copy-status=ID].  The buttons are hidden until this
-// script knows the browser can copy.
+// says so in [data-tun-copy-status=ID], with the texts that element holds.
+// The buttons are hidden until this script knows the browser can copy.
 const reveal = (root) => {
   if (!navigator.clipboard) return;
   for (const button of root.querySelectorAll('[data-tun-copy][hidden]')) button.hidden = false;
@@ -1131,10 +1137,10 @@ document.addEventListener('click', async (event) => {
   try {
     await navigator.clipboard.writeText(source.textContent);
     button.dataset.copied = '';
-    say('Kopiert');
+    say(status?.dataset.tunCopyDone);
   } catch (error) {
     window.getSelection().selectAllChildren(source);
-    say('Kunne ikke kopiere. Teksten er merket.');
+    say(status?.dataset.tunCopyFailed);
   }
   clearTimeout(button.tunCopyTimer);
   button.tunCopyTimer = setTimeout(() => {
@@ -1143,14 +1149,14 @@ document.addEventListener('click', async (event) => {
   }, 2000);
 });")
   (:examples
-   (("Kommando" :layout :stack)
-    (code-block (:copy-label "Kopier kommandoen")
-                "claude mcp add --transport http tun https://kunde.example.no/mcp"))
-   (("Tilgangsnøkkel med tittel, brutt over flere linjer" :layout :stack)
-    (code-block (:title "Tilgangsnøkkel" :wrap t :copy-label "Kopier tilgangsnøkkelen")
+   (("A command" :layout :stack)
+    (code-block (:copy-label "Copy the command")
+                "claude mcp add --transport http tun https://customer.example.com/mcp"))
+   (("An access token with a title, broken over several lines" :layout :stack)
+    (code-block (:title "Access token" :wrap t :copy-label "Copy the access token")
                 "tun_live_7f3a9c2e1b8d4f60a5e7c9b1d3f2a4e6c8b0d2f4a6e8c0b2d4f6a8e0c2b4d6f8"))
-   (("Flere linjer, uten kopiering" :layout :stack)
-    (code-block (:title "Oppsett" :copy nil)
+   (("Several lines, without copying" :layout :stack)
+    (code-block (:title "Setup" :copy nil)
                 "nix develop .
 bin/repl --port 4005
 bin/test --only ui")))
@@ -1159,7 +1165,10 @@ bin/test --only ui")))
              (when copy
                `((:div (:@ :class "tun-code-block-tools")
                        (:span (:@ :class "tun-code-block-status" :role "status"
-                                  :aria-live "polite" :data-tun-copy-status ,code-id))
+                                  :aria-live "polite" :data-tun-copy-status ,code-id
+                                  :data-tun-copy-done ,(tr "Copied")
+                                  :data-tun-copy-failed
+                                  ,(tr "Could not copy. The text is selected.")))
                        ,(button (:variant :ghost :size :icon-sm :label copy-label
                                           :attributes (list :hidden t :data-tun-copy code-id))
                                 (icon (:name :copy :attributes '(:data-state "idle")))

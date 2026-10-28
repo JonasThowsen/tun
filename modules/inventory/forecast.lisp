@@ -40,7 +40,8 @@ orders that hold them.")
 
 (defun check-window (from to)
   (unless (and (date<= from to) (<= (round (- (parse-date to) (parse-date from)) 86400) +max-window-days+))
-    (fail :invalid-input "Ugyldig periode: til-dato må være etter fra-dato og høyst ~d dager senere" +max-window-days+)))
+    (fail :invalid-input "Invalid period: the to date must be after the from date and at most ~d days later"
+          +max-window-days+)))
 
 (defun forecast-demand (from &key include-unconfirmed)
   "The ARTICLE-DEMAND a forecast from FROM uses: orders dated from the earlier
@@ -131,21 +132,21 @@ first shortage), sorted by that date then name.  JSON objects."
 ;;; ------------------------------------------------------------------
 ;;; Operations
 
-(define-operation inventory-forecast ((from :type date :required t :label "Fra dato")
-                                      (to :type date :required t :label "Til dato")
-                                      (article-id :type (id article) :label "Artikkel-ID")
-                                      (include-unconfirmed :type boolean :label "Ta med ubekreftede"
-                                                           :description "Legg til utkast, tilbud sendt og akseptert som forventet behov."))
-    (:entity article :kind :read :title "Lagerprognose"
-     :description "Beholdningen dag for dag: bekreftet behov (og med include_unconfirmed det forventede) trukket fra på arrangementsdatoen; behov før fra-datoen, men ikke før i dag, lander på fra. Status none, balanced, watch eller shortage.")
+(define-operation inventory-forecast ((from :type date :required t :label "From date")
+                                      (to :type date :required t :label "To date")
+                                      (article-id :type (id article) :label "Article ID")
+                                      (include-unconfirmed :type boolean :label "Include unconfirmed"
+                                                           :description "Adds drafts, quotes sent and accepted orders as expected demand."))
+    (:entity article :kind :read :title "Stock forecast"
+     :description "The balance day by day: confirmed demand (and with include_unconfirmed the expected) subtracted on the event date; demand before the from date, but not before today, lands on from. Status none, balanced, watch or shortage.")
   (check-window from to)
   (when article-id (find-article article-id))
   (jobj "articles" (jarr (mapcar #'forecast-json
                                  (forecast from to :article-id article-id :include-unconfirmed include-unconfirmed)))))
 
-(define-operation inventory-shortages ((before-date :type date :required t :label "Før dato"))
-    (:entity inventory-movement :kind :read :title "Mangelliste"
-     :description "Lagerartikler med mangel i prognosen for bekreftede ordrer fra i dag til og med datoen: behov, beholdning og hvor mye som mangler.")
+(define-operation inventory-shortages ((before-date :type date :required t :label "Before date"))
+    (:entity inventory-movement :kind :read :title "Shortage list"
+     :description "Stock articles short in the forecast of confirmed orders from today up to and including the date: demand, balance and how much is short.")
   (let ((today (local-today))
         (items '()))
     (when (date<= today before-date)
@@ -162,17 +163,19 @@ first shortage), sorted by that date then name.  JSON objects."
                     items))))))
     (jobj "items" (jarr (sort items #'string< :key (lambda (i) (jget i "name")))))))
 
-(define-operation inventory-purchase-suggestions ((days :type (integer :min 1 :max 366) :default 30 :label "Dager"))
-    (:entity article :kind :read :title "Innkjøpsforslag"
-     :description "For hver artikkel med mangel de neste dagene: hvor mye som mangler (minst opp til minimum), hele pakninger å bestille, leverandøren og siste bestillingsdag (leveringstid før første mangel).")
+(define-operation inventory-purchase-suggestions ((days :type (integer :min 1 :max 366) :default 30
+                                                       :label "Days"))
+    (:entity article :kind :read :title "Purchase suggestions"
+     :description "For each article short in the coming days: how much is short (at least up to the minimum), whole packages to order, the supplier and the last day to order (the lead time before the first shortage).")
   (jobj "items" (jarr (purchase-suggestions days))))
 
-(define-operation inventory-availability-grid ((from :type date :required t :label "Fra dato")
-                                               (to :type date :required t :label "Til dato")
+(define-operation inventory-availability-grid ((from :type date :required t :label "From date")
+                                               (to :type date :required t :label "To date")
                                                (product-ids :type (list-of (id product) :min-items 1 :max-items 6)
-                                                            :required t :label "Produkter" :description "1–6 produkter."))
-    (:entity article :kind :read :title "Tilgjengelighetsoversikt"
-     :description "Per produkt og dato: totalt, booket (rengjøringsdager medregnet), tilgjengelig (kan bli negativ) og ordrene som booker.")
+                                                            :required t :label "Products"
+                                                            :description "1–6 products."))
+    (:entity article :kind :read :title "Availability overview"
+     :description "Per product and date: the total, what is booked (cleaning days included), what is available (may be negative) and the orders that book it.")
   (check-window from to)
   (jobj "items"
         (jarr (loop for product-id in product-ids

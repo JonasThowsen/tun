@@ -9,14 +9,14 @@
 (defpackage #:tun.accounting
   (:use #:cl)
   (:export #:invoice-intent #:make-invoice-intent #:intent-id #:intent-invoice-id #:intent-customer
-           #:intent-lines #:intent-total-ore
+           #:intent-lines #:intent-total-minor
            #:accounting-adapter #:create-invoice #:lookup-invoice #:adapter-name #:adapter-status))
 
 (in-package #:tun.accounting)
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defstruct (invoice-intent (:constructor make-invoice-intent (&key id invoice-id customer lines total-ore))
+(defstruct (invoice-intent (:constructor make-invoice-intent (&key id invoice-id customer lines total-minor))
                            (:conc-name intent-))
   "What core asks the accounting system to book. ID is stable per invoice, so a
 retried send reuses it and the provider can de-duplicate."
@@ -24,7 +24,7 @@ retried send reuses it and the provider can de-duplicate."
   (invoice-id "" :type string :read-only t)
   (customer nil :read-only t)              ; JSON object snapshot
   (lines nil :type list :read-only t)      ; JSON objects
-  (total-ore 0 :type integer :read-only t))
+  (total-minor 0 :type integer :read-only t))
 
 (defclass accounting-adapter () ()
   (:documentation "Base class of accounting adapters."))

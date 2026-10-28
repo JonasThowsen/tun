@@ -1,6 +1,7 @@
 # Tun core contract
 
-Status: v1, 2026-10-26. The kernel's base contract: what every client gets
+Status: v1, 2026-10-26; languages, money and time per tenant, and English
+identifiers (`i18n.md`), core 2.0.0. The kernel's base contract: what every client gets
 from core whatever modules it enables. The MCP surface, actors and policy,
 confirmation, idempotency and audit, workflows, ports, tenants, runtime
 properties and introspection. It states the rules as the kernel implements
@@ -18,6 +19,7 @@ it instead of repeating it:
 | Mail | `mail.md` |
 | Waiting calls | `waiting.md` |
 | Files attached to records | `files.md` |
+| Languages, currencies, time zones, and the renames of core 2.0 | `i18n.md` |
 | The generated UI and the design system | `ui.md` |
 | A business module's own entities, tools and rules | `modules/NAME/README.md` |
 
@@ -76,11 +78,13 @@ the modules, then the client's, last.
 
 ### 2.1 Data
 
-- **Money** is integer øre, NOK, in fields ending `_ore`. Never a float.
+- **Money** is an integer count of the minor units of the tenant's
+  currency, in a `money` field whose name ends `_minor` (`i18n.md` §5).
+  Never a float.
 - **Dates** are `YYYY-MM-DD`. **Local times** are `HH:MM`, 24 hours,
-  Norwegian wall-clock time (§2.2), never converted unless a contract says
-  so. **Instants** are RFC 3339 UTC. "Today" is the clock's instant as a
-  Norwegian local date.
+  wall-clock time in the tenant's time zone (§2.2), never converted unless
+  a contract says so. **Instants** are RFC 3339 UTC. "Today" is the
+  clock's instant as a local date in the tenant's time zone.
 - **Identifiers** are opaque strings with a per-entity prefix, `cus_…`.
 - **Revisions** are integers starting at 1; every accepted update of a
   record increments its revision. A tool that takes `revision` refuses a
@@ -91,11 +95,13 @@ the modules, then the client's, last.
 - **Entity names** in `registry_describe` are singular: `customer`,
   `order`, `workflow`.
 
-### 2.2 Norwegian time
+### 2.2 Local time
 
-Defined without a time-zone database. CET is +01:00, CEST +02:00. Summer
-time runs from the last Sunday of March 01:00 UTC to the last Sunday of
-October 01:00 UTC (exclusive).
+A tenant's time zone is a setting (`i18n.md` §6.1), defined without a
+time-zone database: an offset from UTC, and whether the zone keeps
+European summer time, one hour ahead from the last Sunday of March 01:00
+UTC to the last Sunday of October 01:00 UTC (exclusive). In
+`Europe/Oslo`, CET is +01:00 and CEST +02:00.
 
 - `to_utc(date, time)` computes both candidates: exactly one valid gives
   that instant; both valid is *ambiguous*; neither is *non-existent*.
@@ -103,13 +109,13 @@ October 01:00 UTC (exclusive).
   midnight of the day after the end date)`. A timed interval is
   `[to_utc(start), to_utc(end))`, one continuous span. Intervals are
   half-open: touching boundaries do not overlap.
-- Pinned examples: 2026-01-15 09:00 → 08:00Z; 2026-07-15 09:00 → 07:00Z;
+- Pinned examples, in `Europe/Oslo`: 2026-01-15 09:00 → 08:00Z; 2026-07-15 09:00 → 07:00Z;
   2026-03-29 02:30 does not exist; 2026-03-29 01:59 → 00:59Z and 03:00 →
   01:00Z; 2026-10-25 02:30 is ambiguous; 2026-10-25 03:00 → 02:00Z;
   2026-03-29 has 23 hours and 2026-10-25 has 25.
 
-`summer-time-p` in `src/core/util.lisp` implements this. Schedules use the
-same rule (`jobs.md`).
+`src/core/zones.lisp` implements this. Schedules use the same rule
+(`jobs.md`).
 
 ### 2.3 The clock
 
@@ -132,9 +138,12 @@ the tool names (a customer's name and email, a product's name).
 
 ### 2.5 Language
 
-Identifiers are English. Labels, descriptions, titles and messages are
-Norwegian, with `æ`, `ø` and `å` preserved. Status values are Norwegian
-words and part of the API (`utkast`, `bekreftet`, `fullført`).
+Identifiers are English, and so are the status words and other values
+Tun stores, which are part of the API (`draft`, `confirmed`,
+`completed`); core 2.0 renamed the Norwegian ones (`i18n.md` §4). Copy is
+written in English and shown in the tenant's language, from catalogues
+(`i18n.md` §3); Norwegian copy keeps `æ`, `ø` and `å`. What is answered to
+agents and other systems is source text (§3.4, §3.5).
 
 ### 2.6 Manual order
 
@@ -260,7 +269,7 @@ Record policies narrow which records a role reaches (`store.md` §6).
 
 Every tool is an operation and every operation is a tool, under the same
 name, matching `^[a-z][a-z0-9_]*$`. `tools/list` is a projection of the
-registry: `name`, a Norwegian `title`, `description`, `inputSchema` (JSON
+registry: `name`, a `title` in source text, untranslated, `description`, `inputSchema` (JSON
 Schema with `required`) and `annotations` with `readOnlyHint` and
 `destructiveHint`. Mutating tools list `request_key` in their properties and
 have `readOnlyHint: false`; confirm tools also list `confirmation_token`.
@@ -272,7 +281,7 @@ Platform tools have `"entity": null`.
 `{"content":[{"type":"text","text":"<JSON object>"}],"isError":false}`, and
 the result object carries `"_meta": {"request_id"}` (§8.1). An error has
 `isError: true` and the text
-`{"error":{"code":"<code>","message":"<Norwegian text>"}}`, with `fields`
+`{"error":{"code":"<code>","message":"<source text>"}}`, with `fields`
 for field errors:
 
 | Code | When |
@@ -342,7 +351,9 @@ A read for `viewer` and up, computed from the live definitions:
   `update`, `transition`, `workflow`), `confirm`, `idempotent`, `policy`,
   `source`, `module`;
 - `workflows`, `message_templates`, `settings` (without values), `modules`
-  and `extension_points`.
+  and `extension_points`;
+- `locale`: the tenant's `language`, the application's `languages`, its
+  `currency` and `minor_digits`, and its `time_zone` (`i18n.md` §7).
 
 A client's additions appear with `"source": "client"` and no registration
 step.
@@ -367,7 +378,7 @@ The account, job, mail, error and setting tools are in their own contracts.
 A workflow is a stored, timed piece of work about a subject, usually an
 order: `{"id", "kind", "key", "order_id"?, "customer_id"?, "subject_id"?,
 "due_at", "status", "executed_at"?, "request_id", "note"}`, with status
-`planlagt`, `utført`, `avbrutt` (cancelled) or `feilet` (failed). A kind
+`planned`, `executed`, `cancelled` or `failed`. A kind
 has exactly one handler (`define-workflow`), which declares the templates it
 may send.
 
@@ -379,7 +390,7 @@ may send.
 - A workflow already due when it is scheduled runs at the next pass.
   `executed_at` lies between `due_at` and the pass that ran it.
 - Scheduling a kind and key that is already planned keeps the one planned.
-  Cancelling a subject's planned workflows marks them `avbrutt` with a note.
+  Cancelling a subject's planned workflows marks them `cancelled` with a note.
 - `workflows_list {order_id}` lists an order's workflows by `due_at`.
 
 ### 4.2 Runs are requests
@@ -394,11 +405,11 @@ through the guarded path, audited as `system:workflow`.
 ### 4.3 Failure and notes
 
 A handler that signals any condition is rolled back, and its workflow is
-marked `feilet` with the condition's text as its `note` and the run's
+marked `failed` with the condition's text as its `note` and the run's
 `request_id`; the failure is recorded as an error (`errors.md`). It never
 affects another workflow or request (§7.4). A handler that decides there is
-nothing to do completes normally and says why in the note (`ikke nødvendig:
-…`), and so does a handler that could not do all of its work, such as one
+nothing to do completes normally and says why in the note («not needed:
+…», in the tenant's language), and so does a handler that could not do all of its work, such as one
 that found no recipient: what it did not do is not marked done, so the
 next run tries again.
 
@@ -438,18 +449,21 @@ used, with no restart; a setting may instead be read from the environment
 (`:env`, `outbound.md`). `settings_list` (admin) lists every setting with
 secrets as `"***"`; `settings_get` (employee) refuses a secret with
 `forbidden`; `settings_set` (admin) checks the value against the type and
-answers `not_found` for an undeclared key. Core declares `lenker.base_url`
-(absolute links in messages), `lenker.hemmelighet` (the secret behind
-links, generated at first start) and `push.hemmelighet` (the secret Tun's
-key for push notifications is derived from, `push.md` §6.3, generated
-the same way).
+answers `not_found` for an undeclared key. Core declares `links.base_url`
+(absolute links in messages), `links.secret` (the secret behind links,
+generated at first start), `push.secret` (the secret Tun's key for push
+notifications is derived from, `push.md` §6.3, generated the same way),
+and `locale.language`, `locale.currency` and `locale.time_zone`
+(`i18n.md` §9).
 
 ### 5.4 Link tokens
 
 A link a customer follows from a message (an offer, feedback, unsubscribe)
 carries a token made from its purpose and its subject's id: the first
 twenty base32 characters of an HMAC-SHA256 over `PURPOSE:ID` with
-`lenker.hemmelighet` (`link-token`). A token made for one purpose does not
+`links.secret` (`link-token`). The purposes Tun's modules use (`avmeld`,
+`tilbakemelding`) are kept as they are, since links already sent were
+made with them (`i18n.md` §4.1). A token made for one purpose does not
 match another, and rotating the secret invalidates every link issued with
 it. A public page
 resolves the token, then acts as `customer:ID` through ordinary operations.
@@ -479,7 +493,11 @@ different set of modules.
 Moving one pin forward runs on the existing database. Migrations are
 additive (new tables, nullable columns, constant defaults), namespaced per
 module and run at start in dependency order (`tun-platform.md` §2.6). The
-data written before the move is read the same way after it.
+data written before the move is read the same way after it. The one
+migration that is not additive is core 2.0's rename of its own keys and
+workflow statuses (`i18n.md` §4.4), which runs first and has a way back;
+core 2.0 refuses a 1.x database that holds business-module data
+(`i18n.md` §4.3).
 
 ### 6.4 The rollback preflight
 
@@ -496,6 +514,8 @@ vocabulary:
 SERVER --rollback-preflight OLDER-REGISTRY.json --db DATABASE
 ```
 
+Without `--db` it reads `DATABASE_URL`, as serving does (core 2.0).
+
 `OLDER-REGISTRY.json` is the older deployment's `registry_describe`, taken
 from it on an empty database. The preflight reads every stored record and
 reports, counted and named by kind:
@@ -511,7 +531,11 @@ reports, counted and named by kind:
 It exits 0 when the older code can take the database, 3 when not, and
 changes nothing either way. A finding the older code would only lose
 without misreading, such as an optional text field, is reported, not
-refused. There are no down-migrations.
+refused. While the database has core 2.0's `core-major-2` mark, which
+its migration writes (`i18n.md` §4.4), the preflight refuses on every
+store, exit 3, before it reads the registry, until `SERVER
+--revert-to-core-1` has undone the migration (`i18n.md` §4.6). Other
+migrations have no way back.
 
 ## 7. Runtime properties
 
@@ -530,7 +554,7 @@ requests are unaffected.
 
 In-flight work is bounded by `--max-inflight` (default 64). Beyond it the
 server answers at once with HTTP 503, `Retry-After: 1` and the error
-`overbelastet` (a JSON-RPC error `-32001` on `/mcp`, the API's error
+message `overloaded` (a JSON-RPC error `-32001` on `/mcp`, the API's error
 document on `/api/`). Nothing queues without bound, and no request waits
 more than 30 seconds for an answer.
 
@@ -546,7 +570,7 @@ one create per intent.
 ### 7.4 Fault isolation
 
 A condition in a request, a client hook or a workflow handler never ends the
-process or affects another request. A failing workflow is marked `feilet`
+process or affects another request. A failing workflow is marked `failed`
 (§4.3). Control-stack and heap exhaustion inside a request fail that request
 alone.
 
@@ -594,7 +618,7 @@ a bounded time.
 **JSON values.** A request's JSON holds at most 10 000 values, counted as
 its brackets, commas and colons outside strings, in the same pass that
 checks number lengths, before anything is parsed. More is answered 413
-with «Forespørselen har for mange JSON-verdier (høyst 10 000).», on `/mcp`
+with «The request has too many JSON values (at most 10,000).», on `/mcp`
 as the JSON-RPC error `-32600`.
 
 **Numbers.** The same pass holds a caller's numbers (what
@@ -603,8 +627,8 @@ fields) to what Tun takes as input, before the parser sees them:
 
 | A number with | Is answered |
 |---|---|
-| more than 19 significant digits (an integer of 64 bits has 19, a double needs 17) | «Et tall kan ha høyst 19 sifre.» |
-| an exponent of more than 4 digits, a magnitude over 1.7976931348623157e308, or one under 2.2250738585072014e-308 other than 0 (a subnormal double) | «Et tall må være 0, eller mellom 2.2250738585072014e-308 og 1.7976931348623157e308, med eller uten minus.» |
+| more than 19 significant digits (an integer of 64 bits has 19, a double needs 17) | «A number can have at most 19 digits.» |
+| an exponent of more than 4 digits, a magnitude over 1.7976931348623157e308, or one under 2.2250738585072014e-308 other than 0 (a subnormal double) | «A number must be 0, or between 2.2250738585072014e-308 and 1.7976931348623157e308, with or without a minus.» |
 
 Each is answered 400 `invalid_json`, on `/mcp` the JSON-RPC error
 `-32700`, at once: past these the parser works in big integers, in time
@@ -654,11 +678,11 @@ slots are typed to these bounds, and every writer clips what it is given,
 so no field can hold more. The input is only what the operation declares
 (its parameters, and a draft's fields), never a key it does not know,
 written as JSON straight into its octets; a value that does not fit in
-what is left is kept as «[utelatt: posten holder høyst 48 KB av input]»,
+what is left is kept as «[left out: the record keeps at most 48 KB of input]»,
 and is not written out first. Without an operation a record keeps no
 input. `introspect_request` parses the input when asked. An error repeats
-at most 100 characters of a name the caller sent («Ukjent verktøy: …»,
-«Ukjent metode: …» among them), and lists at most 20 unknown names,
+at most 100 characters of a name the caller sent («Unknown tool: …»,
+«Unknown method: …» among them), and lists at most 20 unknown names,
 counting the rest. A step of the trace keeps a name from the definitions
 and, from a call to another system, at most 300 characters of its detail.
 

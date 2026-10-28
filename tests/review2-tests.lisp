@@ -11,8 +11,8 @@
   (dolist (bad '("2026-1--01" "2026-01-1-" "2026--1-01" "-026-01-01" "2026-01-+1"))
     (is (null (parse-date bad)) "~s" bad))
   (with-test-app ()
-    (let ((product (jget (call-ok "products_create" "employee:anna" "name" "M" "kind" "utleie" "unit" "stk"
-                                  "unit_price_ore" 1 "stock_tracked" nil)
+    (let ((product (jget (call-ok "products_create" "employee:anna" "name" "M" "kind" "rental" "unit" "stk"
+                                  "unit_price_minor" 1 "stock_tracked" nil)
                          "id")))
       (is (string= "invalid_input"
                    (nth-value 1 (call "availability_check" "viewer:vera" "product_id" product "date" "2026-1--01"))))
@@ -23,8 +23,8 @@
   (dolist (db (list nil (scratch-path "overflow")))
     (with-test-app (:db db)
       (let ((customer (jget (call-ok "customers_create" "employee:anna" "name" "X" "email" "x@example.no") "id"))
-            (product (jget (call-ok "products_create" "employee:anna" "name" "M" "kind" "tjeneste" "unit" "stk"
-                                    "unit_price_ore" 9007199254740991 "stock_tracked" nil)
+            (product (jget (call-ok "products_create" "employee:anna" "name" "M" "kind" "service" "unit" "stk"
+                                    "unit_price_minor" 9007199254740991 "stock_tracked" nil)
                            "id")))
         (is (string= "invalid_input"
                      (nth-value 1 (call "orders_create" "employee:anna" "customer_id" customer
@@ -38,7 +38,7 @@
         (is (= 9007199254740991
                (jget (call-ok "orders_create" "employee:anna" "customer_id" customer
                               "lines" (jarr (list (jobj "product_id" product "quantity" 1))))
-                     "total_ore")))))))
+                     "total_minor")))))))
 
 ;;; Finding 1: request lines and headers are bounded; serious conditions in a
 ;;; worker or workflow never take the process down.
@@ -89,7 +89,7 @@
     (is (= 1 *pings*))
     (with-application (*app*)
       (with-transaction (:read)
-        (is (string= "feilet" (tun.workflows:workflow-status
+        (is (string= "failed" (tun.workflows:workflow-status
                                 (select-one 'tun.workflows:workflow :where '(:= "kind" "test_deep")))))))))
 
 (test r2-1-unhandled-serious-condition-aborts-only-its-thread
@@ -222,9 +222,9 @@
 (defmethod tun.orders:orders-accept :after ((app meddling-app) input)
   (declare (ignore input))
   (let ((order (operation-result)))
-    (setf (tun.orders:order-status order) "fullført"
-          (tun.orders:order-total-ore order) -5
-          (tun.orders:order-discount-ore order) 999999)
+    (setf (tun.orders:order-status order) "completed"
+          (tun.orders:order-total-minor order) -5
+          (tun.orders:order-discount-minor order) 999999)
     (when (eq *meddle* :save) (tun:save order))))
 
 (defun accepted-order (customer product)
@@ -237,8 +237,8 @@
 (test r2-3-extensions-cannot-write-core-fields
   (with-test-app (:class 'meddling-app)
     (let ((customer (jget (call-ok "customers_create" "employee:anna" "name" "X" "email" "x@example.no") "id"))
-          (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "tjeneste" "unit" "stk"
-                                  "unit_price_ore" 100 "stock_tracked" nil)
+          (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "service" "unit" "stk"
+                                  "unit_price_minor" 100 "stock_tracked" nil)
                          "id")))
       ;; Changing core fields and saving through the public SAVE is refused:
       ;; the whole operation rolls back.
@@ -246,19 +246,19 @@
         (setf *meddle* :save)
         (signals error (call "orders_accept" "employee:anna" "id" id))
         (let ((order (call-ok "orders_get" "viewer:vera" "id" id)))
-          (is (equal '("tilbud_sendt" 200 0) (list (jget order "status") (jget order "total_ore")
-                                                   (jget order "discount_ore"))))))
+          (is (equal '("quote_sent" 200 0) (list (jget order "status") (jget order "total_minor")
+                                                   (jget order "discount_minor"))))))
       ;; Changing the object without saving does not leak into the result.
       (let ((id (accepted-order customer product)))
         (setf *meddle* :no-save)
         (let ((result (call-ok "orders_accept" "employee:anna" "id" id)))
-          (is (equal '("akseptert" 200 0) (list (jget result "status") (jget result "total_ore")
-                                                (jget result "discount_ore")))
+          (is (equal '("accepted" 200 0) (list (jget result "status") (jget result "total_minor")
+                                                (jget result "discount_minor")))
               ":after methods see a copy of the result")))
       ;; The public INSERT does not create core records.
       (with-application (*app*)
         (with-transaction (:write)
-          (signals error (tun:insert (make-instance 'tun.orders:order :customer-id customer :status "fullført"))))))))
+          (signals error (tun:insert (make-instance 'tun.orders:order :customer-id customer :status "completed"))))))))
 
 (test r2-3-computed-fields-cannot-shadow-stored-fields
   (signals tun.core::extension-error
@@ -284,8 +284,8 @@
 (test r2-3-extension-screens-cannot-inject-html
   (with-test-server (port :class 'scripting-app)
     (let* ((customer (jget (call-ok "customers_create" "employee:anna" "name" "X" "email" "x@example.no") "id"))
-           (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "tjeneste" "unit" "stk"
-                                   "unit_price_ore" 100 "stock_tracked" nil)
+           (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "service" "unit" "stk"
+                                   "unit_price_minor" 100 "stock_tracked" nil)
                           "id"))
            (order (jget (call-ok "orders_create" "employee:anna" "customer_id" customer
                                  "delivery_address" "</script><b>x"
@@ -323,7 +323,7 @@
       (is (string= "aktiv" (jget (call-ok "widgets_get" "viewer:vera" "id" id) "status")))
       (with-application (*app*)
         (with-transaction (:read)
-          (is (string= "feilet" (tun.workflows:workflow-status (select-one 'tun.workflows:workflow))))
+          (is (string= "failed" (tun.workflows:workflow-status (select-one 'tun.workflows:workflow))))
           (is (null (select 'tun.core::confirmation)) "no token is left behind")))
       (is (find "rejected" (coerce (jget (call-ok "audit_list" "viewer:vera" "entity_type" "workflow") "items") 'list)
                 :key (lambda (e) (jget e "outcome")) :test #'string=)))))
@@ -332,8 +332,8 @@
 (test r2-9-token-is-bound-to-the-target-revision
   (with-test-app ()
     (let* ((customer (jget (call-ok "customers_create" "employee:anna" "name" "X" "email" "x@example.no") "id"))
-           (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "tjeneste" "unit" "stk"
-                                   "unit_price_ore" 100 "stock_tracked" nil)
+           (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "service" "unit" "stk"
+                                   "unit_price_minor" 100 "stock_tracked" nil)
                           "id"))
            (order (jget (call-ok "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-06-01"
                                  "lines" (jarr (list (jobj "product_id" product "quantity" 1))))
@@ -347,7 +347,7 @@
                  "lines" (jarr (list (jobj "product_id" product "quantity" 50))))
         (is (string= "confirmation_invalid"
                      (nth-value 1 (call "orders_confirm" "employee:anna" "id" order "confirmation_token" token))))
-        (is (string= "akseptert" (jget (call-ok "orders_get" "viewer:vera" "id" order) "status")))))))
+        (is (string= "accepted" (jget (call-ok "orders_get" "viewer:vera" "id" order) "status")))))))
 
 ;;; Finding 10: the invoice copies the customer's identity, not free text.
 (test r2-10-invoice-snapshot-omits-core-free-text
@@ -355,8 +355,8 @@
     (let* ((customer (jget (call-ok "customers_create" "employee:anna" "name" "Kari" "email" "kari@example.no"
                                     "phone" "+47 900 00 000" "notes" "Hunden biter")
                            "id"))
-           (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "tjeneste" "unit" "stk"
-                                   "unit_price_ore" 100 "stock_tracked" nil)
+           (product (jget (call-ok "products_create" "employee:anna" "name" "P" "kind" "service" "unit" "stk"
+                                   "unit_price_minor" 100 "stock_tracked" nil)
                           "id"))
            (order (jget (call-ok "orders_create" "employee:anna" "customer_id" customer "event_date" "2026-06-01"
                                  "lines" (jarr (list (jobj "product_id" product "quantity" 1))))
@@ -387,7 +387,7 @@
 
 (defvar *invoice-write-failures* 0)
 (defmethod store-update :before ((store store) (item tun.invoicing:invoice))
-  (when (and (plusp *invoice-write-failures*) (equal (tun.invoicing:invoice-status item) "sendt"))
+  (when (and (plusp *invoice-write-failures*) (equal (tun.invoicing:invoice-status item) "sent"))
     (decf *invoice-write-failures*)
     (error "simulated failure recording the accounting result")))
 
@@ -402,8 +402,8 @@
 (defun invoice-ready (&key (actor "employee:anna"))
   "A confirmed order with an utkast invoice; returns the invoice id."
   (let* ((customer (jget (call-ok "customers_create" actor "name" "X" "email" "x@example.no") "id"))
-         (product (jget (call-ok "products_create" actor "name" "P" "kind" "tjeneste" "unit" "stk"
-                                 "unit_price_ore" 100 "stock_tracked" nil)
+         (product (jget (call-ok "products_create" actor "name" "P" "kind" "service" "unit" "stk"
+                                 "unit_price_minor" 100 "stock_tracked" nil)
                         "id"))
          (order (jget (call-ok "orders_create" actor "customer_id" customer "event_date" "2026-06-01"
                                "lines" (jarr (list (jobj "product_id" product "quantity" 1))))
@@ -426,7 +426,7 @@
   (with-test-app (:db (scratch-path "outbox"))
     (setf (application-accounting *app*) (make-instance 'observing-fake) *port-calls* '())
     (let ((id (invoice-ready)))
-      (is (string= "sendt" (jget (send-invoice id) "status")))
+      (is (string= "sent" (jget (send-invoice id) "status")))
       (is (= 1 (length *port-calls*)))
       (is (null (getf (first *port-calls*) :inside-transaction)) "the port is called outside any transaction")
       (is (eq t (getf (first *port-calls*) :intent-committed)) "after the intent committed")
@@ -437,7 +437,7 @@
     (setf (application-accounting *app*) (make-instance 'observing-fake) *port-calls* '())
     (let ((id (invoice-ready)))
       (is (string= "invalid_input" (nth-value 1 (send-invoice id))) "the extension fails the first send")
-      (is (string= "sendt" (jget (send-invoice id) "status")))
+      (is (string= "sent" (jget (send-invoice id) "status")))
       (is (= (length *port-calls*) (reported-calls id)) "accounting_status equals the real number of calls")
       (is (= 1 (length *port-calls*)) "the failed attempt never reached the port"))))
 
@@ -448,11 +448,11 @@
       ;; Fail recording the result after the accounting call. Customer mail
       ;; now queues atomically and its provider failure cannot undo an invoice.
       (let ((*invoice-write-failures* 1)) (signals error (send-invoice id)))
-      (is (string= "utkast" (jget (call-ok "invoices_get" "viewer:vera" "id" id) "status")))
+      (is (string= "draft" (jget (call-ok "invoices_get" "viewer:vera" "id" id) "status")))
       (is (= 1 (length *port-calls*)))
       (is (= 1 (reported-calls id)) "the call that happened is on record although its transaction failed")
       (let ((sent (send-invoice id)))
-        (is (string= "sendt" (jget sent "status")) "a retry resumes the pending intent")
+        (is (string= "sent" (jget sent "status")) "a retry resumes the pending intent")
         (is (= 2 (length *port-calls*) (reported-calls id)))
         (is (string= (jget (find-by "invoice_id" id (jget (call-ok "accounting_status" "admin:ada") "invoices"))
                            "external_ref")
@@ -497,8 +497,8 @@
 (test r2-12-the-ledger-locks-its-article
   (let* ((store (make-instance 'lock-recording-store))
          (*app* (tun.runtime:open-application 'application :store store :test-clock t)))
-    (let ((product (jget (call-ok "products_create" "employee:anna" "name" "Begre" "kind" "forbruk" "unit" "stk"
-                                  "unit_price_ore" 1 "stock_tracked" t)
+    (let ((product (jget (call-ok "products_create" "employee:anna" "name" "Begre" "kind" "consumable" "unit" "stk"
+                                  "unit_price_minor" 1 "stock_tracked" t)
                          "id")))
       (call-ok "inventory_receive" "employee:anna" "product_id" product "quantity" 5)
       (with-application (*app*)

@@ -38,30 +38,30 @@ def run(t):
     page = t.desktop(permissions=["notifications"])
     _push.stand_in(page)
     page.sign_in("employee:anna")
-    page.goto("/varsler")
+    page.goto("/notifications")
     page.wait_for_function("navigator.serviceWorker.controller !== null")
     worker = next(w for w in page.context.service_workers if w.url.endswith("/sw.js"))
 
-    shown = push(worker, '{"title":"Ny sak til deg","body":"Eksporten feiler",'
-                         '"url":"/saker?fra=varsel","tag":"sak:1"}')
+    shown = push(worker, '{"title":"A new item for you","body":"The export fails",'
+                         '"url":"/items?from=notification","tag":"item:1"}')
     t.check(len(shown) == 1, f"one notification: {shown}")
-    t.check(shown and shown[0]["title"] == "Ny sak til deg", "with the message's title")
-    t.check(shown and shown[0]["body"] == "Eksporten feiler", "its body")
-    t.check(shown and shown[0]["tag"] == "sak:1", "and its tag")
+    t.check(shown and shown[0]["title"] == "A new item for you", "with the message's title")
+    t.check(shown and shown[0]["body"] == "The export fails", "its body")
+    t.check(shown and shown[0]["tag"] == "item:1", "and its tag")
 
-    with page.expect_navigation(url=re.compile(r"/saker\?fra=varsel$")):
+    with page.expect_navigation(url=re.compile(r"/items\?from=notification$")):
         worker.evaluate(CLICK)
-    t.check(urlparse(page.url).path == "/saker", f"a click brings the window to the page: {page.url}")
+    t.check(urlparse(page.url).path == "/items", f"a click brings the window to the page: {page.url}")
 
-    for data, what in ((None, "without data"), ("ikke json {", "with data that is not JSON")):
+    for data, what in ((None, "without data"), ("not json {", "with data that is not JSON")):
         shown = push(worker, data)
         t.check(len(shown) == 1 and shown[0]["title"] == "showcase"
-                and shown[0]["body"] == "Du har et nytt varsel",
-                f"a push {what} shows the app's name with «Du har et nytt varsel»: {shown}")
+                and shown[0]["body"] == "You have a new notification",
+                f"a push {what} shows the app's name with «You have a new notification»: {shown}")
 
     for url in ("https://other.example/", "//other.example/"):
-        page.goto("/varsler")
-        push(worker, '{"title":"Lenke ut","url":"%s"}' % url)
+        page.goto("/notifications")
+        push(worker, '{"title":"A link out","url":"%s"}' % url)
         with page.expect_request(lambda r: r.is_navigation_request()
                                  and urlparse(r.url).path == "/"
                                  and urlparse(r.url).netloc == urlparse(t.url).netloc):

@@ -5,7 +5,7 @@ ASDF system `tun-calendar`, package `tun.calendar`; pinned by clients through
 
 - **Owns:** calendar events and the merged calendar (§2, §3 below).
 - **Depends on:** `orders`, `staffing`.
-- **Core range:** builds against core `>= 1.0, < 2.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** no extension points of its own; a client extends it with
@@ -73,8 +73,8 @@ The result is `{"items":[entry]}`; beyond 1000 entries it holds the first
 
 The entries are:
 
-- the calendar-active orders (`utkast`, `tilbud_sendt`, `akseptert`,
-  `bekreftet`) whose dates overlap the period (`event_date ≤ to` and
+- the calendar-active orders (`draft`, `quote_sent`, `accepted`,
+  `confirmed`) whose dates overlap the period (`event_date ≤ to` and
   `end_date ?? event_date ≥ from`). Dateless orders never appear. `mine`
   keeps the orders the actor's employee is actively assigned to;
 - for admins, the events overlapping the period; other actors get no

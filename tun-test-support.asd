@@ -8,4 +8,4 @@
 (defsystem "tun-test-support"
   :description "Helpers shared by the core and client test-suites."
   :depends-on ("tun" "drakma" "usocket")
-  :components ((:module "tests" :components ((:file "support") (:file "scenarios")))))
+  :components ((:module "tests" :components ((:file "support") (:file "i18n-support") (:file "scenarios")))))

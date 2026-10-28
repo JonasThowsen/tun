@@ -47,10 +47,10 @@
   (signals error (tun.ui:link () "Kunden"))
   (let ((internal (actions-html (tun.ui:link (:href "/kunder/218") "Rørlegger Hansen AS"))))
     (is (search "href=\"/kunder/218\"" internal))
-    (is (not (search "annet nettsted" internal))))
+    (is (not (search "another site" internal))))
   (let ((external (actions-html (tun.ui:link (:href "https://www.brreg.no" :external t)
                                              "Brønnøysundregistrene"))))
-    (is (search "(annet nettsted)" external) "screen readers hear where the link goes")
+    (is (search "(another site)" external) "screen readers hear where the link goes")
     (is (search "aria-hidden=\"true\"" external) "the icon itself is not read")))
 
 (test keys-pressed-together-are-nested-kbd-elements
@@ -113,7 +113,7 @@
     (is (search "aria-label=\"Montører\"" group))
     (is (search "aria-label=\"Kari Nordmann\"" group))
     (is (not (search "aria-label=\"Per Olsen\"" group)))
-    (is (search "aria-label=\"2 til: Per Olsen, Lise Berg\"" group))
+    (is (search "aria-label=\"2 more: Per Olsen, Lise Berg\"" group))
     (is (search ">+2</span>" group)))
   (is (not (search "data-count" (actions-html (tun.ui:avatar (:group '("Kari Nordmann")))))))
   (signals error (tun.ui:avatar (:group '("Kari Nordmann") :name "Ola Hansen"))))

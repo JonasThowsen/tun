@@ -5,7 +5,7 @@ ASDF system `tun-messaging`, package `tun.messaging`; pinned by clients through
 
 - **Owns:** immutable customer `message` snapshots and `delivery` outcomes, legacy immediate staff messages, the transport port and fake transport, versioned data templates, preview/send and human outcome-resolution operations, and communication/composer staff screens. `messages_list` accepts a template filter. Without this module nothing is sent.
 - **Depends on:** `orders`, `customers`, `notifications`, `inbox`.
-- **Core range:** builds against core `>= 1.3.0, < 2.0` (its deliveries are jobs) (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.0.0, < 3.0` (its deliveries are jobs) (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** templates (a client template with the same key replaces a default), `send-message`, `message-status`. Its exported symbols are its interface for
@@ -45,19 +45,19 @@ an outcome a person can trust. The module also keeps the communication
 history of an order or a customer, outbound and inbound.
 
 It is the adapter of the kernel's messaging port (core.md §5.1): `notify`
-from any module (the orders module's `tilbud`, invoicing's `faktura`, a
+from any module (the orders module's `quote`, invoicing's `invoice`, a
 client's workflows) renders and queues through `send-message`. A tenant
 without this module sends nothing and still works. It reads inbound items
-from the inbox module (§11) and publishes `leveranse_feilet` through the
+from the inbox module (§11) and publishes `delivery_failed` through the
 notifications module (§9).
 
 Settings it declares:
 
 | Key | Type | Default | Used for |
 |---|---|---|---|
-| `avsender.navn` | string | `Tun` | the sender's name |
-| `avsender.epost` | email | `noreply@example.invalid` | the from address |
-| `avsender.svar_til` | email, nullable | null, meaning `avsender.epost` | reply-to |
+| `sender.name` | string | `Tun` | the sender's name |
+| `sender.email` | email | `noreply@example.invalid` | the from address |
+| `sender.reply_to` | email, nullable | null, meaning `sender.email` | reply-to |
 
 The sender is read from the settings when a message is rendered and frozen
 in it; a setting changed afterwards does not change a stored message.
@@ -82,9 +82,9 @@ guard (§9).
 
 | Name | Kind | Text |
 |---|---|---|
-| `tilbud` | data | subject `Tilbud`, text `Hei {{kunde.navn}}, her er tilbudet ditt: {{ordre.total}}.` |
-| `faktura` | code | `Faktura`; the invoice of the order is sent, with its total |
-| `lagervarsel` | code | `Lagervarsel: varer som mangler`; the missing articles by name |
+| `quote` | data | subject `Tilbud`, text `Hei {{customer.name}}, her er tilbudet ditt: {{order.total}}.` |
+| `invoice` | code | `Faktura`; the invoice of the order is sent, with its total |
+| `stock_alert` | code | `Lagervarsel: varer som mangler`; the missing articles by name |
 
 A client usually replaces them with its own wording.
 
@@ -99,24 +99,24 @@ other missing path renders as the empty string.
 
 | Path | Value |
 |---|---|
-| `kunde.navn`, `kunde.epost` | the customer; a blank name is `Kunde`; absent for an erased customer |
-| `avsender.navn`, `avsender.epost` | the settings |
-| `ordre.id`, `ordre.ref` | the order's id; `ref:<order id>` |
-| `ordre.dato`, `ordre.periode` | `dd.mm.yyyy`, or `dato ikke fastsatt` for a dateless order; the period `dd.mm.yyyy–dd.mm.yyyy` or the single date |
-| `ordre.sted`, `ordre.sted_suffix` | the site address or empty; ` på <address>` or empty |
-| `ordre.linjer` | one line per order line, `<product> · <quantity>: <amount>`, the amount after the line's price mode; joined by newlines |
-| `ordre.total` | the order's total |
-| `levering.tid`, `levering.adresse`, `levering.metode` | `kl. HH:MM` from the delivery side's earliest time, or `ikke avtalt`; the site address or `adressen dere oppga`; the delivery method or empty |
-| `bruksanvisninger_avsnitt` | `Digital bruksanvisning:` and one `<product>: <url>` line per rental product with a manual URL, then a blank line; or empty |
-| `tilbud.lenke`, `tilbud.kode`, `tilbud.gyldig_til` | `<lenker.base_url>/tilbud/<quote id>`; the access code as `XXXXX-XXXXX`; the expiry as an instant |
-| `tilbud.spørsmål_avsnitt` | `Vi mangler noen opplysninger:` and one `- <question>` line per open question of the order, then a blank line; or empty |
-| `lenke.tilbakemelding`, `lenke.avmeld` | `<lenker.base_url>/tilbakemelding/<token>` (inbox README §3.4), `<lenker.base_url>/avmeld/<token>` (customers README §6) |
-| `anmeldelse_avsnitt` | `Ellers setter vi stor pris på en aldri så liten anbefaling:` and the setting `anmeldelse.url`, when the client declares and sets it; or empty |
-| `melding` | the free text of a manual `ordremelding`; default `Ta kontakt ved å svare på denne e-posten hvis noe må avklares.` |
+| `customer.name`, `customer.email` | the customer; a blank name is `Kunde`; absent for an erased customer |
+| `sender.name`, `sender.email` | the settings |
+| `order.id`, `order.ref` | the order's id; `ref:<order id>` |
+| `order.date`, `order.period` | `dd.mm.yyyy`, or `dato ikke fastsatt` for a dateless order; the period `dd.mm.yyyy–dd.mm.yyyy` or the single date |
+| `order.site`, `order.site_suffix` | the site address or empty; ` på <address>` or empty |
+| `order.lines` | one line per order line, `<product> · <quantity>: <amount>`, the amount after the line's price mode; joined by newlines |
+| `order.total` | the order's total |
+| `delivery.time`, `delivery.address`, `delivery.method` | `kl. HH:MM` from the delivery side's earliest time, or `ikke avtalt`; the site address or `adressen dere oppga`; the delivery method or empty |
+| `manuals_paragraph` | `Digital bruksanvisning:` and one `<product>: <url>` line per rental product with a manual URL, then a blank line; or empty |
+| `quote.link`, `quote.code`, `quote.valid_until` | `<links.base_url>/offer/<quote id>`; the access code as `XXXXX-XXXXX`; the expiry as an instant |
+| `quote.questions_paragraph` | `Vi mangler noen opplysninger:` and one `- <question>` line per open question of the order, then a blank line; or empty |
+| `link.feedback`, `link.unsubscribe` | `<links.base_url>/feedback/<token>` (inbox README §3.4), `<links.base_url>/unsubscribe/<token>` (customers README §6) |
+| `customer_review_paragraph` | `Ellers setter vi stor pris på en aldri så liten anbefaling:` and the setting `customer_review.url`, when the client declares and sets it; or empty |
+| `message` | the free text of a manual `order_message`; default `Ta kontakt ved å svare på denne e-posten hvis noe må avklares.` |
 
-Formats: money `5 390,00 kr` (two decimals, a comma, thousands separated by
-a space); dates `dd.mm.yyyy`; instants `dd.mm.yyyy kl. HH:MM` in Norwegian
-time (core.md §2.2).
+Formats, in the tenant's language, currency and time zone (`spec/i18n.md`
+§5.4, §6.2), as in a Norwegian tenant: money `5 390,00 kr`; dates
+`dd.mm.yyyy`; instants `dd.mm.yyyy kl. HH:MM`.
 
 The HTML variant is derived from the text: `& < > "` escaped, URLs made
 links, a blank line starts a paragraph, a newline inside one becomes
@@ -138,7 +138,7 @@ it (inbox README §4).
 #### 4.2 Checks, in order
 
 1. Exactly one of `order_id` and `customer_id`, else `invalid_input` `Oppgi
-   enten ordre eller kunde`; a template other than `neste_år` needs an
+   enten ordre eller kunde`; a template other than `next_year` needs an
    order, else `invalid_input` `Malen krever en ordre`.
 2. An unknown template → `not_found` `Malen finnes ikke`.
 3. A `marketing` template for a customer who may not get marketing →
@@ -146,14 +146,14 @@ it (inbox README §4).
 4. An erased customer → `invalid_input` `kunden er slettet`.
 5. A template that is not `manual` → `invalid_input` `Malen kan ikke sendes
    manuelt`.
-6. `ordremelding` by an actor who is not admin → `forbidden` `Ordremelding
+6. `order_message` by an actor who is not admin → `forbidden` `Ordremelding
    krever admin`.
-7. `text` for a template other than `ordremelding` → `invalid_input` `Tekst
+7. `text` for a template other than `order_message` → `invalid_input` `Tekst
    kan bare endres for ordremelding`.
 8. The copy rules (§4.3) for `text`, then rendering, then the copy rules for
    `subject`.
 
-`subject` replaces the template's subject; `text` is the `melding` value.
+`subject` replaces the template's subject; `text` is the `message` value.
 
 #### 4.3 Copy rules
 
@@ -186,9 +186,9 @@ the complete snapshot, so an employee's and an admin's previews agree.
 #### 5.1 Message
 
 `message = {"id","order_id","customer_id","template","version","kind","subject","body","html","recipient":{"name","email"},"sender":{"name","email","reply_to"},"scheduled_at","sent_at","status","delivery","employee_id","request_id","created_at"}`.
-`kind` is `utgående` for the module's own rows; inbound items in the
-history are `innkommende` (§11). `status` is `sendt` from the moment the
-message is handed to the outbox (`planlagt` is for a message created ahead
+`kind` is `outbound` for the module's own rows; inbound items in the
+history are `inbound` (§11). `status` is `sent` from the moment the
+message is handed to the outbox (`planned` is for a message created ahead
 of its send time); `sent_at` is the time it was queued. `delivery` is the
 message's delivery (§5.2) or null. A message is stored once, rendered, and
 never rendered again: later changes to the order, the customer or a setting
@@ -220,7 +220,7 @@ run it notes `kunden har ikke samtykket til markedsføring` on the run.
 
 Called with `employee_id`, `send-message` renders a code template and
 hands it at once to the message transport (`message-transport`; the fake
-marks it `sendt`). This is the older path the warehouse alert uses. The
+marks it `sent`). This is the older path the warehouse alert uses. The
 staff recipient is stored as plain actor text (`admin:lager`), the way
 older deployments wrote it, and read back unchanged.
 
@@ -324,13 +324,13 @@ suppressed delivery fails with `suppressed`, is audited as
 notification. The guard is this module's, not the client's.
 
 A delivery reaching `failed` (other than `suppressed`) or `outcome_unknown`
-publishes the notification `leveranse_feilet` to the admins:
+publishes the notification `delivery_failed` to the admins:
 `En e-post til <recipient name> kunne ikke sendes.`, linking to
 `/orders/<id>` or `/customers/<id>` (notifications README §3).
 
 ### 10. Watchdog, restart and resolution
 
-The claim schedules the workflow `leveranse_vakt` due 300 s later, keyed
+The claim schedules the workflow `delivery_watchdog` due 300 s later, keyed
 `<delivery id>:<attempt>`. It marks a delivery still `sending` with that
 attempt `outcome_unknown` (`unknown_provider_outcome`), never calls the
 provider, and does nothing otherwise.
@@ -352,15 +352,15 @@ It sets `resolved_by`, `resolution_note` and `accepted_at` or `failed_at`.
 | Tool | Kind | Input | Result |
 |---|---|---|---|
 | `messages_list` | read | `{"order_id"?,"customer_id"?,"template"?,"kind"?,"limit"?=20}` | `{"items"}`, oldest first, at most 100 |
-| `messages_get` | read | `{"id"}` | a message, or an inbound item by its henvendelse id; else `not_found` `Meldingen finnes ikke` |
+| `messages_get` | read | `{"id"}` | a message, or an inbound item by its inquiry id; else `not_found` `Meldingen finnes ikke` |
 
 The history of an order is every outbound message about it and every
-inbound henvendelse threaded to it (inbox README §9): `kind:
-"innkommende"`, `henvendelse_id`, `status: "mottatt"`, `template: null`,
+inbound inquiry threaded to it (inbox README §9): `kind:
+"inbound"`, `inquiry_id`, `status: "received"`, `template: null`,
 `delivery: null`. The history of a customer is both directions over every
 order. Items sort by `scheduled_at` (an inbound item's is its time of
-receipt). A `template` filter or `kind: "utgående"` leaves inbound items out;
-`kind: "innkommende"` leaves outbound out.
+receipt). A `template` filter or `kind: "outbound"` leaves inbound items out;
+`kind: "inbound"` leaves outbound out.
 
 The order's `communication` summary (an orders seam) gains `outbound`,
 `failed` (deliveries `failed` or `outcome_unknown`) and `last_outbound_at`.
@@ -382,7 +382,7 @@ receipts of messages of customers erased before.
   sendes`, `Ukjent leveringsutfall`, `Mottatt` (inbound), and `Avklart` when
   resolved. An admin gets the resolve form on an `outcome_unknown` row.
 - Employees get a composer: a manual template, `Forhåndsvis melding`; admins
-  also an `ordremelding` with `Emne` and `Melding`, `Forhåndsvis
+  also an `order_message` with `Emne` and `Melding`, `Forhåndsvis
   ordremelding`. The preview page shows the message and `Bekreft og legg i
   kø`. The forms post to `/messages/preview`, `/messages/send` and
   `/messages/resolve`, which call the same tools; the stale-preview

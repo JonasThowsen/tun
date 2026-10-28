@@ -81,7 +81,7 @@
         (let ((*actor* (system-actor)))
           (is (= 0 (tun.workflows:run-due-workflows))))
         (with-transaction (:read)
-          (is (string= "feilet" (tun.workflows:workflow-status (select-one 'tun.workflows:workflow)))))))))
+          (is (string= "failed" (tun.workflows:workflow-status (select-one 'tun.workflows:workflow)))))))))
 
 ;;; core.md §7.2 Backpressure
 
@@ -154,7 +154,7 @@
                                                (jobj "name" "Mens vi venter" "email" "w@example.no")))))
         (is (< (- (get-internal-real-time) start) (* 0.5 internal-time-units-per-second))
             "a write is not held up by the stalled accounting call"))
-      (is (string= "sendt" (jget (sb-thread:join-thread sender) "status"))))))
+      (is (string= "sent" (jget (sb-thread:join-thread sender) "status"))))))
 
 (test p-reconciliation-at-start-up-uses-lookup
   (let ((db (scratch-path "reconcile"))
@@ -164,14 +164,14 @@
       (setf invoice (invoice-ready))
       ;; The outcome is lost after the port call (as if killed in between).
       (let ((*invoice-write-failures* 1)) (signals error (send-invoice invoice)))
-      (is (string= "utkast" (jget (call-ok "invoices_get" "viewer:vera" "id" invoice) "status")))
+      (is (string= "draft" (jget (call-ok "invoices_get" "viewer:vera" "id" invoice) "status")))
       (is (= 1 (length *port-calls*))))
     ;; Restart: the pending intent is looked up and completed, without a new create.
     (with-test-app (:db db)
       (setf (application-accounting *app*) (make-instance 'observing-fake)))
     (with-test-app (:db db)
       (let ((sent (call-ok "invoices_get" "viewer:vera" "id" invoice)))
-        (is (string= "sendt" (jget sent "status")) "reconciled at start-up")
+        (is (string= "sent" (jget sent "status")) "reconciled at start-up")
         (is (= 1 (length *port-calls*)) "no second create")
         (is (= 1 (reported-calls invoice)))
         (is (string= (jget sent "external_ref")
@@ -239,15 +239,15 @@
     (let* ((scheduled (call-ok "debug_schedule" "admin:ada" "due_in_ms" 500))
            (id (jget scheduled "id")))
       (is (stringp (jget scheduled "due_at")))
-      (is (string= "planlagt" (jget (call-ok "workflows_get" "viewer:vera" "id" id) "status")))
+      (is (string= "planned" (jget (call-ok "workflows_get" "viewer:vera" "id" id) "status")))
       (unwind-protect
            (progn
              (tun.runtime:start-scheduler *app* :interval 0.2)
              (loop repeat 50
-                   until (string= "utført" (jget (call-ok "workflows_get" "viewer:vera" "id" id) "status"))
+                   until (string= "executed" (jget (call-ok "workflows_get" "viewer:vera" "id" id) "status"))
                    do (sleep 0.1))
              (let ((wf (call-ok "workflows_get" "viewer:vera" "id" id)))
-               (is (string= "utført" (jget wf "status")))
+               (is (string= "executed" (jget wf "status")))
                (is (string= "debug_ping" (jget wf "kind")))
                (is (stringp (jget wf "executed_at")))))
         (tun.runtime:stop-scheduler)))))

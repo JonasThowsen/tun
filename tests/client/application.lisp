@@ -13,6 +13,9 @@
   ;; on (inventory, reviews, staffing, notifications, inbox) come with them;
   ;; invoicing, calendar, warehouse and dashboard stay out.
   (:modules customers catalog orders messaging)
+  ;; A Norwegian tenant, written in Norwegian, as a client from before core
+  ;; 2.0 is (spec/i18n.md 10).
+  (:locale :languages ("nb") :currency "NOK" :time-zone "Europe/Oslo")
   (:default-initargs :name "Nordvik Utleie")
   (:documentation "Nordvik Utleie AS, the client Tun's own suite tests the client surface on."))
 

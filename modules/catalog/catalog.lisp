@@ -1,5 +1,5 @@
 ;;;; modules/catalog/catalog.lisp -- the catalog module: products, i.e.
-;;;; rental equipment (utleie), consumables (forbruk) and services (tjeneste),
+;;;; rental equipment (rental), consumables (consumable) and services (service),
 ;;;; their ownership by department, and (requirements.lisp) what they
 ;;;; require from stock.  A client's per-100-servings recipe on a product
 ;;;; (products_set_recipe) stays a client operation, sugar over this
@@ -12,12 +12,12 @@
 ;;;;   PRODUCT-BOOKED-PEAK   booked_peak          the most units of a rental product booked on any date (orders)
 ;;;;   CATALOG-DEPARTMENTS   catalog_departments  the departments a product or article may belong to (staffing)
 ;;;;   PRODUCT-TRANSFERRED   product_transferred  records a product's change of department (inventory's transfers)
-;;;;   CATALOG-CHANGED       catalog_changed      a catalog change was recorded (orders: katalog_endring)
+;;;;   CATALOG-CHANGED       catalog_changed      a catalog change was recorded (orders: catalog_change)
 
 (defpackage #:tun.catalog
   (:use #:cl #:tun.core)
   (:export #:product #:product-revision #:product-name #:product-kind #:product-unit
-           #:product-unit-price-ore #:product-stock-tracked #:product-units-owned #:product-created-at
+           #:product-unit-price-minor #:product-stock-tracked #:product-units-owned #:product-created-at
            #:product-article-id #:product-department #:product-department-revision #:product-requirements #:product-manual-url
            #:products-create #:products-get #:products-list #:products-update #:products-transfer
            #:find-product #:rental-product-p #:consumable-product-p #:stock-tracked-consumable-p
@@ -40,52 +40,54 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module catalog
-  (:core ">= 1.1" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:documentation "Catalog: products for rent, consumption and services, and what they require from stock."))
 
 ;;; The requirement declarations a product carries (README §7): embedded in
 ;;; the product, so a product and its requirements change together.
-(define-entity product-requirement (:embedded t :json-name "product_requirement" :label "Krav")
+(define-entity product-requirement (:embedded t :json-name "product_requirement"
+                                    :label "Requirement")
   ((id :type id :label "ID")
-   (name :type (string :max 120) :label "Navn")
-   (target :type json :label "Mål" :description "{kind: article|recipe|choice_group, id}")
-   (quantity :type (decimal :scale 3) :label "Mengde")
-   (basis :type (enum "per_line" "per_quantity" "per_serving" "per_day") :label "Beregnes fra")
-   (picks :type integer :label "Antall valg")
-   (rounding :type (enum "exact" "ceil_per_100") :initform "exact" :label "Avrunding")
-   (position :type integer :label "Plass")))
+   (name :type (string :max 120) :label "Name")
+   (target :type json :label "Target" :description "{kind: article|recipe|choice_group, id}")
+   (quantity :type (decimal :scale 3) :label "Quantity")
+   (basis :type (enum "per_line" "per_quantity" "per_serving" "per_day") :label "Calculated from")
+   (picks :type integer :label "Number of choices")
+   (rounding :type (enum "exact" "ceil_per_100") :initform "exact" :label "Rounding")
+   (position :type integer :label "Place")))
 
-(define-entity product (:label "Produkt" :id-prefix "prd" :table "products" :indexes (("kind") ("article_id"))
+(define-entity product (:label "Product" :id-prefix "prd" :table "products" :indexes (("kind") ("article_id"))
                         :revisioned t)
-  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
-   (name :type (string :min 1 :max 120) :required t :label "Navn")
-   (kind :type (enum "utleie" "forbruk" "tjeneste") :required t :label "Produkttype"
-         :description "utleie (utstyr), forbruk (forbruksvare) eller tjeneste.")
-   (unit :type (string :min 1 :max 20) :required t :label "Enhet")
-   (unit-price-ore :type (integer :min 0) :required t :label "Enhetspris (øre)")
-   (stock-tracked :type boolean :required t :label "Lagerført")
-   (units-owned :type (integer :min 0 :max 100000) :initform 0 :label "Antall eid"
-                :description "Antall enheter som kan leies ut samtidig (utleie).")
-   (manual-url :type (string :max 2000) :label "Digital bruksanvisning")
-   (created-at :type timestamp :input nil :label "Opprettet")
-   (article-id :type id :input nil :label "Lagerartikkel"
-               :description "Lagerartikkelen produktet telles i; flere produkter kan dele én.")
-   (department :type (string :max 100) :label "Avdeling"
-               :description "Avdelingen som eier produktet; endres siden bare med products_transfer.")
-   (department-revision :type (integer :min 1) :input nil :initform 1 :label "Avdelingsrevisjon")
-   (requirements :type (list-of product-requirement :max-items 50) :input nil :initform '() :label "Krav"
-                 :description "Hva produktet krever fra lageret per linje, antall, porsjon eller dag; settes med products_set_requirements.")
-   (lite-requirement-id :type id :input nil :label "Eget oppskriftskrav"
-                        :description "Kravet products_set_recipe opprettet for produktet.")
-   (lite-recipe-id :type id :input nil :label "Egen oppskrift"
-                   :description "Oppskriften products_set_recipe opprettet for produktet; bare den oppdateres siden.")))
+  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
+   (name :type (string :min 1 :max 120) :required t :label "Name")
+   (kind :type (enum "rental" "consumable" "service") :required t :label "Product type"
+         :description "rental (equipment), consumable or service.")
+   (unit :type (string :min 1 :max 20) :required t :label "Unit")
+   (unit-price-minor :type (money :min 0) :required t :label "Unit price")
+   (stock-tracked :type boolean :required t :label "Stock-tracked")
+   (units-owned :type (integer :min 0 :max 100000) :initform 0 :label "Units owned"
+                :description "How many units can be rented out at once (rental).")
+   (manual-url :type (string :max 2000) :label "Digital manual")
+   (created-at :type timestamp :input nil :label "Created")
+   (article-id :type id :input nil :label "Stock article"
+               :description "The stock article the product is counted in; several products may share one.")
+   (department :type (string :max 100) :label "Department"
+               :description "The department that owns the product; changed afterwards only with products_transfer.")
+   (department-revision :type (integer :min 1) :input nil :initform 1 :label "Department revision")
+   (requirements :type (list-of product-requirement :max-items 50) :input nil :initform '()
+                 :label "Requirements"
+                 :description "What the product requires from stock per line, quantity, serving or day; set with products_set_requirements.")
+   (lite-requirement-id :type id :input nil :label "Own recipe requirement"
+                        :description "The requirement products_set_recipe created for the product.")
+   (lite-recipe-id :type id :input nil :label "Own recipe"
+                   :description "The recipe products_set_recipe created for the product; only that recipe is updated afterwards.")))
 
 (defun find-product (id) (fetch! 'product id))
 (define-rule valid-manual-url (product item)
-  (:field manual-url :message "Bruksanvisningen må ha en gyldig http(s)-adresse")
+  (:field manual-url :message "The manual must have a valid http(s) address")
   (or (null (product-manual-url item)) (cl-ppcre:scan "^https?://[^\\s]+$" (product-manual-url item))))
-(defun rental-product-p (product) (string= (product-kind product) "utleie"))
-(defun consumable-product-p (product) (string= (product-kind product) "forbruk"))
+(defun rental-product-p (product) (string= (product-kind product) "rental"))
+(defun consumable-product-p (product) (string= (product-kind product) "consumable"))
 (defun stock-tracked-consumable-p (product)
   (and (consumable-product-p product) (product-stock-tracked product)))
 
@@ -128,7 +130,7 @@ orders block on any one date (cleaning windows included); 0 without orders.")
 transfer's transaction (a module keeping transfer records answers).")
   (:method ((application catalog-module) product from to note)
     (declare (ignore product from to note))
-    (fail :invalid-transition "Ingen modul fører overføringer mellom avdelinger her")))
+    (fail :invalid-transition "No module keeps transfers between departments here")))
 
 (defgeneric catalog-changed (application change)
   (:method-combination traced-protocol)
@@ -148,12 +150,13 @@ transfer's transaction (a module keeping transfer records answers).")
 (register-extension-protocol 'product-transferred "after" :point "product_transferred"
                              :description "Records a product's change of department.")
 (register-extension-protocol 'catalog-changed "after" :point "catalog_changed"
-                             :description "Reacts to a recorded catalog change (katalog_endring).")
+                             :description "Reacts to a recorded catalog change (catalog_change).")
 
 (defun check-catalog-department (department)
   "DEPARTMENT is one of the client's departments (or NIL)."
   (when (and department (not (member department (catalog-departments *application*) :test #'string=)))
-    (fail :invalid-input "Ukjent avdeling ~a (gyldige: ~{~a~^, ~})" department (catalog-departments *application*))))
+    (fail :invalid-input "Unknown department ~a (valid: ~{~a~^, ~})"
+          department (catalog-departments *application*))))
 
 (defun link-product-article (product-id article-id)
   "Link the product PRODUCT-ID to the stock article ARTICLE-ID (a module keeping
@@ -166,80 +169,85 @@ stock adopting what an older core stored; nothing else)."
 ;;; Operations
 
 (define-operation products-create ((:draft product))
-    (:entity product :kind :create :title "Opprett produkt"
-     :description "Registrerer et utleieprodukt, en forbruksvare eller en tjeneste. Et lagerført produkt får sin egen lagerartikkel.")
+    (:entity product :kind :create :title "Create product"
+     :description "Registers a rental product, a consumable or a service. A stock-tracked product gets its own stock article.")
   (check-catalog-department (product-department product))
   (setf (entity-id product) (new-ordered-id (entity-id-prefix (class-of product))))
   (when (product-stock-tracked product)
     (setf (product-article-id product) (stock-article-for *application* product)))
   (insert product))
 
-(define-operation products-get ((id :type (id product) :required t :label "Produkt-ID"))
-    (:entity product :kind :read :title "Hent produkt" :description "Henter ett produkt.")
+(define-operation products-get ((id :type (id product) :required t :label "Product ID"))
+    (:entity product :kind :read :title "Get product" :description "Gets one product.")
   (find-product id))
 
-(define-operation products-list ((query :type (string :max 120) :label "Søk i navn")
-                                 (kind :type (enum "utleie" "forbruk" "tjeneste") :label "Produkttype")
-                                 (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity product :kind :read :title "Produktliste" :description "Lister og søker i produkter.")
+(define-operation products-list ((query :type (string :max 120) :label "Search in names")
+                                 (kind :type (enum "rental" "consumable" "service")
+                                       :label "Product type")
+                                 (limit :type (integer :min 1 :max 100) :default 20
+                                        :label "Most results"))
+    (:entity product :kind :read :title "Product list" :description "Lists and searches products.")
   (let ((where (and kind `(:= "kind" ,kind))))
     (page (if query
               (remove-if-not (lambda (p) (contains-ci-p query (product-name p))) (select 'product :where where))
               (select 'product :where where :limit (1+ limit)))
           limit)))
 
-(define-operation products-update ((id :type (id product) :required t :label "Produkt-ID")
-                                   (revision :type integer :label "Revisjon")
+(define-operation products-update ((id :type (id product) :required t :label "Product ID")
+                                   (revision :type integer :label "Revision")
                                    (:field product name)
                                    (:field product kind)
                                    (:field product unit)
-                                   (:field product unit-price-ore)
+                                   (:field product unit-price-minor)
                                    (:field product units-owned)
                                    (:field product manual-url)
-                                   (article-id :type id :label "Lagerartikkel-ID"
-                                               :description "Kobler produktet til en lagerartikkel (admin); null fjerner koblingen.")
-                                   (department :type json :label "Avdeling"
-                                               :description "Kan ikke endres her; bruk products_transfer."))
-    (:entity product :kind :update :title "Endre produkt"
-     :description "Endrer navn, type, enhet, pris eller antall eid. En admin kan koble produktet til en lagerartikkel. Antall eid kan ikke settes under det som er booket i aktive ordrer, og et utleieprodukt med bookinger kan ikke bytte type.")
+                                   (article-id :type id :label "Stock article ID"
+                                               :description "Links the product to a stock article (admin); null removes the link.")
+                                   (department :type json :label "Department"
+                                               :description "Cannot be changed here; use products_transfer."))
+    (:entity product :kind :update :title "Change product"
+     :description "Changes the name, kind, unit, price or units owned. An admin can link the product to a stock article. Units owned cannot be set below what active orders have booked, and a rental product with bookings cannot change its kind.")
   (let ((product (find-product id)))
     (when (input-provided-p :department)
-      (fail :invalid-input "Avdelingen endres med products_transfer"))
+      (fail :invalid-input "The department is changed with products_transfer"))
     (when (and revision (/= revision (product-revision product)))
-      (fail :conflict "Produktet er endret (revisjon ~d, ikke ~d)" (product-revision product) revision))
+      (fail :conflict "The product has changed (revision ~d, not ~d)"
+            (product-revision product) revision))
     (when (or (input-provided-p :article-id) (input-null-p :article-id))
       (unless (eq :admin (actor-role *actor*))
-        (reject :forbidden "Bare en administrator kan koble produktet til en lagerartikkel"))
+        (reject :forbidden "Only an administrator can link the product to a stock article"))
       (when (and article-id (null (catalog-article *application* article-id)))
-        (fail :not-found "Fant ingen lagerartikkel med id ~a" article-id))
+        (fail :not-found "Found no stock article with the id ~a" article-id))
       (setf (product-article-id product) article-id
             (product-stock-tracked product) (and article-id t)))
     (when (input-provided-p :name) (setf (product-name product) name))
     (when (input-provided-p :unit) (setf (product-unit product) unit))
-    (when (input-provided-p :unit-price-ore) (setf (product-unit-price-ore product) unit-price-ore))
+    (when (input-provided-p :unit-price-minor)
+      (setf (product-unit-price-minor product) unit-price-minor))
     (when (or (input-provided-p :manual-url) (input-null-p :manual-url)) (setf (product-manual-url product) manual-url))
     ;; The capacity guard (README §3): never below what active orders booked.
     (let ((new-kind (if (input-provided-p :kind) kind (product-kind product)))
           (new-units (if (input-provided-p :units-owned) units-owned (product-units-owned product))))
       (when (and (rental-product-p product)
-                 (or (string/= new-kind "utleie") (/= new-units (product-units-owned product))))
+                 (or (string/= new-kind "rental") (/= new-units (product-units-owned product))))
         (let ((peak (product-booked-peak *application* product)))
-          (cond ((and (string/= new-kind "utleie") (plusp peak))
-                 (fail :invalid-input "Tilgjengelighet kan ikke deaktiveres mens opptil ~d er booket i aktive ordrer."
+          (cond ((and (string/= new-kind "rental") (plusp peak))
+                 (fail :invalid-input "Availability cannot be turned off while up to ~d are booked in active orders."
                        peak))
-                ((and (string= new-kind "utleie") (< new-units peak))
-                 (fail :invalid-input "Antall enheter kan ikke settes til ~d; opptil ~d er allerede booket i aktive ordrer."
+                ((and (string= new-kind "rental") (< new-units peak))
+                 (fail :invalid-input "The units owned cannot be set to ~d; up to ~d are already booked in active orders."
                        new-units peak)))))
       (setf (product-kind product) new-kind
             (product-units-owned product) new-units))
     (save product)))
 
-(define-operation products-transfer ((id :type (id product) :required t :label "Produkt-ID")
-                                     (department :type (string :max 100) :label "Til avdeling")
-                                     (note :type (string :max 1000) :label "Begrunnelse")
-                                     (department-revision :type integer :label "Avdelingsrevisjon"))
-    (:entity product :kind :update :policy :admin :title "Overfør produkt"
-     :description "Flytter eierskapet til produktet til en annen avdeling, med begrunnelse; føres som en overføring. Antall flyttes aldri.")
+(define-operation products-transfer ((id :type (id product) :required t :label "Product ID")
+                                     (department :type (string :max 100) :label "To department")
+                                     (note :type (string :max 1000) :label "Reason")
+                                     (department-revision :type integer
+                                                          :label "Department revision"))
+    (:entity product :kind :update :policy :admin :title "Transfer product"
+     :description "Moves the ownership of the product to another department, with a reason; recorded as a transfer. Units are never moved.")
   (let ((product (find-product id)))
     (multiple-value-bind (from to) (check-transfer (product-department product) (product-department-revision product)
                                                    department note department-revision)
@@ -251,12 +259,12 @@ stock adopting what an older core stored; nothing else)."
 (defun check-transfer (current current-revision department note department-revision)
   "Values the department a transfer moves from and to, after its checks (README §4)."
   (when (blank-p department)
-    (fail :invalid-input "Velg avdelingen lageret skal overføres til"))
+    (fail :invalid-input "Choose the department to transfer the stock to"))
   (check-catalog-department department)
   (when (equal department current)
-    (fail :invalid-input "Velg en annen avdeling"))
+    (fail :invalid-input "Choose another department"))
   (when (blank-p note)
-    (fail :invalid-input "Oppgi årsaken til overføringen"))
+    (fail :invalid-input "Give the reason for the transfer"))
   (unless (eql department-revision current-revision)
-    (fail :conflict "Avdelingen er endret siden du lastet siden; last siden på nytt"))
+    (fail :conflict "The department has changed since you loaded the page; reload the page"))
   (values current department))

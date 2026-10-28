@@ -18,23 +18,23 @@ def drag(page, title, x, y):
 def run(t):
     page = t.desktop()
     page.sign_in("employee:anna")
-    page.goto("/saker")
-    target = page.column("planlagt").bounding_box()
-    drag(page, "Sak nummer 1", target["x"] + target["width"] / 2, target["y"] + 80)
+    page.goto("/items")
+    target = page.column("planned").bounding_box()
+    drag(page, "Item 1", target["x"] + target["width"] / 2, target["y"] + 80)
     t.check(page.locator("[data-tun-board-ghost]").count() == 1, "a copy of the card follows the pointer")
-    t.check(column_of(page, "Sak nummer 1") == "planlagt", "the card moves while it is dragged")
-    with page.expect_post("/saker/flytt") as post:
+    t.check(column_of(page, "Item 1") == "planned", "the card moves while it is dragged")
+    with page.expect_post("/items/move") as post:
         page.mouse.up()
     page.wait_for_timeout(300)
-    t.check("column=planlagt" in post.body, f"the drop moves it: {post.body}")
-    t.check(page.url.endswith("/saker"), "without following the card's link")
+    t.check("column=planned" in post.body, f"the drop moves it: {post.body}")
+    t.check(page.url.endswith("/items"), "without following the card's link")
     t.check(page.locator("[data-tun-board-ghost]").count() == 0, "the copy is gone")
 
     narrow = t.desktop(760, 800)
     narrow.sign_in("employee:anna")
-    narrow.goto("/saker")
+    narrow.goto("/items")
     box = narrow.locator(".tun-board-columns").bounding_box()
-    drag(narrow, "Sak nummer 2", box["x"] + box["width"] - 10, box["y"] + 200)
+    drag(narrow, "Item 2", box["x"] + box["width"] - 10, box["y"] + 200)
     positions = []
     for _ in range(5):
         narrow.wait_for_timeout(100)
@@ -42,4 +42,4 @@ def run(t):
     t.check(positions[0] < positions[-1], f"at the board's edge the columns scroll steadily: {positions}")
     narrow.keyboard.press("Escape")
     narrow.mouse.up()
-    t.check(column_of(narrow, "Sak nummer 2") == "ny", "Escape puts the card back")
+    t.check(column_of(narrow, "Item 2") == "new", "Escape puts the card back")

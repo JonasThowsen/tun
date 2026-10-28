@@ -39,7 +39,7 @@
 (defun entity-class-named (name)
   (let ((class (find-entity-by-json-name name)))
     (unless (and class (not (entity-embedded-p class)))
-      (fail :not-found "Ukjent entitet ~a (navnene står i registry_describe og introspect_schema)" name))
+      (fail :not-found "Unknown entity ~a (registry_describe and introspect_schema name them)" name))
     class))
 
 (defun stored-json (record)
@@ -107,15 +107,15 @@ reference TARGET, or untyped id fields named <target>_id."
       (setf (gethash "credential" object) (audit-entry-credential entry)))
     object))
 
-(define-operation introspect-record ((entity :type (string :max 100) :required t :label "Entitet"
-                                             :description "Entitetsnavn som i registry_describe, f.eks. order, customer, product.")
+(define-operation introspect-record ((entity :type (string :max 100) :required t :label "Entity"
+                                             :description "An entity's name as registry_describe gives it, such as order, customer or product.")
                                      (id :type (string :max 100) :required t :label "ID"))
-    (:kind :read :policy :admin :title "Inspiser post"
-     :description "Én lagret post: alle lagrede felt (også klientens), beregnede felt, hvor hvert felt kommer fra (core/client), poster som viser til den, og de 20 siste revisjonsloggføringene for den.")
+    (:kind :read :policy :admin :title "Inspect a record"
+     :description "One stored record: every stored field (the client's too), its computed fields, where each field comes from (core/client), the records that refer to it, and its 20 latest audit entries.")
   (let* ((class (entity-class-named entity))
          (record (or (fetch (class-name class) id)
-                     (fail :not-found "~a ~a finnes ikke" (entity-json-name class) id))))
-    (unless (entity-readable-p record *actor*) (fail :not-found "Posten finnes ikke"))
+                     (fail :not-found "~a ~a does not exist" (entity-json-name class) id))))
+    (unless (entity-readable-p record *actor*) (fail :not-found "The record does not exist"))
     (jobj "entity" (entity-json-name class)
           "id" id
           "stored" (if (typep record 'setting)
@@ -134,26 +134,26 @@ reference TARGET, or untyped id fields named <target>_id."
 ;;; ------------------------------------------------------------------
 ;;; Requests
 
-(define-operation introspect-request ((request-id :type (string :max 100) :required t :label "Forespørsels-ID"
-                                                  :description "X-Tun-Request-Id eller _meta.request_id."))
-    (:kind :read :policy :admin :title "Inspiser forespørsel"
-     :description "Hele forløpet til én forespørsel: aktør, verktøy, input (uten confirmation_token og request_key), utfall, policy, alle steg med tid (policy, dekoding, regler, hooks med kilde og rekkefølge, operasjon, lagringskall, eksterne kall, revisjon, commit), ventetid på skrivelåsen og backtrace ved feil.")
+(define-operation introspect-request ((request-id :type (string :max 100) :required t :label "Request ID"
+                                                  :description "X-Tun-Request-Id or _meta.request_id."))
+    (:kind :read :policy :admin :title "Inspect a request"
+     :description "The whole course of one request: actor, tool, input (without confirmation_token and request_key), outcome, policy, every step with its time (policy, decoding, rules, hooks with source and order, operation, store calls, external calls, audit, commit), the wait for the write lock, and the backtrace of an error.")
   (let ((record (find-request request-id)))
     (unless record
-      (fail :not-found "Ingen forespørsel ~a blant de ~d siste (de lagres bare i minnet, og nullstilles ved omstart)"
+      (fail :not-found "No request ~a among the ~d latest (they are kept in memory only, and cleared at a restart)"
             request-id *request-history-size*))
     (request->json record)))
 
 (define-operation introspect-recent ((kind :type (enum "errors" "slow" "rejected" "all") :default "all"
-                                           :label "Utvalg")
-                                     (since :type timestamp :label "Fra og med")
+                                           :label "Selection")
+                                     (since :type timestamp :label "Since")
                                      (request-kind :type (enum "operation" "mcp" "api" "web" "job" "workflow")
-                                                   :label "Slags forespørsel")
-                                     (tool :type (string :max 200) :label "Verktøy"
-                                           :description "En del av verktøyets navn, som orders_ eller job:send.")
-                                     (limit :type (integer :min 1 :max 1000) :default 20 :label "Maks antall"))
-    (:kind :read :policy :admin :title "Siste forespørsler"
-     :description "Avsluttede forespørsler, sist avsluttet først: errors (utfall error), rejected, slow (total_ms ≥ 1000, eller de tregeste når ingen er så trege) eller all. request_kind og tool snevrer inn til én slags forespørsel (operation, mcp, api, web, job, workflow) og verktøy hvis navn inneholder teksten. Hver har sin slags (kind) og, ved feil, feilkode og melding.")
+                                                   :label "Kind of request")
+                                     (tool :type (string :max 200) :label "Tool"
+                                           :description "Part of the tool's name, such as orders_ or job:send.")
+                                     (limit :type (integer :min 1 :max 1000) :default 20 :label "Limit"))
+    (:kind :read :policy :admin :title "Recent requests"
+     :description "Finished requests, the last finished first: errors (outcome error), rejected, slow (total_ms ≥ 1000, or the slowest when none is that slow) or all. request_kind and tool narrow it to one kind of request (operation, mcp, api, web, job, workflow) and to tools whose name holds the text. Each has its kind and, for an error, its code and message.")
   (let* ((records (remove-if-not (lambda (r)
                                    (and (not (and since (request-at r) (< (request-at r) since)))
                                         (or (null request-kind)
@@ -178,8 +178,8 @@ reference TARGET, or untyped id fields named <target>_id."
     (:external-call "external_call")))
 
 (define-operation introspect-inflight ()
-    (:kind :read :policy :admin :title "Pågående forespørsler"
-     :description "Forespørsler som kjører nå: hvor lenge, og om de kjører, venter på skrivelåsen eller venter på et eksternt system. (Over --max-inflight avvises nye straks med 503, så ingen venter på å slippe inn.)")
+    (:kind :read :policy :admin :title "Requests in flight"
+     :description "The requests running now: for how long, and whether they run, wait for the write lock or wait for an external system. (Past --max-inflight a new one is refused at once with 503, so none waits to get in.)")
   (jobj "items"
         (jarr (loop for record in (in-flight-requests)
                     unless (eq record *request-record*)
@@ -192,11 +192,11 @@ reference TARGET, or untyped id fields named <target>_id."
 ;;; ------------------------------------------------------------------
 ;;; introspect_workflows
 
-(define-operation introspect-workflows ((status :type (enum "planlagt" "utført" "avbrutt" "feilet") :label "Status")
-                                        (due-before :type timestamp :label "Forfall før")
-                                        (limit :type (integer :min 1 :max 100000) :default 50 :label "Maks antall"))
-    (:kind :read :policy :admin :title "Arbeidsflyter"
-     :description "Arbeidsflyter på tvers av ordrer, sist forfalt først: type, forfall, status, når de ble kjørt, antall forsøk (0 eller 1: de kjøres høyst én gang) og merknaden med feilteksten når en handler feilet (status avbrutt).")
+(define-operation introspect-workflows ((status :type (enum "planned" "executed" "cancelled" "failed") :label "Status")
+                                        (due-before :type timestamp :label "Due before")
+                                        (limit :type (integer :min 1 :max 100000) :default 50 :label "Limit"))
+    (:kind :read :policy :admin :title "Workflows"
+     :description "Workflows across orders, the latest due first: kind, due time, status, when they ran, the number of attempts (0 or 1: each runs at most once), and the note with the error's text when a handler failed (status failed).")
   (let ((where (remove nil (list (and status `(:= "status" ,status))
                                  (and due-before `(:< "due_at" ,due-before))))))
     (jobj "items"
@@ -222,9 +222,12 @@ reference TARGET, or untyped id fields named <target>_id."
 ;;; explain
 
 (defun error-fields-json (condition)
-  (if (operation-error-fields condition)
-      (mapcar (lambda (fe) (jobj "field" (car fe) "message" (cdr fe))) (operation-error-fields condition))
-      (list (jobj "field" "input" "message" (operation-error-message condition)))))
+  "CONDITION's field errors as explain answers them, in source text."
+  (with-language (:source)
+    (if (operation-error-fields condition)
+        (mapcar (lambda (fe) (jobj "field" (car fe) "message" (render-text (cdr fe))))
+                (operation-error-fields condition))
+        (list (jobj "field" "input" "message" (operation-error-message condition))))))
 
 (defun operation-methods (op)
   "Values: the :before methods in execution order and the :after methods in
@@ -275,9 +278,15 @@ summary (or NIL), the error (a condition or NIL), the steps."
       (values would summary failure steps))))
 
 (defun explain-call (tool arguments)
+  "What a call of TOOL with ARGUMENTS would do, as explain answers it: to a
+machine, so its messages are source text (spec/i18n.md 7)."
+  (with-language (:source)
+    (explain-call-in-source tool arguments)))
+
+(defun explain-call-in-source (tool arguments)
   (let ((op (find-operation-by-tool tool)))
     (unless (and op (operation-visible-p op))
-      (fail :not-found "Ukjent verktøy ~a" tool))
+      (fail :not-found "Unknown tool ~a" tool))
     (let* ((actor *actor*)
            (permitted (actor-permits-p actor (operation-policy op)))
            (input (make-input (if (hash-table-p arguments) arguments (jobj))))
@@ -285,7 +294,7 @@ summary (or NIL), the error (a condition or NIL), the steps."
                            (operation-error (e) (error-fields-json e))))
            (would :null) (summary nil) (failure nil) (steps '()))
       (unless (hash-table-p arguments)
-        (setf input-errors (list (jobj "field" "input" "message" "må være et JSON-objekt"))))
+        (setf input-errors (list (jobj "field" "input" "message" "must be a JSON object"))))
       (when (null input-errors)
         (multiple-value-setq (would summary failure steps) (dry-run op input)))
       ;; Rule violations are what a real call would report as invalid_input.
@@ -321,7 +330,7 @@ summary (or NIL), the error (a condition or NIL), the steps."
           (when (and failure (not (and (typep failure 'operation-error)
                                        (eq (operation-error-code failure) :invalid-input))))
             (setf (gethash "would" object) :null
-                  summary (format nil "Kallet ville feilet: ~a"
+                  summary (format nil "The call would fail: ~a"
                                   (if (typep failure 'operation-error)
                                       (format nil "~a: ~a" (json-name-of (operation-error-code failure))
                                               (operation-error-message failure))
@@ -335,19 +344,19 @@ summary (or NIL), the error (a condition or NIL), the steps."
 
 (defun explain-workflow (tool order-id)
   (let* ((name (subseq tool (length "workflow:"))) (kind (find-workflow-kind name)))
-    (unless kind (fail :invalid-input "Ukjent arbeidsflyt ~a" name))
-    (unless order-id (fail :invalid-input "Oppgi ordre"))
+    (unless kind (fail :invalid-input "Unknown workflow ~a" name))
+    (unless order-id (fail :invalid-input "Give an order"))
     (jobj "tool" tool "order_id" order-id
           "templates" (jarr (workflow-kind-templates kind))
           "hooks" (jarr (list (jobj "name" (string-downcase (symbol-name (workflow-kind-function kind)))
                                     "source" (source-name (workflow-kind-source kind))
                                     "module" (workflow-kind-module kind)))))))
 
-(define-operation explain ((tool :type (string :max 100) :required t :label "Verktøy")
-                           (order-id :type id :label "Ordre")
-                           (input :type json :label "Input" :description "Argumentene kallet ville fått (et JSON-objekt)."))
-    (:kind :read :policy :admin :title "Forklar et kall"
-     :description "Tørrkjøring av et verktøykall i en skrivebeskyttet transaksjon: ingenting lagres, ingen kvittering, intet token. Viser policy-avgjørelsen for deg, om input er gyldig, regler og hooks i kjørerekkefølge med kilde, og hva kallet ville gitt (for orders_create/orders_update: beløp, behov og bookinger; for orders_confirm: tilgjengelighet per utleielinje).")
+(define-operation explain ((tool :type (string :max 100) :required t :label "Tool")
+                           (order-id :type id :label "Order")
+                           (input :type json :label "Input" :description "The arguments the call would get (a JSON object)."))
+    (:kind :read :policy :admin :title "Explain a call"
+     :description "A dry run of a tool call in a read-only transaction: nothing is stored, no receipt, no token. Shows the policy's decision for you, whether the input is valid, the rules and hooks in the order they run with their source, and what the call would give (for orders_create/orders_update: amounts, needs and bookings; for orders_confirm: availability per rental line).")
   (if (string-prefix-p "workflow:" tool) (explain-workflow tool order-id)
       (explain-call tool (or input (jobj)))))
 
@@ -355,8 +364,8 @@ summary (or NIL), the error (a condition or NIL), the steps."
 ;;; introspect_schema and introspect_runtime
 
 (define-operation introspect-schema ()
-    (:kind :read :policy :admin :title "Databaseskjema"
-     :description "Tabeller med kolonner (navn, type, om de kan være null) og migreringene som er kjørt, i rekkefølge.")
+    (:kind :read :policy :admin :title "Database schema"
+     :description "The tables with their columns (name, type, whether they may be null) and the migrations that have run, in order.")
   (multiple-value-bind (tables migrations) (store-describe-schema *store*)
     (jobj "tables" tables "migrations" migrations)))
 
@@ -377,8 +386,8 @@ summary (or NIL), the error (a condition or NIL), the steps."
              return (* 1024 (parse-integer line :start 6 :junk-allowed t))))))
 
 (define-operation introspect-runtime ()
-    (:kind :read :policy :admin :title "Kjøretid"
-     :description "Bygg (core- og klientrevisjon, språk, runtime), oppetid, minne (RSS, heap, GC), arbeidstråder, forespørsler i arbeid og maksimum, skrivekø, frist og klokke.")
+    (:kind :read :policy :admin :title "Runtime"
+     :description "The build (core and client revision, language, runtime), uptime, memory (RSS, heap, GC), worker threads, requests in progress and their maximum, the write queue, the deadline and the clock.")
   (let* ((app *application*)
          (cell (application-inflight-cell app)))
     (jobj "build" (jobj "core_revision" (revision "TUN_CORE_REVISION" *core-revision*)
@@ -530,8 +539,8 @@ kind seam, target the generic function a client specializes."
           *extension-protocols*))
 
 (define-operation introspect-extensions ()
-    (:kind :read :policy :admin :title "Klientutvidelser"
-     :description "Alt klienten har lagt til gjennom utvidelsespunktene, med fil:linje: felt, regler, beregnede felt, operasjoner, før/etter-metoder på operasjoner (med rekkefølge), metoder på domeneprotokollene (rabatt, behov, bookingvindu: kind before, target er protokollen), arbeidsflyter, maler og skjermbilder.")
+    (:kind :read :policy :admin :title "Client extensions"
+     :description "Everything the client has added through the extension points, with file:line: fields, rules, computed fields, operations, before/after methods on operations (with their order), methods on the domain protocols (discount, needs, booking window: kind before, target is the protocol), workflows, templates and screens.")
   (jobj "items" (jarr (append (extension-items) (extension-point-items)))))
 
 ;;; ------------------------------------------------------------------
@@ -566,7 +575,7 @@ kind seam, target the generic function a client specializes."
           (loop for form = (read in nil in)
                 until (eq form in)
                 do (push form forms)))
-      (error (e) (fail :invalid-input "Koden kunne ikke leses: ~a" (princ-to-string e))))
+      (error (e) (fail :invalid-input "The code could not be read: ~a" (princ-to-string e))))
     (nreverse forms)))
 
 (defun audit-eval (outcome &optional error-code)
@@ -609,7 +618,7 @@ one in any thread the code starts) and under its deadline.  Output and printed v
       (read-only-violation (e)
         (audit-eval "rejected" "read_only")
         (fail-with-details :read-only (list "output" (get-output-stream-string (capped-buffer output)))
-                           "eval kjører i en skrivebeskyttet transaksjon; skriving er ikke tillatt: ~a"
+                           "eval runs in a read-only transaction; writing is not allowed: ~a"
                            (princ-to-string e)))
       (operation-error (e) (audit-eval "rejected" (json-name-of (operation-error-code e))) (error e))
       (error (e)
@@ -617,10 +626,10 @@ one in any thread the code starts) and under its deadline.  Output and printed v
           (audit-eval "rejected" (if (search "readonly" (string-downcase text)) "read_only" "invalid_input"))
           (if (search "readonly" (string-downcase text))
               (fail-with-details :read-only (list "output" (get-output-stream-string (capped-buffer output)))
-                                 "eval kjører skrivebeskyttet; databasen avviste skrivingen: ~a" text)
+                                 "eval runs read-only; the database refused the write: ~a" text)
               (fail-with-details :invalid-input (list "output" (get-output-stream-string (capped-buffer output))
                                                       "condition" (string-downcase (symbol-name (type-of e))))
-                                 "Evalueringen feilet: ~a" text)))))
+                                 "The evaluation failed: ~a" text)))))
     (audit-eval "ok")
     (let ((*print-length* 200) (*print-level* 10) (*print-readably* nil) (*package* (find-package "TUN-EVAL")))
       (jobj "values" (jarr (mapcar (lambda (v) (capped-string (prin1-to-string v))) values))
@@ -628,8 +637,8 @@ one in any thread the code starts) and under its deadline.  Output and printed v
             "output_truncated" (json-bool (plusp (capped-dropped output)))
             "forms" (length forms)))))
 
-(define-operation eval-code ((code :type (string :max 1000000) :required t :label "Kode"
-                                   :description "Common Lisp-uttrykk, lest med *read-eval* av i pakken TUN-EVAL (bruker CL og TUN)."))
-    (:tool "eval" :kind :read :policy :admin :eval-only t :title "Evaluer Lisp i prosessen"
-     :description "Bare med --allow-eval. Evaluerer Lisp-kode i den kjørende prosessen, under operasjonens frist og i en skrivebeskyttet lagringstransaksjon (skriving avvises). Utdata fanges og kuttes ved 64 KiB. Kallet revisjonslogges. Ikke en sandkasse: koden kan nå alt i prosessen.")
+(define-operation eval-code ((code :type (string :max 1000000) :required t :label "Code"
+                                   :description "Common Lisp forms, read with *read-eval* off in the package TUN-EVAL (which uses CL and TUN)."))
+    (:tool "eval" :kind :read :policy :admin :eval-only t :title "Evaluate Lisp in the process"
+     :description "Only with --allow-eval. Evaluates Lisp code in the running process, under the operation's deadline and in a read-only store transaction (a write is refused). Output is captured and cut at 64 KiB. The call is audited. Not a sandbox: the code can reach everything in the process.")
   (evaluate-code code))

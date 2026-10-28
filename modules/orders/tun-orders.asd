@@ -14,4 +14,5 @@
                (:file "quotes")
                (:file "public-offers")
                (:file "checklists")
-               (:file "publish")))
+               (:file "publish")
+               (:file "nb")))

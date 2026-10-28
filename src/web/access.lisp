@@ -50,7 +50,8 @@ ASIDE that explains it."
   `(:form (:@ :method "post" :action ,(format nil "/auth/~a" (tun.auth:strategy-name strategy)))
           ,(ui:form-actions ()
              (ui:button (:type "submit" :icon :log-in)
-               (format nil "Logg inn~@[ med ~a~]" (tun.auth:strategy-button-label strategy))))))
+               (let ((provider (tun.auth:strategy-button-label strategy)))
+                 (if provider (tr "Sign in with ~a" provider) (tr "Sign in")))))))
 
 (defun login-card (error)
   "The card with a button per identity provider, with ERROR after a refused
@@ -58,20 +59,19 @@ sign-in (spec/auth.md 3.4)."
   (ui:card ()
     (apply #'ui:stack* (list :gap :lg)
            (when error
-             (ui:alert (:variant :destructive :title "Du ble ikke logget inn") error))
+             (ui:alert (:variant :destructive :title (tr "You were not signed in")) error))
            (or (mapcar #'provider-form (tun.auth:identity-providers))
-               (list '(:p "Denne Tun-en har ingen måte å logge inn på ennå."))))))
+               (list `(:p ,(tr "This Tun has no way to sign in yet.")))))))
 
 (defun no-account-yet ()
-  (ui:card (:title "Ingen konto ennå?" :heading-level 2)
-    '(:p "En administrator gir deg tilgang med e-postadressen din. Logg inn med den
-etterpå.")))
+  (ui:card (:title (tr "No account yet?") :heading-level 2)
+    `(:p ,(tr "An administrator gives you access with your email address. Sign in with it afterwards."))))
 
 (defun login-page (status &key error)
-  (guest-page status "Logg inn"
+  (guest-page status (tr "Sign in")
               (login-card error)
               (or (claimed-login-hint) (no-account-yet))
-              :description (format nil "Logg inn i ~a." (application-title *web-app*))))
+              :description (tr "Sign in to ~a." (application-title *web-app*))))
 
 (defun claimed-login (raw)
   "GET /login?actor=role:name on a server with claimed identity."
@@ -80,10 +80,11 @@ etterpå.")))
          (hunchentoot:set-cookie +actor-cookie+ :value (hunchentoot:url-encode raw :utf-8)
                                  :path "/" :http-only t :same-site "Strict")
          (see-other (home-path)))
-        (t (respond 400 "Logg inn"
-                    (list (ui:alert (:variant :destructive :title "Ugyldig aktør")
-                            "Bruk " '(:code "/login?actor=rolle:navn")
-                            " med rolle admin, employee eller viewer."))
+        (t (respond 400 (tr "Sign in")
+                    (list (ui:alert (:variant :destructive :title (tr "Invalid actor"))
+                            (format nil "~a " (tr "Use"))
+                            `(:code ,(tr "/login?actor=role:name"))
+                            (format nil " ~a" (tr "with the role admin, employee or viewer."))))
                     :guest t :home "/login"))))
 
 (defun handle-login (method)
@@ -102,9 +103,10 @@ etterpå.")))
          (tun.auth:log-out (hunchentoot:cookie-in tun.auth:+session-cookie+))
          (clear-login-cookies)
          (see-other "/login"))
-        (t (respond 200 "Logg ut"
+        (t (respond 200 (tr "Sign out")
                     (list `(:form (:@ :method "post" :action "/logout")
-                                  ,(ui:button (:type "submit" :icon :log-out) "Logg ut")))))))
+                                  ,(ui:button (:type "submit" :icon :log-out)
+                                     (tr "Sign out"))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Signing in with an identity provider (spec/auth.md 3.5)
@@ -144,7 +146,8 @@ have registered."
           (see-other (if (eq purpose :setup) "/access" (home-path))))
       (tun.auth:sign-in-refused (refusal)
         (let ((detail (or (tun.auth:sign-in-refused-detail refusal)
-                          (tun.auth:sign-in-refused-message refusal))))
+                          ;; The server's log is for developers: source text.
+                          (with-language (:source) (tun.auth:sign-in-refused-message refusal)))))
           (note-refusal (format nil "sign-in with ~a: ~a"
                                 (tun.auth:strategy-name strategy) detail))
           (format *error-output* "~&;; tun auth: sign-in with ~a refused: ~a~%"
@@ -169,7 +172,8 @@ have registered."
   "What CONDITION, an operation-error refusing the first admin's names, says
 about the form: values its field errors ((name . message) ...) and a message
 for the rest."
-  (let ((fields (mapcar (lambda (field) (cons (error-path-name (car field)) (cdr field)))
+  (let ((fields (mapcar (lambda (field)
+                          (cons (error-path-name (car field)) (render-text (cdr field))))
                         (operation-error-fields condition))))
     (values fields (unless fields (operation-error-message condition)))))
 
@@ -177,9 +181,7 @@ for the rest."
   "The error summary at the top of the setup form: ERRORS link to their
 fields (LABELS maps a name to its label), MESSAGE stands alone."
   (when (or errors message)
-    (ui:error-summary* (list :title (if errors
-                                        "For å gå videre må du rette opp følgende feil:"
-                                        "Det gikk ikke")
+    (ui:error-summary* (list :title (if errors (tr "There is a problem") (tr "That did not work"))
                              :errors (mapcar (lambda (entry)
                                                (list (control-id form-id (car entry))
                                                      (field-error-sentence
@@ -191,27 +193,28 @@ fields (LABELS maps a name to its label), MESSAGE stands alone."
                        (when message `(:p ,message)))))
 
 (defun not-found-page ()
-  (respond 404 "Finnes ikke"
-           (list (ui:alert (:variant :warning :title "Lenken virker ikke")
-                   "Lenken er ukjent, brukt eller utløpt. Be en administrator om en ny."))
+  (respond 404 (tr "Not found")
+           (list (ui:alert (:variant :warning :title (tr "The link does not work"))
+                   (tr "The link is unknown, used or expired. Ask an administrator for a new one.")))
            :guest t :home "/login"))
 
-(defparameter +setup-labels+
-  '(("name" . "Navn") ("display_name" . "Visningsnavn")))
+(defun setup-labels ()
+  "The labels of the setup form's fields, by their names."
+  (list (cons "name" (tr "Name")) (cons "display_name" (tr "Display name"))))
 
 (defun setup-fields (form-id errors name display-name)
   "The fields of the first administrator's account, with their ERRORS: the
 email comes from the provider."
   (flet ((id (field) (control-id form-id field))
          (error-of (field) (field-error-message field errors)))
-    (list (ui:text-input (:label "Navn" :name "name" :value name
+    (list (ui:text-input (:label (tr "Name") :name "name" :value name
                                  :required t :autocomplete "username" :width 20
                                  :id (id "name") :error (error-of "name")
-                                 :hint "Små bokstaver, for eksempel kari."))
-          (ui:text-input (:label "Visningsnavn" :name "display_name"
+                                 :hint (tr "Lower-case letters, such as alex.")))
+          (ui:text-input (:label (tr "Display name") :name "display_name"
                                  :value display-name :optional t
                                  :id (id "display_name") :error (error-of "display_name")
-                                 :hint "Slik andre ser deg, for eksempel Kari Nordmann.")))))
+                                 :hint (tr "How others see you, such as Alex Morgan."))))))
 
 (defun setup-actions ()
   "The setup form's buttons: one per identity provider."
@@ -219,27 +222,26 @@ email comes from the provider."
          (mapcar (lambda (strategy)
                    (ui:button (:type "submit" :name "provider"
                                      :value (tun.auth:strategy-name strategy) :icon :log-in)
-                     (format nil "Fortsett~@[ med ~a~]"
-                             (tun.auth:strategy-button-label strategy))))
+                     (let ((provider (tun.auth:strategy-button-label strategy)))
+                       (if provider (tr "Continue with ~a" provider) (tr "Continue")))))
                  (tun.auth:identity-providers))))
 
 (defun setup-page (status code &key errors message name display-name)
   (private-page)
   (let ((form-id "setup"))
     (guest-page
-     status "Opprett den første administratoren"
+     status (tr "Create the first administrator")
      (ui:card ()
        `(:form (:@ :method "post" :action ,(format nil "/setup/~a" code) :novalidate t)
                ,(ui:stack (:gap :lg)
-                  (form-errors form-id errors message +setup-labels+)
+                  (form-errors form-id errors message (setup-labels))
                   (setup-fields form-id errors name display-name)
                   (setup-actions))))
-     (ui:card (:title "Hva skjer nå?" :heading-level 2)
+     (ui:card (:title (tr "What happens now?") :heading-level 2)
        (ui:stack (:gap :sm)
-         '(:p "Kontoen du lager her, kan opprette de andre kontoene og
-tilgangsnøklene.")
-         '(:p "Lenken virker bare til den første administratoren er laget.")))
-     :description "Tun har ingen administrator ennå.")))
+         `(:p ,(tr "The account you make here can create the other accounts and the access tokens."))
+         `(:p ,(tr "The link works only until the first administrator is made."))))
+     :description (tr "Tun has no administrator yet."))))
 
 (defun handle-setup (method code)
   (cond ((not (tun.auth:setup-code-valid-p code)) (not-found-page))
@@ -282,19 +284,19 @@ tilgangsnøklene.")
           ,(ui:button (:type "submit" :variant variant :size :sm) label)))
 
 (defun sign-in-state (account)
-  "How ACCOUNT, a person, logs in: the providers linked to it; Venter before
-the first time."
+  "How ACCOUNT, a person, logs in: the providers linked to it; «Waiting»
+before the first time."
   (let ((ways (map 'list (lambda (name)
                            (let ((strategy (tun.auth:find-identity-provider name)))
                              (if strategy (tun.auth:strategy-label strategy) name)))
                    (jget account "sign_in" #()))))
     (cond (ways (format nil "~{~a~^, ~}" ways))
-          ((equal (jget account "kind") "person") "Venter")
+          ((equal (jget account "kind") "person") (tr "Waiting"))
           (t "–"))))
 
 (defun account-select (account field label values)
   "A select of ACCOUNT's FIELD among VALUES, labelled for screen readers only."
-  (ui:select (:label (format nil "~a for ~a" label (jget account "name")) :label-hidden t
+  (ui:select (:label (tr "~a for ~a" label (jget account "name")) :label-hidden t
                      :name field :selected (jget account field)
                      :options (mapcar (lambda (value) (list value (humanize value))) values))))
 
@@ -304,12 +306,13 @@ the first time."
     `(:form (:@ :method "post" :action ,action)
             ,(hidden "request_key" (new-id "web"))
             ,(ui:cluster (:align :end)
-               (account-select account "role" "Rolle" '("admin" "employee" "viewer"))
-               (account-select account "status" "Status" '("active" "disabled"))
-               (ui:button (:type "submit" :variant :outline :size :sm) "Lagre")))))
+               (account-select account "role" (tr "Role") '("admin" "employee" "viewer"))
+               (account-select account "status" (tr "Status") '("active" "disabled"))
+               (ui:button (:type "submit" :variant :outline :size :sm) (tr "Save"))))))
 
 (defun accounts-table (accounts)
-  (ui:table (:columns '("Navn" "Visningsnavn" "Type" "E-post" "Innlogging" "Rolle og status")
+  (ui:table (:columns (list (tr "Name") (tr "Display name") (tr "Type") (tr "Email")
+                            (tr "Sign-in") (tr "Role and status"))
                       :rows (mapcar (lambda (account)
                                       (list (jget account "name")
                                             (display-value (jget account "display_name"))
@@ -320,18 +323,19 @@ the first time."
                                     accounts))))
 
 (defun ways-to-sign-in ()
-  "How people log in to this tenant, in words: «WorkOS», «Google», …"
-  (format nil "~{~a~^ eller ~}" (mapcar #'tun.auth:strategy-label (tun.auth:identity-providers))))
+  "How people log in to this tenant, in words: «WorkOS», «Google or WorkOS», …"
+  (tr "~{~a~^ or ~}" (mapcar #'tun.auth:strategy-label (tun.auth:identity-providers))))
 
 (defun items (tool &rest keys-and-values)
   (coerce (jget (web-call tool (apply #'jobj keys-and-values)) "items" #()) 'list))
 
 (defun token-table (tokens &key accounts)
   "TOKENS as a table; with ACCOUNTS, which account each acts as."
-  (ui:table* (list :columns (append '("Beskrivelse" "Nøkkel")
-                                    (when accounts '("Konto"))
-                                    '("Rolle" "Tilstand" "Sist brukt" "Utløper" "Handling"))
-                   :empty "Ingen nøkler ennå."
+  (ui:table* (list :columns (append (list (tr "Description") (tr "Token"))
+                                    (when accounts (list (tr "Account")))
+                                    (list (tr "Role") (tr "State") (tr "Last used")
+                                          (tr "Expires") (tr "Action")))
+                   :empty (tr "No tokens yet.")
                    :rows (mapcar (lambda (token)
                                    (append
                                     (list (jget token "label")
@@ -345,7 +349,7 @@ the first time."
                                           (if (equal (jget token "state") "active")
                                               (button-form (format nil "/access/tokens/~a/revoke"
                                                                    (jget token "id"))
-                                                           "Trekk tilbake")
+                                                           (tr "Revoke"))
                                               "–"))))
                                  tokens))))
 
@@ -357,30 +361,29 @@ the first time."
 FORM; else NIL."
   (and failed (equal (first failed) form) failed))
 
-(defparameter +own-tokens-text+
-  "En agent eller et skript, som Claude Code, kaller MCP med en nøkkel i Authorization: Bearer
-og får gjøre det samme som du, aldri mer. Nøkkelen vises bare når den lages."
-  "What /access says about a person's own tokens.")
+(defun own-tokens-text ()
+  "What /access says about a person's own tokens."
+  (tr "An agent or a script, such as Claude Code, calls MCP with a token in Authorization: Bearer and may do the same as you, never more. The token is shown only when it is made."))
 
 (defun own-tokens-section (account failed)
   "The caller's own tokens and the form for a new one: every person's part of
 /access (spec/auth.md 3.2)."
   (if (json-null-p account)
-      (list (section "Mine nøkler"
-              `(:p ,(format nil "~a har ingen konto, og så ingen nøkler."
-                            (actor-string *actor*)))))
+      (list (section (tr "My tokens")
+              `(:p ,(tr "~a has no account, and so no tokens." (actor-string *actor*)))))
       (let ((mine (form-failure failed "tokens_create")))
         (list (when (tun.auth:oauth-strategy *web-app*)
-                (ui:section (:title "Koble til uten nøkkel"
-                                    :description "Claude Code og andre MCP-klienter som kan OAuth, logger
-inn som deg gjennom WorkOS, uten nøkkel.")
-                  (ui:code-block (:title "For Claude Code" :copy-label "Kopier kommandoen")
+                (ui:section (:title (tr "Connect without a token")
+                             :description (tr "Claude Code and other MCP clients that can do OAuth sign in as you through WorkOS, without a token."))
+                  (ui:code-block (:title (tr "For Claude Code")
+                                  :copy-label (tr "Copy the command"))
                                  (format nil "claude mcp add --transport http ~a ~a"
                                          (server-name) (site-url "/mcp")))))
-              (ui:section (:title "Mine nøkler" :description +own-tokens-text+)
+              (ui:section (:title (tr "My tokens") :description (own-tokens-text))
                 (token-table (items "tokens_list" "account_id" (jget account "id"))))
               (operation-form (find-operation-by-tool "tokens_create") "/access/tokens"
-                              :title "Ny nøkkel for meg" :submit "Lag nøkkel" :omit '("account_id")
+                              :title (tr "New token for me") :submit (tr "Create token")
+                              :omit '("account_id")
                               :error-json (second mine) :values (third mine))))))
 
 (defun agent-choices (accounts)
@@ -395,21 +398,21 @@ inn som deg gjennom WorkOS, uten nøkkel.")
   (let ((agents (agent-choices accounts))
         (account-form (form-failure failed "accounts_create"))
         (agent-form (form-failure failed "tokens_create:agent")))
-    (list (ui:section (:title "Kontoer"
-                              :description (format nil "Personer logger inn med ~a, agenter med ~
-                                                        nøkler." (ways-to-sign-in)))
+    (list (ui:section (:title (tr "Accounts")
+                       :description (tr "People sign in with ~a, agents with tokens."
+                                        (ways-to-sign-in)))
             (accounts-table accounts))
           (operation-form (find-operation-by-tool "accounts_create") "/access/accounts"
-                          :title "Ny konto" :submit "Opprett konto"
+                          :title (tr "New account") :submit (tr "Create account")
                           :error-json (second account-form) :values (third account-form))
-          (section "Alle tilgangsnøkler" (token-table (items "tokens_list") :accounts t))
+          (section (tr "All access tokens") (token-table (items "tokens_list") :accounts t))
           (if agents
               (operation-form (find-operation-by-tool "tokens_create") "/access/tokens"
-                              :title "Ny nøkkel for en agent" :submit "Lag nøkkel"
+                              :title (tr "New token for an agent") :submit (tr "Create token")
                               :choices (list (cons "account_id" agents))
                               :error-json (second agent-form) :values (third agent-form))
-              (ui:alert (:variant :info :title "Ingen agenter ennå")
-                "En agent får nøkler når den har en konto av typen agent.")))))
+              (ui:alert (:variant :info :title (tr "No agents yet"))
+                (tr "An agent gets tokens when it has an account of the type agent."))))))
 
 (defun access-body (&key notice failed)
   "The /access page: NOTICE after an action, and FAILED, (FORM ERROR-JSON
@@ -426,13 +429,13 @@ other at the top."
   "A secret shown once, with the warning that it will not be shown again."
   (ui:card (:title title :heading-level 2 :attributes (list :role "status"))
     (apply #'ui:stack* (list :gap :md)
-           (ui:alert (:variant :warning :title "Kopier den nå: den vises ikke igjen."))
+           (ui:alert (:variant :warning :title (tr "Copy it now: it will not be shown again.")))
            body)))
 
-(defun shown-before (what)
+(defun token-shown-before ()
+  "What a new token's form sent again is told: the token is not shown twice."
   (ui:alert (:variant :info)
-    (format nil "~a ble laget tidligere med det samme skjemaet; den vises ikke ~
-                 igjen." what)))
+    (tr "The token was made earlier with the same form; it is not shown again.")))
 
 (defun server-name ()
   "This tenant's name for Claude Code's list of MCP servers: its application
@@ -448,21 +451,22 @@ name in lower case, with a hyphen for anything a shell would split on."
 (defun token-notice (json)
   (let ((token (jget json "token")))
     (if (stringp token)
-        (shown-once "Ny tilgangsnøkkel"
-                    (ui:code-block (:title "Tilgangsnøkkel" :wrap t
-                                           :copy-label "Kopier nøkkelen")
+        (shown-once (tr "New access token")
+                    (ui:code-block (:title (tr "Access token") :wrap t
+                                    :copy-label (tr "Copy the token"))
                                    token)
-                    (ui:code-block (:title "For Claude Code" :copy-label "Kopier kommandoen")
+                    (ui:code-block (:title (tr "For Claude Code")
+                                    :copy-label (tr "Copy the command"))
                                    (claude-command token)))
-        (shown-before "Nøkkelen"))))
+        (token-shown-before))))
 
 (defun provider-notice (json)
-  (ui:flash () (format nil "Kontoen er opprettet. ~a logger inn med ~a med e-posten ~a."
-                       (jget json "name") (ways-to-sign-in) (jget json "email"))))
+  (ui:flash () (tr "The account is created. ~a signs in with ~a with the email ~a."
+                   (jget json "name") (ways-to-sign-in) (jget json "email"))))
 
 (defun invitation-notice (json)
-  (ui:flash () (format nil "Kontoen er opprettet, og ~a har fått en invitasjon på ~a."
-                       (jget json "name") (jget json "email"))))
+  (ui:flash () (tr "The account is created, and ~a has been sent an invitation at ~a."
+                   (jget json "name") (jget json "email"))))
 
 (defun constant-notice (text)
   (constantly (ui:flash () text)))
@@ -492,16 +496,16 @@ from (NIL for a button), and the error's code."
               ((and (equal collection "accounts") (equal verb "update"))
                (call "accounts_update"
                      (jobj "id" id "role" (posted "role" params) "status" (posted "status" params))
-                     (constant-notice "Kontoen er lagret.")))
+                     (constant-notice (tr "The account is saved."))))
               ((and (equal collection "tokens") (null id))
                (call "tokens_create" (form "tokens_create") #'token-notice
                      (if (posted "account_id" params) "tokens_create:agent" "tokens_create")))
               ((and (equal collection "tokens") (equal verb "revoke"))
                (call "tokens_revoke" (jobj "id" id)
-                     (constant-notice "Nøkkelen er trukket tilbake.")))
+                     (constant-notice (tr "The token is revoked."))))
               (t (values nil
                          (list nil (jobj "error" (jobj "code" "not_found"
-                                                       "message" "Ukjent handling")))
+                                                       "message" (tr "Unknown action"))))
                          :not-found)))))))
 
 (defun staff-access-page (method parts form query)
@@ -510,8 +514,8 @@ from (NIL for a button), and the error's code."
   (if (eq method :post)
       (multiple-value-bind (notice failed code) (access-action parts)
         (values (if code (error-status code) 200)
-                "Tilgang" (access-body :notice notice :failed failed)))
-      (values 200 "Tilgang" (access-body))))
+                (tr "Access") (access-body :notice notice :failed failed)))
+      (values 200 (tr "Access") (access-body))))
 
-(register-staff-page "access" #'staff-access-page :policy :viewer :title "Tilgang"
+(register-staff-page "access" #'staff-access-page :policy :viewer :title "Access"
                      :icon :shield-check :group :system)

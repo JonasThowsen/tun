@@ -28,4 +28,5 @@
                              (:file "extension-tests")
                              (:file "introspection-tests")
                              (:file "web-tests")
-                             (:file "composition-tests")))))
+                             (:file "composition-tests")
+                             (:file "language-tests")))))

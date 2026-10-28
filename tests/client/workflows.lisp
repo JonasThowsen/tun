@@ -7,20 +7,20 @@
 (define-message-template reminder-message
     (:template "påminnelse" :label "Påminnelse om tilbud" :manual t
      :subject "Vi har fortsatt et tilbud til deg"
-     :text "Hei {{kunde.navn}},
+     :text "Hei {{customer.name}},
 
-Vi har fortsatt et tilbud til deg for {{ordre.periode}}. Se og svar på det her:
-{{tilbud.lenke}}
+Vi har fortsatt et tilbud til deg for {{order.period}}. Se og svar på det her:
+{{quote.link}}
 
 Med vennlig hilsen
-{{avsender.navn}}")
+{{sender.name}}")
     (&key order customer))
 
-(define-workflow quote-reminder (:kind "tilbud_påminnelse" :label "Påminnelse om tilbud"
+(define-workflow quote-reminder (:kind "quote_reminder" :label "Påminnelse om tilbud"
                                  :templates ("påminnelse"))
     (wf)
   (let ((order (find-order (workflow-order-id wf))))
-    (if (equal (order-status order) "tilbud_sendt")
+    (if (equal (order-status order) "quote_sent")
         (send-message "påminnelse" :order order :customer (order-customer order))
         (note-workflow-run "ikke nødvendig: tilbudet er ikke åpent"))))
 
@@ -34,10 +34,10 @@ Med vennlig hilsen
 (defmethod orders-send-quote :after ((app workflow-feature) input)
   (declare (ignore input))
   (let ((order (operation-result)))
-    (cancel-workflows (entity-id order) :kinds '("tilbud_påminnelse"))
-    (schedule-workflow "tilbud_påminnelse" :order order :key (entity-id order)
+    (cancel-workflows (entity-id order) :kinds '("quote_reminder"))
+    (schedule-workflow "quote_reminder" :order order :key (entity-id order)
                                            :due-at (+ (now) (* +reminder-delay-hours+ 3600)))))
 
 (defmethod orders-accept :after ((app workflow-feature) input)
   (declare (ignore input))
-  (cancel-workflows (entity-id (operation-result)) :kinds '("tilbud_påminnelse")))
+  (cancel-workflows (entity-id (operation-result)) :kinds '("quote_reminder")))

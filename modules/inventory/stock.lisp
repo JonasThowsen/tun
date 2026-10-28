@@ -15,43 +15,48 @@ invalid_input when NEED-STOCK, else the article is NIL."
          (let ((product (find-product product-id)))
            (cond ((product-article-id product)
                   (values (find-article (product-article-id product)) product))
-                 (need-stock (fail :invalid-input "Produktet ~a er ikke lagerført" (product-name product)))
+                 (need-stock (fail :invalid-input "The product ~a is not stock-tracked"
+                                       (product-name product)))
                  (t (values nil product)))))
         (article-id (values (find-article article-id) nil))
-        (t (fail :invalid-input "Mangler påkrevd felt: input.product_id"))))
+        (t (fail :invalid-input "Missing required field: input.product_id"))))
 
-(define-operation inventory-receive ((product-id :type (id product) :schema-required t :label "Produkt-ID")
-                                     (article-id :type (id article) :label "Artikkel-ID"
-                                                 :description "I stedet for product_id.")
-                                     (quantity :type (integer :min 1 :max 1000000) :required t :label "Antall")
-                                     (reason :type (string :max 500) :label "Begrunnelse"))
-    (:entity inventory-movement :kind :create :title "Varemottak"
-     :description "Registrerer mottak av varer på lager (mottak) på produktets lagerartikkel, eller på article_id.")
+(define-operation inventory-receive ((product-id :type (id product) :schema-required t
+                                                  :label "Product ID")
+                                     (article-id :type (id article) :label "Article ID"
+                                                 :description "Instead of product_id.")
+                                     (quantity :type (integer :min 1 :max 1000000) :required t
+                                               :label "Number of units")
+                                     (reason :type (string :max 500) :label "Reason"))
+    (:entity inventory-movement :kind :create :title "Goods receipt"
+     :description "Records goods received into stock (a receipt) on the product's stock article, or on article_id.")
   (let* ((article (lock-article (entity-id (article-ref product-id article-id)))))
     (require-active article)
-    (ledger-row article "mottak" quantity :balance (+ (article-balance article) quantity) :reason reason)))
+    (ledger-row article "receipt" quantity :balance (+ (article-balance article) quantity) :reason reason)))
 
-(define-operation inventory-adjust ((product-id :type (id product) :schema-required t :label "Produkt-ID")
-                                    (article-id :type (id article) :label "Artikkel-ID"
-                                                :description "I stedet for product_id.")
+(define-operation inventory-adjust ((product-id :type (id product) :schema-required t
+                                                 :label "Product ID")
+                                    (article-id :type (id article) :label "Article ID"
+                                                :description "Instead of product_id.")
                                     (delta :type (integer :min -1000000 :max 1000000) :required t
-                                           :label "Endring (+/-)")
-                                    (reason :type (string :min 1 :max 500) :required t :label "Begrunnelse"))
-    (:entity inventory-movement :kind :create :policy :admin :title "Lagerjustering"
-     :description "Justerer beholdningen med en begrunnelse. Feiler med insufficient_stock om beholdningen ville blitt negativ.")
-  (when (zerop delta) (fail :invalid-input "Justeringen kan ikke være 0"))
+                                           :label "Change (+/-)")
+                                    (reason :type (string :min 1 :max 500) :required t :label "Reason"))
+    (:entity inventory-movement :kind :create :policy :admin :title "Stock adjustment"
+     :description "Adjusts the balance, with a reason. Fails with insufficient_stock when the balance would become negative.")
+  (when (zerop delta) (fail :invalid-input "The adjustment cannot be 0"))
   (let* ((article (lock-article (entity-id (article-ref product-id article-id))))
          (balance (+ (article-balance article) delta)))
     (require-active article)
     (when (minusp balance)
       (insufficient article (- delta)))
-    (ledger-row article "justering" delta :balance balance :reason reason)))
+    (ledger-row article "adjustment" delta :balance balance :reason reason)))
 
-(define-operation inventory-balance ((product-id :type (id product) :schema-required t :label "Produkt-ID")
-                                     (article-id :type (id article) :label "Artikkel-ID"
-                                                 :description "I stedet for product_id."))
-    (:entity inventory-movement :kind :read :title "Lagerbeholdning"
-     :description "Beholdning, reservert og tilgjengelig (tilgjengelig kan bli negativ), for produktets lagerartikkel eller article_id.")
+(define-operation inventory-balance ((product-id :type (id product) :schema-required t
+                                                  :label "Product ID")
+                                     (article-id :type (id article) :label "Article ID"
+                                                 :description "Instead of product_id."))
+    (:entity inventory-movement :kind :read :title "Stock balance"
+     :description "The balance, what is reserved and what is available (available may be negative), for the product's stock article or article_id.")
   (multiple-value-bind (article product) (article-ref product-id article-id :need-stock nil)
     (if (null article)
         (jobj "product_id" (entity-id product) "article_id" :null "on_hand" 0 "reserved" 0 "available" 0)
@@ -62,12 +67,14 @@ invalid_input when NEED-STOCK, else the article is NIL."
                 "reserved" (quantity-json reserved)
                 "available" (quantity-json (- (article-balance article) reserved)))))))
 
-(define-operation inventory-movements ((product-id :type (id product) :schema-required t :label "Produkt-ID")
-                                       (article-id :type (id article) :label "Artikkel-ID"
-                                                   :description "I stedet for product_id.")
-                                       (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity inventory-movement :kind :read :title "Lagerbevegelser"
-     :description "Lagerbokens rader for produktets lagerartikkel (eller article_id), høyeste revisjon først.")
+(define-operation inventory-movements ((product-id :type (id product) :schema-required t
+                                                    :label "Product ID")
+                                       (article-id :type (id article) :label "Article ID"
+                                                   :description "Instead of product_id.")
+                                       (limit :type (integer :min 1 :max 100) :default 20
+                                              :label "Most results"))
+    (:entity inventory-movement :kind :read :title "Stock movements"
+     :description "The ledger's rows for the product's stock article (or article_id), highest revision first.")
   (let ((article (article-ref product-id article-id :need-stock nil)))
     (jobj "items" (jarr (and article
                              (mapcar #'entity->json

@@ -82,8 +82,8 @@ its scheme, without a trailing slash."
             (slot-value strategy 'token-endpoint) (concatenate 'string url "/oauth2/token")))))
 
 (defgeneric strategy-button-label (strategy)
-  (:documentation "The provider a sign-in button names, «Logg inn med Google»,
-or NIL for a plain «Logg inn».")
+  (:documentation "The provider a sign-in button names, «Sign in with Google»,
+or NIL for a plain «Sign in».")
   (:method ((strategy sign-in-strategy)) (strategy-label strategy))
   (:method ((strategy workos-strategy)) nil))
 
@@ -197,7 +197,7 @@ all (spec/auth.md 3.4).  NIL when every one can be made."
 ;;; ------------------------------------------------------------------
 ;;; Records
 
-(define-entity account-identity (:label "Innloggingsidentitet" :id-prefix "aid"
+(define-entity account-identity (:label "Sign-in identity" :id-prefix "aid"
                                         :table "account_identities" :internal t
                                         :unique (("strategy" "subject") ("account_id" "strategy"))
                                         :indexes (("account_id")))
@@ -209,7 +209,7 @@ all (spec/auth.md 3.4).  NIL when every one can be made."
    (linked-at :type timestamp :input nil)
    (last-used-at :type timestamp :input nil)))
 
-(define-entity sign-in-attempt (:label "Innloggingsforsøk" :id-prefix "sia"
+(define-entity sign-in-attempt (:label "Sign-in attempt" :id-prefix "sia"
                                        :table "sign_in_attempts" :internal t
                                        :unique (("state_hash")))
   ((strategy :type (string :max 64) :input nil)
@@ -251,7 +251,9 @@ imported first, is not yet (spec/auth.md 2)."
 
 (define-condition sign-in-refused (error)
   ((status :initarg :status :reader sign-in-refused-status)
-   (message :initarg :message :reader sign-in-refused-message)
+   (message :initarg :message
+            :documentation "A string, or a TEXT written in the language of the place
+it is shown (spec/i18n.md 3.1).")
    (detail :initarg :detail :initform nil :reader sign-in-refused-detail))
   (:documentation "A sign-in through a provider that did not log anyone in:
 STATUS and MESSAGE are for the person, DETAIL for the server's log.")
@@ -259,10 +261,15 @@ STATUS and MESSAGE are for the person, DETAIL for the server's log.")
              (format s "Sign-in refused (~d): ~a~@[; ~a~]" (sign-in-refused-status c)
                      (sign-in-refused-message c) (sign-in-refused-detail c)))))
 
+(defun sign-in-refused-message (condition)
+  "CONDITION's message for the person, written in the current language."
+  (render-text (slot-value condition 'message)))
+
 (defun refuse-sign-in (status message &optional detail)
   (error 'sign-in-refused :status status :message message :detail detail))
 
-(defparameter +attempt-unusable+ "Innloggingen kunne ikke fullføres. Prøv igjen.")
+(defun attempt-unusable ()
+  (deferred-tr "The sign-in could not be completed. Try again."))
 
 ;;; ------------------------------------------------------------------
 ;;; Starting
@@ -273,10 +280,11 @@ DISPLAY-NAME the first admin cannot have: checked before setup sends the
 browser to a provider."
   (let ((problems '()))
     (unless (and (stringp name) (account-name-p name))
-      (push (cons "name" "bare små bokstaver, sifre, punktum, understrek og bindestrek")
+      (push (cons "name"
+                  (deferred-tr "only lower-case letters, digits, full stops, underscores and hyphens"))
             problems))
     (when (and (stringp display-name) (> (length display-name) 120))
-      (push (cons "display_name" "høyst 120 tegn") problems))
+      (push (cons "display_name" (deferred-tr "at most ~d characters" 120)) problems))
     (when problems
       (fail-fields (nreverse problems)))))
 
@@ -323,7 +331,7 @@ STRATEGY's, unexpired, and COOKIE (the browser's tun_sign_in) is STATE."
                  (equal (sign-in-attempt-strategy attempt) (strategy-name strategy))
                  (< (now) (sign-in-attempt-expires-at attempt))
                  (constant-time-string= cookie state))
-      (refuse-sign-in 400 +attempt-unusable+
+      (refuse-sign-in 400 (attempt-unusable)
                       (if attempt "attempt expired, for another strategy, or not this browser's"
                           "no such attempt")))
     attempt))
@@ -344,13 +352,13 @@ STRATEGY's, unexpired, and COOKIE (the browser's tun_sign_in) is STATE."
           (provider-failure "~a" problem))
         claims)
     (provider-failure (e)
-      (refuse-sign-in 502 (format nil "~a svarte ikke som forventet. Prøv igjen."
-                                  (strategy-label strategy))
+      (refuse-sign-in 502 (deferred-tr "~a did not answer as expected. Try again."
+                                       (strategy-label strategy))
                       (provider-failure-detail e)))))
 
 (defun no-account (email)
-  (refuse-sign-in 403 (format nil "Det finnes ingen konto for ~a her. Be en administrator ~
-                                   om tilgang." email)))
+  (refuse-sign-in 403 (deferred-tr "There is no account for ~a here. Ask an administrator for access."
+                                   email)))
 
 (defun link-identity (account strategy claims)
   "Link the identity CLAIMS name to ACCOUNT, audited, in the caller's write
@@ -406,7 +414,7 @@ in the caller's write transaction, when setup is still open in this process."
     (unless (and code (constant-time-string= (sha256-hex code)
                                              (sign-in-attempt-setup-hash attempt))
                  (null (active-admin-people)))
-      (refuse-sign-in 404 "Oppsettet er allerede gjort."))
+      (refuse-sign-in 404 (deferred-tr "Setup has already been done.")))
     (let* ((display-name (or (sign-in-attempt-display-name attempt)
                              (let ((name (jget claims "name")))
                                (and (stringp name) (plusp (length name))
@@ -421,7 +429,9 @@ in the caller's write transaction, when setup is still open in this process."
                                        (with-actor ((system-actor "setup"))
                                          (call-tool "accounts_create" arguments))
                                      (operation-error (e)
-                                       (refuse-sign-in 409 (operation-error-message e))))
+                                       (refuse-sign-in 409 (operation-error-message e)
+                                                       (with-language (:source)
+                                                         (operation-error-message e)))))
                                    "id")))))
       (link-identity account strategy claims)
       (log-in-session account "setup"))))
@@ -434,8 +444,8 @@ signals SIGN-IN-REFUSED when nobody is logged in."
   (check-type strategy oidc-strategy)
   (let ((attempt (take-attempt strategy state cookie)))
     (when (or error (not (stringp code)))
-      (refuse-sign-in 400 (format nil "Innloggingen med ~a ble avbrutt."
-                                  (strategy-label strategy))
+      (refuse-sign-in 400 (deferred-tr "Signing in with ~a was cancelled."
+                                       (strategy-label strategy))
                       (format nil "provider error ~a" (or error "without a code"))))
     (let ((claims (provider-claims strategy attempt code redirect-uri)))
       (if (equal (sign-in-attempt-purpose attempt) "setup")

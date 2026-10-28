@@ -43,5 +43,5 @@
 
 ;;; The orders module asks for the discount through its ORDER-DISCOUNT seam.
 (defmethod order-discount ((app loyalty-feature) order customer)
-  (floor (* (order-subtotal-ore order) (tier-discount-percent (customer-loyalty-tier customer)))
+  (floor (* (order-subtotal-minor order) (tier-discount-percent (customer-loyalty-tier customer)))
          100))

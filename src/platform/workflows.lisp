@@ -5,9 +5,9 @@
 ;;;; workflow is: jobs decide when it runs, which process takes it, and what
 ;;;; happens after a crash.  RUN-ONE-WORKFLOW decides how: inside its own
 ;;;; write transaction as the system actor, where the status change to
-;;;; utført commits together with the handler's effects, so a workflow runs
+;;;; executed commits together with the handler's effects, so a workflow runs
 ;;;; at most once even across restarts; a handler that fails is rolled back
-;;;; and marked feilet with the error noted.
+;;;; and marked failed with the error noted.
 ;;;;
 ;;;; Handlers are registered with DEFINE-WORKFLOW by modules and clients.  A
 ;;;; workflow refers to the record it is about by opaque id (order_id): the
@@ -25,18 +25,19 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity workflow (:label "Arbeidsflyt" :id-prefix "wf" :table "workflows"
+(define-entity workflow (:label "Workflow" :id-prefix "wf" :table "workflows"
                          :indexes (("order_id") ("status" "due_at") ("kind" "key" "status")))
-  ((key :type (string :max 200) :input nil)
-   (request-id :type id :input nil)
-   (kind :type (string :max 100) :input nil :label "Type")
-   (order-id :type id :input nil :label "Ordre")
-   (customer-id :type id :input nil :label "Kunde")
-   (due-at :type timestamp :input nil :label "Forfall")
-   (status :type (enum "planlagt" "utført" "avbrutt" "feilet") :input nil :initform "planlagt" :label "Status")
-   (executed-at :type timestamp :input nil :label "Utført")
-   (note :type (string :max 2000) :input nil :label "Merknad")
-   (subject-id :type id :input nil :label "Gjelder"
+  ((key :type (string :max 200) :input nil :label "Key")
+   (request-id :type id :input nil :label "Request")
+   (kind :type (string :max 100) :input nil :label "Kind")
+   (order-id :type id :input nil :label "Order")
+   (customer-id :type id :input nil :label "Customer")
+   (due-at :type timestamp :input nil :label "Due")
+   (status :type (enum "planned" "executed" "cancelled" "failed") :input nil :initform "planned"
+           :label "Status")
+   (executed-at :type timestamp :input nil :label "Executed")
+   (note :type (string :max 2000) :input nil :label "Note")
+   (subject-id :type id :input nil :label "Subject"
                :description "The record a workflow not about an order is about (a catalog change).")))
 
 (defun schedule-workflow (kind &key order order-id customer-id subject-id due-at key)
@@ -47,7 +48,7 @@ time)."
     (error "Workflow kind ~s is not registered (define it with DEFINE-WORKFLOW)" kind))
   (check-type due-at universal-time)
   (when key
-    (let ((existing (select-one 'workflow :where `(:and (:= "kind" ,kind) (:= "key" ,key) (:= "status" "planlagt")))))
+    (let ((existing (select-one 'workflow :where `(:and (:= "kind" ,kind) (:= "key" ,key) (:= "status" "planned")))))
       (when existing (return-from schedule-workflow existing))))
   (let ((workflow (insert (make-instance 'workflow :key key :kind kind
                                                    :order-id (or order-id (and order (entity-id order)))
@@ -59,30 +60,30 @@ time)."
 
 (defun pending-workflows (order-id &key kinds)
   (remove-if-not (lambda (w) (or (null kinds) (member (workflow-kind w) kinds :test #'string=)))
-                 (select 'workflow :where `(:and (:= "order_id" ,order-id) (:= "status" "planlagt")))))
+                 (select 'workflow :where `(:and (:= "order_id" ,order-id) (:= "status" "planned")))))
 
 (defun cancel-workflows (order-id &key kinds note)
   "Cancel ORDER-ID's planned workflows (only KINDS when given). Returns how many."
   (let ((pending (pending-workflows order-id :kinds kinds)))
     (dolist (w pending)
-      (setf (workflow-status w) "avbrutt" (workflow-note w) note)
+      (setf (workflow-status w) "cancelled" (workflow-note w) note)
       (save w))
     (length pending)))
 
 (defun cancel-matching-workflows (field id kinds note)
-  (let ((rows (select 'workflow :where `(:and (:= ,field ,id) (:= "status" "planlagt")))))
+  (let ((rows (select 'workflow :where `(:and (:= ,field ,id) (:= "status" "planned")))))
     (loop for wf in rows when (or (null kinds) (member (workflow-kind wf) kinds :test #'equal))
-          count (progn (setf (workflow-status wf) "avbrutt" (workflow-note wf) note) (save wf) t))))
+          count (progn (setf (workflow-status wf) "cancelled" (workflow-note wf) note) (save wf) t))))
 (defun cancel-subject-workflows (id &key kinds note) (cancel-matching-workflows "subject_id" id kinds note))
 (defun cancel-customer-workflows (id &key kinds note) (cancel-matching-workflows "customer_id" id kinds note))
 
 (defun claim-workflow (wf)
   "Mark WF (re-read under the write lock: another runner may have taken it)
-utført; the current record, or NIL when it is no longer planned."
+executed; the current record, or NIL when it is no longer planned."
   (let ((current (fetch 'workflow (entity-id wf))))
-    (when (and current (string= (workflow-status current) "planlagt"))
+    (when (and current (string= (workflow-status current) "planned"))
       (setf (workflow-request-id current) *request-id*
-            (workflow-status current) "utført"
+            (workflow-status current) "executed"
             (workflow-executed-at current) (now))
       (save current))))
 
@@ -91,7 +92,8 @@ utført; the current record, or NIL when it is no longer planned."
 (defun note-workflow-run (text)
   "Record TEXT as the note of the workflow run in progress: what it could not
 do (a missing recipient, core.md §4.3), shown by workflows_get and
-introspect_workflows."
+introspect_workflows.  The note is for people: write TEXT with TR, in the
+tenant's language (spec/i18n.md 3.5)."
   (let ((id (or *running-workflow* (error "NOTE-WORKFLOW-RUN outside a workflow run"))))
     (flet ((note ()
              (let ((wf (fetch 'workflow id)))
@@ -126,7 +128,7 @@ done first and commits its own units of work."
          (*request-id* id)
          (*deadline* (if *transaction-mode* *deadline* nil)))
     (with-step (:operation :name tool :source (if kind (workflow-kind-source kind) :core)
-                :detail (format nil "egen forespørsel ~a" id))
+                :detail (format nil "its own request ~a" id))
       (with-request-record (:id id :at (now) :actor "system:workflow" :tool tool :kind :workflow :force-new t
                             :application *application*
                             :input (jobj "workflow_id" (entity-id wf) "kind" (workflow-kind wf)
@@ -157,16 +159,16 @@ done first and commits its own units of work."
                   (let ((text (ignore-errors (princ-to-string e))))
                     (choose-request-backtrace record e)
                     (set-request-outcome record "error" :code :workflow-failed
-                                                        :message (or text "ukjent feil"))
+                                                        :message (or text "unknown error"))
                     (with-step (:rollback :name tool :source :core) nil)
                     (with-transaction (:write)
                       (let ((current (fetch 'workflow (entity-id wf))))
-                        (when (and current (or (string= (workflow-status current) "planlagt")
+                        (when (and current (or (string= (workflow-status current) "planned")
                                                (and kind (workflow-kind-own-transactions-p kind))))
-                          (setf (workflow-status current) "feilet"
+                          (setf (workflow-status current) "failed"
                                 (workflow-request-id current) id
                                 (workflow-executed-at current) (now)
-                                (workflow-note current) (if text (subseq text 0 (min 2000 (length text))) "ukjent feil"))
+                                (workflow-note current) (if text (subseq text 0 (min 2000 (length text))) "unknown error"))
                           (save current)
                           (write-system-audit tool "rejected" :entity-type "workflow" :entity-id (entity-id current)
                                                               :error-code "workflow_failed"))))
@@ -175,19 +177,19 @@ done first and commits its own units of work."
 (define-job run-workflow ((workflow-id :type (id workflow) :required t))
     (:queue :workflows :transaction nil :max-attempts 3 :unique (:keys (workflow-id)))
   "Run the workflow WORKFLOW-ID if it is still planned.  A handler that fails
-marks the workflow feilet and fails the job at once; a crash before the run
+marks the workflow failed and fails the job at once; a crash before the run
 committed leaves it planned, so the job's next attempt runs it."
   ;; As before every request: no workflow runs on a modified kernel.
   (unless (application-debug-tools-p *application*)
     (check-definition-integrity "run workflows"))
   (let ((wf (with-transaction (:read) (fetch 'workflow workflow-id))))
-    (unless (and wf (string= (workflow-status wf) "planlagt"))
-      (cancel-job "Arbeidsflyten er ikke planlagt lenger"))
+    (unless (and wf (string= (workflow-status wf) "planned"))
+      (cancel-job (tr "The workflow is no longer planned")))
     (unless (run-one-workflow wf)
       (let ((after (with-transaction (:read) (fetch 'workflow workflow-id))))
-        (if (string= (workflow-status after) "feilet")
-            (fail-job (or (workflow-note after) "Arbeidsflyten feilet"))
-            (cancel-job "Arbeidsflyten ble kjørt eller avbrutt av en annen"))))))
+        (if (string= (workflow-status after) "failed")
+            (fail-job (or (workflow-note after) "The workflow failed"))
+            (cancel-job (tr "The workflow was run or cancelled by another")))))))
 
 (defun run-due-workflows (&key (limit 10000))
   "Run every due workflow now, in this thread, oldest due first, including
@@ -199,24 +201,27 @@ workflows that running ones schedule.  Returns how many ran."
 for workflows stored before they ran on jobs.  Runs when the application
 opens."
   (with-transaction (:write)
-    (dolist (wf (select 'workflow :where '(:= "status" "planlagt")))
+    (dolist (wf (select 'workflow :where '(:= "status" "planned")))
       (enqueue-job 'run-workflow :workflow-id (entity-id wf) :at (workflow-due-at wf)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Operations
 
-(define-operation workflows-list ((order-id :type id :schema-required t :label "Ordre-ID")
-                                   (customer-id :type id) (kind :type (string :max 100))
-                                   (status :type (enum "planlagt" "utført" "avbrutt" "feilet")))
-    (:entity workflow :kind :read :title "Arbeidsflyter")
-  (unless (or order-id customer-id kind status) (fail :invalid-input "Oppgi ordre, kunde, type eller status"))
+(define-operation workflows-list ((order-id :type id :schema-required t :label "Order ID")
+                                   (customer-id :type id :label "Customer ID")
+                                   (kind :type (string :max 100) :label "Kind")
+                                   (status :type (enum "planned" "executed" "cancelled" "failed")
+                                           :label "Status"))
+    (:entity workflow :kind :read :title "Workflows")
+  (unless (or order-id customer-id kind status)
+    (fail :invalid-input "Give an order, a customer, a kind or a status"))
   (let ((where (remove nil (list (and order-id `(:= "order_id" ,order-id))
                                  (and customer-id `(:= "customer_id" ,customer-id))
                                  (and kind `(:= "kind" ,kind)) (and status `(:= "status" ,status))))))
     (jobj "items" (jarr (mapcar #'entity->json (select 'workflow :where `(:and ,@where)
                                                              :order-by '(("due_at" :asc))))))))
 
-(define-operation workflows-get ((id :type (id workflow) :required t :label "Arbeidsflyt-ID"))
-    (:entity workflow :kind :read :title "Hent arbeidsflyt"
-     :description "Én arbeidsflyt: type, forfall, status og når den ble utført.")
+(define-operation workflows-get ((id :type (id workflow) :required t :label "Workflow ID"))
+    (:entity workflow :kind :read :title "Get a workflow"
+     :description "One workflow: its kind, due time, status and when it was executed.")
   (fetch! 'workflow id))

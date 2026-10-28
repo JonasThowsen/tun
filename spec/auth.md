@@ -270,8 +270,9 @@ its identities, so the next sign-in links the new address.
 come in, through `send-mail` (`mail.md`) in the same transaction, so a
 refused call mails nobody.
 
-- The subject is «Du har fått tilgang til TITTEL», the application's
-  title.
+- It is in the tenant's language (`i18n.md` §8). The subject is «You
+  have been given access to TITLE» («Du har fått tilgang til TITTEL»),
+  the application's title.
 - The text names who invited them (the caller's display name, else
   their account name), the providers to sign in with (those whose button
   names one: §3.5.1), the address to use, and the link to `/login` at the
@@ -398,8 +399,8 @@ an admin, and `tokens_create` for one's own account through a token, are
 They are ordinary operations: policy, validation, idempotency and audit
 apply. A replay of `tokens_create` with the same `request_key` returns the
 original result with `token` set to null. The UI's page
-`/access` ("Tilgang") calls the same tools: every person sees their own
-tokens there, and an admin also sees accounts and every token.
+`/access` («Access», «Tilgang») calls the same tools: every person sees
+their own tokens there, and an admin also sees accounts and every token.
 
 ## 7. Secrets in records and results
 

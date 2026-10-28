@@ -1,6 +1,7 @@
 # Push notifications
 
-Status: v1, built 2026-10-26, core 1.19.0. How a client
+Status: v1, built 2026-10-26, core 1.19.0; its copy in the tenant's
+language (`i18n.md` §8), core 2.0.0. How a client
 that is installed as an app (`ui.md` §4.2) notifies people on their
 phones and computers: a person turns notifications on for a device, the
 client's code sends a notification to a person, and the service worker
@@ -40,8 +41,10 @@ used again if the option comes back.
 `(ui:push-switch (&key label description id))`, in `TUN.UI`, is a
 `switch` (`ui.md` §6) for this device, with a line of status under it.
 
-- LABEL defaults to «Varsler på denne enheten», DESCRIPTION to «Få
-  varsel her når noe trenger deg.»
+- LABEL defaults to «Notifications on this device» («Varsler på denne
+  enheten»), DESCRIPTION to «Get notified here when something needs you.»
+  («Få varsel her når noe trenger deg.»), in the tenant's language, as are
+  the texts below (`i18n.md` §3.8).
 - It is hidden until the components' script has found out what this
   device can do, so a browser without JavaScript shows nothing.
 - **On** asks the browser for permission, from the person's own tap or
@@ -298,10 +301,12 @@ The request's headers are `Content-Encoding: aes128gcm`,
 
 ### 6.3 The key
 
-- Tun's key pair is derived from the secret setting `push.hemmelighet`,
+- Tun's key pair is derived from the secret setting `push.secret`,
   which, like every secret setting Tun declares, gets a random value
   when a tenant first starts (`core.md` §5.3) and is kept in the
   tenant's store, masked in every listing. Nobody makes or copies a key.
+- The setting was `push.hemmelighet` before core 2.0; its stored value
+  moved to `push.secret` (`i18n.md` §4.4), so the key stays the same.
 - The private key is `1 + (HMAC-SHA-256(key=SECRET, "tun web push vapid")
   mod (n − 1))`: the HMAC's key is the secret's UTF-8 octets, its
   message those of the ASCII text, its result read as a big-endian
@@ -320,7 +325,8 @@ With `(:web-app ...)`, `/sw.js` (`ui.md` §4.2) also:
 - **shows a notification for every push**, as iOS requires: the title,
   body and tag of the message's JSON, the app's 192-pixel icon, and its
   URL kept with it. A push without data, or with data that is not such
-  JSON, shows the application's title with «Du har et nytt varsel», for
+  JSON, shows the application's title with «You have a new
+  notification» («Du har et nytt varsel»), in the tenant's language, for
   `/`. A notification with a tag replaces the device's earlier one with
   that tag and alerts again.
 - **opens the page on a click**: it closes the notification, then
@@ -344,7 +350,7 @@ caller's own subscriptions only.
 | `push_unsubscribe` | Deletes the caller's subscription with `endpoint`; one that is not the caller's is `not_found`. |
 | `push_check` | Whether `endpoint` is the caller's and made with the current key: `{"on": BOOL}`. When it is, and the call comes in a session, the subscription is tied to that session (§3). |
 | `push_devices` | The caller's subscriptions: id, device and `created_at`, never the endpoint or keys. |
-| `push_test` | Sends «Varsler er på» to each of the caller's devices, opening `/`: how many. At most once a minute per account; sooner is `conflict`. |
+| `push_test` | Sends «Notifications are on» («Varsler er på»), in the tenant's language, to each of the caller's devices, opening `/`: how many. At most once a minute per account; sooner is `conflict`. |
 
 ## 9. Not yet
 

@@ -20,7 +20,7 @@
 (test s3r-2-staff-projections-mask-quote-code
   (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
     (tun.core::register-message-template "unit_code" 'unit-code :source :client :manual t
-      :subject "Offer" :text "Code {{tilbud.kode}}" :variables '("tilbud.kode"))
+      :subject "Offer" :text "Code {{quote.code}}" :variables '("quote.code"))
     (with-test-app ()
       (let* ((customer (make-customer)) (order (jget (new-order customer "lines" (lines (make-product) 1)) "id")))
         (call-ok "orders_send_quote" "employee:e" "id" order)
@@ -38,13 +38,13 @@
     (let* ((customer (make-customer)) (order (jget (new-order customer "lines" (lines (make-product) 1)) "id")))
       (call-ok "orders_send_quote" "employee:e" "id" order)
       (with-application (*app*) (with-transaction (:write)
-        (insert (make-instance 'tun.workflows:workflow :kind "tilbud_påminnelse" :order-id order :due-at (+ (now) 3600)))))
-      (call-ok "henvendelser_create" "viewer:v" "name" "Stranger" "email" "stranger@example.no"
+        (insert (make-instance 'tun.workflows:workflow :kind "quote_reminder" :order-id order :due-at (+ (now) 3600)))))
+      (call-ok "inquiries_create" "viewer:v" "name" "Stranger" "email" "stranger@example.no"
         "message" (format nil "[ref:~a]" order) "marketing_consent" t)
       (is (null (jget (call-ok "customers_get" "viewer:v" "id" customer) "marketing_consent")))
-      (is (find "planlagt" (jget (call-ok "workflows_list" "viewer:v" "order_id" order "kind" "tilbud_påminnelse") "items")
+      (is (find "planned" (jget (call-ok "workflows_list" "viewer:v" "order_id" order "kind" "quote_reminder") "items")
                 :key (lambda (item) (jget item "status")) :test #'equal))
-      (is (not (find "referanse" (jget (call-ok "henvendelser_list" "employee:e") "items") :key (lambda (x) (jget x "match")) :test #'equal))))))
+      (is (not (find "reference" (jget (call-ok "inquiries_list" "employee:e") "items") :key (lambda (x) (jget x "match")) :test #'equal))))))
 
 (defclass unrecognised-slow-provider (tun.messaging:fake-message-transport) ())
 (defmethod tun.messaging:deliver-snapshot ((adapter unrecognised-slow-provider) request mode call-number)
@@ -82,9 +82,9 @@
   (error "draft threw"))
 (defun check-failed-draft-retention (class)
   (with-test-app (:class class)
-    (let ((item (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "draft@example.no" "subject" "New" "body" "Draft") "henvendelse")))
-      (is (search "utkast ikke opprettet: draft" (jget item "note")))
-      (is (= 1 (length (jget (call-ok "henvendelser_list" "employee:e") "items"))))
+    (let ((item (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "draft@example.no" "subject" "New" "body" "Draft") "inquiry")))
+      (is (search "draft not created: draft" (jget item "note")))
+      (is (= 1 (length (jget (call-ok "inquiries_list" "employee:e") "items"))))
       (is (= 0 (length (jget (call-ok "customers_list" "viewer:v") "items")))))))
 (test s3r-5-refusing-seam-retains-enquiry (check-failed-draft-retention 'seam-refusing-app))
 (test s3r-5-throwing-seam-retains-enquiry (check-failed-draft-retention 'seam-throwing-app))
@@ -101,13 +101,13 @@
         (let ((p (call-ok "messages_preview" "employee:anna" "template" "unit_note" "order_id" order)))
           (call-ok "messages_send" "employee:anna" "template" "unit_note" "order_id" order "snapshot_hash" (jget p "snapshot_hash")))
         (sleep .1)
-        (is (not (find "leveranse_feilet" (jget (call-ok "notifications_list" "employee:anna") "items") :key (lambda (x) (jget x "type")) :test #'equal)))
-        (is (find "leveranse_feilet" (jget (call-ok "notifications_list" "admin:ada") "items") :key (lambda (x) (jget x "type")) :test #'equal))))))
+        (is (not (find "delivery_failed" (jget (call-ok "notifications_list" "employee:anna") "items") :key (lambda (x) (jget x "type")) :test #'equal)))
+        (is (find "delivery_failed" (jget (call-ok "notifications_list" "admin:ada") "items") :key (lambda (x) (jget x "type")) :test #'equal))))))
 
 (test s3r-7-invalid-public-requests-allocate-no-sessions
   (let ((before (hash-table-count tun.web::*public-sessions*)))
     (with-test-server (port)
-      (dotimes (i 5) (declare (ignorable i)) (web-request port "/avmeld/INVALID"))
+      (dotimes (i 5) (declare (ignorable i)) (web-request port "/unsubscribe/INVALID"))
       (is (= before (hash-table-count tun.web::*public-sessions*))))))
 
 (test s3r-8-newest-quote-across-duplicate-emails
@@ -117,20 +117,20 @@
            (new (jget (new-order second "lines" (lines product 1)) "id")))
       (call-ok "orders_send_quote" "employee:e" "id" old)
       (call-ok "orders_send_quote" "employee:e" "id" new)
-      (is (equal new (jget (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "shared@example.no" "subject" "Reply" "body" "Hello") "henvendelse") "order_id"))))))
+      (is (equal new (jget (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "shared@example.no" "subject" "Reply" "body" "Hello") "inquiry") "order_id"))))))
 
 (test s3r-9-unknown-reference-is-skipped
   (with-test-app ()
     (let ((order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id")))
       (is (equal order (jget (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "reply@example.no" "subject" "[ref:ord_missing]"
-        "body" (format nil "[ref:~a]" order)) "henvendelse") "order_id"))))))
+        "body" (format nil "[ref:~a]" order)) "inquiry") "order_id"))))))
 
 (test s3r-10-screen-shows-newest-hundred-api-stays-oldest-first
   (with-test-app ()
     (let* ((order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id")))
       (with-application (*app*) (with-transaction (:write)
         (dotimes (i 101)
-          (insert (make-instance 'tun.inbox:henvendelse :order-id order :subject (format nil "History~3,'0d" i) :body "Reply" :received-at (now) :from-email "reply@example.no")))))
+          (insert (make-instance 'tun.inbox:inquiry :order-id order :subject (format nil "History~3,'0d" i) :body "Reply" :received-at (now) :from-email "reply@example.no")))))
       (is (equal "History000" (jget (aref (jget (call-ok "messages_list" "viewer:v" "order_id" order "limit" 100) "items") 0) "subject")))
       (with-application (*app*) (with-actor ((parse-actor "viewer:v")) (with-transaction (:read)
         (let ((html (tun.html:render-html (cons :div (tun.web:render-resource-extras *app* 'tun.orders:order (call-ok "orders_get" "viewer:v" "id" order))))))
@@ -138,10 +138,10 @@
 
 (test s3r-11-contact-body-has-recognisable-structured-fields
   (with-test-app ()
-    (let ((item (call-ok "henvendelser_create" "viewer:v" "name" "Contact" "email" "contact@example.no" "message" "2040"
+    (let ((item (call-ok "inquiries_create" "viewer:v" "name" "Contact" "email" "contact@example.no" "message" "2040"
                  "event_date" "2027-06-20" "guests" 42 "marketing_consent" t)))
-      (is (search "Dato: 20.06.2027" (jget item "body")))
-      (is (search "Gjester: 42" (jget item "body"))))))
+      (is (search "Date: 20 Jun 2027" (jget item "body")))
+      (is (search "Guests: 42" (jget item "body"))))))
 
 (test s3r-12-same-function-template-override-increments-version
   (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
@@ -153,12 +153,12 @@
   (with-test-app (:db (scratch-path "workflow-index"))
     (with-application (*app*) (with-transaction (:read)
       (let ((plan (sqlite:execute-to-list tun.store.sqlite::*connection*
-                    "EXPLAIN QUERY PLAN SELECT id FROM workflows WHERE kind = 'test' AND key = 'missing' AND status = 'planlagt'")))
+                    "EXPLAIN QUERY PLAN SELECT id FROM workflows WHERE kind = 'test' AND key = 'missing' AND status = 'planned'")))
         (is (search "idx_workflows_kind_key_status" (to-json-string (jarr (mapcar #'jarr plan))))))))))
 
 (test s3r-14-inbound-secret-header-is-utf8
   (with-test-server (port)
-    (call-ok "settings_set" "admin:a" "key" "innboks.hemmelighet" "value" "blå-hemmelighet")
+    (call-ok "settings_set" "admin:a" "key" "inbox.secret" "value" "blå-hemmelighet")
     (let* ((secret (sb-ext:octets-to-string (sb-ext:string-to-octets "blå-hemmelighet" :external-format :utf-8) :external-format :latin-1))
            (status (nth-value 1 (drakma:http-request (format nil "http://127.0.0.1:~d/inbound/mail" port) :method :post
              :content-type "application/json" :content (to-json-string (jobj "from_email" "wire@example.no" "subject" "Wire" "body" "Hello"))
@@ -203,7 +203,7 @@
 (test s3r-2-order-and-inbox-screens-mask-stored-credentials
   (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
     (tun.core::register-message-template "unit_code" 'unit-code :source :client :manual t
-      :subject "Offer" :text "Code {{tilbud.kode}}" :variables '("tilbud.kode"))
+      :subject "Offer" :text "Code {{quote.code}}" :variables '("quote.code"))
     (with-test-server (port)
       (let* ((order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id")))
         (call-ok "orders_send_quote" "employee:e" "id" order)
@@ -212,19 +212,19 @@
                (preview (call-ok "messages_preview" "employee:e" "template" "unit_code" "order_id" order))
                (message (call-ok "messages_send" "employee:e" "template" "unit_code" "order_id" order "snapshot_hash" (jget preview "snapshot_hash")))
                (item (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "reply@example.no"
-                            "subject" (format nil "[ref:~a]" order) "body" code) "henvendelse")))
+                            "subject" (format nil "[ref:~a]" order) "body" code) "inquiry")))
           (with-application (*app*) (with-transaction (:read)
             (is (search code (field-value (fetch 'tun.messaging:message (jget message "id"))
                                          (find-field 'tun.messaging:message "body"))))))
           (multiple-value-bind (status body) (web-request port (format nil "/orders/~a" order) :jar (web-login port "viewer:v"))
             (is (= 200 status)) (is (not (search code body))) (is (search "•••••-•••••" body)))
-          (multiple-value-bind (status body) (web-request port (format nil "/henvendelser/~a" (jget item "id")) :jar (web-login port "employee:e"))
+          (multiple-value-bind (status body) (web-request port (format nil "/inquiries/~a" (jget item "id")) :jar (web-login port "employee:e"))
             (is (= 200 status)) (is (not (search code body))) (is (search "•••••-•••••" body)))
-          (is (equal "•••••-•••••" (jget (call-ok "henvendelser_get" "employee:e" "id" (jget item "id")) "body"))))))))
+          (is (equal "•••••-•••••" (jget (call-ok "inquiries_get" "employee:e" "id" (jget item "id")) "body"))))))))
 
 (test s3r-14-latin1-secret-is-refused
   (with-test-server (port)
-    (call-ok "settings_set" "admin:a" "key" "innboks.hemmelighet" "value" "blå-hemmelighet")
+    (call-ok "settings_set" "admin:a" "key" "inbox.secret" "value" "blå-hemmelighet")
     (is (= 403 (nth-value 1 (drakma:http-request (format nil "http://127.0.0.1:~d/inbound/mail" port) :method :post
              :content-type "application/json" :content (to-json-string (jobj "from_email" "wire@example.no" "subject" "Wire" "body" "Hello"))
              :additional-headers (list (cons "X-Tun-Inbound-Secret" "blå-hemmelighet"))))))))
@@ -272,7 +272,7 @@
 (test s3r2-preview-hash-covers-the-complete-snapshot
   (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
     (tun.core::register-message-template "unit_code" 'unit-code :source :client :manual t
-      :subject "Offer" :text "Code {{tilbud.kode}}" :variables '("tilbud.kode"))
+      :subject "Offer" :text "Code {{quote.code}}" :variables '("quote.code"))
     (with-communication-templates
     (with-test-app ()
       (let* ((order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id")))
@@ -281,7 +281,7 @@
                (admin (call-ok "messages_preview" "admin:a" "template" "unit_code" "order_id" order)))
           (is (equal (jget admin "snapshot_hash") (jget employee "snapshot_hash")))
           (is (not (equal (jget admin "body") (jget employee "body"))))
-          (is (equal "sendt" (jget (call-ok "messages_send" "employee:e" "template" "unit_code" "order_id" order
+          (is (equal "sent" (jget (call-ok "messages_send" "employee:e" "template" "unit_code" "order_id" order
                                   "snapshot_hash" (jget admin "snapshot_hash")) "status")))))))))
 
 (defclass briefly-delayed-provider (tun.messaging:fake-message-transport)
@@ -301,21 +301,21 @@
         (is (equal '(nil nil nil nil) (brief-provider-context adapter)))))))
 (test s3r2-customer-bound-failure-notifies-admin-before-the-next-request
   (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
-    (tun.core::register-message-template "neste_år" 'unit-note :source :client :manual t
-      :subject "Next year" :text "Hello {{kunde.navn}}")
+    (tun.core::register-message-template "next_year" 'unit-note :source :client :manual t
+      :subject "Next year" :text "Hello {{customer.name}}")
     (with-test-app ()
     (let ((customer (call-ok "customers_create" "employee:e" "name" "Pia Pause" "email" "pia@example.no")))
       (make-employee "Ada" :role "admin")
       (call-ok "messaging_provider_set" "admin:a" "mode" "reject")
       (setf (application-message-transport *app*) (make-instance 'briefly-delayed-provider))
-      (let* ((preview (call-ok "messages_preview" "employee:e" "template" "neste_år" "customer_id" (jget customer "id")))
-             (message (call-ok "messages_send" "employee:e" "template" "neste_år" "customer_id" (jget customer "id")
+      (let* ((preview (call-ok "messages_preview" "employee:e" "template" "next_year" "customer_id" (jget customer "id")))
+             (message (call-ok "messages_send" "employee:e" "template" "next_year" "customer_id" (jget customer "id")
                                 "snapshot_hash" (jget preview "snapshot_hash")))
              (notices (jget (call-ok "notifications_list" "admin:ada") "items")))
         (is (equal "failed" (jget (jget (call-ok "messages_get" "viewer:v" "id" (jget message "id")) "delivery") "status")))
         (is (= 1 (length notices)))
         (when (= 1 (length notices))
-          (is (equal "En e-post til Pia Pause kunne ikke sendes." (jget (aref notices 0) "text")))
+          (is (equal "An email to Pia Pause could not be sent." (jget (aref notices 0) "text")))
           (is (equal (format nil "/customers/~a" (jget customer "id")) (jget (aref notices 0) "link")))))))))
 (test s3r2-session-renews-and-expires-on-the-server-clock
   (with-test-app ()

@@ -2,7 +2,7 @@
 ;;;; revision of its requirements, immutable but for their status; the
 ;;;; activation rules of §9.2; the order_plan review kind (§9.3); explicit
 ;;;; correction (§9.4); and the catalog's impact on future orders through the
-;;;; katalog_endring workflow (§11).
+;;;; catalog_change workflow (§11).
 ;;;;
 ;;;; Only the active plan drives reservation, consumption and the forecast.
 ;;;; An order an older core wrote has no plan; until its next save it is
@@ -19,38 +19,36 @@ requirements, or a proposal awaiting review, is outside what it can take."
         ((and (string= (plan-status plan) "active") (plusp (length (plan-lines plan))))
          "active plan with requirements, which the older core would plan its own way")))
 
-(define-entity plan (:label "Kravplan" :id-prefix "pln" :table "plans" :indexes (("order_id"))
+(define-entity plan (:label "Requirement plan" :id-prefix "pln" :table "plans" :indexes (("order_id"))
                      :rollback-check plan-rollback-finding)
-  ((order-id :type (id order) :input nil :label "Ordre")
-   (revision :type integer :input nil :label "Revisjon")
+  ((order-id :type (id order) :input nil :label "Order")
+   (revision :type integer :input nil :label "Revision")
    (status :type (enum "proposed" "active" "superseded" "rejected") :input nil :label "Status")
-   (fingerprint :type (string :max 64) :input nil :label "Fingeravtrykk")
-   (activation :type (enum "automatic" "review" "correction") :input nil :label "Aktivering")
-   (activated-at :type timestamp :input nil :label "Aktivert")
-   (activated-by :type (string :max 200) :input nil :label "Aktivert av")
-   (note :type (string :max 2000) :input nil :label "Merknad")
-   (order-revision :type integer :input nil :label "Ordrerevisjon")
-   (lines :type json :input nil :label "Linjer"
+   (fingerprint :type (string :max 64) :input nil :label "Fingerprint")
+   (activation :type (enum "automatic" "review" "correction") :input nil :label "Activation")
+   (activated-at :type timestamp :input nil :label "Activated")
+   (activated-by :type (string :max 200) :input nil :label "Activated by")
+   (note :type (string :max 2000) :input nil :label "Note")
+   (order-revision :type integer :input nil :label "Order revision")
+   (lines :type json :input nil :label "Lines"
           :description "[{order_line_id, article_id, article_name, quantity, unit, sources}]")))
 
-(define-entity plan-impact (:json-name "plan_impact" :label "Katalogpåvirkning" :id-prefix "imp"
+(define-entity plan-impact (:json-name "plan_impact" :label "Catalog impact" :id-prefix "imp"
                             :table "plan_impacts" :indexes (("order_id")))
-  ((catalog-change-id :type id :input nil :label "Katalogendring")
-   (order-id :type (id order) :input nil :label "Ordre")
+  ((catalog-change-id :type id :input nil :label "Catalog change")
+   (order-id :type (id order) :input nil :label "Order")
    (status :type (enum "pending" "applied" "proposed" "unchanged" "conflict" "corrected" "failed")
            :input nil :label "Status")
-   (detail :type (string :max 2000) :input nil :label "Detalj")
-   (plan-revision :type integer :input nil :label "Planrevisjon")))
+   (detail :type (string :max 2000) :input nil :label "Detail")
+   (plan-revision :type integer :input nil :label "Plan revision")))
 
-(define-entity impact-queue-entry (:json-name "plan_impact_queue" :label "Katalogpåvirkning i kø" :id-prefix "ikq"
+(define-entity impact-queue-entry (:json-name "plan_impact_queue" :label "Queued catalog impact" :id-prefix "ikq"
                                    :table "plan_impact_queue" :internal t :indexes (("catalog_change_id")))
   ;; An order a catalog change reached when it was made (README §11), until its
   ;; impact is recorded; ATTEMPTS counts the deadlines it ran into.
   ((catalog-change-id :type id :input nil)
    (order-id :type (id order) :input nil)
    (attempts :type integer :input nil :initform 0)))
-
-(defparameter +consumed-message+ "Ordren har lagerforbruk og krever en eksplisitt korrigering")
 
 ;;; ------------------------------------------------------------------
 ;;; Plans
@@ -130,7 +128,7 @@ core wrote (no plan yet), its stored requirements."
   (and (entity-id order) (tun.inventory:consumption-applied-p (entity-id order))))
 
 (defun days-until (date)
-  "Days from today (Norwegian local date) to DATE."
+  "Days from today (the tenant's local date) to DATE."
   (round (- (parse-date date) (parse-date (local-today))) 86400))
 
 (defun ensure-plan-review (order plan active source by)
@@ -143,8 +141,9 @@ core wrote (no plan yet), its stored requirements."
      :proposal (jobj "type" "plan" "id" (entity-id plan) "revision" (plan-revision plan))
      :source source
      :idempotency-key (format nil "order-plan:~a:~a:~a" (entity-id order) (jget source "type") (jget source "id"))
-     :title (format nil "Gjennomgå endrede krav for ordre ~a" (subseq (entity-id order) 0 (min 8 (length (entity-id order)))))
-     :summary (format nil "Kravplan revisjon ~d venter på godkjenning." (plan-revision plan))
+     :title (tr "Review the changed requirements of order ~a"
+                (subseq (entity-id order) 0 (min 8 (length (entity-id order)))))
+     :summary (tr "Requirement plan revision ~d is waiting for approval." (plan-revision plan))
      :requested-by by
      :due-at (and (order-event-date order) (date-at (order-event-date order) 9)))))
 
@@ -168,7 +167,7 @@ ORDER's requirements those of its active plan (the caller stores ORDER)."
                   (supersede-plan proposed)                          ; 1
                   :unchanged)
                  ((consumption-applied-p order)                      ; 2
-                  (fail :invalid-input "~a" +consumed-message+))
+                  (fail :invalid-input "The order has stock consumption and needs an explicit correction"))
                  ((or (null active) (member (order-status order) +not-started-statuses+ :test #'string=)
                       own)                                           ; 3, 7
                   (supersede-plan active)
@@ -193,7 +192,7 @@ ORDER's requirements those of its active plan (the caller stores ORDER)."
 
 (defun store-derived (order)
   "Store ORDER's derived state (requirements) without counting a revision:
-what the system does on its own (an approved plan, katalog_endring) is not
+what the system does on its own (an approved plan, catalog_change) is not
 an edit of the order."
   (store-update *store* order)
   order)
@@ -202,9 +201,9 @@ an edit of the order."
 ;;; Reservations follow the active plan (README §10.1)
 
 (defun sync-reservations (order)
-  "Only bekreftet orders whose consumption is not applied reserve: their
+  "Only confirmed orders whose consumption is not applied reserve: their
 active plan's lines, summed per article."
-  (if (and (string= (order-status order) "bekreftet") (not (consumption-applied-p order)))
+  (if (and (string= (order-status order) "confirmed") (not (consumption-applied-p order)))
       (tun.inventory:set-order-reservations (entity-id order) (plan-totals (effective-plan-lines order))
                                             (order-event-date order))
       (tun.inventory:release-order-reservations (entity-id order))))
@@ -229,7 +228,7 @@ active plan's lines, summed per article."
           "correction_required" (json-bool (or conflicts (and pending consumed)))
           "conflicts" (jarr (mapcar #'entity->json conflicts)))))
 
-(define-computed-field order plan (order) (:type json :label "Kravplan")
+(define-computed-field order plan (order) (:type json :label "Requirement plan")
   (if (entity-id order) (plan-state order) :null))
 
 ;;; ------------------------------------------------------------------
@@ -286,22 +285,22 @@ or approve."
                (save plan))
              (return-from resolve-order-plan (values "superseded" reason))))
       (cond ((or (null plan) (string/= (plan-status plan) "proposed"))
-             (stale "Kravforslaget er ikke lenger aktivt"))
+             (stale (tr "The requirement proposal is no longer active")))
             ((not (eql (plan-revision plan) (jget proposal "revision")))
-             (stale "Kravforslaget samsvarer ikke med gjennomgangen"))
+             (stale (tr "The requirement proposal does not match the review")))
             ((not (equal (if active (plan-revision active) :null)
                          (let ((r (jget subject "revision"))) (if (json-null-p r) :null r))))
-             (stale "Ordren har fått en annen aktiv kravplan"))
-            ((string/= (order-status order) "bekreftet")
-             (stale "Ordrestatusen tillater ikke lenger godkjenning"))
+             (stale (tr "The order has another active requirement plan now")))
+            ((string/= (order-status order) "confirmed")
+             (stale (tr "The order's status no longer allows approval")))
             ((string/= (lines-fingerprint (resolve-order order)) (plan-lines-fingerprint plan))
-             (stale "Katalogen eller ordren er endret etter forslaget")))
+             (stale (tr "The catalog or the order has changed since the proposal"))))
       (when (string= decision "reject")
         (setf (plan-status plan) "rejected")
         (save plan)
         (return-from resolve-order-plan "rejected"))
       (when (consumption-applied-p order)
-        (fail :invalid-transition "Lagerforbruk er allerede registrert. Bruk eksplisitt korrigering fra ordren."))
+        (fail :invalid-transition "Stock consumption is already registered. Use an explicit correction from the order."))
       (when active
         (setf (plan-status active) "superseded")
         (save active))
@@ -332,7 +331,7 @@ revision and date with another payload is a conflict (inventory README §6)."
 
 (defun consume (order)
   "Apply ORDER's active plan as consumption, once (pickup, or completion from
-bekreftet), before the caller saves ORDER.  insufficient_stock aborts the
+confirmed), before the caller saves ORDER.  insufficient_stock aborts the
 caller's transaction."
   (unless (consumption-applied-p order)
     (tun.inventory:sync-consumption (entity-id order) (command-revision order) (effective-date order)
@@ -349,22 +348,24 @@ sync with nothing expected (recount wins), so it is editable again (§10.2)."
 
 (defun correction-summary ()
   (let ((order (find-order (input-value :id))))
-    (format nil "Korriger kravplanen for ordre ~a etter registrert lagerforbruk: ny plan aktiveres og forbruket synkroniseres." (entity-id order))))
+    (tr "Correct the requirement plan of order ~a after registered stock consumption: a new plan is activated and the consumption synchronised."
+        (entity-id order))))
 
-(define-operation orders-correct-plan ((id :type (id order) :required t :label "Ordre-ID")
-                                       (note :type (string :max 2000) :label "Merknad"))
-    (:entity order :kind :transition :confirm t :destructive t :policy :admin :title "Korriger kravplan"
+(define-operation orders-correct-plan ((id :type (id order) :required t :label "Order ID")
+                                       (note :type (string :max 2000) :label "Note"))
+    (:entity order :kind :transition :confirm t :destructive t :policy :admin
+     :title "Correct the requirement plan"
      :summary correction-summary
-     :description "Etter registrert lagerforbruk: aktiverer kravplanen katalogen og ordren gir nå, synkroniserer forbruket og sjekklisten, og markerer konfliktene som korrigert. Krever merknad og bekreftelse; prisene røres ikke.")
+     :description "After registered stock consumption: activates the requirement plan the catalog and the order give now, synchronises the consumption and the checklist, and marks the conflicts corrected. Needs a note and confirmation; prices are not touched.")
   (let ((order (find-order id)))
     (unless (consumption-applied-p order)
-      (fail :invalid-transition "Det finnes ingen registrert lagerforbruk å korrigere"))
+      (fail :invalid-transition "There is no registered stock consumption to correct"))
     (let ((lines (resolve-order order))
           (active (active-plan id)))
       (when (and active (string= (lines-fingerprint lines) (plan-lines-fingerprint active)))
-        (fail :invalid-transition "Det finnes ingen ny kravendring å korrigere"))
+        (fail :invalid-transition "There is no new change of requirements to correct"))
       (when (blank-p note)
-        (fail :invalid-input "Oppgi en merknad for korrigeringen"))
+        (fail :invalid-input "Give a note for the correction"))
       (let ((revision (command-revision order)))
         (supersede-plan active)
         (supersede-plan (proposed-plan id))
@@ -377,13 +378,13 @@ sync with nothing expected (recount wins), so it is editable again (§10.2)."
         (dolist (impact (plan-impacts id))
           (when (member (plan-impact-status impact) '("conflict" "proposed") :test #'string=)
             (setf (plan-impact-status impact) "corrected"
-                  (plan-impact-detail impact) "Lagerkorrigering er gjennomført eksplisitt")
+                  (plan-impact-detail impact) (tr "The stock correction was made explicitly"))
             (save impact)))
         (audit-as :reason (trim note))
         (save order)))))
 
 ;;; ------------------------------------------------------------------
-;;; Catalog impact (README §11): katalog_endring
+;;; Catalog impact (README §11): catalog_change
 
 (defmethod catalog-changed ((application orders-module) change)
   (call-next-method)
@@ -392,12 +393,14 @@ sync with nothing expected (recount wins), so it is editable again (§10.2)."
   ;; (unchanged, README §11).
   (dolist (order (reached-orders change (local-today)))
     (insert (make-instance 'impact-queue-entry :catalog-change-id (entity-id change) :order-id (entity-id order))))
-  (tun.workflows:schedule-workflow "katalog_endring" :subject-id (entity-id change) :due-at (now)))
+  (tun.workflows:schedule-workflow "catalog_change" :subject-id (entity-id change) :due-at (now)))
 
-(defparameter +impact-details+
-  '((:applied . "Ny kravplan aktivert automatisk")
-    (:proposed . "Forslag opprettet for gjennomgang")
-    (:unchanged . "Kravplanen var allerede oppdatert")))
+(defun impact-detail (outcome)
+  "The detail an impact of OUTCOME stores (README §11), in the current language."
+  (ecase outcome
+    (:applied (tr "A new requirement plan was activated automatically"))
+    (:proposed (tr "A proposal was made for review"))
+    (:unchanged (tr "The requirement plan was already up to date"))))
 
 (defun line-references-p (line change)
   "True when order LINE's product, its requirements' recipes and groups, or
@@ -430,11 +433,11 @@ the line's picks name the resource CHANGE changed (README §11)."
 (defun impact-failed-detail ()
   ;; Never an exception's text in an impact (README §11): a fixed message and
   ;; the request, where introspect_request has the rest.
-  (format nil "Påvirkningen kunne ikke beregnes; se forespørsel ~a" *request-id*))
+  (tr "The impact could not be computed; see request ~a" *request-id*))
 
 (defun impact-eligible-p (order today)
   "Whether ORDER is one a catalog change reaches (README §11): still to be
-delivered (not started, or bekreftet) and dated TODAY or later."
+delivered (not started, or confirmed) and dated TODAY or later."
   (and (member (order-status order) +calendar-active-statuses+ :test #'string=)
        (order-event-date order)
        (date<= today (order-event-date order))))
@@ -474,7 +477,7 @@ gets impact unchanged.  A deadline is signalled to the caller."
                      (let ((entry (queued-entry order-id change-id)))
                        (when entry (delete-entity entry))))
                     ((not (impact-eligible-p order today))
-                     (record-impact change-id order-id "unchanged" (cdr (assoc :unchanged +impact-details+)) nil))
+                     (record-impact change-id order-id "unchanged" (impact-detail :unchanged) nil))
                     (t
                      (let* ((outcome (decide-plan order (jobj "type" "catalog_change" "id" change-id)
                                                   (actor-string *actor*) (order-revision order)))
@@ -484,7 +487,7 @@ gets impact unchanged.  A deadline is signalled to the caller."
                          (sync-reservations order)
                          (sync-checklist order))
                        (record-impact change-id order-id (string-downcase (symbol-name outcome))
-                                      (cdr (assoc outcome +impact-details+)) (and plan (plan-revision plan))))))))))
+                                      (impact-detail outcome) (and plan (plan-revision plan))))))))))
     (operation-error (e)
       (with-transaction (:write)
         (record-impact change-id order-id "conflict" (operation-error-message e) nil)))
@@ -506,7 +509,7 @@ again."
              nil)
             (t (save entry) t)))))
 
-(define-workflow katalog-endring (:kind "katalog_endring" :label "Katalogendring" :own-transactions t) (wf)
+(define-workflow catalog-change-workflow (:kind "catalog_change" :label "Catalog change" :own-transactions t) (wf)
   ;; One change per run (README §11): the orders the change reached when it was
   ;; made (queued then), and any order it reaches now, each in its own
   ;; transaction, read again at its turn; past, dateless and
@@ -541,24 +544,26 @@ again."
                (loop-finish)))
     (when again
       (with-transaction (:write)
-        (tun.workflows:schedule-workflow "katalog_endring" :subject-id change-id :due-at (1+ (now)))))))
+        (tun.workflows:schedule-workflow "catalog_change" :subject-id change-id :due-at (1+ (now)))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Reads
 
-(define-operation plans-list ((order-id :type (id order) :required t :label "Ordre-ID")
-                              (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity plan :kind :read :title "Kravplaner" :description "Ordrens kravplaner, nyeste revisjon først.")
+(define-operation plans-list ((order-id :type (id order) :required t :label "Order ID")
+                              (limit :type (integer :min 1 :max 100) :default 20 :label "Most results"))
+    (:entity plan :kind :read :title "Requirement plans"
+     :description "The order's requirement plans, newest revision first.")
   (find-order order-id)
   (page (reverse (order-plans order-id)) limit))
 
-(define-operation plans-get ((id :type (id plan) :required t :label "Plan-ID"))
-    (:entity plan :kind :read :title "Hent kravplan" :description "Én kravplan med linjer og kilder.")
-  (or (fetch 'plan id) (fail :not-found "Fant ingen kravplan med id ~a" id)))
+(define-operation plans-get ((id :type (id plan) :required t :label "Plan ID"))
+    (:entity plan :kind :read :title "Get a requirement plan"
+     :description "One requirement plan with its lines and sources.")
+  (or (fetch 'plan id) (fail :not-found "No requirement plan has the id ~a" id)))
 
-(define-operation plan-impacts-list ((order-id :type (id order) :required t :label "Ordre-ID")
-                                     (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity plan-impact :kind :read :title "Katalogpåvirkninger"
-     :description "Hva katalogendringer gjorde med ordrens kravplan, eldste først.")
+(define-operation plan-impacts-list ((order-id :type (id order) :required t :label "Order ID")
+                                     (limit :type (integer :min 1 :max 100) :default 20 :label "Most results"))
+    (:entity plan-impact :kind :read :title "Catalog impacts"
+     :description "What catalog changes did to the order's requirement plan, oldest first.")
   (find-order order-id)
   (page (select 'plan-impact :where `(:= "order_id" ,order-id) :limit (1+ limit)) limit))

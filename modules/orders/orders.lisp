@@ -9,68 +9,69 @@
 ;;; ------------------------------------------------------------------
 ;;; Entities
 
-(define-entity order-line (:embedded t :json-name "order_line" :label "Ordrelinje")
+(define-entity order-line (:embedded t :json-name "order_line" :label "Order line")
   ((id :type id :label "ID"
-       :description "Linjens id; i orders_update beholder en linje med samme id (eller samme produkt på samme plass) sin identitet, og sjekklisten følger den.")
-   (product-id :type (id product) :required t :label "Produkt")
-   (quantity :type (integer :min 1 :max 100000) :required t :label "Antall")
-   (price-mode :type (enum "automatisk" "prosent_rabatt" "fast_rabatt" "manuell_total")
-               :initform "automatisk" :label "Prisvalg"
-               :description "automatisk (standard), prosent_rabatt, fast_rabatt eller manuell_total.")
-   (discount-percent :type (decimal :scale 2) :label "Rabatt i prosent"
-                     :description "0–100, høyst to desimaler (prisvalg prosent_rabatt).")
-   (discount-ore-input :type integer :label "Rabattbeløp (øre)" :description "Prisvalg fast_rabatt.")
-   (manual-total-ore :type integer :label "Manuell linjesum (øre)" :description "Prisvalg manuell_total.")
-   (price-reason :type (string :max 500) :label "Begrunnelse for prisen")
-   (notes :type (string :max 1000) :label "Merknad")
-   (choices :type json :label "Valg"
-            :description "{krav-id: [oppskrift-id, …]}: valgene for produktets valggruppe-krav, i rekkefølge.")
-   (choices-at :type timestamp :input nil :label "Valgt"
+       :description "The line's id: in orders_update a line with the same id (or the same product in the same place) keeps its identity, and the checklist follows it.")
+   (product-id :type (id product) :required t :label "Product")
+   (quantity :type (integer :min 1 :max 100000) :required t :label "Quantity")
+   (price-mode :type (enum "automatic" "percent_discount" "fixed_discount" "manual_total")
+               :initform "automatic" :label "Price mode"
+               :description "automatic (the default), percent_discount, fixed_discount or manual_total.")
+   (discount-percent :type (decimal :scale 2) :label "Discount in percent"
+                     :description "0–100, at most two decimals (price mode percent_discount).")
+   (discount-input-minor :type money :label "Discount amount" :description "Price mode fixed_discount.")
+   (manual-total-minor :type money :label "Manual line total" :description "Price mode manual_total.")
+   (price-reason :type (string :max 500) :label "Reason for the price")
+   (notes :type (string :max 1000) :label "Note")
+   (choices :type json :label "Choices"
+            :description "{requirement id: [recipe id, …]}: the picks for the product's choice-group requirements, in order.")
+   (choices-at :type timestamp :input nil :label "Chosen"
                :description "When the choices last changed (stock warnings: no receipt since the pick).")
-   (unit-price-ore :type integer :input nil :label "Enhetspris (øre)")
-   (line-total-ore :type integer :input nil :label "Linjesum etter katalog (øre)")
-   (line-effective-ore :type integer :input nil :label "Linjesum (øre)")
-   (line-adjustment-ore :type integer :input nil :label "Linjejustering (øre)")))
+   (unit-price-minor :type money :input nil :label "Unit price")
+   (line-total-minor :type money :input nil :label "Line total by the catalog")
+   (line-effective-minor :type money :input nil :label "Line total")
+   (line-adjustment-minor :type money :input nil :label "Line adjustment")))
 
-(define-entity requirement (:embedded t :json-name "requirement" :label "Behov")
-  ((product-id :type id :input nil :label "Produkt"
+(define-entity requirement (:embedded t :json-name "requirement" :label "Need")
+  ((product-id :type id :input nil :label "Product"
                :description "The article's product, or the article without one (README §8.3).")
-   (quantity :type (decimal :scale 3) :input nil :label "Mengde")
-   (article-id :type id :input nil :label "Lagerartikkel")))
+   (quantity :type (decimal :scale 3) :input nil :label "Required quantity")
+   (article-id :type id :input nil :label "Stock article")))
 
-(define-entity order (:label "Ordre" :id-prefix "ord" :table "orders"
+(define-entity order (:label "Order" :id-prefix "ord" :table "orders"
                       :indexes (("customer_id") ("status") ("event_date")) :revisioned t)
-  ((source :type json :input nil)
-   (open-questions :type (list-of (string :max 2000)) :input nil :initform nil)
-   (revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
-   (status :type (enum "utkast" "tilbud_sendt" "akseptert" "bekreftet" "hentet" "returnert" "send_faktura"
-                       "fullført" "avbrutt")
-           :input nil :initform "utkast" :label "Status")
-   (customer-id :type (id customer) :required t :label "Kunde")
-   (event-date :type date :label "Arrangementsdato")
-   (end-date :type date :label "Sluttdato" :description "Siste dag; tom betyr én dag.")
-   (delivery-address :type (string :max 300) :label "Leveringsadresse")
-   (lines :type (list-of order-line :max-items 100) :initform nil :label "Linjer")
-   (tags :type (list-of (enum "utleie" "underholdning") :max-items 2) :initform '() :label "Merker")
-   (department :type (string :max 100) :label "Avdeling")
-   (price-mode :type (enum "automatisk" "prosent_rabatt" "fast_rabatt" "manuell_total")
-               :initform "automatisk" :label "Prisvalg for ordren"
-               :description "automatisk (kundens rabatt), prosent_rabatt eller fast_rabatt.")
-   (discount-percent :type (decimal :scale 2) :label "Ordrerabatt i prosent")
-   (discount-ore-input :type integer :label "Ordrerabatt (øre)")
-   (price-reason :type (string :max 500) :label "Begrunnelse for prisen")
-   (logistics :type json :label "Logistikk"
+  ((source :type json :input nil :label "Source")
+   (open-questions :type (list-of (string :max 2000)) :input nil :initform nil
+                   :label "Open questions")
+   (revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
+   (status :type (enum "draft" "quote_sent" "accepted" "confirmed" "picked_up" "returned"
+                       "ready_for_invoice" "completed" "cancelled")
+           :input nil :initform "draft" :label "Status")
+   (customer-id :type (id customer) :required t :label "Customer")
+   (event-date :type date :label "Event date")
+   (end-date :type date :label "End date" :description "The last day; empty means one day.")
+   (delivery-address :type (string :max 300) :label "Delivery address")
+   (lines :type (list-of order-line :max-items 100) :initform nil :label "Lines")
+   (tags :type (list-of (enum "rental" "entertainment") :max-items 2) :initform '() :label "Tags")
+   (department :type (string :max 100) :label "Department")
+   (price-mode :type (enum "automatic" "percent_discount" "fixed_discount" "manual_total")
+               :initform "automatic" :label "Price mode of the order"
+               :description "automatic (the customer's discount), percent_discount or fixed_discount.")
+   (discount-percent :type (decimal :scale 2) :label "Order discount in percent")
+   (discount-input-minor :type money :label "Order discount")
+   (price-reason :type (string :max 500) :label "Reason for the price")
+   (logistics :type json :label "Logistics"
               :description "{delivery:{not_agreed,method,earliest,latest}, return:{…}, site_address}.")
-   (catalog-total-ore :type integer :input nil :initform 0 :label "Katalogsum (øre)")
-   (subtotal-ore :type integer :input nil :initform 0 :label "Sum før rabatt (øre)")
-   (discount-ore :type integer :input nil :initform 0 :label "Rabatt (øre)")
-   (adjustment-ore :type integer :input nil :initform 0 :label "Justering (øre)")
-   (total-ore :type integer :input nil :initform 0 :label "Totalt (øre)")
-   (requirements :type (list-of requirement) :input nil :label "Behov for forbruksvarer")
-   (pickup :type json :input nil :label "Henting")
-   (return-record :type json :input nil :json-name "return" :label "Retur")
-   (accepted-snapshot-stale :type boolean :input nil :initform nil :label "Akseptert tilbud var utdatert")
-   (created-at :type timestamp :input nil :label "Opprettet")))
+   (catalog-total-minor :type money :input nil :initform 0 :label "Catalog total")
+   (subtotal-minor :type money :input nil :initform 0 :label "Subtotal")
+   (discount-minor :type money :input nil :initform 0 :label "Discount")
+   (adjustment-minor :type money :input nil :initform 0 :label "Adjustment")
+   (total-minor :type money :input nil :initform 0 :label "Total")
+   (requirements :type (list-of requirement) :input nil :label "Consumables needed")
+   (pickup :type json :input nil :label "Pickup")
+   (return-record :type json :input nil :json-name "return" :label "Return")
+   (accepted-snapshot-stale :type boolean :input nil :initform nil :label "The accepted quote was out of date")
+   (created-at :type timestamp :input nil :label "Created")))
 
 (define-entity booking (:json-name "booking" :label "Booking" :id-prefix "bkg" :table "bookings"
                         :internal t :indexes (("product_id" "from_date") ("order_id")))
@@ -81,40 +82,40 @@
    (to :type date :input nil :json-name "to_date")))
 
 ;;; The quote (README §6): one per order, a stable id across re-issues.
-(define-entity order-quote (:json-name "quote" :label "Tilbud" :id-prefix "qte" :table "quotes"
+(define-entity order-quote (:json-name "quote" :label "Quote" :id-prefix "qte" :table "quotes"
                             :unique (("order_id")) :indexes (("access_code")))
-  ((order-id :type (id order) :input nil :label "Ordre")
-   (revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
+  ((order-id :type (id order) :input nil :label "Order")
+   (revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
    (status :type (enum "awaiting_response" "accepted" "declined" "expired") :input nil :initform "awaiting_response"
            :label "Status")
-   (offered-at :type timestamp :input nil :label "Sendt")
-   (expires-at :type timestamp :input nil :label "Utløper")
-   (responded-at :type timestamp :input nil :label "Besvart")
-   (snapshot :type json :input nil :label "Innhold da tilbudet ble sendt")
-   (basis :type json :input nil :label "Ordren da tilbudet ble sendt"
-          :description "Totalsum, datoer, adresse og alle linjefelt; endres de, er tilbudet utdatert (stale).")
-   (access-code :type (string :max 10) :input nil :label "Tilgangskode")))
+   (offered-at :type timestamp :input nil :label "Sent")
+   (expires-at :type timestamp :input nil :label "Expires")
+   (responded-at :type timestamp :input nil :label "Answered")
+   (snapshot :type json :input nil :label "Content when the quote was sent")
+   (basis :type json :input nil :label "The order when the quote was sent"
+          :description "The total, dates, address and every line field; when they change, the quote is out of date (stale).")
+   (access-code :type (string :max 10) :input nil :label "Access code")))
 
 ;;; The checklist (README §7): automatic items from requirements, manual items.
-(define-entity checklist-item (:json-name "checklist_item" :label "Sjekklistepunkt" :id-prefix "chk"
+(define-entity checklist-item (:json-name "checklist_item" :label "Checklist item" :id-prefix "chk"
                                :table "checklist_items" :indexes (("order_id")))
-  ((order-id :type (id order) :input nil :label "Ordre")
-   (order-line-id :type id :input nil :label "Ordrelinje")
-   (origin :type (enum "automatic" "manual") :input nil :initform "manual" :label "Opprinnelse")
-   (source-key :type (string :max 200) :input nil :label "Kilde")
-   (description :type (string :max 500) :input nil :label "Beskrivelse")
-   (category :type (string :max 200) :input nil :label "Kategori")
-   (computed-quantity :type (decimal :scale 3) :input nil :label "Beregnet antall")
-   (done-quantity :type (decimal :scale 3) :input nil :label "Pakket antall")
-   (done :type boolean :input nil :initform nil :label "Ferdig")))
+  ((order-id :type (id order) :input nil :label "Order")
+   (order-line-id :type id :input nil :label "Order line")
+   (origin :type (enum "automatic" "manual") :input nil :initform "manual" :label "Origin")
+   (source-key :type (string :max 200) :input nil :label "Source")
+   (description :type (string :max 500) :input nil :label "Description")
+   (category :type (string :max 200) :input nil :label "Category")
+   (computed-quantity :type (decimal :scale 3) :input nil :label "Computed quantity")
+   (done-quantity :type (decimal :scale 3) :input nil :label "Packed quantity")
+   (done :type boolean :input nil :initform nil :label "Done")))
 
 ;;; ------------------------------------------------------------------
 ;;; Seams (published extension points)
 
 (defgeneric order-discount (application order customer)
   (:method-combination traced-protocol)
-  (:documentation "The automatic discount in øre of ORDER's subtotal for CUSTOMER
-(price mode automatisk). Called when an order is created or updated, after
+  (:documentation "The automatic discount, in minor units, of ORDER's subtotal for
+CUSTOMER (price mode automatic). Called when an order is created or updated, after
 lines are priced. Must return an integer between 0 and the subtotal.")
   (:method ((application orders-module) order customer)
     (declare (ignore order customer))
@@ -182,7 +183,7 @@ error (a running work session: conflict).")
     nil))
 
 (register-extension-protocol 'order-discount "before" :point "discount"
-                             :description "The automatic discount of an order's subtotal (price mode automatisk).")
+                             :description "The automatic discount of an order's subtotal (price mode automatic).")
 (register-extension-protocol 'compute-order-requirements "before" :point "requirements"
                              :description "Consumables an order needs, per line.")
 (register-extension-protocol 'booking-window "before" :point "booking_window"
@@ -218,7 +219,7 @@ error (a running work session: conflict).")
       nil))
 
 (defun order-requires-pickup-p (order)
-  "True when any line's product is utleie (it must be picked up and returned)."
+  "True when any line's product is rental (it must be picked up and returned)."
   (some (lambda (line)
           (let ((product (fetch 'product (order-line-product-id line))))
             (and product (rental-product-p product))))
@@ -226,11 +227,11 @@ error (a running work session: conflict).")
 
 (defun check-order-not-locked (order)
   (when (order-locked-p order)
-    (fail :conflict "~a" +lock-message+)))
+    (refuse-locked-order)))
 
 (defun check-revision (order revision)
   (when (and revision (/= revision (order-revision order)))
-    (fail :conflict "Ordren er endret (revisjon ~d, ikke ~d)" (order-revision order) revision)))
+    (fail :conflict "The order has changed (revision ~d, not ~d)" (order-revision order) revision)))
 
 (defun touch-order (order)
   "Store ORDER again: every change to an order, its quote, checklist,
@@ -240,32 +241,34 @@ assignments or department counts as a revision (README §1.2)."
 ;;; ------------------------------------------------------------------
 ;;; Pricing (README §3)
 
-(defconstant +max-amount-ore+ 9007199254740991
+(defconstant +max-amount-minor+ 9007199254740991
   "Largest amount stored or returned: exact in JSON numbers and SQLite integers.")
 
 (defun check-amount (amount what)
-  (when (> (abs amount) +max-amount-ore+)
-    (fail :invalid-input "~a blir for stort (over ~d øre)" what +max-amount-ore+))
+  "AMOUNT, refused when it is larger than an amount may be; WHAT, a text,
+names it in the refusal."
+  (when (> (abs amount) +max-amount-minor+)
+    (fail :invalid-input "~a is too large (over ~d minor units)" what +max-amount-minor+))
   amount)
 
 (defun apply-price-mode (amount mode percent fixed manual &key (allow-manual t))
-  "AMOUNT after price MODE: automatisk keeps it, prosent_rabatt takes PERCENT
-off (rounded down), fast_rabatt takes FIXED øre off, both floored at 0;
-manuell_total is MANUAL."
-  (cond ((or (null mode) (string= mode "automatisk")) amount)
-        ((string= mode "prosent_rabatt")
-         (cond ((null percent) (fail :invalid-input "Rabattprosent må fylles ut"))
-               ((not (<= 0 percent 100)) (fail :invalid-input "Rabattprosent må være mellom 0 og 100"))
+  "AMOUNT after price MODE: automatic keeps it, percent_discount takes PERCENT
+off (rounded down), fixed_discount takes FIXED minor units off, both floored
+at 0; manual_total is MANUAL."
+  (cond ((or (null mode) (string= mode "automatic")) amount)
+        ((string= mode "percent_discount")
+         (cond ((null percent) (fail :invalid-input "Discount percent must be filled in"))
+               ((not (<= 0 percent 100)) (fail :invalid-input "Discount percent must be between 0 and 100"))
                (t (max 0 (- amount (floor (* amount percent) 100))))))
-        ((string= mode "fast_rabatt")
-         (cond ((null fixed) (fail :invalid-input "Rabattbeløp må fylles ut"))
-               ((minusp fixed) (fail :invalid-input "Rabattbeløp kan ikke være negativt"))
+        ((string= mode "fixed_discount")
+         (cond ((null fixed) (fail :invalid-input "Discount amount must be filled in"))
+               ((minusp fixed) (fail :invalid-input "Discount amount cannot be negative"))
                (t (max 0 (- amount fixed)))))
-        ((and (string= mode "manuell_total") allow-manual)
-         (cond ((null manual) (fail :invalid-input "Manuell total må fylles ut"))
-               ((minusp manual) (fail :invalid-input "Manuell total kan ikke være negativ"))
-               (t (check-amount manual "Manuell total"))))
-        (t (fail :invalid-input "Prisvalg er ikke tillatt her"))))
+        ((and (string= mode "manual_total") allow-manual)
+         (cond ((null manual) (fail :invalid-input "Manual total must be filled in"))
+               ((minusp manual) (fail :invalid-input "Manual total cannot be negative"))
+               (t (check-amount manual (deferred-tr "The manual total")))))
+        (t (fail :invalid-input "That price mode is not allowed here"))))
 
 (defun clear-other-mode-inputs (mode setters)
   "Inputs that belong to another price mode are stored as null."
@@ -276,20 +279,20 @@ manuell_total is MANUAL."
   "Give every line an id, the product's current price, and its effective sum."
   (dolist (line (order-lines order))
     (clear-other-mode-inputs (order-line-price-mode line)
-                             (list (cons "prosent_rabatt" (lambda () (setf (order-line-discount-percent line) nil)))
-                                   (cons "fast_rabatt" (lambda () (setf (order-line-discount-ore-input line) nil)))
-                                   (cons "manuell_total" (lambda () (setf (order-line-manual-total-ore line) nil))))))
+                             (list (cons "percent_discount" (lambda () (setf (order-line-discount-percent line) nil)))
+                                   (cons "fixed_discount" (lambda () (setf (order-line-discount-input-minor line) nil)))
+                                   (cons "manual_total" (lambda () (setf (order-line-manual-total-minor line) nil))))))
   (dolist (line (order-lines order))
     (let* ((product (find-product (order-line-product-id line)))
-           (total (check-amount (* (order-line-quantity line) (product-unit-price-ore product)) "Linjesummen"))
+           (total (check-amount (* (order-line-quantity line) (product-unit-price-minor product)) (deferred-tr "The line total")))
            (effective (apply-price-mode total (order-line-price-mode line) (order-line-discount-percent line)
-                                        (order-line-discount-ore-input line) (order-line-manual-total-ore line))))
+                                        (order-line-discount-input-minor line) (order-line-manual-total-minor line))))
       (unless (order-line-id line) (setf (order-line-id line) (new-id "lin")))
-      (unless (order-line-price-mode line) (setf (order-line-price-mode line) "automatisk"))
-      (setf (order-line-unit-price-ore line) (product-unit-price-ore product)
-            (order-line-line-total-ore line) total
-            (order-line-line-effective-ore line) effective
-            (order-line-line-adjustment-ore line) (- effective total)))))
+      (unless (order-line-price-mode line) (setf (order-line-price-mode line) "automatic"))
+      (setf (order-line-unit-price-minor line) (product-unit-price-minor product)
+            (order-line-line-total-minor line) total
+            (order-line-line-effective-minor line) effective
+            (order-line-line-adjustment-minor line) (- effective total)))))
 
 (defun aggregate-requirements (pairs)
   (let ((table (make-hash-table :test 'equal)) (order '()))
@@ -305,41 +308,40 @@ manuell_total is MANUAL."
 
 (defun reprice (order)
   "Recompute the catalog total, subtotal (Σ effective line sums), the order
-adjustment (the discount seam in automatisk mode, else the explicit mode),
+adjustment (the discount seam in automatic mode, else the explicit mode),
 the total and the requirements.  Prices are always derived here."
   (let* ((customer (order-customer order))
-         (catalog (check-amount (reduce #'+ (order-lines order) :key #'order-line-line-total-ore) "Summen"))
-         (subtotal (check-amount (reduce #'+ (order-lines order) :key #'order-line-line-effective-ore) "Summen"))
-         (mode (or (order-price-mode order) "automatisk")))
+         (catalog (check-amount (reduce #'+ (order-lines order) :key #'order-line-line-total-minor)
+                                (deferred-tr "The total")))
+         (subtotal (check-amount (reduce #'+ (order-lines order) :key #'order-line-line-effective-minor)
+                                 (deferred-tr "The total")))
+         (mode (or (order-price-mode order) "automatic")))
     (clear-other-mode-inputs mode
-                             (list (cons "prosent_rabatt" (lambda () (setf (order-discount-percent order) nil)))
-                                   (cons "fast_rabatt" (lambda () (setf (order-discount-ore-input order) nil)))))
+                             (list (cons "percent_discount" (lambda () (setf (order-discount-percent order) nil)))
+                                   (cons "fixed_discount" (lambda () (setf (order-discount-input-minor order) nil)))))
     (setf (order-price-mode order) mode
-          (order-catalog-total-ore order) catalog
-          (order-subtotal-ore order) subtotal)
-    (if (string= mode "automatisk")
+          (order-catalog-total-minor order) catalog
+          (order-subtotal-minor order) subtotal)
+    (if (string= mode "automatic")
         (let ((discount (order-discount *application* order customer)))
           (unless (and (integerp discount) (<= 0 discount subtotal))
             (extension-error "ORDER-DISCOUNT returned ~s for subtotal ~d" discount subtotal))
-          (setf (order-discount-ore order) discount
-                (order-total-ore order) (- subtotal discount)))
-        (let ((total (apply-price-mode subtotal mode (order-discount-percent order) (order-discount-ore-input order)
+          (setf (order-discount-minor order) discount
+                (order-total-minor order) (- subtotal discount)))
+        (let ((total (apply-price-mode subtotal mode (order-discount-percent order) (order-discount-input-minor order)
                                        nil :allow-manual nil)))
-          (setf (order-discount-ore order) 0
-                (order-total-ore order) total)))
-    (setf (order-adjustment-ore order) (- (order-total-ore order) (order-subtotal-ore order))
+          (setf (order-discount-minor order) 0
+                (order-total-minor order) total)))
+    (setf (order-adjustment-minor order) (- (order-total-minor order) (order-subtotal-minor order))
           (order-requirements order) (requirements-of (resolve-order order)))
     order))
 
 ;;; ------------------------------------------------------------------
 ;;; Logistics (README §4)
 
-(defparameter +delivery-methods+ '("vi_leverer" "kunde_henter"))
-(defparameter +return-methods+ '("vi_henter" "kunde_returnerer"))
-(defparameter +method-labels+
-  '(("vi_leverer" . "Vi leverer") ("kunde_henter" . "Kunde henter")
-    ("vi_henter" . "Vi henter") ("kunde_returnerer" . "Kunde returnerer")))
-(defparameter +address-methods+ '("vi_leverer" "vi_henter") "Methods that need the site address.")
+(defparameter +delivery-methods+ '("we_deliver" "customer_collects"))
+(defparameter +return-methods+ '("we_collect" "customer_returns"))
+(defparameter +address-methods+ '("we_deliver" "we_collect") "Methods that need the site address.")
 
 (defun local-time-string-p (value)
   (and (stringp value) (cl-ppcre:scan "^([01][0-9]|2[0-3]):[0-5][0-9]$" value) t))
@@ -358,25 +360,25 @@ the total and the requirements.  Prices are always derived here."
 (defun parse-side (value name methods)
   "One side of a logistics input as a normalised object; malformed input is invalid_input."
   (cond ((or (null value) (json-null-p value)) (default-side))
-        ((not (hash-table-p value)) (fail :invalid-input "logistics.~a må være et objekt" name))
+        ((not (hash-table-p value)) (fail :invalid-input "logistics.~a must be an object" name))
         (t
          (dolist (key (jkeys value))
            (unless (member key '("not_agreed" "method" "earliest" "latest") :test #'string=)
-             (fail :invalid-input "logistics.~a.~a er ikke et kjent felt" name key)))
+             (fail :invalid-input "logistics.~a.~a is not a known field" name key)))
          (let ((not-agreed (jget value "not_agreed"))
                (method (jget value "method"))
                (earliest (jget value "earliest"))
                (latest (jget value "latest")))
            (unless (or (null not-agreed) (eq not-agreed t) (json-null-p not-agreed))
-             (fail :invalid-input "logistics.~a.not_agreed må være true eller false" name))
+             (fail :invalid-input "logistics.~a.not_agreed must be true or false" name))
            (when (json-null-p method) (setf method nil))
            (when (json-null-p earliest) (setf earliest nil))
            (when (json-null-p latest) (setf latest nil))
            (when (and method (not (and (stringp method) (member method methods :test #'string=))))
-             (fail :invalid-input "logistics.~a.method må være en av: ~{~a~^, ~}" name methods))
+             (fail :invalid-input "logistics.~a.method must be one of: ~{~a~^, ~}" name methods))
            (dolist (time (list earliest latest))
              (when (and time (not (local-time-string-p time)))
-               (fail :invalid-input "Fyll inn et gyldig klokkeslett")))
+               (fail :invalid-input "Enter a valid time of day")))
            (if (eq not-agreed t)
                (default-side)
                (jobj "not_agreed" nil "method" (or method :null)
@@ -388,10 +390,10 @@ failure wins, README §4): agreed sides keep method and times, an address is
 kept only when an agreed side needs it, and trimmed.  RAW replaces the whole
 object; a missing side is not agreed; a missing site_address keeps
 STORED-ADDRESS."
-  (unless (hash-table-p raw) (fail :invalid-input "logistics må være et objekt"))
+  (unless (hash-table-p raw) (fail :invalid-input "logistics must be an object"))
   (dolist (key (jkeys raw))
     (unless (member key '("delivery" "return" "site_address") :test #'string=)
-      (fail :invalid-input "logistics.~a er ikke et kjent felt" key)))
+      (fail :invalid-input "logistics.~a is not a known field" key)))
   (let* ((delivery (parse-side (jget raw "delivery") "delivery" +delivery-methods+))
          (return (parse-side (jget raw "return") "return" +return-methods+))
          (address-raw (multiple-value-bind (value present) (jget raw "site_address")
@@ -400,29 +402,29 @@ STORED-ADDRESS."
          (needs-address (or (and (side-agreed-p delivery) (member (side-value delivery "method") +address-methods+ :test #'string=))
                             (and (side-agreed-p return) (member (side-value return "method") +address-methods+ :test #'string=)))))
     (when (and address-raw (not (json-null-p address-raw)) (not (stringp address-raw)))
-      (fail :invalid-input "logistics.site_address må være en tekst"))
+      (fail :invalid-input "logistics.site_address must be a text"))
     (when (and address (> (length address) 300))
-      (fail :invalid-input "Adressen kan ikke være lengre enn 300 tegn"))
+      (fail :invalid-input "The address cannot be longer than 300 characters"))
     (unless needs-address (setf address nil))
     (when (and address (zerop (length address))) (setf address nil))
     (flet ((agreed (side) (side-agreed-p side))
            (v (side key) (side-value side key)))
-      (cond ((and (agreed delivery) (null (v delivery "method"))) (fail :invalid-input "Velg utleveringsmetode"))
-            ((and (agreed return) (null (v return "method"))) (fail :invalid-input "Velg returmetode"))
+      (cond ((and (agreed delivery) (null (v delivery "method"))) (fail :invalid-input "Choose a delivery method"))
+            ((and (agreed return) (null (v return "method"))) (fail :invalid-input "Choose a return method"))
             ((and (agreed delivery) (or (null (v delivery "earliest")) (null (v delivery "latest"))))
-             (fail :invalid-input "Sett tidsvindu for utlevering"))
+             (fail :invalid-input "Set a time window for the delivery"))
             ((and (agreed return) (or (null (v return "earliest")) (null (v return "latest"))))
-             (fail :invalid-input "Sett tidsvindu for retur"))
+             (fail :invalid-input "Set a time window for the return"))
             ((and (agreed delivery) (string< (v delivery "latest") (v delivery "earliest")))
-             (fail :invalid-input "Utlevering senest kan ikke være før tidligst"))
+             (fail :invalid-input "The latest delivery time cannot be before the earliest"))
             ((and (agreed return) (string< (v return "latest") (v return "earliest")))
-             (fail :invalid-input "Retur senest kan ikke være før tidligst"))
+             (fail :invalid-input "The latest return time cannot be before the earliest"))
             ((and (agreed delivery) (agreed return)
                   (or (null end-date) (equal end-date event-date))
                   (string< (v return "earliest") (v delivery "latest")))
-             (fail :invalid-input "Retur kan ikke starte før utlevering er ferdig samme dag"))
+             (fail :invalid-input "The return cannot start before the delivery is done on the same day"))
             ((and needs-address (null address))
-             (fail :invalid-input "Adresse må fylles ut når vi leverer eller henter hos kunde"))))
+             (fail :invalid-input "Address must be filled in when we deliver to or collect from the customer"))))
     (jobj "delivery" delivery "return" return "site_address" (or address :null))))
 
 (defun order-logistics-object (order)
@@ -458,13 +460,22 @@ STORED-ADDRESS."
                (let ((address (jget logistics "site_address")))
                  (and (stringp address) (not (blank-p address)))))))))
 
+(defun logistics-method-label (method)
+  "The logistics METHOD as a person reads it, in the current language."
+  (cond ((equal method "we_deliver") (tr "We deliver"))
+        ((equal method "customer_collects") (tr "Customer collects"))
+        ((equal method "we_collect") (tr "We collect"))
+        ((equal method "customer_returns") (tr "Customer returns"))
+        (t (tr "Agreed"))))
+
 (defun side-summary (side)
+  "One side of the logistics in a few words (README §4), in the current language."
   (if (not (side-agreed-p side))
-      "Ikke avtalt"
-      (let ((label (or (cdr (assoc (side-value side "method") +method-labels+ :test #'equal)) "Avtalt"))
+      (tr "Not agreed")
+      (let ((label (logistics-method-label (side-value side "method")))
             (earliest (side-value side "earliest"))
             (latest (side-value side "latest")))
-        (cond ((and earliest latest (string= earliest latest)) (format nil "~a kl. ~a" label earliest))
+        (cond ((and earliest latest (string= earliest latest)) (tr "~a at ~a" label earliest))
               ((and earliest latest) (format nil "~a ~a-~a" label earliest latest))
               (t label)))))
 
@@ -485,24 +496,24 @@ start and at most 731 days after it; checked before anything computes with
 them, so an extreme date is invalid_input, never an error later."
   (dolist (date (list (order-event-date order) (order-end-date order)))
     (when (and date (or (date< date +first-order-date+) (date< +last-order-date+ date)))
-      (fail :invalid-input "Datoen ~a må ligge mellom ~a og ~a" date +first-order-date+ +last-order-date+)))
+      (fail :invalid-input "The date ~a must lie between ~a and ~a" date +first-order-date+ +last-order-date+)))
   (when (and (order-end-date order) (null (order-event-date order)))
-    (fail :invalid-input "Sluttdato krever en startdato"))
+    (fail :invalid-input "An end date needs a start date"))
   (when (and (order-end-date order) (date< (order-end-date order) (order-event-date order)))
-    (fail :invalid-input "Sluttdato kan ikke være før startdato"))
+    (fail :invalid-input "The end date cannot be before the start date"))
   (when (and (order-end-date order)
              (< +max-order-days+ (round (- (parse-date (order-end-date order)) (parse-date (order-event-date order)))
                                         86400)))
-    (fail :invalid-input "Sluttdato kan være høyst ~d dager etter startdato" +max-order-days+)))
+    (fail :invalid-input "The end date can be at most ~d days after the start date" +max-order-days+)))
 
 (defun check-order-fields (order)
   (check-order-dates order)
   (let ((tags (order-tags order)))
     (unless (= (length tags) (length (remove-duplicates tags :test #'string=)))
-      (fail :invalid-input "Hvert merke kan bare brukes én gang")))
+      (fail :invalid-input "Each tag can be used only once")))
   (let ((department (order-department order)))
     (when (and department (not (member department (order-departments *application*) :test #'string=)))
-      (fail :invalid-input "Ukjent avdeling ~a (gyldige: ~{~a~^, ~})" department (order-departments *application*)))))
+      (fail :invalid-input "Unknown department ~a (valid: ~{~a~^, ~})" department (order-departments *application*)))))
 
 (defun prepare-order (order)
   "Everything a save of ORDER derives and checks (create, update; explain runs
@@ -524,9 +535,9 @@ discount and requirements computed, logistics in step with the address."
     (remhash "choices_at" json)
     (when (json-null-p (jget json "choices"))
       (setf (gethash "choices" json) (jobj)))
-    (when (json-null-p (jget json "line_effective_ore"))
-      (setf (gethash "line_effective_ore" json) (or (order-line-line-total-ore line) :null)
-            (gethash "line_adjustment_ore" json) 0))
+    (when (json-null-p (jget json "line_effective_minor"))
+      (setf (gethash "line_effective_minor" json) (or (order-line-line-total-minor line) :null)
+            (gethash "line_adjustment_minor" json) 0))
     json))
 
 (defun add-stock-warnings (json)
@@ -546,42 +557,42 @@ the order JSON shows, computed after the commit (README §12.3)."
       (setf (gethash "stock_warnings" json) (jarr (stock-warnings order))))
     (setf (gethash "logistics" json) (order-logistics-object order)
           (gethash "site_address" json) (or (order-delivery-address order) :null))
-    (when (json-null-p (jget json "catalog_total_ore"))
-      (setf (gethash "catalog_total_ore" json)
-            (reduce #'+ (order-lines order) :key (lambda (l) (or (order-line-line-total-ore l) 0)))))
-    (when (json-null-p (jget json "adjustment_ore"))
-      (setf (gethash "adjustment_ore" json) (- (or (order-total-ore order) 0) (or (order-subtotal-ore order) 0))))
-    (when (json-null-p (jget json "price_mode")) (setf (gethash "price_mode" json) "automatisk"))
+    (when (json-null-p (jget json "catalog_total_minor"))
+      (setf (gethash "catalog_total_minor" json)
+            (reduce #'+ (order-lines order) :key (lambda (l) (or (order-line-line-total-minor l) 0)))))
+    (when (json-null-p (jget json "adjustment_minor"))
+      (setf (gethash "adjustment_minor" json) (- (or (order-total-minor order) 0) (or (order-subtotal-minor order) 0))))
+    (when (json-null-p (jget json "price_mode")) (setf (gethash "price_mode" json) "automatic"))
     json))
 
-(define-computed-field order bookings (order) (:type json :label "Bookinger")
+(define-computed-field order bookings (order) (:type json :label "Bookings")
   (jarr (mapcar (lambda (b) (jobj "product_id" (booking-product-id b) "quantity" (booking-quantity b)
                                   "from" (booking-from b) "to" (booking-to b)))
                 (order-booking-rows (entity-id order)))))
 
-(define-computed-field order requires-pickup (order) (:type boolean :label "Krever henting og retur")
+(define-computed-field order requires-pickup (order) (:type boolean :label "Needs pickup and return")
   (order-requires-pickup-p order))
 
-(define-computed-field order locked (order) (:type boolean :label "Låst")
+(define-computed-field order locked (order) (:type boolean :label "Locked")
   (order-locked-p order))
 
-(define-computed-field order dateless (order) (:type boolean :label "Uten dato")
+(define-computed-field order dateless (order) (:type boolean :label "Without a date")
   (order-dateless-p order))
 
-(define-computed-field order logistics-settled (order) (:type boolean :label "Logistikk avtalt")
+(define-computed-field order logistics-settled (order) (:type boolean :label "Logistics agreed")
   (logistics-settled-p (order-logistics-object order)))
 
-(define-computed-field order logistics-summary (order) (:type json :label "Logistikk")
+(define-computed-field order logistics-summary (order) (:type json :label "Logistics")
   (logistics-summary (order-logistics-object order)))
 
-(define-computed-field order quote (order) (:type json :label "Tilbud")
+(define-computed-field order quote (order) (:type json :label "Quote")
   (let ((quote (and (entity-id order) (quote-for-order (entity-id order)))))
     (if quote
         (jobj "id" (entity-id quote) "revision" (order-quote-revision quote)
               "status" (quote-status quote) "expires_at" (format-rfc3339 (order-quote-expires-at quote)))
         :null)))
 
-(define-computed-field order packed (order) (:type boolean :label "Pakket")
+(define-computed-field order packed (order) (:type boolean :label "Packed")
   (order-packed-p order))
 
 (defun order-booking-rows (order-id)
@@ -641,7 +652,7 @@ around event_date..(end_date ?? event_date), checked."
       (values from to))))
 
 (defun rental-demand (order)
-  "Alist product-id -> quantity over ORDER's utleie lines."
+  "Alist product-id -> quantity over ORDER's rental lines."
   (let ((demand '()))
     (dolist (line (order-lines order) (nreverse demand))
       (let ((product (find-product (order-line-product-id line))))
@@ -656,7 +667,7 @@ around event_date..(end_date ?? event_date), checked."
 capacity on every one of them (CODE, unavailable by default, when a unit is
 taken on any)."
   (let ((first (or (order-event-date order)
-                   (fail :invalid-input "Ordren mangler arrangementsdato (event_date)")))
+                   (fail :invalid-input "The order has no event date (event_date)")))
         (last (order-last-date order))
         (planned '()))
     (loop for (product-id . quantity) in (rental-demand order)
@@ -665,7 +676,7 @@ taken on any)."
                  (period-availability product first last :exclude-order (entity-id order))
                (declare (ignore owned blocked))
                (when (> quantity available)
-                 (fail code "~a: bare ~d ledig ~a (rengjøringsdager medregnet), ordren trenger ~d"
+                 (fail code "~a: only ~d free on ~a (cleaning days included), the order needs ~d"
                        (product-name product) (max available 0) date quantity)))
              (multiple-value-bind (from to) (order-booking-window product order)
                (push (make-instance 'booking :order-id (entity-id order) :product-id product-id
@@ -691,10 +702,11 @@ on the current catalog."
     (let* ((order (find-order (value :id)))
            (previous-department (order-department order))
            (before (resolve-order order)))
-      (when (string= (order-status order) "send_faktura")
-        (fail :conflict "~a" +lock-message+))
+      (when (string= (order-status order) "ready_for_invoice")
+        (refuse-locked-order))
       (when (order-final-p order)
-        (fail :invalid-transition "Ordren er ~a og kan ikke endres" (order-status order)))
+        (fail :invalid-transition "The order is ~a and cannot be changed"
+              (status-text (order-status order))))
       (check-revision order (value :revision))
       (macrolet ((update (key accessor &optional (cleared-value nil))
                    `(cond ((given ,key) (setf (,accessor order) (value ,key)))
@@ -708,13 +720,14 @@ on the current catalog."
             (stamp-choices (order-lines order) old)))
         (update :tags order-tags '())
         (update :department order-department)
-        (update :price-mode order-price-mode "automatisk")
+        (update :price-mode order-price-mode "automatic")
         (update :discount-percent order-discount-percent)
-        (update :discount-ore-input order-discount-ore-input)
+        (update :discount-input-minor order-discount-input-minor)
         (update :price-reason order-price-reason))
       (when (and (null (order-event-date order))
-                 (not (member (order-status order) '("utkast" "tilbud_sendt") :test #'string=)))
-        (fail :invalid-input "Ordren har status ~a og må ha arrangementsdato" (order-status order)))
+                 (not (member (order-status order) '("draft" "quote_sent") :test #'string=)))
+        (fail :invalid-input "The order is ~a and must have an event date"
+              (status-text (order-status order))))
       (check-order-dates order)
       (when (given :logistics)
         (apply-logistics-input order (value :logistics)))
@@ -726,7 +739,7 @@ on the current catalog."
 ;;; nothing stored
 
 (defun planned-bookings (order)
-  "The bookings confirming ORDER would make: one per utleie product, over
+  "The bookings confirming ORDER would make: one per rental product, over
 the client's booking window (no capacity check)."
   (if (null (order-event-date order))
       '()
@@ -735,7 +748,7 @@ the client's booking window (no capacity check)."
                       (jobj "product_id" product-id "quantity" quantity "from" from "to" to)))))
 
 (defun line-availability (order)
-  "Per utleie product: what confirming ORDER finds (book-order's check)."
+  "Per rental product: what confirming ORDER finds (book-order's check)."
   (let ((date (order-event-date order)))
     (loop for (product-id . quantity) in (rental-demand order)
           for product = (find-product product-id)
@@ -756,11 +769,11 @@ the client's booking window (no capacity check)."
                 (order-requirements order))))
 
 (defun order-would (order bookings)
-  (jobj "catalog_total_ore" (order-catalog-total-ore order)
-        "subtotal_ore" (order-subtotal-ore order)
-        "discount_ore" (order-discount-ore order)
-        "adjustment_ore" (order-adjustment-ore order)
-        "total_ore" (order-total-ore order)
+  (jobj "catalog_total_minor" (order-catalog-total-minor order)
+        "subtotal_minor" (order-subtotal-minor order)
+        "discount_minor" (order-discount-minor order)
+        "adjustment_minor" (order-adjustment-minor order)
+        "total_minor" (order-total-minor order)
         "requirements" (requirements-json order)
         "bookings" (jarr bookings)))
 
@@ -770,7 +783,7 @@ the client's booking window (no capacity check)."
 
 (defmethod explain-would ((name (eql 'orders-update)) input)
   (let ((order (updated-order input)))
-    (if (string= (order-status order) "bekreftet")
+    (if (string= (order-status order) "confirmed")
         ;; A confirmed order is booked again: the same capacity check runs.
         (let ((availability (line-availability order)))
           (let ((would (order-would order (planned-bookings order))))
@@ -780,7 +793,7 @@ the client's booking window (no capacity check)."
 
 (defmethod explain-would ((name (eql 'orders-confirm)) input)
   (let ((order (find-order (input-value :id input))))
-    (transition order '("akseptert") "bekreftet")
+    (transition order '("accepted") "confirmed")
     ;; Same order as orders_confirm: book (capacity per line), then requirements.
     (let ((availability (line-availability order)))
       (setf (order-requirements order) (requirements-of (resolve-order order)))
@@ -792,7 +805,8 @@ the client's booking window (no capacity check)."
 
 (defun transition (order from to)
   (unless (member (order-status order) from :test #'string=)
-    (fail :invalid-transition "Ordren har status ~a og kan ikke bli ~a" (order-status order) to))
+    (fail :invalid-transition "The order is ~a and cannot become ~a"
+          (status-text (order-status order)) (status-text to)))
   (setf (order-status order) to)
   order)
 
@@ -805,7 +819,7 @@ same id, else the one at the same position with the same product.  Other
 lines get fresh ids; an id that names no line of the order is invalid_input."
   (dolist (line new)
     (when (and (order-line-id line) (not (find (order-line-id line) old :key #'order-line-id :test #'equal)))
-      (fail :invalid-input "Linjen ~a finnes ikke på ordren" (order-line-id line))))
+      (fail :invalid-input "The line ~a is not on the order" (order-line-id line))))
   (let ((claimed '()))
     (loop for line in new
           for i from 0
@@ -831,9 +845,9 @@ lines get fresh ids; an id that names no line of the order is invalid_input."
     (when raw (apply-logistics-input order raw)))
   (prepare-order order))
 
-(define-operation orders-create ((:draft order) (lines :type (list-of order-line :min-items 1 :max-items 100) :required t :label "Linjer"))
-    (:entity order :kind :create :title "Opprett ordre" :live-view add-stock-warnings
-     :description "Lager et ordreutkast (tilbud) for en kunde, med eller uten dato. Linjene prises med produktets pris nå; prisvalg per linje og for ordren (automatisk, prosent_rabatt, fast_rabatt, manuell_total på linje). Logistikk: utlevering og retur med metode og tidsvindu.")
+(define-operation orders-create ((:draft order) (lines :type (list-of order-line :min-items 1 :max-items 100) :required t :label "Lines"))
+    (:entity order :kind :create :title "Create an order" :live-view add-stock-warnings
+     :description "Creates an order draft (a quote) for a customer, with or without a date. The lines are priced at the product's price now; price modes per line and for the order (automatic, percent_discount, fixed_discount, and manual_total on a line). Logistics: delivery and return, each with a method and a time window.")
   (persist-new-order order))
 
 (defun persist-new-order (draft)
@@ -846,14 +860,14 @@ lines get fresh ids; an id that names no line of the order is invalid_input."
     (sync-checklist order)
     order))
 
-(define-operation orders-get ((id :type (id order) :required t :label "Ordre-ID"))
-    (:entity order :kind :read :title "Hent ordre" :description "Henter én ordre.")
+(define-operation orders-get ((id :type (id order) :required t :label "Order ID"))
+    (:entity order :kind :read :title "Get an order" :description "Gets one order.")
   (find-order id))
 
 (define-operation orders-create-request ((customer-id :type (id customer) :required t)
                                         (lines :type (list-of order-line :max-items 100))
                                         (department :type (string :max 100)))
-    (:entity order :kind :create :policy :employee :title "Opprett forespørselsutkast")
+    (:entity order :kind :create :policy :employee :title "Create a request draft")
   (persist-new-order (make-instance 'order :customer-id customer-id :lines lines :department department)))
 
 (defun orders-matching (&key customer-id status dateless dateless-given department tag from to)
@@ -871,18 +885,19 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
                           (or (null from) (date<= from (order-last-date o)))))
                    orders)))
 
-(define-operation orders-list ((customer-id :type (id customer) :label "Kunde-ID")
-                               (status :type (enum "utkast" "tilbud_sendt" "akseptert" "bekreftet" "hentet"
-                                                   "returnert" "send_faktura" "fullført" "avbrutt")
+(define-operation orders-list ((customer-id :type (id customer) :label "Customer ID")
+                               (status :type (enum "draft" "quote_sent" "accepted" "confirmed"
+                                                   "picked_up" "returned" "ready_for_invoice"
+                                                   "completed" "cancelled")
                                        :label "Status")
-                               (dateless :type boolean :label "Uten dato"
-                                         :description "true: bare forespørsler uten dato; false: bare ordrer med dato.")
-                               (department :type (string :max 100) :label "Avdeling")
-                               (tag :type (enum "utleie" "underholdning") :label "Merke")
-                               (from :type date :label "Fra dato") (to :type date :label "Til dato")
-                               (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity order :kind :read :title "Ordreliste"
-     :description "Lister ordrer, eldste først. Filtre: kunde, status, uten dato, avdeling, merke, og periode (from/to overlapper ordrens dager).")
+                               (dateless :type boolean :label "Without a date"
+                                         :description "true: only requests without a date; false: only orders with one.")
+                               (department :type (string :max 100) :label "Department")
+                               (tag :type (enum "rental" "entertainment") :label "Tag")
+                               (from :type date :label "From date") (to :type date :label "To date")
+                               (limit :type (integer :min 1 :max 100) :default 20 :label "Most results"))
+    (:entity order :kind :read :title "Order list"
+     :description "Lists orders, oldest first. Filters: customer, status, without a date, department, tag, and period (from/to overlaps the order's days).")
   (if (or (input-provided-p :dateless) (input-null-p :dateless) department tag from to)
       (page (orders-matching :customer-id customer-id :status status
                              :dateless dateless :dateless-given (input-provided-p :dateless)
@@ -893,8 +908,8 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
         (page (select 'order :where (and where `(:and ,@where)) :limit (1+ limit)) limit))))
 
 (define-operation orders-summary ()
-    (:entity order :kind :read :title "Ordreoversikt"
-     :description "Antall ordrer: totalt, ikke startet, aktive, venter på tilbud, uten dato, med og uten avtalt logistikk, og avsluttede.")
+    (:entity order :kind :read :title "Order overview"
+     :description "Counts of orders: in all, not started, active, awaiting an answer to a quote, without a date, with and without agreed logistics, and closed.")
   (let ((orders (select 'order)))
     (flet ((count-if* (predicate) (count-if predicate orders))
            (in (statuses) (lambda (o) (member (order-status o) statuses :test #'string=))))
@@ -903,7 +918,7 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
             "active" (count-if* (in +active-statuses+))
             ;; Quotes sent and waiting for the customer's answer.
             "awaiting_quote" (count-if (lambda (o)
-                                         (and (string= (order-status o) "tilbud_sendt")
+                                         (and (string= (order-status o) "quote_sent")
                                               (let ((q (quote-for-order (entity-id o))))
                                                 (and q (string= (quote-status q) "awaiting_response")))))
                                        orders)
@@ -918,22 +933,22 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
             "closed" (count-if* (in +closed-statuses+))
             "today" (local-today)))))
 
-(define-operation orders-update ((id :type (id order) :required t :label "Ordre-ID")
-                                 (revision :type integer :required t :label "Revisjon"
-                                           :description "Revisjonen du endrer; feil revisjon gir conflict.")
+(define-operation orders-update ((id :type (id order) :required t :label "Order ID")
+                                 (revision :type integer :required t :label "Revision"
+                                           :description "The revision you are changing; a wrong one is conflict.")
                                  (:field order event-date)
                                  (:field order end-date)
                                  (:field order delivery-address)
-                                 (lines :type (list-of order-line :min-items 1 :max-items 100) :label "Linjer")
+                                 (lines :type (list-of order-line :min-items 1 :max-items 100) :label "Lines")
                                  (:field order tags)
                                  (:field order department)
                                  (:field order price-mode)
                                  (:field order discount-percent)
-                                 (:field order discount-ore-input)
+                                 (:field order discount-input-minor)
                                  (:field order price-reason)
                                  (:field order logistics))
-    (:entity order :kind :update :title "Endre ordre" :live-view add-stock-warnings
-     :description "Endrer datoer, adresse, linjer, merker, avdeling, prisvalg eller logistikk på en ordre som ikke er avsluttet eller låst. I status bekreftet sjekkes tilgjengelighet på nytt og reservasjoner justeres. Et sendt tilbud blir utdatert.")
+    (:entity order :kind :update :title "Change an order" :live-view add-stock-warnings
+     :description "Changes the dates, address, lines, tags, department, price mode or logistics of an order that is neither closed nor locked. A confirmed order's availability is checked again and its reservations adjusted. A sent quote goes out of date.")
   (multiple-value-bind (order previous-department before) (updated-order *input*)
     ;; The order's own edit: rules 1-3 and 7 of README §9.2 (rule 2 refuses
     ;; a changed snapshot once consumption is applied; a neutral edit keeps
@@ -941,7 +956,7 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
     (let ((next (1+ (order-revision order))))
       (decide-plan order (jobj "type" "order_update" "id" (format nil "~a:~d" id next)) (actor-string *actor*) next
                    :before before))
-    (when (string= (order-status order) "bekreftet")
+    (when (string= (order-status order) "confirmed")
       (book-order order))
     (sync-reservations order)
     (save order)
@@ -950,11 +965,11 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
     (sync-checklist order)
     order))
 
-(define-operation availability-check ((product-id :type (id product) :required t :label "Produkt-ID")
-                                      (date :type date :required t :label "Dato")
-                                      (quantity :type (integer :min 1 :max 100000) :default 1 :label "Antall"))
-    (:entity order :kind :read :title "Sjekk tilgjengelighet"
-     :description "Om utleieutstyr er ledig på en dato, med blokkerende bookinger (inkludert rengjøringsdager).")
+(define-operation availability-check ((product-id :type (id product) :required t :label "Product ID")
+                                      (date :type date :required t :label "Date")
+                                      (quantity :type (integer :min 1 :max 100000) :default 1 :label "Quantity"))
+    (:entity order :kind :read :title "Check availability"
+     :description "Whether rental equipment is free on a date, with the bookings that block it (cleaning days included).")
   (let ((product (find-product product-id)))
     (multiple-value-bind (owned blocked available blocking) (availability product date)
       (jobj "product_id" product-id "date" date "quantity" quantity
@@ -974,13 +989,13 @@ period [event_date, end_date ?? event_date] overlaps [FROM, TO]."
     (jobj "outbound" 0 "inbound" 0 "failed" 0 "last_outbound_at" :null "last_inbound_at" :null)))
 (register-extension-protocol 'aggregate-order-communication "before" :point "communication"
                             :description "Aggregate communication through the public message and inbox interfaces.")
-(define-computed-field order communication (order) (:type json :label "Kommunikasjon")
+(define-computed-field order communication (order) (:type json :label "Communication")
   (aggregate-order-communication *application* order))
 
 (defun record-order-request (order-id request-id questions &optional delivery)
   "Store inbox provenance and open questions without changing the order revision."
   (let ((order (find-order order-id)))
-    (setf (order-source order) (jobj "type" "henvendelse" "id" request-id)
+    (setf (order-source order) (jobj "type" "inquiry" "id" request-id)
           (order-open-questions order) (coerce questions 'list))
     (when delivery
       (let ((logistics (order-logistics-object order)))

@@ -3,8 +3,8 @@
 ;;;; the module answers.
 ;;;;
 ;;;; An article is the counted physical commodity.  Its balance is a ledger
-;;;; projection: every balance-changing movement (aapning, mottak, justering,
-;;;; telling, forbruk) locks the article, increments its movement_revision,
+;;;; projection: every balance-changing movement (opening, receipt, adjustment,
+;;;; recount, consumption) locks the article, increments its movement_revision,
 ;;;; writes balance_after and inserts the row carrying that revision, in one
 ;;;; write transaction.  Ledger order is revision, not time.  Products link
 ;;;; to an article (several may share one); the product-keyed inventory tools
@@ -41,7 +41,7 @@
 
 (define-module inventory
   (:depends-on catalog)
-  (:core ">= 1.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:on-open adopt-older-stock)
   (:documentation "Inventory: stock articles, the ledger, reservations, consumption and the forecast."))
 
@@ -50,7 +50,7 @@
 
 ;;; The per-product balance of an older core.  Written by older cores only;
 ;;; read once, when an older database is adopted (ADOPT-OLDER-STOCK, README §14).
-(define-entity stock-level (:json-name "stock_level" :label "Lagerstatus" :id-prefix "stk"
+(define-entity stock-level (:json-name "stock_level" :label "Stock level" :id-prefix "stk"
                             :table "stock_levels" :internal t :unique (("product_id")))
   ((product-id :type (id product) :input nil)
    (on-hand :type integer :input nil :initform 0)
@@ -83,44 +83,46 @@ article, or unlinked from its own, does not (README §14)."
 
 (add-rollback-check 'product 'product-link-rollback-finding :older-lacks 'article)
 
-(define-entity article (:label "Lagerartikkel" :id-prefix "art" :table "articles"
+(define-entity article (:label "Stock article" :id-prefix "art" :table "articles"
                         :indexes (("product_id") ("department")) :rollback-check article-rollback-finding)
-  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
-   (name :type (string :min 1 :max 120) :input nil :label "Navn")
-   (sku :type (string :max 60) :input nil :label "Varenummer")
-   (unit :type (string :min 1 :max 20) :input nil :label "Enhet")
-   (package-size :type (decimal :scale 3) :input nil :label "Pakningsstørrelse")
-   (balance :type (decimal :scale 3) :input nil :initform 0 :label "Beholdning"
-            :description "Projeksjon av lagerboken; ingen verktøy setter den direkte.")
-   (movement-revision :type integer :input nil :initform 0 :label "Bevegelsesrevisjon")
+  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
+   (name :type (string :min 1 :max 120) :input nil :label "Name")
+   (sku :type (string :max 60) :input nil :label "SKU")
+   (unit :type (string :min 1 :max 20) :input nil :label "Unit")
+   (package-size :type (decimal :scale 3) :input nil :label "Package size")
+   (balance :type (decimal :scale 3) :input nil :initform 0 :label "Balance"
+            :description "A projection of the ledger; no tool sets it directly.")
+   (movement-revision :type integer :input nil :initform 0 :label "Movement revision")
    (min-level :type (decimal :scale 3) :input nil :label "Minimum")
-   (max-level :type (decimal :scale 3) :input nil :label "Maksimum")
-   (cost-price-ore :type (integer :min 0) :input nil :label "Innkjøpspris (øre)")
-   (supplier :type json :input nil :label "Leverandør" :description "{name, contact, article_no, order_url}")
-   (lead-days :type (integer :min 0) :input nil :initform 0 :label "Leveringstid (dager)")
-   (department :type (string :max 100) :input nil :label "Avdeling")
-   (department-revision :type (integer :min 1) :input nil :initform 1 :label "Avdelingsrevisjon")
-   (active :type boolean :input nil :initform t :label "Aktiv")
-   (product-id :type (id product) :input nil :label "Produkt"
+   (max-level :type (decimal :scale 3) :input nil :label "Maximum")
+   (cost-price-minor :type (money :min 0) :input nil :label "Cost price")
+   (supplier :type json :input nil :label "Supplier"
+             :description "{name, contact, article_no, order_url}")
+   (lead-days :type (integer :min 0) :input nil :initform 0 :label "Lead time (days)")
+   (department :type (string :max 100) :input nil :label "Department")
+   (department-revision :type (integer :min 1) :input nil :initform 1 :label "Department revision")
+   (active :type boolean :input nil :initform t :label "Active")
+   (product-id :type (id product) :input nil :label "Product"
                :description "The product the article was made for (by products_create), if any.")
-   (created-at :type timestamp :input nil :label "Opprettet")))
+   (created-at :type timestamp :input nil :label "Created")))
 
-(define-entity inventory-movement (:json-name "inventory_movement" :label "Lagerbevegelse"
+(define-entity inventory-movement (:json-name "inventory_movement" :label "Stock movement"
                                    :id-prefix "mov" :table "inventory_movements"
                                    :indexes (("product_id" "revision") ("article_id" "revision") ("order_id")))
-  ((product-id :type (id product) :input nil :label "Produkt")
-   (kind :type (enum "aapning" "mottak" "justering" "telling" "forbruk" "reservasjon" "frigivelse")
+  ((product-id :type (id product) :input nil :label "Product")
+   (kind :type (enum "opening" "receipt" "adjustment" "recount" "consumption" "reservation"
+                     "release")
          :input nil :label "Type")
-   (quantity :type (decimal :scale 3) :input nil :label "Mengde")
-   (revision :type integer :input nil :label "Revisjon")
-   (balance-after :type (decimal :scale 3) :input nil :label "Beholdning etter")
-   (reason :type (string :max 500) :input nil :label "Begrunnelse")
-   (order-id :type id :input nil :label "Ordre")
-   (at :type timestamp :input nil :label "Tidspunkt")
-   (article-id :type (id article) :input nil :label "Lagerartikkel")
-   (balance-updated :type boolean :input nil :initform t :label "Beholdning oppdatert"
-                    :description "false for a forbruk row recreated after a later telling: the count wins.")
-   (by :type (string :max 200) :input nil :label "Utført av")))
+   (quantity :type (decimal :scale 3) :input nil :label "Quantity")
+   (revision :type integer :input nil :label "Revision")
+   (balance-after :type (decimal :scale 3) :input nil :label "Balance after")
+   (reason :type (string :max 500) :input nil :label "Reason")
+   (order-id :type id :input nil :label "Order")
+   (at :type timestamp :input nil :label "Time")
+   (article-id :type (id article) :input nil :label "Stock article")
+   (balance-updated :type boolean :input nil :initform t :label "Balance updated"
+                    :description "false for a consumption row recreated after a later recount: the count wins.")
+   (by :type (string :max 200) :input nil :label "Done by")))
 
 ;; Accessor aliases with ledger vocabulary.
 (defun movement-product-id (m) (inventory-movement-product-id m))
@@ -134,13 +136,13 @@ article, or unlinked from its own, does not (README §14)."
 (defun movement-at (m) (inventory-movement-at m))
 
 (defun received-since-p (article-id since)
-  "Whether ARTICLE-ID has a mottak after timestamp SINCE (the ledger is this
+  "Whether ARTICLE-ID has a receipt after timestamp SINCE (the ledger is this
 module's own table: other modules ask, tun-platform.md §2.5)."
-  (and (select-one 'inventory-movement :where `(:and (:= "article_id" ,article-id) (:= "kind" "mottak")
+  (and (select-one 'inventory-movement :where `(:and (:= "article_id" ,article-id) (:= "kind" "receipt")
                                                      (:> "at" ,since)))
        t))
 
-(define-entity reservation (:json-name "reservation" :label "Reservasjon" :id-prefix "res"
+(define-entity reservation (:json-name "reservation" :label "Reservation" :id-prefix "res"
                             :table "reservations" :internal t
                             :indexes (("order_id") ("article_id")))
   ((order-id :type id :input nil)
@@ -154,22 +156,22 @@ module's own table: other modules ask, tun-platform.md §2.5)."
   (declare (ignore transfer))
   "department transfer, which the older core cannot show")
 
-(define-entity transfer (:label "Overføring" :id-prefix "ovf" :table "transfers"
+(define-entity transfer (:label "Transfer" :id-prefix "ovf" :table "transfers"
                          :indexes (("target_id")) :rollback-check transfer-rollback-finding)
   ((target-type :type (enum "article" "product") :input nil :label "Type")
-   (target-id :type id :input nil :label "Gjelder")
-   (from-department :type (string :max 100) :input nil :label "Fra avdeling")
-   (to-department :type (string :max 100) :input nil :label "Til avdeling")
-   (note :type (string :max 1000) :input nil :label "Merknad")
-   (by :type (string :max 200) :input nil :label "Utført av")
-   (at :type timestamp :input nil :label "Tidspunkt")))
+   (target-id :type id :input nil :label "Subject")
+   (from-department :type (string :max 100) :input nil :label "From department")
+   (to-department :type (string :max 100) :input nil :label "To department")
+   (note :type (string :max 1000) :input nil :label "Note")
+   (by :type (string :max 200) :input nil :label "Done by")
+   (at :type timestamp :input nil :label "Time")))
 
 ;;; ------------------------------------------------------------------
 ;;; Articles and the ledger
 
 (defun find-article (id)
   (or (and (stringp id) (fetch 'article id))
-      (fail :not-found "Fant ingen lagerartikkel med id ~a" id)))
+      (fail :not-found "Found no stock article with the id ~a" id)))
 
 (defun article-key-product (article)
   "The id a product-keyed view shows for ARTICLE: its product's, or its own."
@@ -182,7 +184,7 @@ module's own table: other modules ask, tun-platform.md §2.5)."
 
 (defun require-active (article)
   (unless (article-active article)
-    (fail :invalid-input "Lagerartikkelen er arkivert")))
+    (fail :invalid-input "The stock article is archived")))
 
 (defconstant +max-balance+ (expt 10 12)
   "The largest balance an article may reach: up to it every balance is exact
@@ -190,7 +192,7 @@ at three decimals (README §3.3).")
 
 (defun check-balance-bound (balance)
   (when (> balance +max-balance+)
-    (fail :invalid-input "Beholdningen kan være høyst ~d" +max-balance+)))
+    (fail :invalid-input "The balance can be at most ~d" +max-balance+)))
 
 (defun ledger-row (article kind quantity &key (balance (article-balance article)) reason order-id
                                               (balance-updated t))
@@ -209,7 +211,7 @@ A balance above 10^12 is invalid_input (README §3.3)."
                          :balance-updated balance-updated :by (actor-string *actor*) :at (now))))
 
 (defun insufficient (article needed)
-  (fail :insufficient-stock "Ikke nok ~a på lager: ~a på lager, trenger ~a"
+  (fail :insufficient-stock "Not enough ~a in stock: ~a in stock, ~a needed"
         (article-name article) (format-quantity (article-balance article)) (format-quantity needed)))
 
 (defun on-hand (product-id)
@@ -244,7 +246,7 @@ A balance above 10^12 is invalid_input (README §3.3)."
 ;;; The catalog's seams
 
 (defmethod stock-article-for ((application inventory-module) product)
-  ;; A product-created article writes no aapning row: its revisions start
+  ;; A product-created article writes no opening row: its revisions start
   ;; at 1 on the first receipt (README §4).
   (or (call-next-method)
       (entity-id (insert (make-instance 'article :name (product-name product) :unit (product-unit product)

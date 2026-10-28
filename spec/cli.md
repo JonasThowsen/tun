@@ -134,11 +134,14 @@ NAME/
   deploy.nix           nixploy targets, none at first (deploy.md)
   NAME.asd             systems NAME and NAME/tests
   package.lisp         (defpackage #:NAME (:use #:cl #:tun) …)
-  application.lisp     define-application with (:modules …)
+  application.lisp     define-application with (:modules …) and (:locale …)
+  nb.lisp              the client's Norwegian catalogue (i18n.md 3.4), empty
   tests/package.lisp   the suite
   tests/scenarios.lisp the default scenario a preview starts from (preview.md 3)
   tests/tests.lisp     the public-interface check; the application opens;
-                       every scenario makes its records
+                       every scenario makes its records; every text of the
+                       client has a translation into each language it offers
+                       (i18n.md 3.7)
   tests/run.lisp       what bin/test runs
   bin/test             compile strictly, run the suite
   bin/serve            serve from the working tree with a local Postgres

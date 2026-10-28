@@ -5,25 +5,25 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-operation orders-suggest ((id :type (id order) :required t :label "Ordre-ID"))
-    (:entity order :kind :read :title "Forslag til ordren"
-     :description "Mersalgsforslag for ordren fra kundens regler (produkt og begrunnelse). Endrer ingenting.")
+(define-operation orders-suggest ((id :type (id order) :required t :label "Order ID"))
+    (:entity order :kind :read :title "Suggestions for the order"
+     :description "Upsell suggestions for the order from the client's rules (product and reason). Changes nothing.")
   (let ((order (find-order id)))
     (jobj "items" (jarr (loop for (product reason) in (order-suggestions *application* order)
                               collect (jobj "product_id" (entity-id product) "name" (product-name product)
                                             "reason" reason))))))
 
-(tun.web:register-web-resource :path "/orders" :entity 'order :title "Ordrer" :icon :shopping-cart
+(tun.web:register-web-resource :path "/orders" :entity 'order :title "Orders" :icon :shopping-cart
                                :list-tool "orders_list" :create-tool "orders_create" :get-tool "orders_get"
                                :list-screen :order-list :detail-screen :order-detail :detail-key :order)
 
 ;;; What clients may use (the module's other exports are for the modules
 ;;; that depend on it).
 (publish '(order order-revision order-status order-customer-id order-event-date order-end-date
-           order-delivery-address order-lines order-tags order-department order-subtotal-ore
-           order-discount-ore order-total-ore order-requirements order-bookings
+           order-delivery-address order-lines order-tags order-department order-subtotal-minor
+           order-discount-minor order-total-minor order-requirements order-bookings
            order-line order-line-id order-line-product-id order-line-quantity
-           order-line-unit-price-ore order-line-line-total-ore
+           order-line-unit-price-minor order-line-line-total-minor
            requirement-product-id requirement-quantity
            find-order order-customer order-final-p order-dateless-p order-logistics
            order-discount compute-order-requirements booking-window order-suggestions

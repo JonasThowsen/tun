@@ -59,39 +59,39 @@ only where the clock ran out, the tool."
 ;;; ------------------------------------------------------------------
 ;;; What is kept (spec/errors.md 4)
 
-(define-entity error-group (:label "Feil" :id-prefix "err" :table "error_groups" :internal t
+(define-entity error-group (:label "Error" :id-prefix "err" :table "error_groups" :internal t
                                    :unique (("fingerprint")) :indexes (("status" "last_seen_at")))
-  ((fingerprint :type (string :max 64) :required t :input nil :label "Fingeravtrykk")
-   (code :type (string :max 64) :required t :input nil :label "Kode")
+  ((fingerprint :type (string :max 64) :required t :input nil :label "Fingerprint")
+   (code :type (string :max 64) :required t :input nil :label "Code")
    (error-type :type (string :max 200) :input nil :label "Type"
                :description "The condition's type, such as tun.mail::mail-not-delivered.")
-   (message :type (string :max 2000) :input nil :label "Melding"
+   (message :type (string :max 2000) :input nil :label "Message"
             :description "The latest occurrence's message.")
-   (tool :type (string :max 200) :input nil :label "Verktøy"
+   (tool :type (string :max 200) :input nil :label "Tool"
          :description "Where the latest occurrence happened: a tool, web:GET /path or job:kind.")
    (backtrace :type json :input nil :label "Backtrace"
               :description "The latest occurrence's frames, innermost first.")
-   (request-id :type (string :max 100) :input nil :label "Siste forespørsel")
-   (first-seen-at :type timestamp :input nil :label "Først sett")
-   (last-seen-at :type timestamp :input nil :label "Sist sett")
-   (count :type integer :input nil :initform 0 :label "Antall"
+   (request-id :type (string :max 100) :input nil :label "Latest request")
+   (first-seen-at :type timestamp :input nil :label "First seen")
+   (last-seen-at :type timestamp :input nil :label "Last seen")
+   (count :type integer :input nil :initform 0 :label "Count"
           :description "How many times it has happened.")
    (status :type (enum "open" "resolved" "ignored") :input nil :initform "open" :label "Status")
-   (status-changed-at :type timestamp :input nil :label "Status endret")
-   (status-changed-by :type (string :max 200) :input nil :label "Status endret av")
-   (notified-at :type timestamp :input nil :label "Varslet"
+   (status-changed-at :type timestamp :input nil :label "Status changed")
+   (status-changed-by :type (string :max 200) :input nil :label "Status changed by")
+   (notified-at :type timestamp :input nil :label "Notified"
                 :description "When the last mail about the error went.")))
 
-(define-entity error-occurrence (:label "Forekomst" :id-prefix "eoc" :table "error_occurrences"
+(define-entity error-occurrence (:label "Occurrence" :id-prefix "eoc" :table "error_occurrences"
                                         :internal t :indexes (("group_id")))
-  ((group-id :type (id error-group) :required t :input nil :label "Feil")
-   (at :type timestamp :input nil :label "Tidspunkt")
-   (request-id :type (string :max 100) :input nil :label "Forespørsel")
-   (kind :type (string :max 20) :input nil :label "Slags")
-   (tool :type (string :max 200) :input nil :label "Verktøy")
-   (actor :type (string :max 200) :input nil :label "Aktør")
-   (message :type (string :max 2000) :input nil :label "Melding")
-   (total-ms :type json :input nil :label "Tid (ms)")))
+  ((group-id :type (id error-group) :required t :input nil :label "Error")
+   (at :type timestamp :input nil :label "Time")
+   (request-id :type (string :max 100) :input nil :label "Request")
+   (kind :type (string :max 20) :input nil :label "Kind")
+   (tool :type (string :max 200) :input nil :label "Tool")
+   (actor :type (string :max 200) :input nil :label "Actor")
+   (message :type (string :max 2000) :input nil :label "Message")
+   (total-ms :type json :input nil :label "Time (ms)")))
 
 (defparameter +kept-occurrences+ 50 "The occurrences kept of each error, latest first.")
 (defparameter +kept-closed-days+ 90
@@ -172,46 +172,47 @@ each address given as an environment variable that is not set."
     (dolist (problem problems)
       (format *error-output* "~&~a: error mail: ~a is not set; no mail goes to it~%" name problem))))
 
-(defun time-text (ut)
-  (format nil "~a kl. ~a" (let ((date (local-date-of ut)))
-                            (format nil "~a.~a.~a" (subseq date 8 10) (subseq date 5 7) (subseq date 0 4)))
-          (local-time-of ut)))
-
 (defun error-page-link (group)
   "The link to GROUP's page, when people can follow one: the application has
 a public URL and enables the dashboard."
   (and (application-public-url *application*)
        (find "dashboard" (enabled-modules *application*)
              :key (lambda (entry) (module-name (first entry))) :test #'string=)
-       (absolute-url (format nil "/feil/~a" (entity-id group)))))
+       (absolute-url (format nil "/errors/~a" (entity-id group)))))
 
 (defun error-mail-text (group)
-  (format nil "~a~%~%Hvor: ~a~%Type: ~a (~a)~%Først sett: ~a~%Antall ganger: ~d~%Forespørsel: ~a~%~
-               ~:[~*~;~%Se feilen: ~a~%~]~%Agenter finner den med errors_get ~a."
-          (or (error-group-message group) "")
-          (or (error-group-tool group) "—")
-          (or (error-group-error-type group) "—") (error-group-code group)
-          (time-text (error-group-first-seen-at group))
-          (error-group-count group)
-          (or (error-group-request-id group) "—")
-          (error-page-link group) (error-page-link group)
-          (entity-id group)))
+  "The text of the mail about GROUP, in the current language; the error's own
+message stays as it was recorded, in source text."
+  (let ((link (error-page-link group)))
+    (format nil "~a~%~%~{~a~%~}~@[~%~a~%~]~%~a"
+            (or (error-group-message group) "")
+            (list (tr "Where: ~a" (or (error-group-tool group) "—"))
+                  (tr "Type: ~a (~a)" (or (error-group-error-type group) "—")
+                      (error-group-code group))
+                  (tr "First seen: ~a" (instant-text (error-group-first-seen-at group)))
+                  (tr "Times: ~d" (error-group-count group))
+                  (tr "Request: ~a" (or (error-group-request-id group) "—")))
+            (and link (tr "See the error: ~a" link))
+            (tr "Agents find it with errors_get ~a." (entity-id group)))))
+
+(defun error-mail-subject (group new)
+  "The subject of the mail about GROUP, NEW or open again."
+  (tr "~:[The error is back~;New error~] in ~a: ~a" new (application-title *application*)
+      (clipped (or (error-group-message group) (error-group-code group)) 80)))
 
 (defun mail-error (group new)
   "Mail GROUP, NEW or open again, to the application's error mail
-addresses, at most once in +MAIL-INTERVAL+."
+addresses, at most once in +MAIL-INTERVAL+, in the tenant's language
+(spec/i18n.md 8)."
   (let ((addresses (error-mail-recipients))
         (last (error-group-notified-at group)))
     (when (and addresses (or (null last) (>= (- (now) last) +mail-interval+)))
       (dolist (address addresses)
-        (tun.mail:send-mail :to address
-                            :subject (format nil "~:[Feilen er tilbake~;Ny feil~] i ~a: ~a" new
-                                             (application-title *application*)
-                                             (clipped (or (error-group-message group)
-                                                          (error-group-code group))
-                                                      80))
-                            :text (error-mail-text group)
-                            :key (format nil "error:~a:~d:~a" (entity-id group) (now) address)))
+        (with-language ((locale-language (current-locale)))
+          (tun.mail:send-mail :to address
+                              :subject (error-mail-subject group new)
+                              :text (error-mail-text group)
+                              :key (format nil "error:~a:~d:~a" (entity-id group) (now) address))))
       (setf (error-group-notified-at group) (now))
       (save group))))
 
@@ -228,13 +229,13 @@ subject ids or personal data, in the erasing write."
       (when needles
         (dolist (group (select 'error-group))
           (when (mentions-p (error-group-message group))
-            (setf (error-group-message group) "[slettet]")
+            (setf (error-group-message group) "[deleted]")
             (save group)))
         (dolist (occurrence (select 'error-occurrence))
           (when (or (mentions-p (error-occurrence-message occurrence))
                     (mentions-p (error-occurrence-actor occurrence)))
-            (setf (error-occurrence-message occurrence) "[slettet]"
-                  (error-occurrence-actor occurrence) "[slettet]")
+            (setf (error-occurrence-message occurrence) "[deleted]"
+                  (error-occurrence-actor occurrence) "[deleted]")
             (save occurrence)))))))
 
 (pushnew 'redact-recorded-errors *stored-diagnostics-redactors*)
@@ -285,7 +286,9 @@ as, if any."
   "Record the fault RECORD of APPLICATION in a write of its own, or in the
 write it ended in.  Returns the error."
   (with-application (application)
-    (let ((*deadline* nil))
+    ;; Outside the request: its mail is in the tenant's language all the same.
+    (let ((*deadline* nil)
+          (*locale* (or *locale* (request-locale))))
       (ecase *transaction-mode*
         ((nil) (with-transaction (:write) (record-fault record)))
         (:write (record-fault record))
@@ -318,11 +321,12 @@ write it ended in.  Returns the error."
 
 (define-operation errors-list ((status :type (enum "open" "resolved" "ignored") :default "open"
                                        :label "Status")
-                               (limit :type (integer :min 1 :max 500) :default 100 :label "Maks antall"))
-    (:entity error-group :kind :read :policy :admin :title "Feil"
-             :description "Feilene i én status (open som standard), sist sett først: feil som koden
-ikke mente, gruppert etter årsak (type og hvor den oppsto). Hver med kode, type, siste melding,
-verktøy, antall ganger, først og sist sett. counts sier hvor mange det er i hver status.")
+                               (limit :type (integer :min 1 :max 500) :default 100 :label "Limit"))
+    (:entity error-group :kind :read :policy :admin :title "Errors"
+             :description "The errors in one status (open by default), the last seen first: faults
+the code did not mean, grouped by cause (type and where it happened). Each with its code, type,
+latest message, tool, number of times, and when first and last seen. counts says how many there
+are in each status.")
   (jobj "items" (jarr (mapcar #'group-summary
                               (select 'error-group :where `(:= "status" ,status)
                                                    :order-by '(("last_seen_at" :desc)) :limit limit)))
@@ -331,11 +335,11 @@ verktøy, antall ganger, først og sist sett. counts sier hvor mange det er i hv
                      (setf (gethash each counts)
                            (length (select 'error-group :where `(:= "status" ,each))))))))
 
-(define-operation errors-get ((id :type (id error-group) :required t :label "Feil"))
-    (:entity error-group :kind :read :policy :admin :title "Les feil"
-             :description "Én feil med backtrace fra siste gang og de siste 50 forekomstene, nyeste
-først: når, forespørselen (introspect_request, så lenge prosessen har den i minnet), verktøy,
-aktør, melding og tid.")
+(define-operation errors-get ((id :type (id error-group) :required t :label "Error"))
+    (:entity error-group :kind :read :policy :admin :title "Read an error"
+             :description "One error with the backtrace of its latest occurrence and its 50 latest
+occurrences, newest first: when, the request (introspect_request, as long as the process keeps it
+in memory), tool, actor, message and time.")
   (let ((json (entity->json (fetch! 'error-group id))))
     (setf (gethash "occurrences" json)
           (jarr (mapcar #'entity->json
@@ -343,12 +347,12 @@ aktør, melding og tid.")
                                                   :order-by '(("seq" :desc))))))
     json))
 
-(define-operation errors-set-status ((id :type (id error-group) :required t :label "Feil")
+(define-operation errors-set-status ((id :type (id error-group) :required t :label "Error")
                                      (status :type (enum "open" "resolved" "ignored") :required t
                                              :label "Status"))
-    (:entity error-group :kind :update :policy :admin :title "Sett status på feil"
-             :description "Merker en feil som løst (resolved), ignorert (ignored) eller åpen (open).
-En løst feil som skjer igjen, blir åpen og varsles på nytt; en ignorert teller videre uten varsel.")
+    (:entity error-group :kind :update :policy :admin :title "Set an error's status"
+             :description "Marks an error resolved, ignored or open. A resolved error that happens
+again opens and is mailed about again; an ignored one goes on counting without a mail.")
   (let ((group (fetch! 'error-group id)))
     (setf (error-group-status group) status
           (error-group-status-changed-at group) (now)

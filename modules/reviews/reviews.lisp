@@ -26,7 +26,7 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module reviews
-  (:core ">= 1.0" "< 2.0")
+  (:core ">= 2.0.0" "< 3.0")
   (:documentation "Reviews: proposals an admin approves or rejects, handled per kind by the requesting module."))
 
 (defun review-rollback-finding (review)
@@ -34,27 +34,29 @@
   (and (string= (review-status review) "pending")
        "pending review, which the older core cannot resolve"))
 
-(define-entity review (:label "Gjennomgang" :id-prefix "gjg" :table "reviews"
+(define-entity review (:label "Review" :id-prefix "gjg" :table "reviews"
                        :indexes (("status") ("subject_id") ("proposal_id")) :unique (("idempotency_key"))
                        :rollback-check review-rollback-finding)
   ((kind :type (string :max 100) :input nil :label "Type")
-   (status :type (enum "pending" "approved" "rejected" "superseded") :input nil :initform "pending" :label "Status")
-   (priority :type (enum "low" "normal" "high" "critical") :input nil :initform "normal" :label "Prioritet")
-   (subject :type json :input nil :label "Gjelder" :description "{type, id, revision}")
-   (proposal :type json :input nil :label "Forslag" :description "{type, id, revision}")
-   (source :type json :input nil :label "Kilde" :description "{type, id}: what led to the proposal.")
-   (idempotency-key :type (string :max 300) :input nil :label "Nøkkel")
-   (title :type (string :max 300) :input nil :label "Tittel")
-   (summary :type (string :max 1000) :input nil :label "Sammendrag")
-   (requested-by :type (string :max 200) :input nil :label "Bedt om av")
-   (requested-at :type timestamp :input nil :label "Bedt om")
-   (due-at :type timestamp :input nil :label "Frist")
-   (reviewed-by :type (string :max 200) :input nil :label "Behandlet av")
-   (reviewed-at :type timestamp :input nil :label "Behandlet")
-   (note :type (string :max 2000) :input nil :label "Merknad")
+   (status :type (enum "pending" "approved" "rejected" "superseded") :input nil :initform "pending"
+           :label "Status")
+   (priority :type (enum "low" "normal" "high" "critical") :input nil :initform "normal"
+             :label "Priority")
+   (subject :type json :input nil :label "Subject" :description "{type, id, revision}")
+   (proposal :type json :input nil :label "Proposal" :description "{type, id, revision}")
+   (source :type json :input nil :label "Source" :description "{type, id}: what led to the proposal.")
+   (idempotency-key :type (string :max 300) :input nil :label "Key")
+   (title :type (string :max 300) :input nil :label "Title")
+   (summary :type (string :max 1000) :input nil :label "Summary")
+   (requested-by :type (string :max 200) :input nil :label "Requested by")
+   (requested-at :type timestamp :input nil :label "Requested")
+   (due-at :type timestamp :input nil :label "Deadline")
+   (reviewed-by :type (string :max 200) :input nil :label "Handled by")
+   (reviewed-at :type timestamp :input nil :label "Handled")
+   (note :type (string :max 2000) :input nil :label "Note")
    ;; The subject's and proposal's ids again, as columns a query can use.
-   (subject-id :type id :input nil :label "Gjelder (id)")
-   (proposal-id :type id :input nil :label "Forslag (id)")))
+   (subject-id :type id :input nil :label "Subject (id)")
+   (proposal-id :type id :input nil :label "Proposal (id)")))
 
 (defparameter +priorities+ '("critical" "high" "normal" "low") "Most urgent first.")
 
@@ -70,7 +72,7 @@ leaves the review pending.  The module that requests reviews of a kind adds
 a method that handles that kind and calls the next method for any other.")
   (:method ((application reviews-module) review decision)
     (declare (ignore decision))
-    (fail :invalid-transition "Ingen behandler for gjennomganger av typen ~a" (review-kind review))))
+    (fail :invalid-transition "There is no handler for reviews of the kind ~a" (review-kind review))))
 
 (defgeneric review-details (application review json)
   (:method-combination traced-protocol)
@@ -127,28 +129,28 @@ names at most one review (a second request with it returns that review)."
 (define-operation reviews-list ((status :type (enum "pending" "approved" "rejected" "superseded") :default "pending"
                                         :label "Status")
                                 (kind :type (string :max 100) :label "Type")
-                                (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity review :kind :read :title "Gjennomganger"
-     :description "Gjennomganger med en status (standard pending), mest hastende først (critical, high, normal, low), så eldste forespørsel først.")
+                                (limit :type (integer :min 1 :max 100) :default 20 :label "Most results"))
+    (:entity review :kind :read :title "Reviews"
+     :description "Reviews with a status (pending by default), the most urgent first (critical, high, normal, low), then the oldest request first.")
   (let* ((where `(:and (:= "status" ,status) ,@(and kind `((:= "kind" ,kind)))))
          (rows (select 'review :where where :order-by '(("requested_at" :asc) ("seq" :asc))))
          (sorted (stable-sort rows #'< :key (lambda (r) (position (review-priority r) +priorities+ :test #'string=)))))
     (page (subseq sorted 0 (min (length sorted) (1+ limit))) limit)))
 
-(define-operation reviews-get ((id :type (id review) :required t :label "Gjennomgang-ID"))
-    (:entity review :kind :read :title "Hent gjennomgang"
-     :description "Én gjennomgang, med det typen viser i tillegg (for en kravplan: endringene artikkel for artikkel).")
+(define-operation reviews-get ((id :type (id review) :required t :label "Review ID"))
+    (:entity review :kind :read :title "Get review"
+     :description "One review, with what its kind shows besides (for a requirement plan: the changes article by article).")
   (review-json (fetch! 'review id)))
 
-(define-operation reviews-resolve ((id :type (id review) :required t :label "Gjennomgang-ID")
-                                   (decision :type (enum "approve" "reject") :required t :label "Beslutning")
-                                   (note :type (string :max 2000) :label "Merknad"))
-    (:entity review :kind :transition :policy :admin :title "Behandle gjennomgang"
-     :description "Godkjenner eller avviser en ventende gjennomgang. Typens behandler sjekker først om forslaget fortsatt gjelder; et utdatert forslag gir result superseded med en begrunnelse. Alt lagres samlet.")
+(define-operation reviews-resolve ((id :type (id review) :required t :label "Review ID")
+                                   (decision :type (enum "approve" "reject") :required t :label "Decision")
+                                   (note :type (string :max 2000) :label "Note"))
+    (:entity review :kind :transition :policy :admin :title "Handle review"
+     :description "Approves or rejects a pending review. The kind's handler first checks that the proposal still holds; one that is out of date gives the result superseded with a reason. Everything is stored together.")
   (lock-row 'review id)
   (let ((review (fetch! 'review id)))
     (unless (string= (review-status review) "pending")
-      (fail :invalid-transition "Gjennomgangen er allerede behandlet"))
+      (fail :invalid-transition "The review has already been handled"))
     (multiple-value-bind (result reason) (resolve-review *application* review decision)
       (unless (member result '("approved" "rejected" "superseded") :test #'equal)
         (extension-error "RESOLVE-REVIEW returned ~s for a review of kind ~a" result (review-kind review)))

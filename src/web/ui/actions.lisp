@@ -35,11 +35,11 @@ hear aria-keyshortcuts instead."
 (define-component button ((&key (variant :primary) (size :default) (type "button") href
                                 icon icon-end shortcut label name value disabled id attributes)
                           &rest children)
-  (:group "Handlinger")
-  (:doc "En knapp for en handling, eller en lenke (HREF) som ser ut som en. Bruk én
-hovedknapp (primary) per skjema; resten secondary, outline eller ghost. En knapp med bare
-ikon (størrelse icon) må ha LABEL. SHORTCUT, som \"Ctrl+K\", viser hurtigtasten for det
-knappen åpner på store skjermer; tasten bindes av dialogen den åpner.")
+  (:group "Actions")
+  (:doc "A button for an action, or a link (HREF) that looks like one. Use one main button
+(primary) per form; the rest secondary, outline or ghost. A button that shows only an icon
+(size icon) must have LABEL. SHORTCUT, such as \"Ctrl+K\", shows the key for what the button
+opens on large screens; the key is bound by the dialog it opens.")
   (:source "Basecoat button (Vega)")
   (:script "
 // A shortcut's Ctrl cap reads Cmd's sign where the key is Cmd: on a Mac,
@@ -223,37 +223,37 @@ tunOnContent((root) => {
   }
 }")
   (:examples
-   ("Varianter"
-    (button () "Lagre")
-    (button (:variant :secondary) "Kladd")
-    (button (:variant :outline) "Avbryt")
-    (button (:variant :ghost) "Mer")
-    (button (:variant :link) "Vis alle")
-    (button (:variant :destructive) "Slett"))
-   ("Størrelser"
-    (button (:size :xs) "Ekstra liten")
-    (button (:size :sm) "Liten")
-    (button () "Vanlig")
-    (button (:size :lg) "Stor"))
-   ("Med ikon"
-    (button (:icon :plus) "Ny ordre")
-    (button (:variant :outline :icon-end :arrow-right) "Neste")
-    (button (:variant :secondary :icon :download) "Last ned"))
-   ("Bare ikon"
-    (button (:size :icon :variant :outline :label "Rediger") (icon (:name :pencil)))
-    (button (:size :icon-sm :variant :ghost :label "Flere valg") (icon (:name :ellipsis)))
-    (button (:size :icon-lg :variant :destructive :label "Slett") (icon (:name :trash))))
-   ("Med hurtigtast, vist på store skjermer"
-    (button (:variant :outline :size :icon :label "Søk" :icon :search :shortcut "Ctrl+K"))
-    (button (:variant :ghost :icon :search :shortcut "/") "Søk"))
-   ("Lenke og deaktivert"
-    (button (:href "/ui" :variant :outline) "Til oversikten")
-    (button (:disabled t) "Lagre")
-    (button (:href "/ui" :disabled t :variant :outline) "Utilgjengelig lenke"))
-   ("Trykket inn (aria-pressed) og gjeldende side (aria-current)"
-    (button (:variant :outline :icon :star :attributes '(:aria-pressed "true")) "Favoritt")
-    (button (:variant :ghost :icon :funnel :attributes '(:aria-pressed "true")) "Filter på")
-    (button (:variant :outline :size :icon :label "Side 2" :href "/ordre?side=2"
+   ("Variants"
+    (button () "Save")
+    (button (:variant :secondary) "Draft")
+    (button (:variant :outline) "Cancel")
+    (button (:variant :ghost) "More")
+    (button (:variant :link) "Show all")
+    (button (:variant :destructive) "Delete"))
+   ("Sizes"
+    (button (:size :xs) "Extra small")
+    (button (:size :sm) "Small")
+    (button () "Default")
+    (button (:size :lg) "Large"))
+   ("With an icon"
+    (button (:icon :plus) "New order")
+    (button (:variant :outline :icon-end :arrow-right) "Next")
+    (button (:variant :secondary :icon :download) "Download"))
+   ("Icon only"
+    (button (:size :icon :variant :outline :label "Edit") (icon (:name :pencil)))
+    (button (:size :icon-sm :variant :ghost :label "More options") (icon (:name :ellipsis)))
+    (button (:size :icon-lg :variant :destructive :label "Delete") (icon (:name :trash))))
+   ("With a shortcut, shown on large screens"
+    (button (:variant :outline :size :icon :label "Search" :icon :search :shortcut "Ctrl+K"))
+    (button (:variant :ghost :icon :search :shortcut "/") "Search"))
+   ("Link and disabled"
+    (button (:href "/ui" :variant :outline) "To the overview")
+    (button (:disabled t) "Save")
+    (button (:href "/ui" :disabled t :variant :outline) "Unavailable link"))
+   ("Pressed (aria-pressed) and current page (aria-current)"
+    (button (:variant :outline :icon :star :attributes '(:aria-pressed "true")) "Favourite")
+    (button (:variant :ghost :icon :funnel :attributes '(:aria-pressed "true")) "Filter on")
+    (button (:variant :outline :size :icon :label "Page 2" :href "/orders?page=2"
                       :attributes '(:aria-current "page"))
             "2")))
   (when (and (member size '(:icon :icon-xs :icon-sm :icon-lg)) (null label))
@@ -274,11 +274,11 @@ tunOnContent((root) => {
 
 (define-component button-group ((&key label (orientation :horizontal) separated id attributes)
                                 &rest children)
-  (:group "Handlinger")
-  (:doc "Knapper som hører sammen, satt sammen til én kontroll: valg av visning, en delt
-knapp med en meny ved siden av, forrige og neste. Gi gruppen LABEL, som skjermlesere leser
-opp. SEPARATED setter en skillelinje mellom delene, som trengs for knapper uten kant
-(primary og secondary).")
+  (:group "Actions")
+  (:doc "Buttons that belong together, joined into one control: a choice of view, a split
+button with a menu beside it, previous and next. Give the group a LABEL, which screen readers
+read out. SEPARATED puts a line between the parts, which buttons without a border (primary
+and secondary) need.")
   (:source "Basecoat button group (Vega)")
   (:css "
 .tun-button-group {
@@ -347,77 +347,78 @@ opp. SEPARATED setter en skillelinje mellom delene, som trengs for knapper uten 
   }
 }")
   (:examples
-   ("Knapper som hører sammen"
-    (button-group (:label "Handlinger for ordre 1042")
-      (button (:variant :outline) "Kopier")
-      (button (:variant :outline) "Skriv ut")
+   ("Buttons that belong together"
+    (button-group (:label "Actions for order 1042")
+      (button (:variant :outline) "Copy")
+      (button (:variant :outline) "Print")
       (button (:variant :outline) "Send"))
-    (button-group (:label "Handlinger for ordre 1042")
-      (button (:variant :outline :icon :copy) "Kopier")
-      (button (:variant :outline :size :icon :label "Skriv ut") (icon (:name :file-text)))
-      (button (:variant :outline :size :icon :label "Slett") (icon (:name :trash)))))
-   ("Valg av visning"
-    (button-group (:label "Visning")
-      (button (:variant :outline :icon :list :attributes '(:aria-pressed "true")) "Liste")
+    (button-group (:label "Actions for order 1042")
+      (button (:variant :outline :icon :copy) "Copy")
+      (button (:variant :outline :size :icon :label "Print") (icon (:name :file-text)))
+      (button (:variant :outline :size :icon :label "Delete") (icon (:name :trash)))))
+   ("Choice of view"
+    (button-group (:label "View")
+      (button (:variant :outline :icon :list :attributes '(:aria-pressed "true")) "List")
       (button (:variant :outline :icon :layout-dashboard :attributes '(:aria-pressed "false"))
-              "Tavle")
+              "Board")
       (button (:variant :outline :icon :calendar :attributes '(:aria-pressed "false"))
-              "Kalender")))
-   ("Delt knapp"
-    (button-group (:label "Send faktura" :separated t)
-      (button (:icon :send) "Send faktura")
-      (button (:size :icon :label "Andre måter å sende på") (icon (:name :chevron-down))))
-    (button-group (:label "Lagre tilbud" :separated t)
-      (button (:variant :secondary) "Lagre")
-      (button (:variant :secondary :size :icon :label "Flere valg for lagring")
+              "Calendar")))
+   ("Split button"
+    (button-group (:label "Send invoice" :separated t)
+      (button (:icon :send) "Send invoice")
+      (button (:size :icon :label "Other ways to send") (icon (:name :chevron-down))))
+    (button-group (:label "Save quote" :separated t)
+      (button (:variant :secondary) "Save")
+      (button (:variant :secondary :size :icon :label "More ways to save")
               (icon (:name :chevron-down))))
-    (button-group (:label "Ny ordre")
-      (button (:variant :outline :icon :plus) "Ny ordre")
-      (button (:variant :outline :size :icon :label "Ny ordre fra mal")
+    (button-group (:label "New order")
+      (button (:variant :outline :icon :plus) "New order")
+      (button (:variant :outline :size :icon :label "New order from a template")
               (icon (:name :chevron-down)))))
-   ("Bla i sider"
-    (button-group (:label "Sider i ordrelisten")
-      (button (:variant :outline :size :icon :label "Forrige side" :href "/ordre?side=1")
+   ("Paging"
+    (button-group (:label "Pages of the order list")
+      (button (:variant :outline :size :icon :label "Previous page" :href "/orders?page=1")
               (icon (:name :chevron-left)))
-      '(:span "Side 2 av 8")
-      (button (:variant :outline :size :icon :label "Neste side" :href "/ordre?side=3")
+      '(:span "Page 2 of 8")
+      (button (:variant :outline :size :icon :label "Next page" :href "/orders?page=3")
               (icon (:name :chevron-right))))
-    (button-group (:label "Sider i fakturalisten")
+    (button-group (:label "Pages of the invoice list")
       (button-group ()
-        (button (:variant :outline :size :icon-sm :label "Side 1" :href "/fakturaer?side=1")
+        (button (:variant :outline :size :icon-sm :label "Page 1" :href "/invoices?page=1")
                 "1")
-        (button (:variant :outline :size :icon-sm :label "Side 2" :href "/fakturaer?side=2"
+        (button (:variant :outline :size :icon-sm :label "Page 2" :href "/invoices?page=2"
                           :attributes '(:aria-current "page"))
                 "2")
-        (button (:variant :outline :size :icon-sm :label "Side 3" :href "/fakturaer?side=3")
+        (button (:variant :outline :size :icon-sm :label "Page 3" :href "/invoices?page=3")
                 "3"))
       (button-group ()
-        (button (:variant :outline :size :icon-sm :label "Forrige side"
-                          :href "/fakturaer?side=1")
+        (button (:variant :outline :size :icon-sm :label "Previous page"
+                          :href "/invoices?page=1")
                 (icon (:name :arrow-left)))
-        (button (:variant :outline :size :icon-sm :label "Neste side"
-                          :href "/fakturaer?side=3")
+        (button (:variant :outline :size :icon-sm :label "Next page"
+                          :href "/invoices?page=3")
                 (icon (:name :arrow-right))))))
-   ("Loddrett"
-    (button-group (:label "Antall" :orientation :vertical)
-      (button (:variant :outline :size :icon :label "Øk antallet") (icon (:name :plus)))
-      (button (:variant :outline :size :icon :label "Reduser antallet") (icon (:name :minus))))
-    (button-group (:label "Flytt oppdraget" :orientation :vertical)
-      (button (:variant :outline :icon :arrow-up) "Flytt opp")
-      (button (:variant :outline :icon :arrow-down) "Flytt ned")))
-   ("Størrelser"
-    (button-group (:label "Periode")
-      (button (:variant :outline :size :sm) "Dag")
-      (button (:variant :outline :size :sm) "Uke")
-      (button (:variant :outline :size :sm) "Måned"))
-    (button-group (:label "Periode")
-      (button (:variant :outline) "Dag")
-      (button (:variant :outline) "Uke")
-      (button (:variant :outline) "Måned"))
-    (button-group (:label "Periode")
-      (button (:variant :outline :size :lg) "Dag")
-      (button (:variant :outline :size :lg) "Uke")
-      (button (:variant :outline :size :lg) "Måned"))))
+   ("Vertical"
+    (button-group (:label "Quantity" :orientation :vertical)
+      (button (:variant :outline :size :icon :label "Increase the quantity") (icon (:name :plus)))
+      (button (:variant :outline :size :icon :label "Decrease the quantity")
+              (icon (:name :minus))))
+    (button-group (:label "Move the job" :orientation :vertical)
+      (button (:variant :outline :icon :arrow-up) "Move up")
+      (button (:variant :outline :icon :arrow-down) "Move down")))
+   ("Sizes"
+    (button-group (:label "Period")
+      (button (:variant :outline :size :sm) "Day")
+      (button (:variant :outline :size :sm) "Week")
+      (button (:variant :outline :size :sm) "Month"))
+    (button-group (:label "Period")
+      (button (:variant :outline) "Day")
+      (button (:variant :outline) "Week")
+      (button (:variant :outline) "Month"))
+    (button-group (:label "Period")
+      (button (:variant :outline :size :lg) "Day")
+      (button (:variant :outline :size :lg) "Week")
+      (button (:variant :outline :size :lg) "Month"))))
   (check-type orientation (member :horizontal :vertical))
   `(:div ,(attrs (list :class "tun-button-group" :id id :role "group" :aria-label label
                        :data-orientation (option-string orientation))
@@ -435,11 +436,11 @@ opp. SEPARATED setter en skillelinje mellom delene, som trengs for knapper uten 
             :aria-orientation ,(if (eq orientation :vertical) "horizontal" "vertical"))))
 
 (define-component link ((&key href (variant :default) external id attributes) &rest children)
-  (:group "Handlinger")
-  (:doc "En lenke i løpende tekst, til en kunde, en ordre eller en side. Variant muted er for
-lenker som er mindre viktige enn teksten rundt. EXTERNAL viser at lenken går til et annet
-nettsted. Bruk knappen med HREF når lenken skal se ut som en knapp.")
-  (:source "shadcn/ui typography (lenke), Basecoat-utseende")
+  (:group "Actions")
+  (:doc "A link in running text, to a customer, an order or a page. The variant muted is for
+links that matter less than the text around them. EXTERNAL shows that the link goes to
+another site. Use the button with HREF when the link should look like a button.")
+  (:source "shadcn/ui typography (link), Basecoat's look")
   (:css "
 .tun-link {
   border-radius: 2px;
@@ -480,18 +481,18 @@ nettsted. Bruk knappen med HREF når lenken skal se ut som en knapp.")
   }
 }")
   (:examples
-   (("I løpende tekst" :layout :stack)
-    `(:p "Ordren hører til "
-         ,(link (:href "/kunder/218") "Rørlegger Hansen AS")
-         " og ble fakturert 3. oktober. Se "
-         ,(link (:href "/fakturaer/10417") "faktura 10417")
-         " for beløp og forfallsdato."))
-   (("Dempet" :layout :stack)
-    `(:p "Sist endret av Kari Nordmann for to timer siden. "
-         ,(link (:href "/ordre/1042/historikk" :variant :muted) "Vis historikken")))
-   (("Til et annet nettsted" :layout :stack)
-    `(:p "Organisasjonsnummeret slås opp i "
-         ,(link (:href "https://www.brreg.no" :external t) "Brønnøysundregistrene")
+   (("In running text" :layout :stack)
+    `(:p "The order belongs to "
+         ,(link (:href "/customers/218") "Hansen Plumbing Ltd")
+         " and was invoiced on 3 October. See "
+         ,(link (:href "/invoices/10417") "invoice 10417")
+         " for the amount and the due date."))
+   (("Muted" :layout :stack)
+    `(:p "Last changed by Kari Nordmann two hours ago. "
+         ,(link (:href "/orders/1042/history" :variant :muted) "Show the history")))
+   (("To another site" :layout :stack)
+    `(:p "The organisation number is looked up in "
+         ,(link (:href "https://www.brreg.no" :external t) "the Brønnøysund Register Centre")
          ".")))
   (check-type href string)
   `(:a ,(attrs (list :class "tun-link" :id id :href href
@@ -500,12 +501,12 @@ nettsted. Bruk knappen med HREF når lenken skal se ut som en knapp.")
        ,@children
        ,@(when external
            (list (icon (:name :external-link))
-                 '(:span (:@ :class "tun-link-hint") " (annet nettsted)")))))
+                 `(:span (:@ :class "tun-link-hint") " " ,(tr "(another site)"))))))
 
 (define-component kbd ((&key id attributes) &rest children)
-  (:group "Handlinger")
-  (:doc "En tast på tastaturet, i hjelpetekst og ved handlinger med hurtigtast. Taster som
-trykkes sammen er en KBD med en KBD for hver tast inni.")
+  (:group "Actions")
+  (:doc "A key on the keyboard, in help text and beside actions with a shortcut. Keys
+pressed together are a KBD with a KBD for each key inside.")
   (:source "Basecoat kbd (Vega)")
   (:css "
 .tun-kbd {
@@ -544,31 +545,32 @@ trykkes sammen er en KBD med en KBD for hver tast inni.")
   }
 }")
   (:examples
-   ("Taster"
+   ("Keys"
     (kbd () "Ctrl")
     (kbd () "Shift")
     (kbd () "Enter")
     (kbd () "Esc")
     (kbd () "Tab")
     (kbd () "K"))
-   ("Taster som trykkes sammen"
+   ("Keys pressed together"
     (kbd () (kbd () "Ctrl") "+" (kbd () "K"))
     (kbd () (kbd () "Alt") "+" (kbd () "N"))
     (kbd () (kbd () "Ctrl") "+" (kbd () "Shift") "+" (kbd () "S")))
-   (("I hjelpetekst" :layout :stack)
-    `(:p "Trykk " ,(kbd () (kbd () "Ctrl") "+" (kbd () "K"))
-         " for å søke etter kunder og ordre, og " ,(kbd () "Esc") " for å lukke søket."))
-   ("I en knapp"
-    (button (:variant :outline) "Lagre" (kbd (:attributes '(:data-icon "end")) "Enter"))
-    (button (:variant :ghost) "Søk" (kbd (:attributes '(:data-icon "end")) "/"))))
+   (("In help text" :layout :stack)
+    `(:p "Press " ,(kbd () (kbd () "Ctrl") "+" (kbd () "K"))
+         " to search for customers and orders, and " ,(kbd () "Esc") " to close the search."))
+   ("In a button"
+    (button (:variant :outline) "Save" (kbd (:attributes '(:data-icon "end")) "Enter"))
+    (button (:variant :ghost) "Search" (kbd (:attributes '(:data-icon "end")) "/"))))
   `(:kbd ,(attrs (list :class "tun-kbd" :id id) attributes) ,@children))
 
 (define-component badge ((&key (variant :primary) icon id attributes) &rest children)
-  (:group "Handlinger")
-  (:doc "En liten merkelapp for status eller kategori, som «Bekreftet» på en ordre. Variantene
-success, warning, info og destructive er for status; primary, secondary og outline for
-alt annet. Teksten sier hva det gjelder, så fargen er aldri det eneste som skiller dem.")
-  (:source "Basecoat badge (Vega) med Tuns statusfarger")
+  (:group "Actions")
+  (:doc "A small label for a status or a category, such as «Confirmed» on an order. The
+variants success, warning, info and destructive are for status; primary, secondary and
+outline for anything else. The text says what it is, so colour is never all that tells them
+apart.")
+  (:source "Basecoat badge (Vega) with Tun's status colours")
   (:css "
 .tun-badge {
   display: inline-flex;
@@ -623,24 +625,24 @@ alt annet. Teksten sier hva det gjelder, så fargen er aldri det eneste som skil
   }
 }")
   (:examples
-   ("Varianter"
-    (badge () "Ny")
-    (badge (:variant :secondary) "Fast kunde")
-    (badge (:variant :outline) "Kladd")
-    (badge (:variant :success) "Betalt")
-    (badge (:variant :warning) "Forfalt")
-    (badge (:variant :info) "Til vurdering")
-    (badge (:variant :destructive) "Avvist"))
-   ("Status på ordre"
-    (badge (:variant :outline :icon :file) "Kladd")
-    (badge (:variant :info :icon :send) "Tilbud sendt")
-    (badge (:variant :success :icon :check) "Bekreftet")
-    (badge (:variant :warning :icon :clock) "Venter på kunden")
-    (badge (:variant :secondary :icon :receipt) "Fakturert")
-    (badge (:variant :destructive :icon :x) "Kansellert"))
-   (("I en tabellrad" :layout :stack)
-    `(:p "Ordre 1042 · Rørlegger Hansen AS · 12 500 kr "
-         ,(badge (:variant :success) "Bekreftet"))))
+   ("Variants"
+    (badge () "New")
+    (badge (:variant :secondary) "Regular customer")
+    (badge (:variant :outline) "Draft")
+    (badge (:variant :success) "Paid")
+    (badge (:variant :warning) "Overdue")
+    (badge (:variant :info) "Under review")
+    (badge (:variant :destructive) "Rejected"))
+   ("An order's status"
+    (badge (:variant :outline :icon :file) "Draft")
+    (badge (:variant :info :icon :send) "Quote sent")
+    (badge (:variant :success :icon :check) "Confirmed")
+    (badge (:variant :warning :icon :clock) "Waiting for the customer")
+    (badge (:variant :secondary :icon :receipt) "Invoiced")
+    (badge (:variant :destructive :icon :x) "Cancelled"))
+   (("In a table row" :layout :stack)
+    `(:p "Order 1042 · Hansen Plumbing Ltd · €12,500 "
+         ,(badge (:variant :success) "Confirmed"))))
   `(:span ,(attrs (list :class "tun-badge" :id id :data-variant (option-string variant))
                   attributes)
           ,@(when icon (list (icon (:name icon))))
@@ -666,7 +668,7 @@ how many more there are."
          (shown (subseq people 0 (min max (length people))))
          (hidden (nthcdr max people))
          (more (when hidden
-                 (format nil "~d til: ~{~a~^, ~}" (length hidden)
+                 (tr "~d more: ~{~a~^, ~}" (length hidden)
                          (mapcar (lambda (person) (getf person :name)) hidden)))))
     `(:div ,(attrs (list :class "tun-avatar" :id id :data-group t :role "group"
                          :aria-label label)
@@ -681,11 +683,11 @@ how many more there are."
 
 (define-component avatar ((&key name src alt (size :default) group (max 4) label id
                                 attributes))
-  (:group "Handlinger")
-  (:doc "En person som initialer i en sirkel, eller bildet deres med SRC. ALT er det
-skjermlesere leser (navnet hvis ikke); sett ALT til \"\" når navnet står like ved. GROUP er
-en liste med navn eller (:name :src) som vises overlappende, MAX av gangen, med LABEL for
-hele gruppen.")
+  (:group "Actions")
+  (:doc "A person as initials in a circle, or their photo with SRC. ALT is what screen
+readers read (the name if not given); set ALT to \"\" when the name is right beside it. GROUP
+is a list of names or (:name :src) shown overlapping, MAX at a time, with LABEL for the whole
+group.")
   (:source "Basecoat avatar (Vega)")
   (:script "
 // A photo that does not load is hidden, so the initials under it show
@@ -779,27 +781,27 @@ tunOnContent((root) => {
   }
 }")
   (:examples
-   ("Initialer"
+   ("Initials"
     (avatar (:name "Kari Nordmann"))
     (avatar (:name "Anne-Lise Berg"))
     (avatar (:name "Øystein Ås"))
     (avatar (:name "Ola")))
-   ("Størrelser"
+   ("Sizes"
     (avatar (:name "Kari Nordmann" :size :sm))
     (avatar (:name "Kari Nordmann"))
     (avatar (:name "Kari Nordmann" :size :lg)))
-   ("Med bilde som ikke lastes: initialene vises"
-    (avatar (:name "Per Olsen" :src "/bilder/ansatte/per-olsen.jpg" :size :lg)))
-   (("Ved siden av navnet" :layout :stack)
+   ("With a photo that does not load: the initials show"
+    (avatar (:name "Per Olsen" :src "/images/staff/per-olsen.jpg" :size :lg)))
+   (("Beside the name" :layout :stack)
     `(:p ,(avatar (:name "Kari Nordmann" :alt "" :size :sm))
-         " Kari Nordmann tok oppdraget «Bytte av varmtvannsbereder»."))
-   ("Gruppe"
-    (avatar (:group '("Kari Nordmann" "Ola Hansen" "Per Olsen") :label "Montører på oppdraget"))
+         " Kari Nordmann took the job “Replace the water heater”."))
+   ("Group"
+    (avatar (:group '("Kari Nordmann" "Ola Hansen" "Per Olsen") :label "Fitters on the job"))
     (avatar (:group '("Kari Nordmann" "Ola Hansen" "Per Olsen" "Lise Berg" "Jon Dahl"
                       "Anne Moe")
-                    :max 3 :size :sm :label "Følger ordren"))
+                    :max 3 :size :sm :label "Following the order"))
     (avatar (:group '("Kari Nordmann" "Ola Hansen" "Per Olsen" "Lise Berg" "Jon Dahl")
-                    :max 3 :size :lg :label "Ansatte"))))
+                    :max 3 :size :lg :label "Staff"))))
   (check-type max (integer 1))
   (cond (group
          (when (or name src)

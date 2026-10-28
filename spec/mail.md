@@ -1,6 +1,8 @@
 # Mail
 
-Status: v1, 2026-10-15; HTML built from nodes (§2.1), core 1.22.0. How
+Status: v1, 2026-10-15; HTML built from nodes (§2.1), core 1.22.0; the
+frame's language, and Tun's own mail in the tenant's (`i18n.md` §8), core
+2.0.0. How
 an application sends email: a mail is written in the same transaction as
 the work that sends it, and delivered after that work commits, through the
 application's mail provider, with retries. Resend is the provider Tun
@@ -140,7 +142,8 @@ the tree, and a string is always escaped.
   escaped. Plain text belongs in `text`. Raw HTML is not accepted in any
   form.
 
-**The frame.** Every HTML part is a whole document: `<html lang="no">`,
+**The frame.** Every HTML part is a whole document: `<html lang="LANG">`
+with the current language's code (`i18n.md` §2.4),
 a head with `charset`, a `viewport` for phones and the subject as
 `title`, escaped as the tree's strings are (a subject
 `</title><img src=x onerror=…>` is text in the title, not markup), and a
@@ -248,7 +251,9 @@ A mail's text is shown only to admins.
 ## 6. Not yet
 
 - Several recipients, copies, attachments and templates. A client builds
-  its text and its node tree itself.
+  its text and its node tree itself, in the language it binds with
+  `with-language` (`i18n.md` §2.4); mail Tun sends itself is in the
+  tenant's language (`i18n.md` §8).
 - A frame of the client's own, such as its logo and colours, and a
   style sheet in the head for mail apps that read one.
 - Images attached to the mail (`cid:`) or as `data:` URLs.

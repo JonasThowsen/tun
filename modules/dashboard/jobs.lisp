@@ -1,4 +1,4 @@
-;;;; modules/dashboard/jobs.lisp -- «Jobber»: an application's background
+;;;; modules/dashboard/jobs.lisp -- "Jobs": an application's background
 ;;;; jobs and schedules (spec/jobs.md 9), as Hangfire's dashboard shows them.
 
 (in-package #:tun.dashboard)
@@ -6,29 +6,35 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (defparameter +states+
-  '(("queued" "Venter" :secondary)
-    ("running" "Kjører" :info)
-    ("retrying" "Prøver igjen" :warning)
-    ("failed" "Feilet" :destructive)
-    ("succeeded" "Fullført" :success)
-    ("cancelled" "Avbrutt" :outline))
-  "Each job state: its name, its label, and its badge.")
+  '(("queued" :secondary)
+    ("running" :info)
+    ("retrying" :warning)
+    ("failed" :destructive)
+    ("succeeded" :success)
+    ("cancelled" :outline))
+  "Each job state: its name and its badge.")
 
 ;;; ------------------------------------------------------------------
 ;;; Pieces
 
-(defun state-label (state) (or (second (assoc state +states+ :test #'string=)) state))
+(defun state-label (state)
+  "The label of the job state STATE in the current language: Queued, Venter."
+  (render-text (label "job" "state" state)))
 
 (defun state-badge (state)
-  (ui:badge (:variant (or (third (assoc state +states+ :test #'string=)) :secondary))
+  (ui:badge (:variant (or (second (assoc state +states+ :test #'string=)) :secondary))
     (state-label state)))
 
 (defun occurrence-text (key)
-  "An occurrence's key, a Norwegian wall-clock time such as 2026-03-01T10:00,
-written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
-  (if (and (stringp key) (= 16 (length key)))
-      (format nil "~a.~a.~a kl. ~a" (subseq key 8 10) (subseq key 5 7) (subseq key 0 4)
-              (subseq key 11 16))
+  "An occurrence's key, a wall-clock time in the tenant's zone such as
+2026-03-01T10:00, written as the page writes instants: 1 Mar 2026, 10:00;
+a dash for none.  A time the clock shows twice is the earlier instant."
+  (if (and (stringp key) (= 16 (length key)) (valid-date-string-p (subseq key 0 10)))
+      (multiple-value-bind (instant kind earlier)
+          (local-instant (subseq key 0 10) (parse-integer key :start 11 :end 13)
+                         (parse-integer key :start 14 :end 16))
+        (let ((at (or instant (and (eq kind :ambiguous) earlier))))
+          (if at (instant-text at) key)))
       "—"))
 
 (defun arguments-text (job)
@@ -41,101 +47,111 @@ written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
   "The time that matters in JOB's state: when it is due, started or finished."
   (let ((state (jget job "state")))
     (cond ((member state '("queued" "retrying") :test #'string=)
-           (format nil "forfaller ~a" (when-text (jget job "due_at"))))
-          ((string= state "running") (format nil "startet ~a" (when-text (jget job "started_at"))))
+           (tr "due ~a" (when-text (jget job "due_at"))))
+          ((string= state "running") (tr "started ~a" (when-text (jget job "started_at"))))
           (t (when-text (jget job "finished_at"))))))
 
 (defun dashboard-nav (current)
   "The links between the page's parts, CURRENT among them marked."
-  (tab-buttons current '((:overview "Oversikt" "/jobber")
-                         (:jobs "Jobber" "/jobber/liste")
-                         (:schedules "Tidsplaner" "/jobber/tidsplaner"))
+  (tab-buttons current (list (list :overview (tr "Overview") "/jobs")
+                             (list :jobs (tr "Jobs") "/jobs/list")
+                             (list :schedules (tr "Schedules") "/jobs/schedules"))
                :variant :outline))
 
-(defun jobs-table (jobs &key (empty "Ingen jobber."))
-  (ui:table (:columns '("Type" "Kø" "Tilstand" "Argumenter" "Forsøk" "Når" "Siste feil")
+(defun attempts-text (job)
+  (tr "~d of ~d" (jget job "attempts") (jget job "max_attempts")))
+
+(defun jobs-table (jobs &key (empty (tr "No jobs.")))
+  (ui:table (:columns (list (tr "Kind") (tr "Queue") (tr "State") (tr "Arguments") (tr "Attempts")
+                            (tr "When") (tr "Last error"))
                       :rows (mapcar (lambda (job)
                                       (list (jget job "kind") (jget job "queue")
                                             (state-badge (jget job "state")) (arguments-text job)
-                                            (format nil "~d av ~d" (jget job "attempts")
-                                                    (jget job "max_attempts"))
+                                            (attempts-text job)
                                             (job-time job)
                                             (let ((last (jget job "last_error")))
                                               (if (stringp last) (shortened last 80) "—"))))
                                     jobs)
-                      :row-href (mapcar (lambda (job) (format nil "/jobber/~a" (jget job "id"))) jobs)
+                      :row-href (mapcar (lambda (job) (format nil "/jobs/~a" (jget job "id"))) jobs)
                       :empty empty)))
 
 ;;; ------------------------------------------------------------------
-;;; Oversikt
+;;; The overview
 
 (defun overview-stats (summary)
   (let ((states (jget summary "states"))
         (last-day (jget summary "last_day")))
     (ui:grid (:min :xs)
-      (ui:stat (:label "Venter" :value (jget states "queued") :icon :clock))
-      (ui:stat (:label "Kjører" :value (jget states "running") :icon :loader-circle))
-      (ui:stat (:label "Prøver igjen" :value (jget states "retrying") :icon :circle-alert))
-      (ui:stat (:label "Feilet" :value (jget states "failed") :icon :circle-x))
-      (ui:stat (:label "Fullført siste døgn" :value (jget last-day "succeeded") :icon :circle-check))
-      (ui:stat (:label "Feilet siste døgn" :value (jget last-day "failed") :icon :ban)))))
+      (ui:stat (:label (state-label "queued") :value (jget states "queued") :icon :clock))
+      (ui:stat (:label (state-label "running") :value (jget states "running") :icon :loader-circle))
+      (ui:stat (:label (state-label "retrying") :value (jget states "retrying")
+                       :icon :circle-alert))
+      (ui:stat (:label (state-label "failed") :value (jget states "failed") :icon :circle-x))
+      (ui:stat (:label (tr "Succeeded in the last day") :value (jget last-day "succeeded")
+                       :icon :circle-check))
+      (ui:stat (:label (tr "Failed in the last day") :value (jget last-day "failed") :icon :ban)))))
 
 (defun queues-table (summary)
-  (ui:table (:columns '("Kø" "Grense" "Venter" "Senere" "Kjører" "Eldste ventende")
+  (ui:table (:columns (list (tr "Queue") (tr ("Limit" :context "queue")) (tr "Waiting")
+                            (tr "Later") (tr "Running") (tr "Oldest waiting"))
                       :rows (mapcar (lambda (queue)
                                       (list (jget queue "name") (jget queue "limit")
                                             (jget queue "waiting") (jget queue "later")
                                             (jget queue "running")
                                             (when-text (jget queue "oldest_waiting_at"))))
                                     (items-of summary "queues"))
-                      :empty "Ingen køer.")))
+                      :empty (tr "No queues."))))
 
 (defun processes-table (summary)
-  (ui:table (:columns '("Prosess" "Startet" "Lever" "Kjører nå")
+  (ui:table (:columns (list (tr "Process") (tr "Started") (tr "Alive") (tr "Running now"))
                       :rows (mapcar (lambda (process)
-                                      (list (format nil "~a~:[~; (denne)~]" (jget process "id")
-                                                    (eq t (jget process "own")))
+                                      (list (tr "~a~:[~; (this one)~]" (jget process "id")
+                                                (eq t (jget process "own")))
                                             (when-text (jget process "started_at"))
-                                            (if (eq t (jget process "alive"))
-                                                (ui:badge (:variant :success) "Ja")
-                                                (ui:badge (:variant :destructive) "Nei"))
+                                            (let ((alive (eq t (jget process "alive"))))
+                                              (ui:badge (:variant (if alive :success :destructive))
+                                                (yes-no-text alive)))
                                             (jget process "running")))
                                     (items-of summary "processes"))
-                      :empty "Ingen prosesser.")))
+                      :empty (tr "No processes."))))
 
 (defun overview-page ()
   (let ((summary (read-result "jobs_summary"))
         (failed (subseq-at-most (items-of (read-result "jobs_list" "state" "failed")) 5)))
-    (values 200 "Jobber"
+    (values 200 (tr "Jobs")
             (list (dashboard-nav :overview)
                   (overview-stats summary)
-                  (ui:section (:title "Køer" :description "Hvor mange jobber hver kø kjører samtidig, og hva som venter.")
+                  (ui:section (:title (tr "Queues")
+                                      :description (tr "How many jobs each queue runs at once, and what is waiting."))
                     (queues-table summary))
-                  (ui:section (:title "Prosesser" :description "Prosessene som kjører jobber. En prosess som ikke lever, har fått jobbene sine tatt over.")
+                  (ui:section (:title (tr "Processes")
+                                      :description (tr "The processes that run jobs. A process that is not alive has had its jobs taken over."))
                     (processes-table summary))
-                  (ui:section (:title "Siste feil")
-                    (jobs-table failed :empty "Ingen jobber har feilet.")))
-            (list :description "Bakgrunnsjobbene: hva som venter, kjører og feilet, og tidsplanene."))))
+                  (ui:section (:title (tr "Recent failures"))
+                    (jobs-table failed :empty (tr "No job has failed."))))
+            (list :description
+                  (tr "The background jobs: what is waiting, running and failed, and the schedules.")))))
 
 ;;; ------------------------------------------------------------------
-;;; Jobber, one state at a time
+;;; The jobs, one state at a time
 
 (defun state-tabs (current counts)
-  (tab-buttons current (loop for (state label) in +states+
-                             collect (list state (format nil "~a (~d)" label (jget counts state))
-                                           (format nil "/jobber/liste?tilstand=~a" state)))))
+  (tab-buttons current (loop for (state) in +states+
+                             collect (list state (format nil "~a (~d)" (state-label state)
+                                                         (jget counts state))
+                                           (format nil "/jobs/list?state=~a" state)))))
 
 (defun list-page (query)
-  (let* ((state (let ((asked (jget query "tilstand")))
+  (let* ((state (let ((asked (jget query "state")))
                   (if (assoc asked +states+ :test #'equal) asked "queued")))
          (counts (jget (read-result "jobs_summary") "states")))
-    (values 200 "Jobber"
+    (values 200 (tr "Jobs")
             (list (dashboard-nav :jobs)
                   (state-tabs state counts)
                   (jobs-table (items-of (read-result "jobs_list" "state" state))
-                              :empty (format nil "Ingen jobber som ~(~a~)." (state-label state))))
-            (list :description "De siste 100 jobbene i tilstanden, nyeste først."
-                  :breadcrumbs (list (list :label "Jobber" :href "/jobber")
+                              :empty (tr "No jobs that are ~(~a~)." (state-label state))))
+            (list :description (tr "The last 100 jobs in the state, newest first.")
+                  :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
                                      (list :label (state-label state)))))))
 
 ;;; ------------------------------------------------------------------
@@ -147,10 +163,10 @@ written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
    (map 'list (lambda (failure)
                 (list :time (when-text (jget failure "at"))
                       :datetime (jget failure "at")
-                      :actor (format nil "Forsøk ~d" (jget failure "attempt"))
-                      :text (format nil "~a~@[ (forespørsel ~a)~]" (jget failure "error")
-                                    (let ((request (jget failure "request_id")))
-                                      (and (stringp request) request)))
+                      :actor (tr "Attempt ~d" (jget failure "attempt"))
+                      :text (tr "~a~@[ (request ~a)~]" (jget failure "error")
+                                (let ((request (jget failure "request_id")))
+                                  (and (stringp request) request)))
                       :icon :circle-alert))
         (or (jget job "errors") #()))))
 
@@ -158,43 +174,43 @@ written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
   (let ((id (jget job "id"))
         (state (jget job "state")))
     (cond ((member state '("failed" "cancelled") :test #'string=)
-           (post-button (format nil "/jobber/~a/kjor-igjen" id) "Kjør på nytt" :variant :primary))
+           (post-button (format nil "/jobs/~a/retry" id) (tr "Run again") :variant :primary))
           ((member state '("queued" "retrying") :test #'string=)
-           (post-button (format nil "/jobber/~a/avbryt" id) "Avbryt")))))
+           (post-button (format nil "/jobs/~a/cancel" id) (tr "Cancel"))))))
 
 (defun job-page (id &key error)
   (let ((job (read-result "jobs_get" "id" id)))
     (values 200 (jget job "kind")
             (list (when error (tun.web:error-alert error))
                   (ui:summary-list
-                   (:rows (list (list "Tilstand" (state-badge (jget job "state")))
-                                (list "Kø" (jget job "queue"))
-                                (list "Forsøk" (format nil "~d av ~d" (jget job "attempts")
-                                                       (jget job "max_attempts")))
-                                (list "Lagt i kø" (format nil "~a av ~a" (when-text (jget job "enqueued_at"))
-                                                          (jget job "enqueued_by")))
-                                (list "Forfaller" (when-text (jget job "due_at")))
-                                (list "Startet" (when-text (jget job "started_at")))
-                                (list "Ferdig" (when-text (jget job "finished_at")))
-                                (list "Prosess" (let ((process (jget job "claimed_by")))
-                                                  (if (stringp process) process "—")))
-                                (list "Merknad" (let ((note (jget job "note")))
-                                                  (if (stringp note) note "—"))))))
-                  (ui:section (:title "Argumenter")
+                   (:rows (list (list (tr "State") (state-badge (jget job "state")))
+                                (list (tr "Queue") (jget job "queue"))
+                                (list (tr "Attempts") (attempts-text job))
+                                (list (tr "Enqueued")
+                                      (tr "~a by ~a" (when-text (jget job "enqueued_at"))
+                                          (jget job "enqueued_by")))
+                                (list (tr "Due at") (when-text (jget job "due_at")))
+                                (list (tr "Started") (when-text (jget job "started_at")))
+                                (list (tr "Finished") (when-text (jget job "finished_at")))
+                                (list (tr "Process") (let ((process (jget job "claimed_by")))
+                                                       (if (stringp process) process "—")))
+                                (list (tr "Note") (let ((note (jget job "note")))
+                                                    (if (stringp note) note "—"))))))
+                  (ui:section (:title (tr "Arguments"))
                     (ui:code-block (:wrap t) (to-json-string (jget job "arguments"))))
-                  (ui:section (:title "Forsøk som feilet")
+                  (ui:section (:title (tr "Failed attempts"))
                     (let ((entries (attempt-entries job)))
                       (if entries
                           (ui:timeline (:entries entries))
-                          (ui:empty-state (:icon :circle-check :title "Ingen feil")))))
+                          (ui:empty-state (:icon :circle-check :title (tr "No errors"))))))
                   (job-actions job))
-            (list :breadcrumbs (list (list :label "Jobber" :href "/jobber")
+            (list :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
                                      (list :label (state-label (jget job "state"))
-                                           :href (format nil "/jobber/liste?tilstand=~a" (jget job "state")))
+                                           :href (format nil "/jobs/list?state=~a" (jget job "state")))
                                      (list :label (jget job "id")))))))
 
 ;;; ------------------------------------------------------------------
-;;; Tidsplaner
+;;; Schedules
 
 (defun trigger-p (schedule)
   (equal "trigger" (jget schedule "kind")))
@@ -204,7 +220,7 @@ written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
   (if (trigger-p schedule)
       (ui:cluster ()
         (jget schedule "name")
-        (ui:badge (:variant :secondary) (format nil "utløser på ~a" (jget schedule "entity"))))
+        (ui:badge (:variant :secondary) (tr "trigger on ~a" (jget schedule "entity"))))
       (jget schedule "name")))
 
 (defun last-occurrence-text (schedule)
@@ -212,15 +228,16 @@ written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
   (let ((text (occurrence-text (jget schedule "last_occurrence")))
         (enqueued (jget schedule "last_enqueued")))
     (if (and (trigger-p schedule) (integerp enqueued))
-        (format nil "~a (~d ~:*~[jobber~;jobb~:;jobber~])" text enqueued)
+        (tr "~a (~d job~:p)" text enqueued)
         text)))
 
 (defun schedules-page (&key error)
   (let ((schedules (items-of (read-result "schedules_list"))))
-    (values 200 "Tidsplaner"
+    (values 200 (tr "Schedules")
             (list (dashboard-nav :schedules)
                   (when error (tun.web:error-alert error))
-                  (ui:table (:columns '("Tidsplan" "Når" "Cron" "Jobb" "Sist" "Neste" "")
+                  (ui:table (:columns (list (tr "Schedule") (tr "When") (tr "Cron") (tr "Job")
+                                            (tr "Last") (tr "Next") "")
                                       :rows (mapcar (lambda (schedule)
                                                       (list (schedule-name-cell schedule)
                                                             (jget schedule "description")
@@ -228,32 +245,32 @@ written as the page writes times: 01.03.2026 kl. 10:00; a dash for none."
                                                             (jget schedule "job")
                                                             (last-occurrence-text schedule)
                                                             (when-text (jget schedule "next_occurrence_at"))
-                                                            (post-button (format nil "/jobber/tidsplaner/~a/kjor"
+                                                            (post-button (format nil "/jobs/schedules/~a/run"
                                                                                  (jget schedule "name"))
-                                                                         "Kjør nå")))
+                                                                         (tr "Run now"))))
                                                     schedules)
-                                      :empty "Ingen tidsplaner.")))
-            (list :description "Jobbene som legges i køen etter klokken, i norsk tid, og utløserne, som legger en jobb i køen for hver post som oppfyller et vilkår."
-                  :breadcrumbs (list (list :label "Jobber" :href "/jobber")
-                                     (list :label "Tidsplaner"))))))
+                                      :empty (tr "No schedules."))))
+            (list :description (tr "The jobs queued by the clock, in local time, and the triggers, which queue a job for each record that meets a condition.")
+                  :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
+                                     (list :label (tr "Schedules")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The page
 
-(tun.web:define-page jobs-page ("jobber" :title "Jobber" :icon :layout-dashboard :policy :admin
+(tun.web:define-page jobs-page ("jobs" :title "Jobs" :icon :layout-dashboard :policy :admin
                                      :group :system)
     (method path form query)
   (destructuring-bind (&optional first second third &rest more) path
-    (cond (more (fail :not-found "Siden finnes ikke"))
+    (cond (more (fail :not-found "The page does not exist"))
           ((null first) (overview-page))
-          ((and (string= first "liste") (null second)) (list-page query))
-          ((and (string= first "tidsplaner") (null second)) (schedules-page))
-          ((and (string= first "tidsplaner") (equal third "kjor") (eq method :post))
-           (change "schedules_run" (jobj "name" second) "/jobber/liste?tilstand=queued"
+          ((and (string= first "list") (null second)) (list-page query))
+          ((and (string= first "schedules") (null second)) (schedules-page))
+          ((and (string= first "schedules") (equal third "run") (eq method :post))
+           (change "schedules_run" (jobj "name" second) "/jobs/list?state=queued"
                    (lambda (error) (schedules-page :error error))))
           ((and (null second) (eq method :get)) (job-page first))
-          ((and (member second '("kjor-igjen" "avbryt") :test #'equal) (null third) (eq method :post))
-           (change (if (string= second "avbryt") "jobs_cancel" "jobs_retry") (jobj "id" first)
-                   (format nil "/jobber/~a" first)
+          ((and (member second '("retry" "cancel") :test #'equal) (null third) (eq method :post))
+           (change (if (string= second "cancel") "jobs_cancel" "jobs_retry") (jobj "id" first)
+                   (format nil "/jobs/~a" first)
                    (lambda (error) (job-page first :error error))))
-          (t (fail :not-found "Siden finnes ikke")))))
+          (t (fail :not-found "The page does not exist")))))

@@ -10,4 +10,5 @@
                (:file "stock")
                (:file "consumption")
                (:file "forecast")
-               (:file "publish")))
+               (:file "publish")
+               (:file "nb")))

@@ -54,7 +54,10 @@ parameter is refused at start.
    as text.
 8. **Unique values.** A unique violation is the `conflict` error.
 9. **Migrations** are additive and derived from the entity classes, with the
-   same migration ids in `schema_history` (tun-platform.md §2.6). Postgres
+   same migration ids in `schema_history` (tun-platform.md §2.6). Core
+   2.0's one migration that is not additive, its rename of its own keys
+   and statuses, runs before them on every adapter, and is undone by
+   `--revert-to-core-1` (`i18n.md` §4.4, §4.6). Postgres
    column types are `BIGINT` for integers and booleans, `NUMERIC` for
    decimals and `TEXT` for the rest. `introspect_schema` reports each
    adapter's own type names.
@@ -101,7 +104,11 @@ Postgres database for a short time. That is safe:
   SQLite and the memory store have one process, so a lock this process
   does not hold is no one's.
 - Migrations are additive, so the older process keeps working on the newer
-  schema. The new process migrates under the write lock.
+  schema. The new process migrates under the write lock. The exception is
+  the first start of core 2.0 on a 1.x database: it renames what the older
+  process reads, so on Postgres it refuses while another process is
+  present (a row of `job_processes` whose `lock_key` another holds), and
+  the move to 2.0 is stop, then start (`i18n.md` §4.5).
 
 Not shared between the two processes: public page sessions (an offer
 unlocked in one must be unlocked again in the other) and the in-memory

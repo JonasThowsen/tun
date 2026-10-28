@@ -108,13 +108,13 @@ itself.  PARSE-REQUEST-JSON binds it for what a caller sent.")
 (define-condition json-too-many-values (json-parse-failure) ()
   (:documentation "JSON with more values than *MAX-JSON-VALUES*."))
 
-(defparameter +number-too-many-digits+ "Et tall kan ha høyst 19 sifre."
+(defparameter +number-too-many-digits+ "A number can have at most 19 digits."
   "What a caller is told of a number with more than +MOST-SIGNIFICANT-DIGITS+
 significant digits (core.md §7.5).")
 
 (defparameter +number-out-of-range+
-  (format nil "Et tall må være 0, eller mellom 2.2250738585072014e-308 og ~
-               1.7976931348623157e308, med eller uten minus.")
+  (format nil "A number must be 0, or between 2.2250738585072014e-308 and ~
+               1.7976931348623157e308, with or without a minus.")
   "What a caller is told of a number out of a double's normal range (core.md §7.5).")
 
 (define-condition json-number-out-of-range (json-parse-failure)
@@ -259,6 +259,9 @@ what Tun takes as input (*CALLER-NUMBERS*)."
                    ((null v) (write-string "false" stream))
                    ((json-null-p v) (write-string "null" stream))
                    ((stringp v) (write-json-string v stream))
+                   ;; A message kept as its text (core/i18n.lisp), written in
+                   ;; the current language.
+                   ((text-p v) (write-json-string (render-text v) stream))
                    ((integerp v) (format stream "~d" v))
                    ((rationalp v) (emit (float v 1d0)))
                    ((floatp v)

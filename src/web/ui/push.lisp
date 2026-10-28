@@ -4,21 +4,24 @@
 ;;;; The markup is a switch and a line of status, hidden until the script
 ;;;; knows what the device can do: push cannot work without JavaScript.
 ;;;; The script asks Tun's paths under /push/ and the browser's push
-;;;; manager; permission is asked only from the person's tap.
+;;;; manager; permission is asked only from the person's tap.  What the
+;;;; script says is in the markup, written in the page's language.
 
 (in-package #:tun.ui)
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-component push-switch ((&key (label "Varsler på denne enheten")
-                                     (description "Få varsel her når noe trenger deg.")
+(define-component push-switch ((&key (label (tr "Notifications on this device"))
+                                     (description
+                                      (tr "Get notified here when something needs you."))
                                      id attributes))
-  (:group "Skjema")
-  (:doc "Slår varsler på eller av for enheten personen bruker nå, med en linje under som sier
-hvordan det står til. Den vises først når skriptet vet hva enheten kan: på en iPhone i Safari
-står det at appen må legges på Hjem-skjermen, der varsler er blokkert, står det hvor de slås på.
-Spør om lov bare når personen slår bryteren på. Når varsler er på, kan personen sende et
-prøvevarsel til seg selv. Krever at klienten kan installeres som app, (:web-app ...).")
+  (:group "Forms")
+  (:doc "Turns notifications on or off for the device the person is using now, with a line
+under it that says how things stand. It shows only once the script knows what the device can
+do: on an iPhone in Safari it says the app must be added to the Home Screen, where
+notifications are blocked it says where to turn them on. It asks for permission only when
+the person turns the switch on. When notifications are on, the person can send a test
+notification to themselves. Needs a client that can be installed as an app, (:web-app ...).")
   (:source "Basecoat switch (Vega); asking for permission only from a user's tap, as WebKit and
 web.dev recommend for Web Push")
   (:css "
@@ -37,21 +40,8 @@ web.dev recommend for Web Push")
   & [data-tun-push-test] { justify-self: start; }
 }")
   (:script "
-// Notifications on this device (spec/push.md 2.1, 2.2).
-const pushText = {
-  on: 'Varsler er på for denne enheten.',
-  unavailable: 'Varsler er ikke tilgjengelige her.',
-  homeScreen: 'Varsler virker bare i appen. Legg den på Hjem-skjermen først: trykk Del, '
-    + 'så «Legg til på Hjem-skjerm», og åpne den derfra.',
-  oldIos: 'Denne enheten kan ikke vise varsler fra appen. Det krever iOS 16.4 eller nyere.',
-  unsupported: 'Denne nettleseren kan ikke vise varsler.',
-  blocked: 'Varsler er blokkert for denne appen. Slå dem på i innstillingene for nettleseren '
-    + 'eller telefonen, og last inn siden på nytt.',
-  failed: 'Kunne ikke slå på varsler. Prøv igjen.',
-  sent: (count) => `Prøvevarselet er sendt til ${count} ${count === 1 ? 'enhet' : 'enheter'}.`,
-  wait: 'Et prøvevarsel ble sendt for under ett minutt siden. Vent litt før du sender et nytt.',
-  notSent: 'Kunne ikke sende prøvevarselet. Prøv igjen.',
-};
+// Notifications on this device (spec/push.md 2.1, 2.2).  What the switch
+// says is in its data-tun-push-* attributes, in the page's language.
 
 // An iPhone or iPad: iPadOS presents itself as a Mac with a touch screen.
 const pushAppleTouch = () => /iPhone|iPad|iPod/.test(navigator.userAgent)
@@ -91,23 +81,24 @@ const setUpPushSwitch = async (root) => {
   const input = root.querySelector('.tun-switch-input');
   const status = root.querySelector('.tun-push-switch-status');
   const test = root.querySelector('[data-tun-push-test]');
+  const say = root.dataset;
   const show = (state, text) => {
     root.dataset.state = state;
     input.checked = state === 'on';
     input.disabled = !['on', 'off', 'failed'].includes(state);
-    status.textContent = text || (state === 'on' ? pushText.on : root.dataset.tunPushDescription);
+    status.textContent = text || (state === 'on' ? say.tunPushOn : say.tunPushDescription);
     test.hidden = state !== 'on';
     root.hidden = false;
   };
   // §2.2's order: no key, then no push, then blocked, then the switch.
   const answer = await fetch('/push/key', { credentials: 'same-origin' }).catch(() => null);
-  if (!answer || !answer.ok) return show('unavailable', pushText.unavailable);
+  if (!answer || !answer.ok) return show('unavailable', say.tunPushUnavailable);
   const key = pushKeyBytes((await answer.json()).key);
   if (!pushAvailable()) {
-    if (!pushAppleTouch()) return show('missing', pushText.unsupported);
-    return show('missing', pushHomeScreenApp() ? pushText.oldIos : pushText.homeScreen);
+    if (!pushAppleTouch()) return show('missing', say.tunPushUnsupported);
+    return show('missing', pushHomeScreenApp() ? say.tunPushOldIos : say.tunPushHomeScreen);
   }
-  if (Notification.permission === 'denied') return show('blocked', pushText.blocked);
+  if (Notification.permission === 'denied') return show('blocked', say.tunPushBlocked);
   const registration = await navigator.serviceWorker.ready;
   const subscription = await registration.pushManager.getSubscription();
   const on = subscription && pushSameKey(subscription, key)
@@ -118,7 +109,7 @@ const setUpPushSwitch = async (root) => {
     input.disabled = true;
     try {
       const permission = await asked;
-      if (permission === 'denied') return show('blocked', pushText.blocked);
+      if (permission === 'denied') return show('blocked', say.tunPushBlocked);
       if (permission !== 'granted') return show('off');
       // One the tenant does not have, or made with an older key, is replaced.
       const old = await registration.pushManager.getSubscription();
@@ -130,7 +121,7 @@ const setUpPushSwitch = async (root) => {
                      { endpoint: made.endpoint, p256dh: made.keys.p256dh, auth: made.keys.auth });
       show('on');
     } catch (error) {
-      show('failed', pushText.failed);
+      show('failed', say.tunPushFailed);
     }
   };
   const turnOff = async () => {
@@ -152,9 +143,11 @@ const setUpPushSwitch = async (root) => {
   });
   test.addEventListener('click', async () => {
     try {
-      status.textContent = pushText.sent((await pushPost('/push/test')).devices);
+      const count = (await pushPost('/push/test')).devices;
+      status.textContent = tunText(count === 1 ? say.tunPushSentOne : say.tunPushSentOther,
+                                   { count });
     } catch (error) {
-      status.textContent = error.status === 409 ? pushText.wait : pushText.notSent;
+      status.textContent = error.status === 409 ? say.tunPushWait : say.tunPushNotSent;
     }
   });
 };
@@ -191,15 +184,16 @@ window.addEventListener('submit', (event) => {
     .then(() => form.requestSubmit());
 }, true);")
   (:examples
-   (("For denne enheten" :layout :stack)
+   (("For this device" :layout :stack)
     (push-switch ()))
-   (("Med egen tekst" :layout :stack)
-    (push-switch (:label "Varsle meg om nye saker"
-                         :description "Du får varsel når en sak blir gitt til deg."))))
+   (("With its own text" :layout :stack)
+    (push-switch (:label "Notify me of new items"
+                         :description "You are notified when an item is given to you."))))
   (let* ((id (or id (element-id "tun-push")))
          (status-id (format nil "~a-status" id)))
     `(:div ,(attrs (list :class "tun-push-switch" :id id :hidden t :data-tun-push t
                          :data-tun-push-description description)
+                   (push-switch-texts)
                    attributes)
            ,(switch (:label label :id (format nil "~a-input" id)
                             :disabled t
@@ -208,4 +202,23 @@ window.addEventListener('submit', (event) => {
                ,description)
            ,(button (:variant :outline :size :sm :icon :bell
                               :attributes (list :data-tun-push-test t :hidden t))
-              "Send et prøvevarsel"))))
+              (tr "Send a test notification")))))
+
+(defun push-switch-texts ()
+  "What the push switch's script says, as its data-tun-push-* attributes: a
+plist for ATTRS, in the current language; {count} is the script's to fill."
+  (list :data-tun-push-on (tr "Notifications are on for this device.")
+        :data-tun-push-unavailable (tr "Notifications are not available here.")
+        :data-tun-push-home-screen
+        (tr "Notifications work only in the app. Add it to your Home Screen first: tap Share, then “Add to Home Screen”, and open it from there.")
+        :data-tun-push-old-ios
+        (tr "This device cannot show notifications from the app. That needs iOS 16.4 or later.")
+        :data-tun-push-unsupported (tr "This browser cannot show notifications.")
+        :data-tun-push-blocked
+        (tr "Notifications are blocked for this app. Turn them on in the settings of your browser or phone, and reload the page.")
+        :data-tun-push-failed (tr "Could not turn on notifications. Try again.")
+        :data-tun-push-sent-one (tr "The test notification was sent to {count} device.")
+        :data-tun-push-sent-other (tr "The test notification was sent to {count} devices.")
+        :data-tun-push-wait
+        (tr "A test notification was sent less than a minute ago. Wait a little before you send another.")
+        :data-tun-push-not-sent (tr "Could not send the test notification. Try again.")))

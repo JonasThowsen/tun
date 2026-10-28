@@ -14,7 +14,7 @@
       (multiple-value-bind (customer create-id)
           (recorded-review-call "customers_create" "employee:e" "name" name "email" email "phone" phone "request_key" "private-create")
         (multiple-value-bind (form form-id)
-            (recorded-review-call "henvendelser_create" "viewer:v" "name" name "email" email
+            (recorded-review-call "inquiries_create" "viewer:v" "name" name "email" email
                                  "message" (format nil "~a ~a ~a" name email phone) "marketing_consent" t "request_key" "private-form")
           (declare (ignore form))
           (multiple-value-bind (other other-id)
@@ -39,7 +39,7 @@
               (is (equal (jget customer "id") (jget replay "id")))
               (dolist (needle (list name email phone)) (is (not (search needle (to-json-string (trace-of replay-id)))))))
             (multiple-value-bind (replay replay-id)
-                (recorded-review-call "henvendelser_create" "viewer:v" "name" name "email" email
+                (recorded-review-call "inquiries_create" "viewer:v" "name" name "email" email
                                      "message" (format nil "~a ~a ~a" name email phone) "marketing_consent" t
                                      "request_key" "private-form")
               (declare (ignore replay))
@@ -70,8 +70,8 @@
 
 (test s3r4-44-erasure-redacts-only-linked-notifications-and-their-receipts
   (with-communication-templates
-    (tun.core::register-message-template "neste_år" 'unit-note :source :client :manual t
-      :subject "Next year" :text "Hello {{kunde.navn}}")
+    (tun.core::register-message-template "next_year" 'unit-note :source :client :manual t
+      :subject "Next year" :text "Hello {{customer.name}}")
     (with-test-app ()
       (make-employee "Ada" :role "admin")
       (let* ((customer (make-customer "Notice Person"))
@@ -79,20 +79,20 @@
              (order (jget (new-order customer "lines" (lines (make-product) 1)) "id")))
         (call-ok "messaging_provider_set" "admin:a" "mode" "reject")
         (dolist (binding (list (list "customer_id" customer) (list "order_id" order)))
-          (let* ((template (if (equal "customer_id" (first binding)) "neste_år" "unit_note"))
+          (let* ((template (if (equal "customer_id" (first binding)) "next_year" "unit_note"))
                  (preview (apply #'call-ok "messages_preview" "employee:e" "template" template binding)))
             (apply #'call-ok "messages_send" "employee:e" "template" template
                    "snapshot_hash" (jget preview "snapshot_hash") binding)))
         (with-application (*app*) (with-transaction (:write)
           ;; Older/customer-specific reply notifications can contain the customer's name.
-          (tun.notifications:publish-notification "kundesvar_mottatt" "legacy-reply"
-            "Notice Person har svart." (format nil "/orders/~a" order) "henvendelse" "hen_old"
+          (tun.notifications:publish-notification "customer_reply_received" "legacy-reply"
+            "Notice Person har svart." (format nil "/orders/~a" order) "inquiry" "hen_old"
             :order-id order :recipients '("admin:ada"))
-          (tun.notifications:publish-notification "leveranse_feilet" "unrelated-failure"
+          (tun.notifications:publish-notification "delivery_failed" "unrelated-failure"
             "Notice Person is unrelated here." (format nil "/customers/~a" other) "message" "msg_other"
             :recipients '("admin:ada"))))
         (let* ((before (jget (call-ok "notifications_list" "admin:ada") "items"))
-               (reply (find-by "type" "kundesvar_mottatt" before)))
+               (reply (find-by "type" "customer_reply_received" before)))
           (is (= 4 (length before)))
           (call-ok "notifications_mark_read" "admin:ada" "id" (jget reply "id") "request_key" "read-before-erasure")
           (two-step "orders_cancel" "employee:e" "id" order)

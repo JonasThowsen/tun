@@ -1,7 +1,8 @@
 # Files attached to records
 
 Status: v1, built 2026-10-26, core 1.20.0; `attachments-of` and files in a
-dialog, core 1.21.0; the viewer centred, core 1.21.1. How a record carries files,
+dialog, core 1.21.0; the viewer centred, core 1.21.1; its copy in the
+page's language (`i18n.md`), core 2.0.0. How a record carries files,
 such as a screenshot on a reported issue: which records may, which files
 are taken and what is stripped from them, how a person attaches them in
 a form (choosing, dragging, pasting), how an agent attaches them through
@@ -128,7 +129,7 @@ separators U+2028 and U+2029. When the name does not
 end in an extension of the file's type (`.png`; `.jpg` or `.jpeg`;
 `.webp`; `.gif`; `.pdf`, in any case), that extension is added:
 «skjermbilde» is stored as `skjermbilde.png`, and a PDF named `faktura.png`
-as `faktura.png.pdf`. An empty name becomes `fil` and the extension.
+as `faktura.png.pdf`. An empty name becomes `file` and the extension.
 Last, a name longer than 200 characters, the added extension included,
 is cut to 200 by shortening what comes before its extension.
 
@@ -415,7 +416,7 @@ together, in one post.
 - **Deleting.** `delete-entity` of a record whose entity takes files
   deletes its attachments, and their bytes, in the same transaction.
   `attachments_remove` deletes one. A core schedule, `attachments_sweep`,
-  each night at 03:30 Norwegian time, deletes the attachments whose record
+  each night at 03:30 in the tenant's time zone, deletes the attachments whose record
   no longer exists, as `system:job`, so a record deleted another way (by
   hand, in SQL) does not leave files behind. It leaves the attachments of
   an entity the running code does not know alone: after a rollback of the

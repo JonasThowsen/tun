@@ -57,6 +57,7 @@ the same repository and ref, in the module's directory."
     ("NAME.asd.template" "{{name}}.asd")
     ("package.lisp" "package.lisp")
     ("application.lisp" "application.lisp")
+    ("nb.lisp" "nb.lisp")
     ("tests/package.lisp" "tests/package.lisp")
     ("tests/scenarios.lisp" "tests/scenarios.lisp")
     ("tests/tests.lisp" "tests/tests.lisp")

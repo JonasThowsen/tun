@@ -1,6 +1,6 @@
-"""A page that remembers its query: the project tab chosen on /saker is
+"""A page that remembers its query: the project tab chosen on /items is
 there again after another page, through the menu's boosted link, in the
-address, and on another browser of the same account; «Alle» clears it
+address, and on another browser of the same account; «All» clears it
 (spec/ui.md 8)."""
 
 import re
@@ -15,38 +15,38 @@ def menu(page, name):
 def run(t):
     page = t.desktop()
     page.sign_in("employee:anna")
-    page.goto("/saker")
-    page.get_by_role("link", name="Nettside", exact=True).click()
-    page.wait_for_url(re.compile(r"/saker\?p=1$"))
+    page.goto("/items")
+    page.get_by_role("link", name="Website", exact=True).click()
+    page.wait_for_url(re.compile(r"/items\?p=1$"))
 
-    menu(page, "Tilgang")
+    menu(page, "Access")
     page.wait_for_url(re.compile(r"/access"))
-    menu(page, "Saker")
-    page.wait_for_url(re.compile(r"/saker\?p=1$"))
-    t.check(page.url.endswith("/saker?p=1"), f"the menu's «Saker» lands on the kept tab: {page.url}")
-    t.check(page.evaluate(CURRENT) == "Nettside", "and shows it chosen")
+    menu(page, "Items")
+    page.wait_for_url(re.compile(r"/items\?p=1$"))
+    t.check(page.url.endswith("/items?p=1"), f"the menu's «Items» lands on the kept tab: {page.url}")
+    t.check(page.evaluate(CURRENT) == "Website", "and shows it chosen")
     page.go_back()
     page.wait_for_url(re.compile(r"/access"))
     t.check("/access" in page.url, f"Back returns to the page before: {page.url}")
 
     other = t.desktop()
     other.sign_in("employee:anna")
-    other.goto("/saker")
-    other.wait_for_url(re.compile(r"/saker\?p=1$"))
-    t.check(other.url.endswith("/saker?p=1"), "another browser of the same account has it too")
+    other.goto("/items")
+    other.wait_for_url(re.compile(r"/items\?p=1$"))
+    t.check(other.url.endswith("/items?p=1"), "another browser of the same account has it too")
 
     stranger = t.desktop()
     stranger.sign_in("employee:bo")
-    stranger.goto("/saker")
-    t.check(stranger.url.endswith("/saker"), f"another account does not: {stranger.url}")
+    stranger.goto("/items")
+    t.check(stranger.url.endswith("/items"), f"another account does not: {stranger.url}")
 
-    page.goto("/saker?p=1")
-    page.get_by_role("link", name="Alle", exact=True).click()
-    page.wait_for_url(re.compile(r"/saker\?p=$"))
-    menu(page, "Tilgang")
+    page.goto("/items?p=1")
+    page.get_by_role("link", name="All", exact=True).click()
+    page.wait_for_url(re.compile(r"/items\?p=$"))
+    menu(page, "Access")
     page.wait_for_url(re.compile(r"/access"))
-    menu(page, "Saker")
-    page.wait_for_url(re.compile(r"/saker"))
+    menu(page, "Items")
+    page.wait_for_url(re.compile(r"/items"))
     page.wait_for_load_state()
-    t.check(page.url.endswith("/saker"), f"«Alle» is kept as cleared: {page.url}")
-    t.check(page.evaluate(CURRENT) == "Alle", "and «Alle» is chosen")
+    t.check(page.url.endswith("/items"), f"«All» is kept as cleared: {page.url}")
+    t.check(page.evaluate(CURRENT) == "All", "and «All» is chosen")

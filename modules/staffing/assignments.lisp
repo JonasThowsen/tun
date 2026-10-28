@@ -6,8 +6,6 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +stop-timer-message+ "Stopp aktiv timer før tildelingen avsluttes")
-
 (defun active-assignments (&key order-id employee-id)
   (let ((where (remove nil (list (and order-id `(:= "order_id" ,order-id))
                                  (and employee-id `(:= "employee_id" ,employee-id))
@@ -24,7 +22,7 @@
 (defun end-assignment (assignment)
   "End ASSIGNMENT now; refused (conflict) while a work session on it runs."
   (when (running-sessions :assignment-id (entity-id assignment))
-    (fail :conflict "~a" +stop-timer-message+))
+    (fail :conflict "Stop the running timer before the assignment ends"))
   (setf (assignment-ended-at assignment) (now))
   (save assignment))
 
@@ -34,7 +32,7 @@
         for employee = (fetch 'employee (assignment-employee-id a))
         when employee collect (employee-name employee)))
 
-(define-computed-field order assignments (order) (:type json :label "Tildelt")
+(define-computed-field order assignments (order) (:type json :label "Assigned")
   (jarr (loop for a in (and (entity-id order) (active-assignments :order-id (entity-id order)))
               for employee = (fetch 'employee (assignment-employee-id a))
               collect (jobj "id" (entity-id a) "employee_id" (assignment-employee-id a)
@@ -86,7 +84,7 @@ insertion order is the deterministic order README §5.2 asks for)."
   (declare (ignore tool))
   (call-next-method)
   (when (running-sessions :order-id (entity-id order))
-    (fail :conflict "Stopp aktive timer før ordren avsluttes")))
+    (fail :conflict "Stop the running timers before the order is closed")))
 
 (defun reconcile-employee (employee)
   "After an employee's settings change: end their automatic assignments that
@@ -98,15 +96,17 @@ no longer fit, everywhere (locked orders too).  Never assigns retroactively."
           (end-assignment a)
           (when order (touch-order order)))))))
 
-(define-operation employees-update ((id :type (id employee) :required t :label "Ansatt-ID")
+(define-operation employees-update ((id :type (id employee) :required t :label "Employee ID")
                                     (:field employee name)
                                     (:field employee actor)
                                     (:field employee role)
                                     (:field employee department)
                                     (:field employee auto-assign-in-department)
                                     (:field employee active))
-    (:entity employee :kind :update :policy :admin :title "Endre ansatt"
-     :description "Endrer en ansatt. Endret rolle, avdeling, automatisk tildeling eller aktiv-status avslutter de automatiske tildelingene som ikke lenger passer (aldri manuelle, og aldri nye tildelinger bakover i tid).")
+    (:entity employee :kind :update :policy :admin :title "Change an employee"
+             :description "Changes an employee. A changed role, department, automatic assignment or
+active status ends the automatic assignments that no longer fit (never manual ones, and never new
+assignments back in time).")
   (let* ((employee (fetch! 'employee id))
          (before (list (employee-role employee) (employee-department employee)
                        (employee-auto-assign-in-department employee) (employee-active employee))))
@@ -122,7 +122,7 @@ no longer fit, everywhere (locked orders too).  Never assigns retroactively."
     (check-employee employee)
     (let ((other (select-one 'employee :where `(:= "actor" ,(employee-actor employee)))))
       (when (and other (string/= (entity-id other) id))
-        (fail :conflict "Aktøren ~a er allerede knyttet til en ansatt" (employee-actor employee))))
+        (fail :conflict "The actor ~a already belongs to an employee" (employee-actor employee))))
     (save employee)
     (unless (equal before (list (employee-role employee) (employee-department employee)
                                 (employee-auto-assign-in-department employee) (employee-active employee)))
@@ -132,32 +132,38 @@ no longer fit, everywhere (locked orders too).  Never assigns retroactively."
 ;;; ------------------------------------------------------------------
 ;;; Manual assignments, conflicts and overrides (README §3, §4)
 
-(define-operation assignments-create ((order-id :type (id order) :required t :label "Ordre-ID")
-                                      (employee-id :type (id employee) :required t :label "Ansatt-ID")
-                                      (override-reason :type (string :max 10000) :label "Begrunnelse for overstyring"
-                                                       :description "Påkrevd når den ansatte er utilgjengelig i ordreperioden (1–500 tegn)."))
-    (:entity assignment :kind :create :policy :admin :title "Tildel ansatt"
-     :description "Tildeler en ansatt til en ordre. Er den ansatte utilgjengelig i ordreperioden (hele dager), kreves en begrunnelse, og overstyringen lagres sammen med tildelingen.")
+(define-operation assignments-create
+    ((order-id :type (id order) :required t :label "Order ID")
+     (employee-id :type (id employee) :required t :label "Employee ID")
+     (override-reason
+      :type (string :max 10000) :label "Reason for the override"
+      :description "Needed if the employee is unavailable during the order (1–500 characters)."))
+    (:entity assignment :kind :create :policy :admin :title "Assign an employee"
+             :description "Assigns an employee to an order. When the employee is unavailable in the
+order's period (whole days), a reason is required, and the override is stored with the
+assignment.")
   (let ((order (find-order order-id))
         (employee (fetch! 'employee employee-id)))
-    (when (member (order-status order) '("avbrutt" "fullført") :test #'string=)
-      (fail :invalid-transition "Ordren har status ~a; ingen kan tildeles" (order-status order)))
+    (when (member (order-status order) '("cancelled" "completed") :test #'string=)
+      (fail :invalid-transition "The order is ~a; no one can be assigned"
+            (label "order" "status" (order-status order))))
     (check-order-not-locked order)
     (unless (employee-active employee)
-      (fail :invalid-input "Den ansatte er ikke aktiv"))
+      (fail :invalid-input "The employee is not active"))
     (when (active-assignments :order-id order-id :employee-id employee-id)
-      (fail :conflict "Den ansatte er allerede tildelt ordren"))
+      (fail :conflict "The employee is already assigned to the order"))
     (let ((refusal (assignment-eligibility *application* order employee)))
       (when refusal (fail :invalid-input "~a" refusal)))
     (let* ((conflicts (employee-unavailable-p employee-id (order-interval order)))
            (reason (and override-reason (trim override-reason))))
       (when conflicts
         (unless (eq :admin (actor-role *actor*))
-          (reject :forbidden "Den ansatte er utilgjengelig i ordreperioden og kan ikke tildeles"))
+          (reject :forbidden
+                  "The employee is unavailable in the order's period and cannot be assigned"))
         (when (blank-p reason)
-          (fail :invalid-input "Begrunnelse er påkrevd ved overstyring av utilgjengelighet"))
+          (fail :invalid-input "A reason is required to override unavailability"))
         (when (> (length reason) 500)
-          (fail :invalid-input "Begrunnelsen kan ikke være lengre enn 500 tegn")))
+          (fail :invalid-input "The reason cannot be longer than 500 characters")))
       (let ((assignment (store-assignment (make-instance 'assignment :order-id order-id :employee-id employee-id
                                                            :auto nil :started-at (now)))))
         (when conflicts
@@ -170,25 +176,28 @@ no longer fit, everywhere (locked orders too).  Never assigns retroactively."
         (touch-order order)
         assignment))))
 
-(define-operation assignments-end ((id :type (id assignment) :required t :label "Tildelings-ID"))
-    (:entity assignment :kind :transition :policy :admin :title "Avslutt tildeling"
-     :description "Avslutter en tildeling (den beholdes, med sine arbeidsøkter). Ikke mens en timer på den går.")
+(define-operation assignments-end ((id :type (id assignment) :required t :label "Assignment ID"))
+    (:entity assignment :kind :transition :policy :admin :title "End an assignment"
+             :description "Ends an assignment (it is kept, with its work sessions). Not while a
+timer on it runs.")
   (let* ((assignment (fetch! 'assignment id))
          (order (find-order (assignment-order-id assignment))))
     (check-order-not-locked order)
     (when (assignment-ended-at assignment)
-      (fail :invalid-transition "Tildelingen er allerede avsluttet"))
+      (fail :invalid-transition "The assignment has already ended"))
     (end-assignment assignment)
     (touch-order order)
     assignment))
 
-(define-operation assignments-list ((order-id :type (id order) :label "Ordre-ID")
-                                    (employee-id :type (id employee) :label "Ansatt-ID")
-                                    (mine :type boolean :label "Mine" :description "Bare tildelinger til din ansattpost.")
-                                    (active :type boolean :default t :label "Aktive"
-                                            :description "true (standard): bare aktive; false: bare avsluttede."))
-    (:entity assignment :kind :read :title "Tildelinger"
-     :description "Tildelinger, filtrert på ordre, ansatt, dine egne (mine) og aktive.")
+(define-operation assignments-list
+    ((order-id :type (id order) :label "Order ID")
+     (employee-id :type (id employee) :label "Employee ID")
+     (mine :type boolean :label "Mine"
+           :description "Only the assignments of your own employee record.")
+     (active :type boolean :default t :label "Active ones"
+             :description "true (the default): only active ones; false: only ended ones."))
+    (:entity assignment :kind :read :title "Assignments"
+             :description "Assignments, filtered on order, employee, your own (mine) and active.")
   (let ((me (and mine (actor-employee))))
     (if (and mine (null me))
         (jobj "items" (jarr '()))
@@ -198,9 +207,11 @@ no longer fit, everywhere (locked orders too).  Never assigns retroactively."
                                        (if active '(:null "ended_at") '(:not-null "ended_at"))))))
           (jobj "items" (jarr (mapcar #'entity->json (select 'assignment :where `(:and ,@where)))))))))
 
-(define-operation assignment-overrides-list ((order-id :type (id order) :required t :label "Ordre-ID"))
-    (:entity assignment-override :kind :read :policy :admin :title "Overstyringer"
-     :description "Overstyringer av utilgjengelighet på en ordre (bare tillegg; aldri endret).")
+(define-operation assignment-overrides-list ((order-id :type (id order) :required t
+                                                       :label "Order ID"))
+    (:entity assignment-override :kind :read :policy :admin :title "Overrides"
+             :description "The overrides of unavailability on an order (only added; never
+changed).")
   (find-order order-id)
   (jobj "items" (jarr (mapcar #'entity->json (select 'assignment-override :where `(:= "order_id" ,order-id))))))
 
@@ -215,55 +226,64 @@ no longer fit, everywhere (locked orders too).  Never assigns retroactively."
                  (string= (assignment-order-id assignment) order-id)
                  (string= (assignment-employee-id assignment) (entity-id me))
                  (or (not active) (null (assignment-ended-at assignment))))
-      (reject :forbidden "Tildelingen ~a er ikke din aktive tildeling på ordre ~a" assignment-id order-id))
+      (reject :forbidden "The assignment ~a is not your active assignment on order ~a"
+              assignment-id order-id))
     (values assignment me)))
 
-(define-operation work-sessions-start ((order-id :type (id order) :required t :label "Ordre-ID")
-                                       (assignment-id :type (id assignment) :required t :label "Tildelings-ID")
-                                       (note :type (string :max 1000) :label "Merknad"))
-    (:entity work-session :kind :create :title "Start timer"
-     :description "Starter en arbeidsøkt på din aktive tildeling. Ordren må være aktiv i kalenderen; du kan ha én timer om gangen.")
+(define-operation work-sessions-start ((order-id :type (id order) :required t :label "Order ID")
+                                       (assignment-id :type (id assignment) :required t
+                                                      :label "Assignment ID")
+                                       (note :type (string :max 1000) :label "Note"))
+    (:entity work-session :kind :create :title "Start a timer"
+             :description "Starts a work session on your active assignment. The order must be active
+in the calendar; you can have one timer at a time.")
   (let ((order (find-order order-id)))
     (multiple-value-bind (assignment me) (own-assignment order-id assignment-id :active t)
       (unless (member (order-status order) +calendar-active-statuses+ :test #'string=)
-        (fail :invalid-transition "Ordren har status ~a; timer kan ikke startes" (order-status order)))
+        (fail :invalid-transition "The order is ~a; a timer cannot be started"
+              (label "order" "status" (order-status order))))
       (when (running-sessions :employee-id (entity-id me))
-        (fail :conflict "Du har allerede en aktiv timer"))
+        (fail :conflict "You already have a running timer"))
       (insert (make-instance 'work-session :order-id order-id :assignment-id (entity-id assignment)
                                            :employee-id (entity-id me) :started-at (now) :note note
                                            :source "live")))))
 
 (define-operation work-sessions-stop ()
-    (:entity work-session :kind :transition :title "Stopp timer"
-     :description "Stopper din løpende arbeidsøkt (alltid tillatt). Varighet minst ett sekund.")
+    (:entity work-session :kind :transition :title "Stop the timer"
+             :description "Stops your running work session (always allowed). It lasts at least a
+second.")
   (let* ((me (actor-employee))
          (session (and me (first (running-sessions :employee-id (entity-id me))))))
-    (unless session (fail :not-found "Du har ingen aktiv timer"))
+    (unless session (fail :not-found "You have no running timer"))
     (setf (work-session-ended-at session) (now)
           (work-session-duration-seconds session) (max 1 (- (now) (work-session-started-at session))))
     (save session)))
 
-(define-operation work-sessions-create-manual ((order-id :type (id order) :required t :label "Ordre-ID")
-                                               (assignment-id :type (id assignment) :required t :label "Tildelings-ID")
+(define-operation work-sessions-create-manual ((order-id :type (id order) :required t
+                                                         :label "Order ID")
+                                               (assignment-id :type (id assignment) :required t
+                                                              :label "Assignment ID")
                                                (started-at :type timestamp :required t :label "Start")
-                                               (ended-at :type timestamp :required t :label "Slutt")
-                                               (note :type (string :max 1000) :label "Merknad"))
-    (:entity work-session :kind :create :title "Registrer arbeidsøkt"
-     :description "Registrerer en arbeidsøkt i etterkant på din tildeling. Varighet minst ett minutt.")
+                                               (ended-at :type timestamp :required t :label "End")
+                                               (note :type (string :max 1000) :label "Note"))
+    (:entity work-session :kind :create :title "Record a work session"
+             :description "Records a work session afterwards on your assignment. It lasts at least a
+minute.")
   (find-order order-id)
   (multiple-value-bind (assignment me) (own-assignment order-id assignment-id)
     (unless (> ended-at started-at)
-      (fail :invalid-input "Sluttid må være etter starttid"))
+      (fail :invalid-input "The end time must be after the start time"))
     (insert (make-instance 'work-session :order-id order-id :assignment-id (entity-id assignment)
                                          :employee-id (entity-id me) :started-at started-at :ended-at ended-at
                                          :duration-seconds (max 60 (- ended-at started-at)) :note note
                                          :source "manual"))))
 
-(define-operation work-sessions-list ((order-id :type (id order) :label "Ordre-ID")
+(define-operation work-sessions-list ((order-id :type (id order) :label "Order ID")
                                       (mine :type boolean :label "Mine")
-                                      (from :type date :label "Fra dato") (to :type date :label "Til dato"))
-    (:entity work-session :kind :read :title "Arbeidsøkter"
-     :description "Arbeidsøkter, filtrert på ordre, dine egne (mine) og periode (startdato, norsk tid).")
+                                      (from :type date :label "From date") (to :type date :label "To date"))
+    (:entity work-session :kind :read :title "Work sessions"
+             :description "Work sessions, filtered on order, your own (mine) and period (the start
+date, in the tenant's time zone).")
   (let ((me (and mine (actor-employee))))
     (if (and mine (null me))
         (jobj "items" (jarr '()))

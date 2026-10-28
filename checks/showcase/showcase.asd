@@ -12,7 +12,8 @@
                (:file "pages")
                (:file "notifications")
                (:file "mail")
-               (:file "application")))
+               (:file "application")
+               (:file "nb")))
 
 (defsystem "showcase/tests"
   :description "The showcase's scenarios."

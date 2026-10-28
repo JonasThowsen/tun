@@ -19,24 +19,24 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(define-entity push-subscription (:label "Varselabonnement" :id-prefix "psh"
+(define-entity push-subscription (:label "Push subscription" :id-prefix "psh"
                                          :table "push_subscriptions" :internal t
                                          :unique (("endpoint")) :indexes (("account") ("session")))
-  ((account :type (string :min 1 :max 64) :required t :input nil :label "Konto"
+  ((account :type (string :min 1 :max 64) :required t :input nil :label "Account"
             :description "The name of the account, the actor's name, whose notifications it gets.")
-   (endpoint :type (string :min 1 :max 1000) :required t :input nil :label "Adresse"
+   (endpoint :type (string :min 1 :max 1000) :required t :input nil :label "Address"
              :description "The push service's URL for the browser, rebuilt from its parts.")
-   (p256dh :type (string :min 1 :max 100) :required t :input nil :label "Nettleserens nøkkel")
+   (p256dh :type (string :min 1 :max 100) :required t :input nil :label "The browser's key")
    (auth :type (string :min 1 :max 40) :required t :input nil :secret t
-         :label "Nettleserens hemmelighet")
-   (server-key :type (string :min 1 :max 100) :required t :input nil :label "Tuns nøkkel"
+         :label "The browser's secret")
+   (server-key :type (string :min 1 :max 100) :required t :input nil :label "Tun's key"
                :description "Tun's public key when it was made; another key cannot reach it.")
-   (session :type (string :max 64) :input nil :label "Økt"
+   (session :type (string :max 64) :input nil :label "Session"
             :description "The session it was made or last checked in: logging out of
 that session deletes it.")
-   (device :type (string :max 80) :input nil :label "Enhet")
-   (created-at :type timestamp :input nil :label "Opprettet")
-   (tested-at :type timestamp :input nil :label "Prøvevarsel sendt")))
+   (device :type (string :max 80) :input nil :label "Device")
+   (created-at :type timestamp :input nil :label "Created")
+   (tested-at :type timestamp :input nil :label "Test notification sent")))
 
 ;;; ------------------------------------------------------------------
 ;;; Push services' addresses (spec/push.md 3)
@@ -80,8 +80,8 @@ host connected to."
 ;;; The device's name, from its user agent
 
 (defun device-name (user-agent)
-  "A short Norwegian name for the device USER-AGENT describes, such as
-\"iPhone\" or \"Chrome på Mac\", or NIL without one."
+  "A short name for the device USER-AGENT describes, in the current language,
+such as \"iPhone\" or \"Chrome on Mac\", or NIL without one."
   (when (stringp user-agent)
     (flet ((has (text) (search text user-agent)))
       (let ((platform (cond ((has "iPhone") "iPhone")
@@ -95,7 +95,7 @@ host connected to."
                            ((has "Chrome/") "Chrome")
                            ((has "Safari/") "Safari"))))
         (cond ((member platform '("iPhone" "iPad") :test #'equal) platform)
-              ((and browser platform) (format nil "~a på ~a" browser platform))
+              ((and browser platform) (tr "~a on ~a" browser platform))
               (t (or platform browser)))))))
 
 ;;; ------------------------------------------------------------------
@@ -133,7 +133,7 @@ with an input error for NAME."
                    (error () nil))))
     (if (and decoded (= (length decoded) octets))
         decoded
-        (input-error name "er ikke en nøkkel fra nettleseren"))))
+        (input-error name "is not a key from the browser"))))
 
 (defun drop-oldest-subscriptions (name)
   "Delete NAME's oldest subscriptions beyond +MOST-SUBSCRIPTIONS+."
@@ -181,10 +181,10 @@ character is neither / nor \\, which a browser reads as another host."
   "True when VALUE is NIL (and not REQUIRED) or a text of MIN to MAX
 characters; else NIL, with an input error for NAME."
   (cond ((null value)
-         (or (not required) (input-error name "må fylles ut")))
-        ((not (stringp value)) (input-error name "må være en tekst"))
-        ((< (length value) min) (input-error name "må fylles ut"))
-        ((> (length value) max) (input-error name "kan ha høyst ~d tegn" max))
+         (or (not required) (input-error name "must be filled in")))
+        ((not (stringp value)) (input-error name "must be text"))
+        ((< (length value) min) (input-error name "must be filled in"))
+        ((> (length value) max) (input-error name "can have at most ~d characters" max))
         (t t)))
 
 (defun check-notification (title body url tag)
@@ -196,11 +196,11 @@ spec/push.md 4 says, the whole of it within one record."
    (check-text "tag" tag :max 64)
    (when (check-text "url" url :required t :min 1 :max 1000)
      (unless (local-path-p url)
-       (input-error "url" "må være en sti på denne serveren, som /saker/12")))
+       (input-error "url" "must be a path on this server, such as /cases/12")))
    (when (null *input-errors*)
      (let ((size (length (notification-octets title body url tag))))
        (when (> size +most-notification-octets+)
-         (input-error "body" "varselet er ~d byte; det kan være høyst ~d"
+         (input-error "body" "the notification is ~d bytes; it can be at most ~d"
                       size +most-notification-octets+))))))
 
 (defun account-disabled-p (name)
@@ -319,11 +319,11 @@ notification whose seventh attempt fails is failed for good.")
 subscription SUBSCRIPTION-ID (spec/push.md 5)."
   (let ((subscription (with-transaction (:read) (fetch 'push-subscription subscription-id))))
     (unless subscription
-      (cancel-job "Abonnementet finnes ikke lenger"))
+      (cancel-job (tr "The subscription no longer exists")))
     (let ((endpoint (push-service-endpoint (push-subscription-endpoint subscription))))
       (unless endpoint
         (delete-subscription subscription-id)
-        (cancel-job "Adressen er ikke hos en push-tjeneste"))
+        (cancel-job (tr "The address is not at a push service")))
       (multiple-value-bind (status answer)
           (deliver-push (application-push-service *application*) endpoint
                         (with-transaction (:read) (push-headers endpoint))
@@ -334,40 +334,40 @@ subscription SUBSCRIPTION-ID (spec/push.md 5)."
           (:sent nil)
           (:gone
            (delete-subscription subscription-id)
-           (cancel-job "Enheten tar ikke lenger imot varsler"))
+           (cancel-job (tr "The device no longer takes notifications")))
           (:retry
            (error 'push-not-delivered
                   :reason (if status
-                              (format nil "~a svarte ~d: ~a" (endpoint-origin endpoint) status
+                              (format nil "~a answered ~d: ~a" (endpoint-origin endpoint) status
                                       (answer-excerpt answer))
                               (format nil "~a: ~a" (endpoint-origin endpoint) answer))))
           (:failed
-           (fail-job (format nil "~a svarte ~d: ~a" (endpoint-origin endpoint) status
+           (fail-job (format nil "~a answered ~d: ~a" (endpoint-origin endpoint) status
                              (answer-excerpt answer)))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Tools (spec/push.md 8)
 
 (define-operation push-subscribe ((endpoint :type (string :max 2000) :required t
-                                            :label "Adresse")
+                                            :label "Address")
                                   (p256dh :type (string :max 200) :required t
-                                          :label "Nettleserens nøkkel")
+                                          :label "The browser's key")
                                   (auth :type (string :max 100) :required t :secret t
-                                        :label "Nettleserens hemmelighet")
-                                  (device :type (string :max 80) :label "Enhet"))
+                                        :label "The browser's secret")
+                                  (device :type (string :max 80) :label "Device"))
     (:entity push-subscription :kind :update :policy :viewer :viewer-mutation t
-             :title "Slå på varsler"
-             :description "Lagrer abonnementet til denne enheten, så den får varslene dine.")
+             :title "Turn on notifications"
+             :description "Stores this device's subscription, so it gets your notifications.")
   (unless (push-available-p)
-    (fail :invalid-input "Varsler krever at klienten kan installeres som app"))
+    (fail :invalid-input "Notifications need the client to be installable as an app"))
   (let* ((name (actor-name *actor*))
          (fields (collecting-input-errors
                   (list (or (push-service-endpoint endpoint)
-                            (input-error "endpoint" "er ikke en adresse hos en push-tjeneste"))
+                            (input-error "endpoint" "is not an address at a push service"))
                         (let ((key (browser-key "p256dh" p256dh 65)))
                           (if (or (null key) (p256-point-p key))
                               key
-                              (input-error "p256dh" "er ikke en nøkkel fra nettleseren")))
+                              (input-error "p256dh" "is not a key from the browser")))
                         (browser-key "auth" auth 16))))
          (endpoint (first fields))
          (stored (select-one 'push-subscription :where `(:= "endpoint" ,endpoint)))
@@ -388,21 +388,22 @@ subscription SUBSCRIPTION-ID (spec/push.md 5)."
     (jobj "on" t "id" (entity-id subscription))))
 
 (define-operation push-unsubscribe ((endpoint :type (string :max 2000) :required t
-                                              :label "Adresse"))
+                                              :label "Address"))
     (:entity push-subscription :kind :update :policy :viewer :viewer-mutation t
-             :title "Slå av varsler"
-             :description "Sletter abonnementet til denne enheten, så den ikke får flere varsler.")
+             :title "Turn off notifications"
+             :description "Deletes this device's subscription, so it gets no more notifications.")
   (let ((subscription (find-own-subscription endpoint)))
     (unless subscription
-      (fail :not-found "Denne enheten har ikke varsler på"))
+      (fail :not-found "This device does not have notifications on"))
     (delete-entity subscription)
     (jobj "on" nil)))
 
 (define-operation push-check ((endpoint :type (string :max 2000) :required t
-                                        :label "Adresse"))
+                                        :label "Address"))
     (:entity push-subscription :kind :update :policy :viewer :viewer-mutation t
-             :title "Har denne enheten varsler på"
-             :description "Sier om enheten får varslene dine, og knytter den til økten du er i.")
+             :title "Does this device have notifications on"
+             :description "Says whether the device gets your notifications, and ties it to the
+session you are in.")
   (let ((subscription (find-own-subscription endpoint)))
     (if (and subscription
              (equal (push-subscription-server-key subscription) (vapid-public-key-text)))
@@ -414,8 +415,8 @@ subscription SUBSCRIPTION-ID (spec/push.md 5)."
         (jobj "on" nil))))
 
 (define-operation push-devices ()
-    (:entity push-subscription :kind :read :policy :viewer :title "Enheter med varsler"
-             :description "Enhetene dine som får varsler, uten adresser og nøkler.")
+    (:entity push-subscription :kind :read :policy :viewer :title "Devices with notifications"
+             :description "Your devices that get notifications, without addresses and keys.")
   (jobj "items"
         (jarr (mapcar (lambda (subscription)
                         (jobj "id" (entity-id subscription)
@@ -429,20 +430,20 @@ subscription SUBSCRIPTION-ID (spec/push.md 5)."
 
 (define-operation push-test ()
     (:entity push-subscription :kind :update :policy :viewer :viewer-mutation t
-             :title "Send et prøvevarsel"
-             :description "Sender et varsel til enhetene dine, så du ser at det virker. Høyst
-én gang i minuttet.")
+             :title "Send a test notification"
+             :description "Sends a notification to your devices, so you see that it works. At
+most once a minute. The notification is in the tenant's language.")
   (let* ((name (actor-name *actor*))
          (subscriptions (subscriptions-of name)))
     (when (some (lambda (subscription)
                   (let ((at (push-subscription-tested-at subscription)))
                     (and at (< (- (now) at) +push-test-interval+))))
                 subscriptions)
-      (fail :conflict "Et prøvevarsel ble sendt for under ett minutt siden"))
+      (fail :conflict "A test notification was sent less than a minute ago"))
     (dolist (subscription subscriptions)
       (setf (push-subscription-tested-at subscription) (now))
       (save subscription))
-    (jobj "devices" (notify-push name :title "Varsler er på"
-                                 :body (format nil "Slik ser et varsel fra ~a ut."
-                                               (application-title *application*))
+    (jobj "devices" (notify-push name :title (tr "Notifications are on")
+                                 :body (tr "This is what a notification from ~a looks like."
+                                           (application-title *application*))
                                  :url "/"))))

@@ -50,7 +50,9 @@ acceptance checks verify it from the outside.
 6. **Migrations**: ordered, idempotent, namespaced per module
    (`<module>_<nnnn>_<name>`), run at start in dependency order, recorded per
    module. A migration one step back must be safe to run the previous revision
-   against (rollback rule, §4).
+   against (rollback rule, §4). They are additive. Core 2.0 renamed the
+   modules' Norwegian identifiers outright, without migrating their data,
+   and refuses a 1.x database that holds any (`i18n.md` §4.2, §4.3).
 7. **Hooks and rules across modules**: run in a deterministic order:
    dependency order of the modules, then the client, last. The order is
    reported by `explain` and `introspect_extensions`.

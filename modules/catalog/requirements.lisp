@@ -15,34 +15,36 @@
 ;;; ------------------------------------------------------------------
 ;;; Entities
 
-(define-entity recipe-item (:embedded t :json-name "recipe_item" :label "Oppskriftslinje")
+(define-entity recipe-item (:embedded t :json-name "recipe_item" :label "Recipe line")
   ((id :type id :label "ID")
-   (article-id :type id :label "Lagerartikkel")
-   (quantity :type (decimal :scale 3) :label "Mengde per bruk")
-   (position :type integer :label "Plass")))
+   (article-id :type id :label "Stock article")
+   (quantity :type (decimal :scale 3) :label "Quantity per use")
+   (position :type integer :label "Place")))
 
-(define-entity recipe (:label "Oppskrift" :id-prefix "opp" :table "recipes")
-  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
-   (name :type (string :min 1 :max 120) :input nil :label "Navn")
-   (description :type (string :max 2000) :input nil :label "Beskrivelse")
-   (active :type boolean :input nil :initform t :label "Aktiv")
-   (lines :type (list-of recipe-item :max-items 100) :input nil :initform '() :label "Linjer")))
+(define-entity recipe (:label "Recipe" :id-prefix "opp" :table "recipes")
+  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
+   (name :type (string :min 1 :max 120) :input nil :label "Name")
+   (description :type (string :max 2000) :input nil :label "Description")
+   (active :type boolean :input nil :initform t :label "Active")
+   (lines :type (list-of recipe-item :max-items 100) :input nil :initform '() :label "Lines")))
 
-(define-entity choice-group (:json-name "choice_group" :label "Valggruppe" :id-prefix "vgr" :table "choice_groups")
-  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revisjon")
-   (name :type (string :min 1 :max 120) :input nil :label "Navn")
-   (active :type boolean :input nil :initform t :label "Aktiv")
-   (members :type (list-of id :max-items 100) :input nil :initform '() :label "Oppskrifter")))
+(define-entity choice-group (:json-name "choice_group" :label "Choice group" :id-prefix "vgr"
+                             :table "choice_groups")
+  ((revision :type (integer :min 1) :input nil :initform 1 :label "Revision")
+   (name :type (string :min 1 :max 120) :input nil :label "Name")
+   (active :type boolean :input nil :initform t :label "Active")
+   (members :type (list-of id :max-items 100) :input nil :initform '() :label "Recipes")))
 
-(define-entity catalog-change (:json-name "catalog_change" :label "Katalogendring" :id-prefix "kat"
+(define-entity catalog-change (:json-name "catalog_change" :label "Catalog change" :id-prefix "kat"
                                :table "catalog_changes")
-  ((resource-type :type (enum "requirement" "recipe" "choice_group") :input nil :label "Ressurs")
-   (resource-id :type id :input nil :label "Ressurs-ID")
-   (operation :type (enum "created" "updated" "deleted") :input nil :label "Operasjon")
-   (changed-fields :type (list-of (string :max 60)) :input nil :initform '() :label "Endrede felt")
-   (at :type timestamp :input nil :label "Tidspunkt")
-   (by :type (string :max 200) :input nil :label "Utført av")
-   (product-id :type id :input nil :label "Produkt"
+  ((resource-type :type (enum "requirement" "recipe" "choice_group") :input nil :label "Resource")
+   (resource-id :type id :input nil :label "Resource ID")
+   (operation :type (enum "created" "updated" "deleted") :input nil :label "Operation")
+   (changed-fields :type (list-of (string :max 60)) :input nil :initform '()
+                   :label "Changed fields")
+   (at :type timestamp :input nil :label "Time")
+   (by :type (string :max 200) :input nil :label "Done by")
+   (product-id :type id :input nil :label "Product"
                :description "For a requirement: the product that carries it (catalog impact reaches its orders).")))
 
 (defvar *record-catalog-changes* t
@@ -67,48 +69,51 @@ not a change anyone made, so nothing is recorded and no plan is touched.")
   "Largest requirement or recipe quantity (README §5).")
 
 (defun quantity-value (value message &key (positive t) (max +max-declared-quantity+))
-  "VALUE (JSON) as a rational quantity; invalid_input with MESSAGE when it is
-missing, not a number, negative or (POSITIVE) zero, and when above MAX."
+  "VALUE (JSON) as a rational quantity; invalid_input with MESSAGE, a TEXT
+(DEFERRED-TR), when it is missing, not a number, negative or (POSITIVE)
+zero, and when above MAX."
   (when (or (null value) (json-null-p value) (eq value t) (not (realp value)))
     (fail :invalid-input "~a" message))
   (when (and (floatp value) (> (abs value) (* 10 max)))
-    (fail :invalid-input "Mengden kan være høyst ~d" max))
+    (fail :invalid-input "The quantity can be at most ~d" max))
   (let ((q (json-number->rational value)))
     (unless (integerp (* q 1000))
-      (fail :invalid-input "Mengder kan ha høyst tre desimaler"))
+      (fail :invalid-input "Quantities can have at most three decimals"))
     (when (or (minusp q) (and positive (zerop q)))
       (fail :invalid-input "~a" message))
     (when (> q max)
-      (fail :invalid-input "Mengden kan være høyst ~d" max))
+      (fail :invalid-input "The quantity can be at most ~d" max))
     q))
 
 ;;; ------------------------------------------------------------------
 ;;; Recipes and choice groups
 
 (defun find-recipe (id)
-  (or (and (stringp id) (fetch 'recipe id)) (fail :not-found "Fant ingen oppskrift med id ~a" id)))
+  (or (and (stringp id) (fetch 'recipe id)) (fail :not-found "Found no recipe with the id ~a" id)))
 
 (defun find-choice-group (id)
-  (or (and (stringp id) (fetch 'choice-group id)) (fail :not-found "Fant ingen valggruppe med id ~a" id)))
+  (or (and (stringp id) (fetch 'choice-group id)) (fail :not-found "Found no choice group with the id ~a" id)))
 
 (defun check-article (id)
   (unless (and (stringp id) (catalog-article *application* id))
-    (fail :not-found "Fant ingen lagerartikkel med id ~a" id)))
+    (fail :not-found "Found no stock article with the id ~a" id)))
 
 (defun recipe-items (lines previous)
   "Recipe lines from the JSON LINES ([{id?, article_id, quantity}]), keeping
 the ids of PREVIOUS lines they name."
-  (unless (json-array-p lines) (fail :invalid-input "Linjene må være en liste"))
+  (unless (json-array-p lines) (fail :invalid-input "The lines must be a list"))
   (loop for line across lines
         for position from 0
         collect (progn
-                  (unless (hash-table-p line) (fail :invalid-input "En oppskriftslinje må være et objekt"))
+                  (unless (hash-table-p line) (fail :invalid-input "A recipe line must be an object"))
                   (let ((id (jget line "id")) (article-id (jget line "article_id")))
                     (check-article article-id)
                     (when (and (stringp id) (not (find id previous :key #'recipe-item-id :test #'equal)))
-                      (fail :invalid-input "Ukjent oppskriftslinje ~a" id))
+                      (fail :invalid-input "Unknown recipe line ~a" id))
                     (make-instance 'recipe-item :id (if (stringp id) id (new-id "rln")) :article-id article-id
-                                                :quantity (quantity-value (jget line "quantity") "Mengden må være større enn 0")
+                                                :quantity (quantity-value
+                                                           (jget line "quantity")
+                                                           (deferred-tr "The quantity must be more than 0"))
                                                 :position position)))))
 
 (defun recipe-items-json (items)
@@ -142,10 +147,10 @@ the ids of PREVIOUS lines they name."
     recipe))
 
 (defun group-members (members)
-  (unless (json-array-p members) (fail :invalid-input "Medlemmene må være en liste av oppskrift-id-er"))
+  (unless (json-array-p members) (fail :invalid-input "The members must be a list of recipe ids"))
   (let ((list (coerce members 'list)))
     (unless (= (length list) (length (remove-duplicates list :test #'equal)))
-      (fail :invalid-input "En oppskrift kan bare stå én gang i en valggruppe"))
+      (fail :invalid-input "A recipe can be in a choice group only once"))
     (mapc #'find-recipe list)
     list))
 
@@ -175,16 +180,17 @@ the ids of PREVIOUS lines they name."
 
 (defun checked-requirement (json position)
   "A requirement declaration from JSON, checked in the order of README §7.2."
-  (unless (hash-table-p json) (fail :invalid-input "Et krav må være et objekt"))
+  (unless (hash-table-p json) (fail :invalid-input "A requirement must be an object"))
   (dolist (key (jkeys json))
     (unless (member key '("id" "name" "target" "quantity" "basis" "picks" "rounding" "position") :test #'string=)
-      (fail :invalid-input "Kravet har ikke feltet ~a" key)))
+      (fail :invalid-input "The requirement has no field ~a" key)))
   (flet ((value (key) (let ((v (jget json key))) (if (json-null-p v) nil v))))
     (let ((target (or (value "target") (jobj))))
-      (unless (hash-table-p target) (fail :invalid-input "Kravets mål må være et objekt med kind og id"))
+      (unless (hash-table-p target) (fail :invalid-input "The requirement's target must be an object with kind and id"))
       (when (or (null (value "quantity")) (null (value "basis")))
-        (fail :invalid-input "Fyll inn mengde og hva kravet beregnes fra"))
-      (let ((quantity (quantity-value (value "quantity") "Fyll inn mengde og hva kravet beregnes fra"))
+        (fail :invalid-input "Fill in the quantity and what the requirement is calculated from"))
+      (let ((quantity (quantity-value (value "quantity")
+                                      (deferred-tr "Fill in the quantity and what the requirement is calculated from")))
             (basis (value "basis"))
             (kind (jget target "kind"))
             (id (jget target "id"))
@@ -192,27 +198,29 @@ the ids of PREVIOUS lines they name."
             (rounding (or (value "rounding") "exact"))
             (name (value "name")))
         (unless (member basis +bases+ :test #'equal)
-          (fail :invalid-input "Ukjent beregningsgrunnlag ~a; bruk ~{~a~^, ~}" basis +bases+))
+          (fail :invalid-input "Unknown basis ~a; use ~{~a~^, ~}" basis +bases+))
         (unless (member kind '("article" "recipe" "choice_group") :test #'equal)
-          (fail :invalid-input "Kravet må gjelde en lagerartikkel, en oppskrift eller en valggruppe"))
+          (fail :invalid-input "The requirement must be for a stock article, a recipe or a choice group"))
         (unless (and (stringp id) (plusp (length id)))
-          (fail :invalid-input "~a" (cond ((string= kind "article") "Velg en lagerartikkel for dette kravet")
-                                          ((string= kind "recipe") "Velg en oppskrift for dette kravet")
-                                          (t "Velg en oppskriftgruppe for dette kravet"))))
+          (cond ((string= kind "article")
+                 (fail :invalid-input "Choose a stock article for this requirement"))
+                ((string= kind "recipe")
+                 (fail :invalid-input "Choose a recipe for this requirement"))
+                (t (fail :invalid-input "Choose a choice group for this requirement"))))
         (cond ((string= kind "article") (check-article id))
               ((string= kind "recipe") (find-recipe id))
               (t (find-choice-group id)))
         (cond ((string= kind "choice_group")
                (unless (and (integerp picks) (>= picks 1))
-                 (fail :invalid-input "Antall valg må være minst 1"))
+                 (fail :invalid-input "The number of choices must be at least 1"))
                (unless (string= basis "per_serving")
-                 (fail :invalid-input "Valggruppe-krav må beregnes per porsjon")))
+                 (fail :invalid-input "A choice group requirement must be calculated per serving")))
               (picks
-               (fail :invalid-input "Antall valg er kun tillatt for valggruppe-krav")))
+               (fail :invalid-input "A number of choices is allowed only on a choice group requirement")))
         (unless (member rounding '("exact" "ceil_per_100") :test #'equal)
-          (fail :invalid-input "Avrundingen må være exact eller ceil_per_100"))
+          (fail :invalid-input "The rounding must be exact or ceil_per_100"))
         (unless (or (null name) (and (stringp name) (<= (length name) 120)))
-          (fail :invalid-input "Navnet kan være høyst 120 tegn"))
+          (fail :invalid-input "The name can be at most 120 characters"))
         (make-instance 'product-requirement :id (value "id")
                                             :name (and name (not (blank-p name)) (trim name))
                                             :target (jobj "kind" kind "id" id) :quantity quantity :basis basis
@@ -240,13 +248,13 @@ still resolved, consumed and forecast)."
         (id (requirement-target-id requirement)))
     (cond ((string= kind "article")
            (unless (nth-value 2 (catalog-article *application* id))
-             (fail :invalid-input "Lagerartikkelen er arkivert")))
+             (fail :invalid-input "The stock article is archived")))
           ((string= kind "recipe")
            (unless (recipe-active (find-recipe id))
-             (fail :invalid-input "Oppskriften er arkivert")))
+             (fail :invalid-input "The recipe is archived")))
           (t
            (unless (choice-group-active (find-choice-group id))
-             (fail :invalid-input "Valggruppen er arkivert"))))))
+             (fail :invalid-input "The choice group is archived"))))))
 
 (defun set-product-requirements (product requirements)
   "Replace PRODUCT's requirements by REQUIREMENTS (checked declarations, ids
@@ -261,7 +269,7 @@ catalog change.  Saves PRODUCT."
                (record-catalog-change "requirement" (product-requirement-id r) "created" '() (entity-id product)))
               (t
                (let ((previous (find id old :key #'product-requirement-id :test #'equal)))
-                 (unless previous (fail :invalid-input "Ukjent krav ~a for dette produktet" id))
+                 (unless previous (fail :invalid-input "Unknown requirement ~a for this product" id))
                  (setf old (remove previous old))
                  (let ((changed (requirement-changes previous r)))
                    (when (member "target" changed :test #'string=)
@@ -420,55 +428,58 @@ servings divisible by picks.  Missing choices count as zero picks."
     (when (hash-table-p choices)
       (dolist (key (jkeys choices))
         (unless (find key groups :key #'product-requirement-id :test #'equal)
-          (fail :invalid-input "Valget ~a hører ikke til et valggruppe-krav på produktet" key))))
+          (fail :invalid-input "The choice ~a does not belong to a choice group requirement of the product"
+                key))))
     (when groups
       (unless (eql quantity 1)
-        (fail :invalid-input "Ordrelinjer med valggruppekrav må ha antall 1. Legg til én linje per enhet."))
+        (fail :invalid-input "An order line with a choice group requirement must have quantity 1. Add one line per unit."))
       (dolist (r groups)
-        (let ((name (or (product-requirement-name r) "Valggruppe-krav"))
+        (let ((name (or (product-requirement-name r) (deferred-tr "Choice group requirement")))
               (picks (coerce (or (jget choices (product-requirement-id r)) #()) 'list))
               (k (product-requirement-picks r))
               (group (fetch 'choice-group (requirement-target-id r))))
           (unless (= (length picks) k)
-            (fail :invalid-input "~a krever ~d valg (~d valgt)" name k (length picks)))
+            (fail :invalid-input "~a needs ~d choices (~d chosen)" name k (length picks)))
           (unless (zerop (mod (or servings 0) k))
-            (fail :invalid-input "Porsjoner må deles likt på ~d valg" k))
+            (fail :invalid-input "The servings must be shared evenly between ~d choices" k))
           (unless (every (lambda (id)
                            (let ((recipe (fetch 'recipe id)))
                              (and recipe (recipe-active recipe) group (choice-group-active group)
                                   (member id (choice-group-members group) :test #'equal))))
                          picks)
-            (fail :invalid-input "~a inneholder ugyldige valg" name)))))))
+            (fail :invalid-input "~a holds choices that are not valid" name)))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Operations
 
-(define-operation products-set-requirements ((product-id :type (id product) :schema-required t :label "Produkt-ID")
-                                             (service-id :type (id product) :label "Tjeneste-ID"
-                                                         :description "I stedet for product_id, for en tjeneste.")
+(define-operation products-set-requirements ((product-id :type (id product) :schema-required t
+                                                         :label "Product ID")
+                                             (service-id :type (id product) :label "Service ID"
+                                                         :description "Instead of product_id, for a service.")
                                              (requirements :type (list-of json :max-items 50) :required t
-                                                           :label "Krav"
-                                                           :description "[{id?, name?, target:{kind,id}, quantity, basis, picks?, rounding?}]; erstatter listen."))
-    (:entity product :kind :update :policy :admin :title "Sett krav"
-     :description "Erstatter produktets (eller tjenestens) krav: lagerartikkel, oppskrift eller valggruppe, beregnet per linje, antall, porsjon eller dag. Hvert krav som opprettes, endres eller slettes er en katalogendring.")
+                                                           :label "Requirements"
+                                                           :description "[{id?, name?, target:{kind,id}, quantity, basis, picks?, rounding?}]; replaces the list."))
+    (:entity product :kind :update :policy :admin :title "Set requirements"
+     :description "Replaces the product's (or the service's) requirements: a stock article, a recipe or a choice group, calculated per line, quantity, serving or day. Each requirement created, changed or deleted is a catalog change.")
   (let ((product (find-product (or product-id service-id
-                                   (fail :invalid-input "Mangler påkrevd felt: input.product_id")))))
+                                   (fail :invalid-input "Missing required field: input.product_id")))))
     (set-product-requirements product (loop for r in requirements for i from 0 collect (checked-requirement r i)))))
 
-(define-operation recipes-create ((name :type (string :max 120) :required t :label "Navn")
-                                  (description :type (string :max 2000) :label "Beskrivelse")
-                                  (lines :type json :label "Linjer" :description "[{article_id, quantity}]"))
-    (:entity recipe :kind :create :policy :admin :title "Opprett oppskrift"
-     :description "En oppskrift: lagerartikler og mengde per bruk. En katalogendring.")
+(define-operation recipes-create ((name :type (string :max 120) :required t :label "Name")
+                                  (description :type (string :max 2000) :label "Description")
+                                  (lines :type json :label "Lines" :description "[{article_id, quantity}]"))
+    (:entity recipe :kind :create :policy :admin :title "Create recipe"
+     :description "A recipe: stock articles and the quantity of each per use. A catalog change.")
   (new-recipe name description (or lines (jarr '()))))
 
-(define-operation recipes-update ((id :type (id recipe) :required t :label "Oppskrift-ID")
-                                  (name :type (string :max 120) :label "Navn")
-                                  (description :type (string :max 2000) :label "Beskrivelse")
-                                  (lines :type json :label "Linjer" :description "[{id?, article_id, quantity}]")
-                                  (active :type boolean :label "Aktiv"))
-    (:entity recipe :kind :update :policy :admin :title "Endre oppskrift"
-     :description "Endrer navn, beskrivelse, linjer eller aktiv; en endring er en katalogendring.")
+(define-operation recipes-update ((id :type (id recipe) :required t :label "Recipe ID")
+                                  (name :type (string :max 120) :label "Name")
+                                  (description :type (string :max 2000) :label "Description")
+                                  (lines :type json :label "Lines"
+                                         :description "[{id?, article_id, quantity}]")
+                                  (active :type boolean :label "Active"))
+    (:entity recipe :kind :update :policy :admin :title "Change recipe"
+     :description "Changes the name, description, lines or active; a change is a catalog change.")
   (let ((recipe (find-recipe id)))
     (apply #'update-recipe recipe
            (append (and (input-provided-p :name) (list :name name))
@@ -476,60 +487,67 @@ servings divisible by picks.  Missing choices count as zero picks."
                    (and (input-provided-p :lines) (list :lines lines))
                    (and (input-provided-p :active) (list :active active))))))
 
-(define-operation recipes-get ((id :type (id recipe) :required t :label "Oppskrift-ID"))
-    (:entity recipe :kind :read :title "Hent oppskrift" :description "Én oppskrift.")
+(define-operation recipes-get ((id :type (id recipe) :required t :label "Recipe ID"))
+    (:entity recipe :kind :read :title "Get recipe" :description "One recipe.")
   (find-recipe id))
 
-(define-operation recipes-list ((query :type (string :max 120) :label "Søk i navn")
-                                (active :type boolean :label "Aktiv")
-                                (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity recipe :kind :read :title "Oppskrifter" :description "Oppskrifter, eldste først.")
+(define-operation recipes-list ((query :type (string :max 120) :label "Search in names")
+                                (active :type boolean :label "Active")
+                                (limit :type (integer :min 1 :max 100) :default 20 :label "Most results"))
+    (:entity recipe :kind :read :title "Recipes" :description "Recipes, oldest first.")
   (let ((rows (remove-if-not (lambda (r) (and (or (null query) (contains-ci-p query (recipe-name r)))
                                               (or (not (input-provided-p :active)) (eq (and active t) (recipe-active r)))))
                              (select 'recipe))))
     (page rows limit)))
 
-(define-operation recipes-archive ((id :type (id recipe) :required t :label "Oppskrift-ID"))
-    (:entity recipe :kind :update :policy :admin :title "Arkiver oppskrift"
-     :description "Oppskriften kan ikke lenger velges; en katalogendring.")
+(define-operation recipes-archive ((id :type (id recipe) :required t :label "Recipe ID"))
+    (:entity recipe :kind :update :policy :admin :title "Archive recipe"
+     :description "The recipe can no longer be chosen; a catalog change.")
   (update-recipe (find-recipe id) :active nil))
 
-(define-operation choice-groups-create ((name :type (string :max 120) :required t :label "Navn")
-                                        (members :type json :label "Oppskrifter" :description "Oppskrift-id-er, i rekkefølge."))
-    (:entity choice-group :kind :create :policy :admin :title "Opprett valggruppe"
-     :description "En gruppe oppskrifter kunden velger blant (smaker). En katalogendring.")
+(define-operation choice-groups-create ((name :type (string :max 120) :required t :label "Name")
+                                        (members :type json :label "Recipes"
+                                                 :description "Recipe ids, in order."))
+    (:entity choice-group :kind :create :policy :admin :title "Create choice group"
+     :description "A group of recipes the customer chooses among (flavours). A catalog change.")
   (let ((group (insert (make-instance 'choice-group :name name :members (group-members (or members (jarr '())))))))
     (record-catalog-change "choice_group" (entity-id group) "created")
     group))
 
-(define-operation choice-groups-update ((id :type (id choice-group) :required t :label "Valggruppe-ID")
-                                        (name :type (string :max 120) :label "Navn")
-                                        (members :type json :label "Oppskrifter")
-                                        (active :type boolean :label "Aktiv"))
-    (:entity choice-group :kind :update :policy :admin :title "Endre valggruppe"
-     :description "Endrer navn, medlemmer eller aktiv; en endring er en katalogendring.")
+(define-operation choice-groups-update ((id :type (id choice-group) :required t
+                                            :label "Choice group ID")
+                                        (name :type (string :max 120) :label "Name")
+                                        (members :type json :label "Recipes")
+                                        (active :type boolean :label "Active"))
+    (:entity choice-group :kind :update :policy :admin :title "Change choice group"
+     :description "Changes the name, members or active; a change is a catalog change.")
   (apply #'update-choice-group (find-choice-group id)
          (append (and (input-provided-p :name) (list :name name))
                  (and (input-provided-p :members) (list :members members))
                  (and (input-provided-p :active) (list :active active)))))
 
-(define-operation choice-groups-get ((id :type (id choice-group) :required t :label "Valggruppe-ID"))
-    (:entity choice-group :kind :read :title "Hent valggruppe" :description "Én valggruppe.")
+(define-operation choice-groups-get ((id :type (id choice-group) :required t
+                                         :label "Choice group ID"))
+    (:entity choice-group :kind :read :title "Get choice group" :description "One choice group.")
   (find-choice-group id))
 
-(define-operation choice-groups-list ((active :type boolean :label "Aktiv")
-                                      (limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity choice-group :kind :read :title "Valggrupper" :description "Valggrupper, eldste først.")
+(define-operation choice-groups-list ((active :type boolean :label "Active")
+                                      (limit :type (integer :min 1 :max 100) :default 20
+                                             :label "Most results"))
+    (:entity choice-group :kind :read :title "Choice groups"
+     :description "Choice groups, oldest first.")
   (page (remove-if-not (lambda (g) (or (not (input-provided-p :active)) (eq (and active t) (choice-group-active g))))
                        (select 'choice-group))
         limit))
 
-(define-operation choice-groups-archive ((id :type (id choice-group) :required t :label "Valggruppe-ID"))
-    (:entity choice-group :kind :update :policy :admin :title "Arkiver valggruppe"
-     :description "Valggruppen er ikke lenger aktiv; en katalogendring.")
+(define-operation choice-groups-archive ((id :type (id choice-group) :required t
+                                             :label "Choice group ID"))
+    (:entity choice-group :kind :update :policy :admin :title "Archive choice group"
+     :description "The choice group is no longer active; a catalog change.")
   (update-choice-group (find-choice-group id) :active nil))
 
-(define-operation catalog-changes-list ((limit :type (integer :min 1 :max 100) :default 20 :label "Maks antall"))
-    (:entity catalog-change :kind :read :title "Katalogendringer"
-     :description "Katalogendringene (krav, oppskrifter, valggrupper), nyeste først.")
+(define-operation catalog-changes-list ((limit :type (integer :min 1 :max 100) :default 20
+                                                :label "Most results"))
+    (:entity catalog-change :kind :read :title "Catalog changes"
+     :description "The catalog changes (requirements, recipes, choice groups), newest first.")
   (page (select 'catalog-change :order-by '(("seq" :desc)) :limit (1+ limit)) limit))

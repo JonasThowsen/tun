@@ -76,11 +76,11 @@ job cancels itself.  :limit (1000) caps the jobs one sweep enqueues;
 record is gone or no longer meets the trigger's condition."
   (let ((trigger (find-schedule (json-name-of name))))
     (unless (typep trigger 'trigger)
-      (cancel-job (format nil "Utløseren ~a finnes ikke lenger" (json-name-of name))))
+      (cancel-job (tr "The trigger ~a no longer exists" (json-name-of name))))
     (or (with-transaction (:read)
           (select-one (trigger-entity trigger)
                       :where `(:and (:= "id" ,id) ,(trigger-where trigger))))
-        (cancel-job "Posten oppfyller ikke lenger utløserens vilkår"))))
+        (cancel-job (tr "The record no longer meets the trigger's condition")))))
 
 (defun records-with-jobs (trigger)
   "The ids of the records whose job from TRIGGER waits or runs."

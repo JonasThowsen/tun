@@ -64,11 +64,12 @@ tag without it."
 
 (test the-skip-link-leads-to-the-main-content
   (let ((html (shell-html)))
-    (is (search "<a class=\"tun-app-shell-skip\" href=\"#hovedinnhold\">Hopp til hovedinnholdet</a>"
+    (is (search (concatenate 'string "<a class=\"tun-app-shell-skip\" href=\"#main-content\">"
+                             "Skip to the main content</a>")
                 html))
     (is (< (search "tun-app-shell-skip" html) (search "<header" html))
         "the skip link comes before the menu")
-    (is (equal '("hovedinnhold") (attribute-values html "main" "id")))
+    (is (equal '("main-content") (attribute-values html "main" "id")))
     (is (equal '("-1") (attribute-values html "main" "tabindex"))
         "main takes the focus the skip link moves to it"))
   (let ((html (shell-html :main-id "innhold")))
@@ -81,7 +82,7 @@ tag without it."
                (attribute-values (subseq html (search "<nav" html)) "a" "aria-current"))
         "in the main menu, exactly the Kunder link is the current page")
     (is (search "<form class=\"tun-app-shell-logout\" method=\"post\" action=\"/logout\">" html))
-    (is (search "Logg ut</button>" html))
+    (is (search "Sign out</button>" html))
     (is (search "admin:jonas" html))))
 
 (test the-menu-button-opens-the-menu-panel
@@ -91,8 +92,8 @@ tag without it."
                      id)))
     (is (stringp panel-id) "the menu is a popover, which opens without JavaScript")
     (is (equal (list panel-id panel-id nil) (attribute-values html "button" "popovertarget"))
-        "the menu button and the close button point at it, «Logg ut» does not")
-    (is (search "aria-label=\"Meny\"" html))
+        "the menu button and the close button point at it, «Sign out» does not")
+    (is (search "aria-label=\"Menu\"" html))
     (is (search "popovertargetaction=\"hide\"" html)))
   (let ((html (tun.html:render-html (tun.ui:app-shell (:title "Nordvik Utleie") "Innhold"))))
     (is (not (search "popover" html)) "a shell with no menu has no menu button")))
@@ -112,13 +113,13 @@ tag without it."
                (tun.ui:breadcrumbs (:items '((:label "Kunder" :href "/kunder")
                                              (:label "Ole Hansen AS" :href "/kunder/42")
                                              (:label "Rediger kunde")))))))
-    (is (search "<nav class=\"tun-breadcrumbs\" aria-label=\"Brødsmuler\">" html))
+    (is (search "<nav class=\"tun-breadcrumbs\" aria-label=\"Breadcrumbs\">" html))
     (is (search "<span aria-current=\"page\">Rediger kunde</span>" html))
     (is (equal '(nil "true" nil "true" nil) (attribute-values html "li" "aria-hidden"))
         "the separators between the levels are hidden from screen readers")
     (is (search "href=\"/kunder/42\"><svg" html))
-    (is (search "Tilbake til Ole Hansen AS" html) "the phone shows the level above"))
-  (is (not (search "Tilbake" (tun.html:render-html
+    (is (search "Back to Ole Hansen AS" html) "the phone shows the level above"))
+  (is (not (search "Back to" (tun.html:render-html
                               (tun.ui:breadcrumbs (:items '((:label "Oversikt"))))))))
   (signals error (tun.ui:breadcrumbs (:items '()))))
 

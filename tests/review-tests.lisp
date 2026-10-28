@@ -46,8 +46,8 @@
   (is (null (parse-rfc3339 "٢٠٢٦-03-01T09:00:00Z")))
   (with-test-app ()
     (let ((customer (jget (call-ok "customers_create" "employee:anna" "name" "X" "email" "x@example.no") "id"))
-          (machine (jget (call-ok "products_create" "employee:anna" "name" "M" "kind" "utleie" "unit" "stk"
-                                  "unit_price_ore" 1 "stock_tracked" nil)
+          (machine (jget (call-ok "products_create" "employee:anna" "name" "M" "kind" "rental" "unit" "stk"
+                                  "unit_price_minor" 1 "stock_tracked" nil)
                          "id")))
       (is (string= "invalid_input"
                    (nth-value 1 (call "orders_create" "employee:anna" "customer_id" customer

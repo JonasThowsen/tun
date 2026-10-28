@@ -5,9 +5,9 @@
 (defmacro with-communication-templates (&body body)
   `(let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
      (tun.core::register-message-template "unit_note" 'unit-note :source :client :manual t
-        :subject "A note" :text "Hello {{kunde.navn}}")
+        :subject "A note" :text "Hello {{customer.name}}")
      (tun.core::register-message-template "unit_marketing" 'unit-marketing :source :client :manual t :marketing t
-        :subject "Marketing" :text "Hello {{kunde.navn}}")
+        :subject "Marketing" :text "Hello {{customer.name}}")
      ,@body))
 
 (test composer-stale-preview-replay-and-delivery-key-are-atomic
@@ -17,7 +17,7 @@
              (order (jget (new-order customer "lines" (lines product 1)) "id"))
              (preview (call-ok "messages_preview" "employee:e" "template" "unit_note" "order_id" order))
              (hash (jget preview "snapshot_hash")))
-        (call-ok "settings_set" "admin:a" "key" "avsender.navn" "value" "Updated")
+        (call-ok "settings_set" "admin:a" "key" "sender.name" "value" "Updated")
         (is (equal "conflict" (nth-value 1 (call "messages_send" "employee:e" "template" "unit_note"
                                                 "order_id" order "snapshot_hash" hash))))
         (is (= 0 (length (jget (call-ok "messages_list" "viewer:v" "order_id" order) "items"))))
@@ -114,7 +114,7 @@
                             (let* ((entity (tun.orders:find-order order))
                                    (person (fetch 'tun.customers:customer customer))
                                    (snapshot (tun.messaging::render-message-snapshot
-                                               "tilbud" entity person)))
+                                               "quote" entity person)))
                               (tun.messaging::enqueue-message-snapshot
                                 snapshot entity person (format nil "continuous-~d" number))))))))
         (setf (application-message-transport *app*) adapter *pings* 0)
@@ -154,7 +154,7 @@
         (is (null (third (first (observed-provider-calls (application-message-transport *app*))))) "provider is outside the sender request")
         (is (equal "accepted" (jget (jget message "delivery") "status")))
         (is (= 1 (jget (jget message "delivery") "attempt_count")))
-        (call-ok "settings_set" "admin:a" "key" "avsender.navn" "value" "Changed")
+        (call-ok "settings_set" "admin:a" "key" "sender.name" "value" "Changed")
         (call-ok "products_update" "employee:anna" "id" product "name" "Changed product")
         (let ((again (call-ok "messages_get" "viewer:v" "id" (jget message "id"))))
           (is (equal body (jget again "body")))
@@ -174,9 +174,9 @@
   (with-test-app (:db (scratch-path "legacy-staff-recipient"))
     (let ((id nil) (db (tun.store.sqlite:sqlite-store-path (application-store *app*))))
       (with-application (*app*) (with-transaction (:write)
-        (setf id (entity-id (insert (make-instance 'tun.messaging:message :template "lagervarsel"
+        (setf id (entity-id (insert (make-instance 'tun.messaging:message :template "stock_alert"
                      :employee-id "emp_legacy" :recipient "admin:lager" :subject "Warehouse"
-                     :body "Already delivered" :status "sendt" :scheduled-at (now) :created-at (now)))))
+                     :body "Already delivered" :status "sent" :scheduled-at (now) :created-at (now)))))
         (is (equal "admin:lager" (caar (tun.store.sqlite::query "SELECT recipient FROM messages WHERE id = ?" id))))))
       (tun.runtime:close-application *app*)
       (setf *app* (tun.runtime:open-application 'application :db db :test-clock t))
@@ -217,14 +217,14 @@
         (call-ok "orders_send_quote" "employee:e" "id" order)
         (let* ((message (aref (jget (call-ok "messages_list" "viewer:v" "order_id" order) "items") 0))
                (mail (jget (call-ok "inbound_mail_receive" "admin:a" "from_email" "customer@example.no"
-                                    "subject" (format nil "Reply [ref:~a]" order) "body" "Private reply") "henvendelse")))
+                                    "subject" (format nil "Reply [ref:~a]" order) "body" "Private reply") "inquiry")))
           (two-step "orders_cancel" "employee:e" "id" order)
           (two-step "customers_erase" "admin:a" "id" customer)
           (let ((scrubbed (call-ok "messages_get" "viewer:v" "id" (jget message "id"))))
             (is (equal "[slettet]" (jget scrubbed "body")))
             (is (equal "[slettet]" (jget (jget scrubbed "recipient") "email")))
             (is (equal "accepted" (jget (jget scrubbed "delivery") "status"))))
-          (is (equal "[slettet]" (jget (call-ok "henvendelser_get" "employee:e" "id" (jget mail "id")) "body")))
+          (is (equal "[slettet]" (jget (call-ok "inquiries_get" "employee:e" "id" (jget mail "id")) "body")))
           (is (equal "invalid_input" (nth-value 1 (call "messages_preview" "employee:e" "template" "unit_note" "order_id" order)))))))))
 
 (test quote-expiry-is-stored-keyed-and-notified-once
@@ -242,12 +242,12 @@
           (with-transaction (:read)
             (is (equal "expired" (field-value (fetch 'tun.orders:order-quote id)
                                                (find-field 'tun.orders:order-quote "status"))))))
-        (let ((rows (jget (call-ok "workflows_list" "viewer:v" "kind" "tilbud_utløp") "items")))
-          (is (equal '("avbrutt" "utført") (map 'list (lambda (wf) (jget wf "status")) rows)))
+        (let ((rows (jget (call-ok "workflows_list" "viewer:v" "kind" "quote_expiry") "items")))
+          (is (equal '("cancelled" "executed") (map 'list (lambda (wf) (jget wf "status")) rows)))
           (is (every (lambda (wf) (eq :null (jget wf "order_id"))) rows)))
         (let ((rows (jget (call-ok "notifications_list" "admin:a") "items")))
-          (is (= 1 (count "tilbud_utløpt" rows :test #'equal :key (lambda (n) (jget n "type")))))
-          (is (equal (format nil "Tilbudet på ordre ~a er utløpt." order) (jget (aref rows 0) "text"))))
+          (is (= 1 (count "quote_expired" rows :test #'equal :key (lambda (n) (jget n "type")))))
+          (is (equal (format nil "The quote for order ~a has expired." order) (jget (aref rows 0) "text"))))
         (is (equal "conflict" (nth-value 1 (call "quotes_respond" "viewer:v" "quote_id" id "revision" 2
                                                   "access_code" (jget quote "access_code") "response" "accept"))))))))
 
@@ -265,24 +265,64 @@
       (call-ok "orders_send_quote" "employee:anna" "id" order)
       (wait-for-workers *app*)
       (let* ((quote (call-ok "quotes_get" "admin:a" "order_id" order))
-             (path (format nil "/tilbud/~a" (jget quote "id"))))
+             (path (format nil "/offer/~a" (jget quote "id"))))
         (multiple-value-bind (status body headers) (web-request port path :jar jar)
           (is (= 200 status)) (is (search "name=\"code\"" body))
           (is (not (search (jget quote "access_code") body)))
           (is (equal "no-referrer" (cdr (assoc :referrer-policy headers)))))
         (dotimes (i 6)
           (is (= (if (= i 5) 429 422)
-                 (web-request port (concatenate 'string path "/apne") :jar jar :method :post :parameters '(("code" . "WRONG"))))))
+                 (web-request port (concatenate 'string path "/open") :jar jar :method :post :parameters '(("code" . "WRONG"))))))
         (multiple-value-bind (status body)
-            (web-request port (concatenate 'string path "/apne") :jar jar :method :post
+            (web-request port (concatenate 'string path "/open") :jar jar :method :post
                          :parameters (list (cons "code" (jget quote "access_code"))))
           (is (= 200 status)) (is (not (search (jget quote "access_code") body)))
           (multiple-value-bind (match groups) (cl-ppcre:scan-to-strings "name=\"proof\" value=\"([^\"]+)\"" body)
             (is (not (null match)))
             (let ((proof (aref groups 0)))
               (call-ok "orders_send_quote" "employee:anna" "id" order)
-              (is (= 409 (web-request port (concatenate 'string path "/svar") :jar jar :method :post
+              (is (= 409 (web-request port (concatenate 'string path "/respond") :jar jar :method :post
                                      :parameters (list (cons "proof" proof) (cons "response" "accept"))))))))))))
+
+(test the-offer-page-is-in-the-tenants-language
+  ;; spec/i18n.md 2.3: a customer's page is in the tenant's language, with
+  ;; its dates and amounts as Norwegian writes them, and no text missing.
+  (with-test-server (port)
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (call-ok "settings_set" "admin:a" "key" "locale.currency" "value" "NOK")
+    (let* ((missing '())
+           (lock (sb-thread:make-mutex :name "missing texts"))
+           (customer (make-customer)) (product (make-product))
+           (order (jget (new-order customer "event_date" "2026-06-01" "lines" (lines product 1))
+                        "id"))
+           (jar (make-instance 'drakma:cookie-jar)))
+      (call-ok "orders_send_quote" "employee:anna" "id" order)
+      (wait-for-workers *app*)
+      (let* ((quote (call-ok "quotes_get" "admin:a" "order_id" order))
+             (path (format nil "/offer/~a" (jget quote "id"))))
+        ;; The page is written in the server's threads: the hook is set, not bound.
+        (setf *missing-translation-hook*
+              (lambda (language source context)
+                (declare (ignore language))
+                (sb-thread:with-mutex (lock)
+                  (pushnew (list source context) missing :test #'equal))))
+        (unwind-protect
+             (progn
+               (multiple-value-bind (status body) (web-request port path :jar jar)
+                 (is (= 200 status))
+                 (is (search "Tilbud fra" body) "~a" body)
+                 (is (search "Koden står i e-posten med tilbudet" body)))
+               (multiple-value-bind (status body)
+                   (web-request port (concatenate 'string path "/open") :jar jar :method :post
+                                :parameters (list (cons "code" (jget quote "access_code"))))
+                 (is (= 200 status))
+                 (dolist (text '("Dette er inkludert" "Gyldig til" "01.06.2026" "Godta tilbudet"
+                                 "Avslå tilbudet" "Totalt" "kr"))
+                   (is (search text body) "the offer page has ~s: ~a" text body)))
+               (is (= 422 (web-request port (concatenate 'string path "/open") :jar jar
+                                       :method :post :parameters '(("code" . "WRONG"))))))
+          (setf *missing-translation-hook* nil))
+        (is (null missing) "the offer page has no Norwegian for ~s" missing)))))
 
 (test public-feedback-and-unsubscribe-are-subject-bound-and-audited
   (with-test-server (port)
@@ -292,24 +332,62 @@
            (unsubscribe (with-application (*app*) (with-transaction (:read) (link-token "avmeld" customer))))
            (reminder (with-application (*app*) (with-transaction (:write)
                        (entity-id (insert (make-instance 'tun.workflows:workflow
-                                      :kind "tilbud_påminnelse" :order-id order :due-at (+ (now) 3600))))))))
-      (is (= 404 (web-request port (format nil "/avmeld/~a" feedback))))
-      (is (= 422 (web-request port (format nil "/tilbakemelding/~a" feedback) :method :post :parameters '(("message" . " ")))))
-      (is (= 200 (web-request port (format nil "/tilbakemelding/~a" feedback) :method :post :parameters '(("message" . "Thanks <&>")))))
+                                      :kind "quote_reminder" :order-id order :due-at (+ (now) 3600))))))))
+      (is (= 404 (web-request port (format nil "/unsubscribe/~a" feedback))))
+      (is (= 422 (web-request port (format nil "/feedback/~a" feedback) :method :post :parameters '(("message" . " ")))))
+      (is (= 200 (web-request port (format nil "/feedback/~a" feedback) :method :post :parameters '(("message" . "Thanks <&>")))))
       (let ((workflow (call-ok "workflows_get" "viewer:v" "id" reminder)))
-        (is (equal "avbrutt" (jget workflow "status")))
-        (is (equal "kunden har svart" (jget workflow "note"))))
-      (let ((request (aref (jget (call-ok "henvendelser_list" "employee:e" "kind" "tilbakemelding") "items") 0)))
-        (is (equal "referanse" (jget request "match")))
+        (is (equal "cancelled" (jget workflow "status")))
+        (is (equal "the customer has replied" (jget workflow "note"))))
+      (let ((request (aref (jget (call-ok "inquiries_list" "employee:e" "kind" "feedback") "items") 0)))
+        (is (equal "reference" (jget request "match")))
         (is (equal order (jget request "order_id")))
         (is (equal customer (jget request "customer_id")))
         (is (equal (format nil "customer:~a" customer)
-                   (jget (aref (jget (call-ok "audit_list" "viewer:v" "entity_type" "henvendelse" "entity_id" (jget request "id")) "items") 0) "actor"))))
-      (dotimes (i 2) (is (= 200 (web-request port (format nil "/avmeld/~a" unsubscribe) :method :post))))
-      (is (equal "avmelding" (jget (call-ok "customers_get" "viewer:v" "id" customer) "consent_source")))
-      (call-ok "settings_set" "admin:a" "key" "lenker.hemmelighet" "value" "rotated-public-link-secret")
-      (is (= 404 (web-request port (format nil "/avmeld/~a" unsubscribe))))
-      (is (= 404 (web-request port (format nil "/tilbakemelding/~a" feedback)))))))
+                   (jget (aref (jget (call-ok "audit_list" "viewer:v" "entity_type" "inquiry" "entity_id" (jget request "id")) "items") 0) "actor"))))
+      (dotimes (i 2) (is (= 200 (web-request port (format nil "/unsubscribe/~a" unsubscribe) :method :post))))
+      (is (equal "unsubscribe" (jget (call-ok "customers_get" "viewer:v" "id" customer) "consent_source")))
+      (call-ok "settings_set" "admin:a" "key" "links.secret" "value" "rotated-public-link-secret")
+      (is (= 404 (web-request port (format nil "/unsubscribe/~a" unsubscribe))))
+      (is (= 404 (web-request port (format nil "/feedback/~a" feedback)))))))
+
+(test the-customers-pages-and-an-erased-name-are-in-the-tenants-language
+  ;; spec/i18n.md 3.5, 3.7: the unsubscribe page and the customer list on a
+  ;; Norwegian tenant, with every text of the customers module translated.
+  (with-test-server (port)
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (let* ((customer (make-customer))
+           (token (with-application (*app*)
+                    (with-transaction (:read) (link-token "avmeld" customer))))
+           (path (format nil "/unsubscribe/~a" token))
+           (missing '())
+           (old-hook *missing-translation-hook*))
+      (setf *missing-translation-hook*
+            (lambda (language source context)
+              (declare (ignore language))
+              (push (list source context) missing)))
+      (unwind-protect
+           (progn
+             (let ((body (nth-value 1 (web-request port path))))
+               (is (search "Meld meg av" body))
+               (is (search "Du får ikke lenger tilbud og nyheter på e-post fra oss." body))
+               (is (search "lang=\"nb\"" body)))
+             (is (search "Du er avmeldt." (nth-value 1 (web-request port path :method :post))))
+             (multiple-value-bind (status body) (web-request port "/unsubscribe/UKJENT")
+               (is (= 404 status))
+               (is (search "Siden finnes ikke" body))
+               (is (search "Kontroller lenken i e-posten." body)))
+             (is (search "Kunder" (nth-value 1 (web-request port "/customers"
+                                                            :jar (web-login port "employee:e"))))))
+        (setf *missing-translation-hook* old-hook))
+      (let ((customers-texts (loop for (source nil owner) in (known-texts)
+                                   when (equal owner "customers") collect source)))
+        (is (null (remove-if-not (lambda (miss) (member (first miss) customers-texts :test #'equal))
+                                 missing))
+            "no text of the customers module lacks Norwegian: ~s" missing))
+      (is (eql 0 (search "Slettet kunde "
+                         (jget (two-step "customers_erase" "admin:a" "id" customer) "name")))
+          "the placeholder name is stored in the tenant's language"))))
 
 (test staff-inbox-filter-and-question-section-use-the-operation-results
   (with-test-server (port)
@@ -317,8 +395,8 @@
            (two (call-ok "inbound_mail_receive" "admin:a" "from_email" "other@example.no" "subject" "Dismissed subject" "body" "Dismissed text"))
            (jar (web-login port "employee:e")))
       (declare (ignore one))
-      (call-ok "henvendelser_handle" "employee:e" "id" (jget (jget two "henvendelse") "id") "action" "dismiss")
-      (multiple-value-bind (status body) (web-request port "/henvendelser?status=avvist" :jar jar)
+      (call-ok "inquiries_handle" "employee:e" "id" (jget (jget two "inquiry") "id") "action" "dismiss")
+      (multiple-value-bind (status body) (web-request port "/inquiries?status=dismissed" :jar jar)
         (is (= 200 status)) (is (search "Dismissed subject" body))
         (is (not (search "Keep new" body)) "~a" body))
       (let* ((order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id")))
@@ -344,17 +422,17 @@
            (with (call-ok "customers_create" "employee:anna" "name" "Consent" "email" "yes@example.no"
                           "marketing_consent" t)))
       (is (null (jget (call-ok "customers_get" "viewer:v" "id" without) "marketing_consent")))
-      (is (equal "manuelt" (jget with "consent_source")))
+      (is (equal "manual" (jget with "consent_source")))
       (is (stringp (jget with "consent_at")))
       (is (equal "forbidden" (nth-value 1 (call "customers_set_consent" "viewer:v" "id" without
-                                               "marketing_consent" t "source" "manuelt"))))
+                                               "marketing_consent" t "source" "manual"))))
       (let ((withdrawn (call-ok "customers_set_consent" "employee:anna" "id" (jget with "id")
-                                "marketing_consent" nil "source" "epost")))
+                                "marketing_consent" nil "source" "email")))
         (is (null (jget withdrawn "marketing_consent")))
         (is (= 2 (jget withdrawn "revision")))
         (let ((audit (jget (call-ok "audit_list" "viewer:v" "entity_type" "customer"
                                    "entity_id" (jget with "id")) "items")))
-          (is (equal "epost" (jget (aref audit 0) "reason"))))))))
+          (is (equal "email" (jget (aref audit 0) "reason"))))))))
 
 (test erasure-refuses-open-orders-and-anonymises-closed-quotes
   (with-test-app ()
@@ -371,26 +449,26 @@
         (is (search "@slettet.local" (jget erased "email")))
         (is (eq :null (jget erased "phone")))
         (is (eq :null (jget erased "notes")))
-        (is (equal "[slettet]" (jget (jget (call-ok "quotes_get" "admin:ada" "order_id" id) "snapshot") "customer_name")))
+        (is (equal "[erased]" (jget (jget (call-ok "quotes_get" "admin:ada" "order_id" id) "snapshot") "customer_name")))
         (is (equal "invalid_input" (nth-value 1 (call "customers_set_consent" "admin:ada" "id" customer
-                                                     "marketing_consent" t "source" "manuelt"))))))))
+                                                     "marketing_consent" t "source" "manual"))))))))
 
 (test inbox-deduplication-and-draft-failure-retention
   (with-test-app (:class 'rejected-inbox-app)
     (let* ((args (list "from_email" "new@example.no" "subject" "Request" "body" "Hello" "message_ref" "<one>"))
            (first (apply #'call-ok "inbound_mail_receive" "admin:ada" args))
-           (item (jget first "henvendelse"))
+           (item (jget first "inquiry"))
            (second (apply #'call-ok "inbound_mail_receive" "admin:ada" args)))
-      (is (equal "ny" (jget item "status")))
+      (is (equal "new" (jget item "status")))
       (is (eq :null (jget item "customer_id")))
       (is (eq :null (jget item "created_order_id")))
       (is (stringp (jget item "note")))
       (is (jget second "duplicate"))
-      (is (equal (jget item "id") (jget (jget second "henvendelse") "id")))
+      (is (equal (jget item "id") (jget (jget second "inquiry") "id")))
       (is (= 0 (length (jget (call-ok "customers_list" "viewer:v") "items"))))
-      (is (= 1 (length (jget (call-ok "henvendelser_list" "employee:anna") "items"))))
+      (is (= 1 (length (jget (call-ok "inquiries_list" "employee:anna") "items"))))
       (is (equal "forbidden" (nth-value 1 (apply #'call "inbound_mail_receive" "employee:anna" args))))
-      (is (equal "invalid_input" (nth-value 1 (call "henvendelser_create" "viewer:v" "name" "New"
+      (is (equal "invalid_input" (nth-value 1 (call "inquiries_create" "viewer:v" "name" "New"
                                "email" "contact@example.no" "message" "Hello" "marketing_consent" nil)))))))
 
 (test notifications-are-private-idempotent-and-monotonic
@@ -432,9 +510,148 @@
     (call-ok "clock_set" "admin:ada" "now" "2026-03-01T09:00:00Z")
     (let* ((wf (aref (jget (call-ok "workflows_list" "viewer:v" "kind" "test_communication_failure") "items") 0))
            (request (call-ok "introspect_request" "admin:ada" "request_id" (jget wf "request_id"))))
-      (is (equal "feilet" (jget wf "status")))
+      (is (equal "failed" (jget wf "status")))
       (is (equal "system:workflow" (jget request "actor")))
       (is (equal "workflow:test_communication_failure" (jget request "tool")))
       (is (equal "error" (jget request "outcome")))
       (dolist (kind '("policy" "operation" "rollback"))
         (is (find-by "kind" kind (jget request "steps")))))))
+
+;;; ------------------------------------------------------------------
+;;; A Norwegian tenant (spec/i18n.md 3.5, 8): the modules' pages, the
+;;; messages they render and the notes and notifications they store are in
+;;; Norwegian, and each text they look up has its translation.
+
+(defun call-collecting-misses (owners function)
+  "Call FUNCTION and return the texts of OWNERS (module names) looked up in
+the meantime with no translation, as (SOURCE CONTEXT).  The hook is set for
+every thread, since the server and the outbox work in their own."
+  (let ((owned (make-hash-table :test 'equal))
+        (misses '())
+        (lock (sb-thread:make-mutex :name "missing translations"))
+        (previous *missing-translation-hook*))
+    (loop for (source nil owner) in (known-texts)
+          when (member owner owners :test #'equal)
+            do (setf (gethash source owned) t))
+    (setf *missing-translation-hook*
+          (lambda (language source context)
+            (declare (ignore language))
+            (when (gethash source owned)
+              (sb-thread:with-mutex (lock)
+                (pushnew (list source context) misses :test #'equal)))))
+    (unwind-protect (funcall function)
+      (setf *missing-translation-hook* previous))
+    misses))
+
+(defun norwegian-page (port path jar)
+  "The body of PATH, which must answer 200, with its no-break spaces as spaces."
+  (multiple-value-bind (status body) (web-request port path :jar jar)
+    (is (= 200 status) "~a answered ~a" path status)
+    (substitute #\Space #\No-break_space body)))
+
+(test a-norwegian-tenant-gets-its-messages-and-their-outcomes-in-norwegian
+  (with-test-server (port)
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (make-employee "Ada" :role "admin")
+    (let* ((customer (make-customer "Kari Nordmann")) (product (make-product))
+           (order (jget (new-order customer "event_date" "2026-06-01" "lines" (lines product 1))
+                        "id"))
+           (jar (web-login port "admin:ada"))
+           (misses
+             (call-collecting-misses
+              '("messaging")
+              (lambda ()
+                (call-ok "messaging_provider_set" "admin:a" "mode" "reject")
+                (with-application (*app*)
+                  (with-transaction (:write)
+                    (tun.messaging:send-message "quote" :order (tun.orders:find-order order)
+                                                :customer (fetch 'tun.customers:customer customer))))
+                ;; A request's end starts the outbox, which writes the outcome.
+                (call-ok "messaging_provider_get" "admin:a")
+                (wait-for-workers *app*)
+                (let ((quote (find-by "template" "quote"
+                                      (jget (call-ok "messages_list" "viewer:v" "order_id" order)
+                                            "items"))))
+                  (is (equal 0 (search "Tilbud [ref:" (jget quote "subject"))))
+                  (is (search "Hei Kari Nordmann, her er tilbudet ditt:" (jget quote "body")))
+                  (is (equal "E-postleverandøren avviste meldingen. Kontroller mottaker og innhold."
+                             (jget (jget quote "delivery") "safe_error_message"))))
+                (is (equal "En e-post til Kari Nordmann kunne ikke sendes."
+                           (jget (aref (jget (call-ok "notifications_list" "admin:ada") "items") 0)
+                                 "text")))
+                (let ((page (norwegian-page port (format nil "/orders/~a" order) jar)))
+                  (dolist (text '("Kommunikasjon" "Kunne ikke sendes" "Ny melding til kunden"
+                                  "Du ser meldingen før den legges i kø."))
+                    (is (search text page) "the order page lacks ~s" text)))))))
+      (is (null misses) "messaging texts with no Norwegian: ~s" misses)
+      ;; A machine is answered in source text (spec/i18n.md 7).
+      (is (equal "The template does not exist"
+                 (jget (jget (call "messages_preview" "employee:e" "template" "missing"
+                                   "order_id" order)
+                             "error")
+                       "message"))))))
+
+(test a-norwegian-tenant-gets-the-inbox-and-its-feedback-page-in-norwegian
+  (with-test-server (port)
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (make-employee "Ada" :role "admin")
+    (let* ((jar (web-login port "admin:ada"))
+           (order (jget (new-order (make-customer) "event_date" "2026-06-01"
+                                   "lines" (lines (make-product) 1))
+                        "id"))
+           (feedback (with-application (*app*)
+                       (with-transaction (:read) (link-token "tilbakemelding" order))))
+           (misses
+             (call-collecting-misses
+              '("inbox")
+              (lambda ()
+                (let ((inquiry (jget (call-ok "inbound_mail_receive" "admin:a"
+                                              "from_email" "ny@example.no" "subject" "Leie av telt"
+                                              "body" "Hei")
+                                     "inquiry")))
+                  (is (equal "Du har fått en ny henvendelse."
+                             (jget (aref (jget (call-ok "notifications_list" "admin:ada") "items") 0)
+                                   "text")))
+                  (let ((page (norwegian-page port "/inquiries" jar)))
+                    (dolist (text '("Henvendelser" "Emne" "Mottatt" "Filtrer" "Behandlet"))
+                      (is (search text page) "the inbox lacks ~s" text))
+                    (is (search ">Ny<" page) "the status's label"))
+                  (let ((page (norwegian-page port (format nil "/inquiries/~a" (jget inquiry "id"))
+                                              jar)))
+                    (dolist (text '("Behandle henvendelsen" "Opprett ordreutkast" "Knytt til ordre"))
+                      (is (search text page) "the inquiry's page lacks ~s" text))))
+                (let ((contact (call-ok "inquiries_create" "viewer:v" "name" "Kari" "email"
+                                        "kari@example.no" "message" "Telt" "event_date" "2027-06-20"
+                                        "guests" 42 "marketing_consent" t)))
+                  (is (equal "Kontaktskjema" (jget contact "subject")))
+                  (is (search "Dato: 20.06.2027" (jget contact "body")))
+                  (is (search "Gjester: 42" (jget contact "body"))))
+                (let ((path (format nil "/feedback/~a" feedback)))
+                  (is (search "Hva tenker du?" (norwegian-page port path nil)))
+                  (is (search "Tilbakemeldingen din" (norwegian-page port path nil)))
+                  (multiple-value-bind (status body)
+                      (web-request port path :method :post :parameters '(("message" . " ")))
+                    (is (= 422 status))
+                    (is (search "Skriv en melding." body))))))))
+      (is (null misses) "inbox texts with no Norwegian: ~s" misses))))
+
+(test a-norwegian-tenant-gets-its-notifications-in-norwegian
+  (with-test-server (port)
+    (call-ok "settings_set" "admin:a" "key" "locale.language" "value" "nb")
+    (make-employee "Ada" :role "admin")
+    (let* ((anna (make-employee "Anna"))
+           (order (jget (new-order (make-customer) "lines" (lines (make-product) 1)) "id"))
+           (misses
+             (call-collecting-misses
+              '("notifications")
+              (lambda ()
+                (call-ok "assignments_create" "admin:ada" "order_id" order
+                         "employee_id" (jget anna "id"))
+                (is (equal "Du er tildelt en ny oppgave."
+                           (jget (aref (jget (call-ok "notifications_list" "employee:anna") "items") 0)
+                                 "text")))
+                (let ((page (norwegian-page port "/notifications" (web-login port "employee:anna"))))
+                  (dolist (text '("Varsler" "Uleste:" "Ulest" "Marker som lest"
+                                  "Du er tildelt en ny oppgave."))
+                    (is (search text page) "the notifications page lacks ~s" text)))))))
+      (is (null misses) "notifications texts with no Norwegian: ~s" misses))))

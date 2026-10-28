@@ -5,7 +5,7 @@ behaviour, and run the suites before calling work done.
 
 | File | Contract |
 |---|---|
-| `core.md` | The base contract: core and clients, conventions and Norwegian time, the MCP surface with policy, confirmation, idempotency and audit, workflows, ports and settings, tenants and the rollback preflight, runtime properties, introspection. |
+| `core.md` | The base contract: core and clients, conventions and local time, the MCP surface with policy, confirmation, idempotency and audit, workflows, ports and settings, tenants and the rollback preflight, runtime properties, introspection. |
 | `tun-platform.md` | Modules: identity, dependencies, boundary, extension points, migrations, pins, upgrade and rollback. |
 | `store.md` | The store adapters (memory, SQLite, Postgres): selection, shared transaction and ordering rules, two processes on one database. |
 | `cli.md` | The `tun` command: listing modules, creating a client repository, adding a module, moving a client to a newer Tun, and the shape of the client it creates. |
@@ -16,9 +16,10 @@ behaviour, and run the suites before calling work done.
 | `auth.md` | Identity and access: accounts, sign-in through identity providers such as WorkOS, access tokens, sessions, the first administrator, MCP authentication. |
 | `mail.md` | Sending mail: the provider (Resend), the queue in the sender's transaction, delivery with retries, the admin tools. |
 | `push.md` | Push notifications to an installed app: turning them on per device, `notify-push`, delivery with retries, Web Push encryption and VAPID, the service worker. |
-| `jobs.md` | Background jobs with retries, unique jobs, queues, crash recovery, schedules in Norwegian time, and triggers that run a job for each record meeting a condition. |
+| `jobs.md` | Background jobs with retries, unique jobs, queues, crash recovery, schedules in the tenant's time zone, and triggers that run a job for each record meeting a condition. |
 | `errors.md` | Errors and logs: faults grouped by cause and kept in the store, a mail when a new one appears, a JSON log line per request, and the dashboard's «Feil» and «Logg». |
 | `files.md` | Files attached to records: which entities take them, the types decided by their bytes, metadata taken out, the `files` type and the attachment tools, request size, storage in Postgres, who may fetch a file, and the form control and thumbnails. |
+| `i18n.md` | Languages, money and time per tenant: copy in English with catalogues per language, English identifiers and core 2.0's migration, currencies and minor units, time zones, formats. |
 | `ui.md` | The design system: tokens, components, generated screens, a client's own pages, installing as an app. |
 | `tooling.md` | Development tooling: indentation, the editor REPL, the agent REPL and lint. |
 | `feedback.md` | Draft, not built: reporting from any page of a client into the supplier's tracker, the first link between Tun systems. |

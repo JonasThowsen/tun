@@ -123,15 +123,15 @@ updated and deleted counts."
 ;;; ------------------------------------------------------------------
 ;;; Operations
 
-(define-operation checklists-list ((order-id :type (id order) :required t :label "Ordre-ID"))
-    (:entity checklist-item :kind :read :title "Sjekkliste"
-     :description "Ordrens sjekkliste (automatiske punkter fra behovene, manuelle punkter) og om alt er pakket.")
+(define-operation checklists-list ((order-id :type (id order) :required t :label "Order ID"))
+    (:entity checklist-item :kind :read :title "Checklist"
+     :description "The order's checklist (automatic items from the requirements, and manual items) and whether everything is packed.")
   (find-order order-id)
   (checklist-json order-id))
 
-(define-operation checklists-sync ((order-id :type (id order) :required t :label "Ordre-ID"))
-    (:entity checklist-item :kind :update :title "Synkroniser sjekkliste"
-     :description "Gjør de automatiske punktene like behovene nå: lager manglende, oppdaterer endrede (pakket antall føres videre), sletter de som ikke lenger trengs. Manuelle punkter røres ikke. Ingen endring lagrer ingenting.")
+(define-operation checklists-sync ((order-id :type (id order) :required t :label "Order ID"))
+    (:entity checklist-item :kind :update :title "Synchronise the checklist"
+     :description "Makes the automatic items match the requirements now: creates the missing ones, updates changed ones (packed quantities carry over), deletes those no longer needed. Manual items are not touched. No change stores nothing.")
   (let ((order (find-order order-id)))
     (check-order-not-locked order)
     (multiple-value-bind (created updated deleted) (sync-checklist order)
@@ -140,11 +140,11 @@ updated and deleted counts."
         (jobj "created" created "updated" updated "deleted" deleted
               "items" (jget json "items") "packed" (jget json "packed"))))))
 
-(define-operation checklists-mark ((id :type (id checklist-item) :required t :label "Punkt-ID")
-                                   (done :type boolean :required t :label "Ferdig")
-                                   (done-quantity :type (decimal :scale 3) :label "Pakket antall"))
-    (:entity checklist-item :kind :update :title "Merk sjekklistepunkt"
-     :description "done true uten antall setter pakket antall til beregnet antall; done false fjerner det, eller registrerer delvis pakking med done_quantity.")
+(define-operation checklists-mark ((id :type (id checklist-item) :required t :label "Item ID")
+                                   (done :type boolean :required t :label "Done")
+                                   (done-quantity :type (decimal :scale 3) :label "Packed quantity"))
+    (:entity checklist-item :kind :update :title "Mark a checklist item"
+     :description "done true without a quantity sets the packed quantity to the computed one; done false clears it, or registers partial packing with done_quantity.")
   (let* ((item (fetch! 'checklist-item id))
          (order (item-order item)))
     (setf (checklist-item-done item) done
@@ -156,28 +156,28 @@ updated and deleted counts."
     (touch-order order)
     item))
 
-(define-operation checklists-add-manual ((order-id :type (id order) :required t :label "Ordre-ID")
-                                         (order-line-id :type id :label "Ordrelinje-ID")
-                                         (description :type (string :min 1 :max 500) :required t :label "Beskrivelse")
-                                         (category :type (string :max 200) :label "Kategori"))
-    (:entity checklist-item :kind :create :title "Legg til sjekklistepunkt"
-     :description "Et manuelt punkt på ordren eller på en av linjene; synkroniseringen rører det aldri.")
+(define-operation checklists-add-manual ((order-id :type (id order) :required t :label "Order ID")
+                                         (order-line-id :type id :label "Order line ID")
+                                         (description :type (string :min 1 :max 500) :required t :label "Description")
+                                         (category :type (string :max 200) :label "Category"))
+    (:entity checklist-item :kind :create :title "Add a checklist item"
+     :description "A manual item on the order or on one of its lines; synchronisation never touches it.")
   (let ((order (find-order order-id)))
     (check-order-not-locked order)
     (when (and order-line-id (not (find order-line-id (order-lines order) :key #'order-line-id :test #'string=)))
-      (fail :invalid-input "Linjen ~a hører ikke til ordre ~a" order-line-id order-id))
+      (fail :invalid-input "The line ~a does not belong to order ~a" order-line-id order-id))
     (prog1 (insert (make-instance 'checklist-item :order-id order-id :order-line-id order-line-id
                                                   :origin "manual" :source-key nil
                                                   :description description :category category))
       (touch-order order))))
 
-(define-operation checklists-delete ((id :type (id checklist-item) :required t :label "Punkt-ID"))
-    (:entity checklist-item :kind :update :title "Slett sjekklistepunkt"
-     :description "Sletter et manuelt punkt (automatiske punkter kan ikke slettes; de følger behovene).")
+(define-operation checklists-delete ((id :type (id checklist-item) :required t :label "Item ID"))
+    (:entity checklist-item :kind :update :title "Delete a checklist item"
+     :description "Deletes a manual item (automatic items cannot be deleted; they follow the requirements).")
   (let* ((item (fetch! 'checklist-item id))
          (order (item-order item)))
     (unless (string= (checklist-item-origin item) "manual")
-      (fail :invalid-input "Automatiske punkter kan ikke slettes; de følger behovene"))
+      (fail :invalid-input "Automatic items cannot be deleted; they follow the requirements"))
     (delete-entity item)
     (touch-order order)
     (jobj "deleted" t "id" id)))

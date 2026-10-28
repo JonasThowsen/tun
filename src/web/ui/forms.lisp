@@ -55,11 +55,11 @@ is labelled (spec/ui.md 5)."
   (when error
     `(:p (:@ :class ,class :id ,(error-id id))
          ,(icon (:name :circle-alert :size :sm))
-         (:span (:span (:@ :class ,(format nil "~a-prefix" class)) "Feil:") " " ,error))))
+         (:span (:span (:@ :class ,(format nil "~a-prefix" class)) ,(tr "Error:")) " " ,error))))
 
 (defun optional-markup (class optional)
   (when optional
-    `(:span (:@ :class ,class) " (valgfritt)")))
+    `(:span (:@ :class ,class) " " ,(tr "(optional)"))))
 
 (defun same-value-p (a b)
   "True when option values A and B are the same, whether given as strings,
@@ -211,12 +211,12 @@ the hint under the text."
 
 (define-component field ((&key label for hint error optional label-hidden id attributes)
                          &rest children)
-  (:group "Skjema")
-  (:doc "Rammen rundt hver kontroll: ledetekst øverst, hjelpetekst under den, feilmelding
-over kontrollen, bundet sammen med for, aria-describedby og aria-invalid (control-attributes
-gir en egen kontroll de samme attributtene). Som GOV.UK merkes ikke påkrevde felt med
-stjerne; spør bare om det dere trenger, og merk de få valgfrie feltene «(valgfritt)» med
-OPTIONAL.")
+  (:group "Forms")
+  (:doc "The frame around every control: the label at the top, the hint under it, the error
+message above the control, tied together with for, aria-describedby and aria-invalid
+(control-attributes gives a control of your own the same attributes). As at GOV.UK, required
+fields are not marked with a star; ask only for what you need, and mark the few optional
+fields «(optional)» with OPTIONAL.")
   (:source "GOV.UK form group, label, hint and error message; Basecoat field (Vega)")
   (:css (concatenate 'string "
 .tun-field {
@@ -242,16 +242,16 @@ OPTIONAL.")
     (message-css "tun-field") "
 }"))
   (:examples
-   (("Med en egen kontroll" :layout :stack)
-    (field (:label "Vedlegg" :for "ordre-vedlegg" :optional t
-                   :hint "PDF eller bilde, høyst 10 MB.")
-      `(:input ,(attrs (list :type "file" :name "vedlegg" :accept "application/pdf,image/*")
-                       (control-attributes "ordre-vedlegg" :hint t)))))
-   (("En egen kontroll med feil" :layout :stack)
-    (field (:label "Vedlegg" :for "tilbud-vedlegg" :hint "PDF eller bilde, høyst 10 MB."
-                   :error "Filen er større enn 10 MB")
-      `(:input ,(attrs (list :type "file" :name "vedlegg" :accept "application/pdf,image/*")
-                       (control-attributes "tilbud-vedlegg" :hint t :error t))))))
+   (("With a control of its own" :layout :stack)
+    (field (:label "Attachment" :for "order-attachment" :optional t
+                   :hint "A PDF or an image, at most 10 MB.")
+      `(:input ,(attrs (list :type "file" :name "attachment" :accept "application/pdf,image/*")
+                       (control-attributes "order-attachment" :hint t)))))
+   (("A control of its own with an error" :layout :stack)
+    (field (:label "Attachment" :for "quote-attachment" :hint "A PDF or an image, at most 10 MB."
+                   :error "The file is larger than 10 MB")
+      `(:input ,(attrs (list :type "file" :name "attachment" :accept "application/pdf,image/*")
+                       (control-attributes "quote-attachment" :hint t :error t))))))
   (require-label 'field label)
   (unless for
     (error "field needs :for, the id of the control it labels"))
@@ -298,11 +298,11 @@ OPTIONAL.")
 (define-component text-input ((&key label name value (type :text) hint error required optional
                                     label-hidden placeholder autocomplete inputmode width
                                     disabled readonly id attributes))
-  (:group "Skjema")
-  (:doc "Et tekstfelt for én linje: tekst, e-post, telefon, tall, passord, dato, søk eller
-nettadresse. Gi WIDTH (antall tegn: 2, 3, 4, 5, 10, 20 eller 30) når svaret har kjent
-lengde, som postnummer (4) og organisasjonsnummer (10); bruk AUTOCOMPLETE bare når brukeren
-fyller inn sine egne opplysninger.")
+  (:group "Forms")
+  (:doc "A text box for one line: text, email, phone, number, password, date, search or web
+address. Give WIDTH (a number of characters: 2, 3, 4, 5, 10, 20 or 30) when the answer has a
+known length, such as a postcode (4) or an organisation number (10); use AUTOCOMPLETE only
+when users fill in their own details.")
   (:source "Basecoat input (Vega); GOV.UK text input, its widths and its behaviour")
   (:css (concatenate 'string "
 .tun-text-input {
@@ -330,33 +330,33 @@ fyller inn sine egne opplysninger.")
   &[type='date'] { max-width: calc(12ch + var(--spacing) * 11 + 2px); }
 }"))
   (:examples
-   (("Med og uten hjelpetekst" :layout :stack)
-    (text-input (:label "Kundenavn" :name "navn"))
-    (text-input (:label "E-post" :name "epost" :type :email
-                        :hint "Fakturaen sendes hit. Bruk gjerne en felles adresse.")))
-   (("Med feil" :layout :stack)
-    (text-input (:label "Telefon" :name "telefon" :type :tel :width 20 :value "912 34"
-                        :error "Telefonnummeret må ha 8 siffer, som 912 34 567")))
-   (("Valgfritt felt" :layout :stack)
-    (text-input (:label "Kundens referanse" :name "referanse" :optional t
-                        :hint "Står på fakturaen, som «Prosjekt 1042» eller en bestillers navn.")))
-   (("Faste bredder" :layout :stack)
-    (text-input (:label "Postnummer" :name "postnummer" :width 4 :inputmode "numeric"))
-    (text-input (:label "Organisasjonsnummer" :name "orgnr" :width 10 :inputmode "numeric"))
-    (text-input (:label "Poststed" :name "poststed" :width 20))
-    (text-input (:label "Fakturaadresse, linje 1" :name "adresse" :width 30)))
-   (("Typer" :layout :stack)
-    (text-input (:label "Leveringsdato" :name "leveringsdato" :type :date))
-    (text-input (:label "Antall timer" :name "timer" :type :number :width 5
+   (("With and without a hint" :layout :stack)
+    (text-input (:label "Customer name" :name "name"))
+    (text-input (:label "Email" :name "email" :type :email
+                        :hint "The invoice is sent here. A shared address is a good choice.")))
+   (("With an error" :layout :stack)
+    (text-input (:label "Phone" :name "phone" :type :tel :width 20 :value "912 34"
+                        :error "The phone number must have 8 digits, like 912 34 567")))
+   (("An optional field" :layout :stack)
+    (text-input (:label "The customer's reference" :name "reference" :optional t
+                        :hint "Shown on the invoice, such as “Project 1042” or a buyer's name.")))
+   (("Fixed widths" :layout :stack)
+    (text-input (:label "Postcode" :name "postcode" :width 4 :inputmode "numeric"))
+    (text-input (:label "Organisation number" :name "orgno" :width 10 :inputmode "numeric"))
+    (text-input (:label "Town" :name "town" :width 20))
+    (text-input (:label "Invoice address, line 1" :name "address" :width 30)))
+   (("Types" :layout :stack)
+    (text-input (:label "Delivery date" :name "delivery-date" :type :date))
+    (text-input (:label "Number of hours" :name "hours" :type :number :width 5
                         :attributes '(:min 0 :step "0.5")))
-    (text-input (:label "Nettside" :name "nettside" :type :url
-                        :placeholder "https://www.firma.no"))
-    (text-input (:label "Passord" :name "passord" :type :password
+    (text-input (:label "Website" :name "website" :type :url
+                        :placeholder "https://www.company.example"))
+    (text-input (:label "Password" :name "password" :type :password
                         :autocomplete "current-password")))
-   (("Deaktivert og skrivebeskyttet" :layout :stack)
-    (text-input (:label "Kundenummer" :name "kundenummer" :value "10234" :readonly t :width 10
-                        :hint "Settes av Tun når kunden lagres."))
-    (text-input (:label "Fakturert beløp" :name "belop" :value "12 500 kr" :disabled t
+   (("Disabled and read-only" :layout :stack)
+    (text-input (:label "Customer number" :name "customer-number" :value "10234" :readonly t
+                        :width 10 :hint "Set by Tun when the customer is saved."))
+    (text-input (:label "Amount invoiced" :name "amount" :value "€12,500" :disabled t
                         :width 20))))
   (require-label 'text-input label)
   (check-width width)
@@ -376,9 +376,9 @@ fyller inn sine egne opplysninger.")
 
 (define-component textarea ((&key label name value (rows 5) hint error required optional
                                   label-hidden placeholder disabled readonly id attributes))
-  (:group "Skjema")
-  (:doc "Et tekstfelt for flere linjer, som et notat eller en beskrivelse av oppdraget. ROWS
-gir høyden i linjer; brukeren kan gjøre feltet høyere.")
+  (:group "Forms")
+  (:doc "A text box for several lines, such as a note or a description of the job. ROWS
+gives the height in lines; the user can make the box taller.")
   (:source "Basecoat textarea (Vega); GOV.UK textarea")
   (:css (concatenate 'string "
 .tun-textarea {
@@ -397,18 +397,18 @@ gir høyden i linjer; brukeren kan gjøre feltet høyere.")
   }
 }"))
   (:examples
-   (("Med hjelpetekst" :layout :stack)
-    (textarea (:label "Beskrivelse av oppdraget" :name "beskrivelse"
-                      :hint "Hva skal gjøres, hvor, og når kunden vil ha det ferdig.")))
-   (("Med feil" :layout :stack)
-    (textarea (:label "Beskrivelse av oppdraget" :name "beskrivelse" :rows 3
-                      :value "Male"
-                      :error "Beskrivelsen må ha minst 20 tegn")))
-   (("Valgfritt og deaktivert" :layout :stack)
-    (textarea (:label "Intern merknad" :name "merknad" :optional t :rows 3
-                      :placeholder "Bare synlig for dere"))
-    (textarea (:label "Kundens kommentar" :name "kommentar" :rows 3 :disabled t
-                      :value "Leveres på baksiden av bygget, ring 40 00 00 00 ved ankomst."))))
+   (("With a hint" :layout :stack)
+    (textarea (:label "Description of the job" :name "description"
+                      :hint "What is to be done, where, and when the customer wants it done.")))
+   (("With an error" :layout :stack)
+    (textarea (:label "Description of the job" :name "description" :rows 3
+                      :value "Paint"
+                      :error "The description must have at least 20 characters")))
+   (("Optional and disabled" :layout :stack)
+    (textarea (:label "Internal note" :name "note" :optional t :rows 3
+                      :placeholder "Seen only by you"))
+    (textarea (:label "The customer's comment" :name "comment" :rows 3 :disabled t
+                      :value "Deliver at the back of the building, call 40 00 00 00 on arrival."))))
   (require-label 'textarea label)
   (let ((id (or id (element-id (or name "textarea")))))
     (field* (list :label label :for id :hint hint :error error :optional optional
@@ -433,10 +433,11 @@ gir høyden i linjer; brukeren kan gjøre feltet høyere.")
 
 (define-component select ((&key label name options selected prompt hint error required
                                 optional label-hidden disabled id attributes))
-  (:group "Skjema")
-  (:doc "En nedtrekksliste, nettleserens egen, for å velge ett av mange kjente svar. OPTIONS
-er en liste av (VERDI TEKST) eller (VERDI TEKST :disabled t); PROMPT gir et tomt første valg.
-Har listen fem valg eller færre, er radios bedre: da ser brukeren alle svarene.")
+  (:group "Forms")
+  (:doc "A drop-down list, the browser's own, for choosing one of many known answers. OPTIONS
+is a list of (VALUE TEXT) or (VALUE TEXT :disabled t); PROMPT gives an empty first choice.
+When the list has five choices or fewer, radios are better: the user then sees every
+answer.")
   (:source "Basecoat native select (Vega); GOV.UK select")
   (:css (concatenate 'string "
 .tun-select {
@@ -466,23 +467,23 @@ Har listen fem valg eller færre, er radios bedre: da ser brukeren alle svarene.
   &:has(> select:disabled) > .tun-icon { opacity: 0.5; }
 }"))
   (:examples
-   (("Med tomt første valg" :layout :stack)
-    (select (:label "Betalingsfrist" :name "betalingsfrist" :prompt "Velg frist"
-                    :options '(("10" "10 dager") ("14" "14 dager") ("30" "30 dager")
-                               ("kontant" "Kontant ved levering" :disabled t)))))
-   (("Valgt verdi og hjelpetekst" :layout :stack)
-    (select (:label "Mva-sats" :name "mva" :selected 25
-                    :hint "Gjelder alle linjene på fakturaen."
-                    :options '((25 "25 % – vanlig sats") (15 "15 % – mat og drikke")
-                               (12 "12 % – persontransport og overnatting")
-                               (0 "0 % – fritatt")))))
-   (("Med feil" :layout :stack)
-    (select (:label "Ansvarlig selger" :name "selger" :prompt "Velg selger"
-                    :error "Velg hvem som er ansvarlig for kunden"
+   (("With an empty first choice" :layout :stack)
+    (select (:label "Payment terms" :name "payment-terms" :prompt "Choose the terms"
+                    :options '(("10" "10 days") ("14" "14 days") ("30" "30 days")
+                               ("cash" "Cash on delivery" :disabled t)))))
+   (("A chosen value and a hint" :layout :stack)
+    (select (:label "VAT rate" :name "vat" :selected 25
+                    :hint "Applies to every line of the invoice."
+                    :options '((25 "25% – the standard rate") (15 "15% – food and drink")
+                               (12 "12% – passenger transport and accommodation")
+                               (0 "0% – exempt")))))
+   (("With an error" :layout :stack)
+    (select (:label "Responsible salesperson" :name "seller" :prompt "Choose a salesperson"
+                    :error "Choose who is responsible for the customer"
                     :options '(("kari" "Kari Nordmann") ("ola" "Ola Hansen")
                                ("fatima" "Fatima Ali")))))
-   (("Deaktivert" :layout :stack)
-    (select (:label "Lager" :name "lager" :selected "drammen" :disabled t
+   (("Disabled" :layout :stack)
+    (select (:label "Warehouse" :name "warehouse" :selected "drammen" :disabled t
                     :options '(("drammen" "Drammen") ("oslo" "Oslo"))))))
   (require-label 'select label)
   (let ((id (or id (element-id (or name "select")))))
@@ -504,10 +505,10 @@ Har listen fem valg eller færre, er radios bedre: da ser brukeren alle svarene.
 (define-component fieldset ((&key legend (legend-size :default) hint error optional disabled
                                   id attributes)
                             &rest children)
-  (:group "Skjema")
-  (:doc "Samler felt som hører sammen under en overskrift (legend), som en adresse, og ligger
-rundt checkboxes og radios. LEGEND-SIZE :page gjør overskriften til sidens h1 når gruppen er
-hele spørsmålet på siden, :section til en mellomtittel i et langt skjema.")
+  (:group "Forms")
+  (:doc "Gathers fields that belong together under a heading (legend), such as an address,
+and goes around checkboxes and radios. LEGEND-SIZE :page makes the heading the page's h1 when
+the group is the whole question on the page, :section a subheading in a long form.")
   (:source "GOV.UK fieldset; Basecoat fieldset (Vega)")
   (:css (concatenate 'string "
 .tun-fieldset {
@@ -546,28 +547,28 @@ hele spørsmålet på siden, :section til en mellomtittel i et langt skjema.")
                      (message-css "tun-fieldset") "
 }"))
   (:examples
-   (("Adresse som del av et skjema" :layout :stack)
-    (fieldset (:legend "Fakturaadresse" :legend-size :section
-                       :hint "Der kunden vil ha fakturaen, hvis den sendes i posten.")
-      (text-input (:label "Gateadresse" :name "gateadresse" :autocomplete "off"))
-      (text-input (:label "Postnummer" :name "postnummer" :width 4 :inputmode "numeric"))
-      (text-input (:label "Poststed" :name "poststed" :width 20))))
-   (("Som sidetittel" :layout :stack)
-    (fieldset (:legend "Hvor skal varene leveres?" :legend-size :page
-                       :hint "Vi leverer i hele Norge, men ikke til postboks.")
-      (text-input (:label "Gateadresse" :name "leveringsadresse"))
-      (text-input (:label "Postnummer" :name "leveringspostnummer" :width 4
+   (("An address as part of a form" :layout :stack)
+    (fieldset (:legend "Invoice address" :legend-size :section
+                       :hint "Where the customer wants the invoice, if it is sent by post.")
+      (text-input (:label "Street address" :name "street-address" :autocomplete "off"))
+      (text-input (:label "Postcode" :name "postcode" :width 4 :inputmode "numeric"))
+      (text-input (:label "Town" :name "town" :width 20))))
+   (("As the page's title" :layout :stack)
+    (fieldset (:legend "Where should the goods be delivered?" :legend-size :page
+                       :hint "We deliver all over Norway, but not to a PO box.")
+      (text-input (:label "Street address" :name "delivery-address"))
+      (text-input (:label "Postcode" :name "delivery-postcode" :width 4
                           :inputmode "numeric"))
-      (text-input (:label "Poststed" :name "leveringssted" :width 20))))
-   (("Med feil for hele gruppen" :layout :stack)
-    (fieldset (:legend "Kontaktperson" :error "Fyll inn telefon eller e-post, eller begge")
-      (text-input (:label "Telefon" :name "kontakt-telefon" :type :tel :width 20))
-      (text-input (:label "E-post" :name "kontakt-epost" :type :email))))
-   (("Deaktivert" :layout :stack)
-    (fieldset (:legend "Leveringsadresse" :legend-size :section :disabled t
-                       :hint "Samme som fakturaadressen.")
-      (text-input (:label "Gateadresse" :name "adresse" :value "Storgata 12"))
-      (text-input (:label "Postnummer" :name "postnr" :value "3015" :width 4)))))
+      (text-input (:label "Town" :name "delivery-town" :width 20))))
+   (("With an error for the whole group" :layout :stack)
+    (fieldset (:legend "Contact" :error "Fill in a phone number or an email, or both")
+      (text-input (:label "Phone" :name "contact-phone" :type :tel :width 20))
+      (text-input (:label "Email" :name "contact-email" :type :email))))
+   (("Disabled" :layout :stack)
+    (fieldset (:legend "Delivery address" :legend-size :section :disabled t
+                       :hint "The same as the invoice address.")
+      (text-input (:label "Street address" :name "address" :value "Storgata 12"))
+      (text-input (:label "Postcode" :name "postcode" :value "3015" :width 4)))))
   (require-label 'fieldset legend :legend)
   (check-type legend-size (member :default :section :page))
   (let ((base (or id (element-id "fieldset"))))
@@ -590,9 +591,9 @@ hele spørsmålet på siden, :section til en mellomtittel i et langt skjema.")
 
 (define-component checkbox ((&key label name (value "true") checked hint error required
                                   disabled id attributes))
-  (:group "Skjema")
-  (:doc "Én avkrysningsboks med teksten ved siden av, for et ja/nei-felt eller «Jeg godtar
-…». Hele raden er trykkflaten. Feilmeldingen står over boksen.")
+  (:group "Forms")
+  (:doc "One checkbox with its text beside it, for a yes/no field or «I agree …». The whole
+row is the target. The error message stands above the box.")
   (:source "Basecoat checkbox (Vega); GOV.UK checkboxes with one item")
   (:css (concatenate 'string "
 .tun-checkbox {
@@ -618,17 +619,17 @@ hele spørsmålet på siden, :section til en mellomtittel i et langt skjema.")
   & > .tun-checkbox-error { margin-bottom: calc(var(--spacing) * 0.5); }
 }"))
   (:examples
-   ("Vanlig"
-    (checkbox (:label "Kunden vil ha nyhetsbrev på e-post" :name "nyhetsbrev")))
-   (("Med hjelpetekst" :layout :stack)
-    (checkbox (:label "Send ordrebekreftelse til kunden" :name "bekreftelse" :checked t
-                      :hint "Sendes til post@example.no når ordren lagres.")))
-   (("Med feil" :layout :stack)
-    (checkbox (:label "Jeg har lest og godtar vilkårene for oppdraget" :name "vilkar"
-                      :error "Du må godta vilkårene før du kan sende tilbudet")))
-   ("Deaktivert"
-    (checkbox (:label "Faktura sendt" :name "sendt" :checked t :disabled t))
-    (checkbox (:label "Purring sendt" :name "purret" :disabled t))))
+   ("Plain"
+    (checkbox (:label "The customer wants the newsletter by email" :name "newsletter")))
+   (("With a hint" :layout :stack)
+    (checkbox (:label "Send an order confirmation to the customer" :name "confirmation"
+                      :checked t :hint "Sent to post@example.com when the order is saved.")))
+   (("With an error" :layout :stack)
+    (checkbox (:label "I have read and agree to the terms of the job" :name "terms"
+                      :error "You must agree to the terms before you can send the quote")))
+   ("Disabled"
+    (checkbox (:label "Invoice sent" :name "sent" :checked t :disabled t))
+    (checkbox (:label "Reminder sent" :name "reminded" :disabled t))))
   (require-label 'checkbox label)
   (let ((id (or id (element-id (or name "checkbox")))))
     `(:div ,(attrs (list :class "tun-checkbox" :data-invalid (when error "true")))
@@ -658,11 +659,11 @@ to it, then ID-2, ID-3 ... (GOV.UK)."
 
 (define-component checkboxes ((&key legend name choices selected hint error inline optional
                                     (legend-size :default) disabled id attributes))
-  (:group "Skjema")
-  (:doc "En gruppe avkrysningsbokser under en overskrift, der brukeren kan velge flere.
-CHOICES er en liste av (VERDI TEKST &key HINT DISABLED) og SELECTED en liste av valgte
-verdier; INLINE legger korte valg på én linje. ID går til første boks, som feilsammendraget
-lenker til.")
+  (:group "Forms")
+  (:doc "A group of checkboxes under a heading, where the user can choose several. CHOICES
+is a list of (VALUE TEXT &key HINT DISABLED) and SELECTED a list of the chosen values; INLINE
+puts short choices on one line. ID goes to the first box, which the error summary links
+to.")
   (:source "GOV.UK checkboxes; Basecoat checkbox (Vega)")
   (:css "
 .tun-checkboxes {
@@ -675,32 +676,32 @@ lenker til.")
   &[data-invalid] .tun-checkbox-input:not(:checked) { border-color: var(--destructive); }
 }")
   (:examples
-   (("Med hjelpetekster" :layout :stack)
-    (checkboxes (:legend "Hvordan vil kunden få fakturaen?" :name "fakturakanal"
-                         :hint "Velg alle som passer." :selected '("ehf")
-                         :choices '(("ehf" "EHF" :hint "Rett inn i kundens regnskapssystem.")
-                                    ("epost" "E-post med PDF")
-                                    ("papir" "Papir i posten" :hint "Gebyr 59 kr per faktura.")))))
-   (("På én linje" :layout :stack)
-    (checkboxes (:legend "Hvilke dager kan vi komme?" :name "dager" :inline t
-                         :selected '("man" "ons")
-                         :choices '(("man" "Man") ("tir" "Tir") ("ons" "Ons") ("tor" "Tor")
-                                    ("fre" "Fre")))))
-   (("Med feil" :layout :stack)
-    (checkboxes (:legend "Hvilke tjenester gjelder oppdraget?" :name "tjenester"
-                         :id "oppdrag-tjenester" :error "Velg minst én tjeneste"
-                         :choices '(("maling" "Maling") ("tapetsering" "Tapetsering")
-                                    ("snekring" "Snekring")))))
-   (("Deaktivert valg" :layout :stack)
-    (checkboxes (:legend "Varsler på e-post" :name "varsler" :optional t
-                         :selected '("ordre")
-                         :choices '(("ordre" "Ny ordre") ("betaling" "Betaling mottatt")
-                                    ("sms" "SMS ved forsinkelse" :disabled t
-                                     :hint "Krever SMS-modulen.")))))
-   (("Hele gruppen deaktivert" :layout :stack)
-    (checkboxes (:legend "Leveringsdager" :name "levering" :inline t :disabled t
-                         :selected '("tir")
-                         :choices '(("man" "Man") ("tir" "Tir") ("ons" "Ons"))))))
+   (("With hints" :layout :stack)
+    (checkboxes (:legend "How does the customer want the invoice?" :name "invoice-channel"
+                         :hint "Choose all that apply." :selected '("ehf")
+                         :choices '(("ehf" "EHF" :hint "Straight into the customer's ledger.")
+                                    ("email" "Email with a PDF")
+                                    ("paper" "Paper by post" :hint "A fee of €5 per invoice.")))))
+   (("On one line" :layout :stack)
+    (checkboxes (:legend "Which days can we come?" :name "days" :inline t
+                         :selected '("mon" "wed")
+                         :choices '(("mon" "Mon") ("tue" "Tue") ("wed" "Wed") ("thu" "Thu")
+                                    ("fri" "Fri")))))
+   (("With an error" :layout :stack)
+    (checkboxes (:legend "Which services does the job cover?" :name "services"
+                         :id "job-services" :error "Choose at least one service"
+                         :choices '(("painting" "Painting") ("wallpapering" "Wallpapering")
+                                    ("carpentry" "Carpentry")))))
+   (("A disabled choice" :layout :stack)
+    (checkboxes (:legend "Notifications by email" :name "notifications" :optional t
+                         :selected '("order")
+                         :choices '(("order" "New order") ("payment" "Payment received")
+                                    ("sms" "SMS on a delay" :disabled t
+                                     :hint "Needs the SMS module.")))))
+   (("The whole group disabled" :layout :stack)
+    (checkboxes (:legend "Delivery days" :name "delivery" :inline t :disabled t
+                         :selected '("tue")
+                         :choices '(("mon" "Mon") ("tue" "Tue") ("wed" "Wed"))))))
   (require-label 'checkboxes legend :legend)
   (check-choices 'checkboxes choices)
   (let ((ids (choice-ids (or id (element-id (or name "checkboxes"))) (length choices))))
@@ -734,11 +735,11 @@ lenker til.")
 
 (define-component radios ((&key legend name choices selected hint error inline optional
                                 (legend-size :default) disabled required id attributes))
-  (:group "Skjema")
-  (:doc "En gruppe radioknapper under en overskrift, der brukeren velger ett svar. CHOICES er
-en liste av (VERDI TEKST &key HINT DISABLED) og SELECTED den valgte verdien; INLINE legger
-korte valg som Ja og Nei på én linje. ID går til første knapp, som feilsammendraget lenker
-til.")
+  (:group "Forms")
+  (:doc "A group of radio buttons under a heading, where the user chooses one answer.
+CHOICES is a list of (VALUE TEXT &key HINT DISABLED) and SELECTED the chosen value; INLINE
+puts short choices such as Yes and No on one line. ID goes to the first button, which the
+error summary links to.")
   (:source "GOV.UK radios; Basecoat radio group (Vega)")
   (:css (concatenate 'string "
 .tun-radios {
@@ -763,31 +764,32 @@ til.")
   &[data-invalid] .tun-radios-input { border-color: var(--destructive); }
 }"))
   (:examples
-   (("Med hjelpetekster" :layout :stack)
-    (radios (:legend "Kundetype" :name "kundetype" :selected "bedrift"
-                     :choices '(("bedrift" "Bedrift" :hint "Faktura på EHF.")
-                                ("privat" "Privatperson")
-                                ("offentlig" "Offentlig virksomhet"
-                                 :hint "Faktura med EHF og bestillingsnummer.")))))
-   (("Ja og nei på én linje" :layout :stack)
-    (radios (:legend "Skal ordren faktureres nå?" :name "fakturer" :inline t
-                     :choices '(("ja" "Ja") ("nei" "Nei")))))
-   (("Med feil" :layout :stack)
-    (radios (:legend "Hvordan skal varene leveres?" :name "levering" :id "ordre-levering"
-                     :error "Velg hvordan varene skal leveres"
-                     :choices '(("hent" "Kunden henter selv") ("bud" "Bud samme dag")
-                                ("post" "Posten, 2–4 virkedager")))))
-   (("Som sidetittel" :layout :stack)
-    (radios (:legend "Hva slags oppdrag er dette?" :legend-size :page :name "oppdragstype"
-                     :hint "Du kan endre det senere."
-                     :choices '(("fastpris" "Fastpris" :hint "Kunden betaler avtalt sum.")
-                                ("timer" "Etter medgått tid"
-                                 :hint "Kunden betaler for timer og materialer.")))))
-   (("Deaktivert valg" :layout :stack)
-    (radios (:legend "Betaling" :name "betaling" :selected "faktura"
-                     :choices '(("faktura" "Faktura")
-                                ("kort" "Kort i butikk")
-                                ("vipps" "Vipps" :disabled t :hint "Ikke satt opp ennå."))))))
+   (("With hints" :layout :stack)
+    (radios (:legend "Kind of customer" :name "customer-kind" :selected "business"
+                     :choices '(("business" "Business" :hint "Invoiced by EHF.")
+                                ("private" "Private person")
+                                ("public" "Public body"
+                                 :hint "Invoiced by EHF with an order number.")))))
+   (("Yes and no on one line" :layout :stack)
+    (radios (:legend "Should the order be invoiced now?" :name "invoice" :inline t
+                     :choices '(("yes" "Yes") ("no" "No")))))
+   (("With an error" :layout :stack)
+    (radios (:legend "How should the goods be delivered?" :name "delivery" :id "order-delivery"
+                     :error "Choose how the goods should be delivered"
+                     :choices '(("collect" "The customer collects them")
+                                ("courier" "Courier the same day")
+                                ("post" "By post, 2–4 working days")))))
+   (("As the page's title" :layout :stack)
+    (radios (:legend "What kind of job is this?" :legend-size :page :name "job-kind"
+                     :hint "You can change it later."
+                     :choices '(("fixed" "Fixed price" :hint "The customer pays an agreed sum.")
+                                ("hours" "By time spent"
+                                 :hint "The customer pays for hours and materials.")))))
+   (("A disabled choice" :layout :stack)
+    (radios (:legend "Payment" :name "payment" :selected "invoice"
+                     :choices '(("invoice" "Invoice")
+                                ("card" "Card in the shop")
+                                ("vipps" "Vipps" :disabled t :hint "Not set up yet."))))))
   (require-label 'radios legend :legend)
   (check-choices 'radios choices)
   (let ((ids (choice-ids (or id (element-id (or name "radios"))) (length choices))))
@@ -805,10 +807,10 @@ til.")
 
 (define-component switch ((&key label name (value "true") checked description disabled
                                 id attributes))
-  (:group "Skjema")
-  (:doc "En av/på-bryter for en innstilling som gjelder med en gang eller når skjemaet lagres,
-med teksten til venstre og bryteren til høyre. Bruk checkbox når svaret er et ja til noe,
-som å godta vilkår.")
+  (:group "Forms")
+  (:doc "An on/off switch for a setting that applies at once or when the form is saved, with
+the text on the left and the switch on the right. Use checkbox when the answer is a yes to
+something, such as agreeing to terms.")
   (:source "Basecoat switch (Vega); a checkbox with role switch")
   (:css (concatenate 'string "
 .tun-switch {
@@ -879,17 +881,17 @@ som å godta vilkår.")
   &:has(> :disabled) > .tun-switch-label { cursor: not-allowed; }
 }"))
   (:examples
-   (("Med beskrivelse" :layout :stack)
-    (switch (:label "Send påminnelse om ubetalte fakturaer" :name "paminnelse" :checked t
-                    :description "Kunden får e-post 3 og 10 dager etter forfall."))
-    (switch (:label "Vis priser med mva." :name "med-mva"
-                    :description "Gjelder bare det du ser, ikke fakturaene.")))
-   (("Uten beskrivelse" :layout :stack)
-    (switch (:label "Ta imot bestillinger på nett" :name "nettbestilling" :checked t)))
-   (("Deaktivert" :layout :stack)
-    (switch (:label "Automatisk purring" :name "purring" :disabled t
-                    :description "Krever at fakturamodulen er slått på."))
-    (switch (:label "Sikkerhetskopi hver natt" :name "backup" :checked t :disabled t))))
+   (("With a description" :layout :stack)
+    (switch (:label "Send reminders of unpaid invoices" :name "reminders" :checked t
+                    :description "The customer is emailed 3 and 10 days after the due date."))
+    (switch (:label "Show prices with VAT" :name "with-vat"
+                    :description "Applies only to what you see, not to the invoices.")))
+   (("Without a description" :layout :stack)
+    (switch (:label "Take orders online" :name "online-orders" :checked t)))
+   (("Disabled" :layout :stack)
+    (switch (:label "Automatic reminders" :name "auto-reminders" :disabled t
+                    :description "Needs the invoicing module to be turned on."))
+    (switch (:label "A backup every night" :name "backup" :checked t :disabled t))))
   (require-label 'switch label)
   (let ((id (or id (element-id (or name "switch")))))
     `(:div ,(attrs (list :class "tun-switch"))
@@ -909,10 +911,10 @@ som å godta vilkår.")
                                      optional label-hidden placeholder autocomplete inputmode
                                      width disabled readonly prefix suffix icon icon-end
                                      id attributes))
-  (:group "Skjema")
-  (:doc "Et tekstfelt med noe fast foran eller bak: tekst som «kr», «%» og «stk» (PREFIX,
-SUFFIX) eller et ikon (ICON, ICON-END). Skjermlesere hopper over det faste, som hos GOV.UK,
-så enheten må også stå i ledeteksten eller hjelpeteksten.")
+  (:group "Forms")
+  (:doc "A text box with something fixed before or after it: text such as «€», «%» and «pcs»
+(PREFIX, SUFFIX) or an icon (ICON, ICON-END). Screen readers skip what is fixed, as at
+GOV.UK, so the unit must also be in the label or the hint.")
   (:source "Basecoat input group (Vega); GOV.UK text input prefix and suffix")
   (:css (concatenate 'string "
 .tun-input-group {
@@ -967,24 +969,24 @@ så enheten må også stå i ledeteksten eller hjelpeteksten.")
   &[data-width='30'] > .tun-input-group-control { width: calc(31ch + var(--spacing) * 4); }
 }"))
   (:examples
-   (("Enhet etter feltet" :layout :stack)
-    (input-group (:label "Timepris" :name "timepris" :suffix "kr" :inputmode "decimal"
-                         :width 10 :hint "I kroner, uten mva."))
-    (input-group (:label "Rabatt i prosent" :name "rabatt" :suffix "%" :inputmode "decimal"
+   (("A unit after the box" :layout :stack)
+    (input-group (:label "Hourly rate" :name "hourly-rate" :prefix "€" :inputmode "decimal"
+                         :width 10 :hint "In euros, without VAT."))
+    (input-group (:label "Discount in per cent" :name "discount" :suffix "%" :inputmode "decimal"
                          :width 3))
-    (input-group (:label "Antall" :name "antall" :suffix "stk" :type :number :width 5)))
-   (("Ikon foran" :layout :stack)
-    (input-group (:label "Søk i kunder" :name "sok" :type :search :icon :search
-                         :placeholder "Navn, e-post eller org.nr.")))
-   (("Tekst foran" :layout :stack)
-    (input-group (:label "Nettside" :name "nettside" :prefix "https://" :optional t
-                         :placeholder "www.firma.no")))
-   (("Med feil" :layout :stack)
-    (input-group (:label "Beløp" :name "belop" :suffix "kr" :width 10 :value "1250,-"
-                         :hint "I kroner, med mva."
-                         :error "Beløpet må være et tall, som 1250 eller 1250,50")))
-   (("Deaktivert" :layout :stack)
-    (input-group (:label "Fraktkostnad" :name "frakt" :suffix "kr" :width 10 :value "149"
+    (input-group (:label "Quantity" :name "quantity" :suffix "pcs" :type :number :width 5)))
+   (("An icon before it" :layout :stack)
+    (input-group (:label "Search customers" :name "search" :type :search :icon :search
+                         :placeholder "Name, email or organisation number")))
+   (("Text before it" :layout :stack)
+    (input-group (:label "Website" :name "website" :prefix "https://" :optional t
+                         :placeholder "www.company.example")))
+   (("With an error" :layout :stack)
+    (input-group (:label "Amount" :name "amount" :prefix "€" :width 10 :value "1250,-"
+                         :hint "In euros, with VAT."
+                         :error "The amount must be a number, like 1250 or 1250.50")))
+   (("Disabled" :layout :stack)
+    (input-group (:label "Shipping" :name "shipping" :prefix "€" :width 10 :value "149"
                          :disabled t))))
   (require-label 'input-group label)
   (check-width width)
@@ -1012,14 +1014,14 @@ så enheten må også stå i ledeteksten eller hjelpeteksten.")
 ;;; ------------------------------------------------------------------
 ;;; Error summary
 
-(define-component error-summary ((&key (title "For å gå videre må du rette opp følgende feil:")
+(define-component error-summary ((&key (title (tr "There is a problem"))
                                        errors id attributes)
                                  &rest children)
-  (:group "Skjema")
-  (:doc "Feilsammendraget øverst på siden når et skjema kommer tilbake med feil: én lenke per
-feil til feltet det gjelder, med samme tekst som feilmeldingen ved feltet. ERRORS er en liste
-av (ID MELDING). Sammendraget får fokus når siden lastes (er det det eneste på siden), og en
-lenke flytter fokus til feltet.")
+  (:group "Forms")
+  (:doc "The error summary at the top of the page when a form comes back with errors: one
+link per error to the field it is about, with the same text as the error message by the
+field. ERRORS is a list of (ID MESSAGE). The summary takes focus when the page loads (when it
+is the only one on the page), and a link moves focus to the field.")
   (:source "GOV.UK error summary; Designsystemet's wording; Basecoat alert (Vega)")
   (:css "
 .tun-error-summary {
@@ -1107,20 +1109,20 @@ document.addEventListener('click', (event) => {
   input.focus({ preventScroll: true });
 });")
   (:examples
-   (("Med feltene det gjelder" :layout :stack)
-    (error-summary (:errors '(("tilbud-kunde" "Velg en kunde")
-                              ("tilbud-gyldig" "Gyldig til må være en dato i fremtiden"))))
-    (select (:label "Kunde" :name "kunde" :id "tilbud-kunde" :prompt "Velg kunde"
-                    :error "Velg en kunde"
-                    :options '(("1" "Vestvik Bygg AS") ("2" "Hansen Rør og Varme"))))
-    (text-input (:label "Gyldig til" :name "gyldig" :type :date
-                        :id "tilbud-gyldig" :value "2026-09-30"
-                        :error "Gyldig til må være en dato i fremtiden")))
-   (("Med forklaring og egen tittel" :layout :stack)
-    (error-summary (:title "Tilbudet er ikke sendt"
-                           :errors '(("tilbud-epost" "Kunden har ingen e-postadresse. Legg den inn
-på kunden først.")))
-      '(:p "Rett opp dette, så sender vi tilbudet til kunden."))))
+   (("With the fields it is about" :layout :stack)
+    (error-summary (:errors '(("quote-customer" "Choose a customer")
+                              ("quote-valid" "Valid until must be a date in the future"))))
+    (select (:label "Customer" :name "customer" :id "quote-customer" :prompt "Choose a customer"
+                    :error "Choose a customer"
+                    :options '(("1" "Vestvik Building Ltd") ("2" "Hansen Pipes and Heating"))))
+    (text-input (:label "Valid until" :name "valid" :type :date
+                        :id "quote-valid" :value "2026-09-30"
+                        :error "Valid until must be a date in the future")))
+   (("With an explanation and its own title" :layout :stack)
+    (error-summary (:title "The quote has not been sent"
+                           :errors '(("quote-email" "The customer has no email address. Add it
+to the customer first.")))
+      '(:p "Correct this, and we will send the quote to the customer."))))
   `(:div ,(attrs (list :class "tun-error-summary" :id id :tabindex "-1"
                        :data-tun-error-summary "true")
                  attributes)
@@ -1143,12 +1145,12 @@ på kunden først.")))
 ;;; ------------------------------------------------------------------
 ;;; Form actions
 
-(define-component form-actions ((&key cancel (cancel-label "Avbryt") id attributes)
+(define-component form-actions ((&key cancel (cancel-label (tr "Cancel")) id attributes)
                                 &rest children)
-  (:group "Skjema")
-  (:doc "Knappene nederst i et skjema: hovedknappen først, så andre handlinger, og CANCEL, en
-lenke tilbake uten å lagre. På en smal skjerm fyller knappene bredden og ligger under
-hverandre.")
+  (:group "Forms")
+  (:doc "The buttons at the bottom of a form: the main button first, then other actions, and
+CANCEL, a link back without saving. On a narrow screen the buttons fill the width and stand
+one under another.")
   (:source "GOV.UK button group; Basecoat button (Vega)")
   (:css "
 .tun-form-actions {
@@ -1179,88 +1181,88 @@ hverandre.")
   }
 }")
   (:examples
-   (("Et helt skjema: Ny kunde" :layout :stack)
-    `(:form (:@ :method "post" :action "/kunder" :novalidate t)
-            ,(fieldset (:legend "Ny kunde" :legend-size :page)
-               (text-input (:label "Navn" :name "navn"))
-               (text-input (:label "E-post" :name "epost" :type :email
-                                   :hint "Fakturaer og ordrebekreftelser sendes hit."))
-               (text-input (:label "Telefon" :name "telefon" :type :tel :width 20))
-               (text-input (:label "Organisasjonsnummer" :name "orgnr" :width 10
+   (("A whole form: a new customer" :layout :stack)
+    `(:form (:@ :method "post" :action "/customers" :novalidate t)
+            ,(fieldset (:legend "New customer" :legend-size :page)
+               (text-input (:label "Name" :name "name"))
+               (text-input (:label "Email" :name "email" :type :email
+                                   :hint "Invoices and order confirmations are sent here."))
+               (text-input (:label "Phone" :name "phone" :type :tel :width 20))
+               (text-input (:label "Organisation number" :name "orgno" :width 10
                                    :inputmode "numeric" :optional t
-                                   :hint "9 siffer. Står i Brønnøysundregistrene."))
-               (fieldset (:legend "Adresse" :legend-size :section)
-                 (text-input (:label "Gateadresse" :name "gateadresse"))
-                 (text-input (:label "Postnummer" :name "postnummer" :width 4
+                                   :hint "9 digits. In the Brønnøysund Register Centre."))
+               (fieldset (:legend "Address" :legend-size :section)
+                 (text-input (:label "Street address" :name "street-address"))
+                 (text-input (:label "Postcode" :name "postcode" :width 4
                                      :inputmode "numeric"))
-                 (text-input (:label "Poststed" :name "poststed" :width 20)))
-               (radios (:legend "Kundetype" :name "kundetype" :selected "bedrift"
-                                :choices '(("bedrift" "Bedrift" :hint "Faktura på EHF.")
-                                           ("privat" "Privatperson")
-                                           ("offentlig" "Offentlig virksomhet"
-                                            :hint "Faktura med EHF og bestillingsnummer."))))
-               (checkbox (:label "Kunden vil ha nyhetsbrev på e-post" :name "nyhetsbrev"))
-               (textarea (:label "Notat" :name "notat" :optional t :rows 3
-                                 :hint "Bare for dere, kunden ser det ikke."))
-               (form-actions (:cancel "/kunder")
-                 (button (:type "submit") "Lagre kunde")
-                 (button (:type "submit" :variant :outline :name "neste" :value "ny")
-                         "Lagre og legg til ny")))))
-   (("Det samme skjemaet med feil" :layout :stack)
-    (error-summary (:errors '(("kunde-navn" "Skriv inn navnet på kunden")
-                              ("kunde-epost"
-                               "Skriv inn en gyldig e-postadresse, som ola@example.no")
-                              ("kunde-orgnr" "Organisasjonsnummeret må ha 9 siffer")
-                              ("kunde-postnummer" "Postnummeret må ha 4 siffer")
-                              ("kunde-kundetype" "Velg kundetype"))))
-    `(:form (:@ :method "post" :action "/kunder" :novalidate t)
-            ,(fieldset (:legend "Ny kunde" :legend-size :page)
-               (text-input (:label "Navn" :name "navn" :id "kunde-navn"
-                                   :error "Skriv inn navnet på kunden"))
-               (text-input (:label "E-post" :name "epost" :type :email :id "kunde-epost"
-                                   :value "ola@firma"
-                                   :hint "Fakturaer og ordrebekreftelser sendes hit."
-                                   :error "Skriv inn en gyldig e-postadresse, som ola@example.no"))
-               (text-input (:label "Telefon" :name "telefon" :type :tel :width 20
+                 (text-input (:label "Town" :name "town" :width 20)))
+               (radios (:legend "Kind of customer" :name "customer-kind" :selected "business"
+                                :choices '(("business" "Business" :hint "Invoiced by EHF.")
+                                           ("private" "Private person")
+                                           ("public" "Public body"
+                                            :hint "Invoiced by EHF with an order number."))))
+               (checkbox (:label "The customer wants the newsletter by email" :name "newsletter"))
+               (textarea (:label "Note" :name "note" :optional t :rows 3
+                                 :hint "Only for you; the customer does not see it."))
+               (form-actions (:cancel "/customers")
+                 (button (:type "submit") "Save the customer")
+                 (button (:type "submit" :variant :outline :name "next" :value "new")
+                         "Save and add another")))))
+   (("The same form with errors" :layout :stack)
+    (error-summary (:errors '(("customer-name" "Enter the customer's name")
+                              ("customer-email"
+                               "Enter a valid email address, like ola@example.com")
+                              ("customer-orgno" "The organisation number must have 9 digits")
+                              ("customer-postcode" "The postcode must have 4 digits")
+                              ("customer-kind" "Choose the kind of customer"))))
+    `(:form (:@ :method "post" :action "/customers" :novalidate t)
+            ,(fieldset (:legend "New customer" :legend-size :page)
+               (text-input (:label "Name" :name "name" :id "customer-name"
+                                   :error "Enter the customer's name"))
+               (text-input (:label "Email" :name "email" :type :email :id "customer-email"
+                                   :value "ola@company"
+                                   :hint "Invoices and order confirmations are sent here."
+                                   :error "Enter a valid email address, like ola@example.com"))
+               (text-input (:label "Phone" :name "phone" :type :tel :width 20
                                    :value "+47 912 34 567"))
-               (text-input (:label "Organisasjonsnummer" :name "orgnr" :width 10
-                                   :id "kunde-orgnr" :inputmode "numeric" :optional t
+               (text-input (:label "Organisation number" :name "orgno" :width 10
+                                   :id "customer-orgno" :inputmode "numeric" :optional t
                                    :value "99887766"
-                                   :hint "9 siffer. Står i Brønnøysundregistrene."
-                                   :error "Organisasjonsnummeret må ha 9 siffer"))
-               (fieldset (:legend "Adresse" :legend-size :section)
-                 (text-input (:label "Gateadresse" :name "gateadresse"
+                                   :hint "9 digits. In the Brønnøysund Register Centre."
+                                   :error "The organisation number must have 9 digits"))
+               (fieldset (:legend "Address" :legend-size :section)
+                 (text-input (:label "Street address" :name "street-address"
                                      :value "Storgata 12"))
-                 (text-input (:label "Postnummer" :name "postnummer" :width 4
-                                     :id "kunde-postnummer" :inputmode "numeric" :value "30"
-                                     :error "Postnummeret må ha 4 siffer"))
-                 (text-input (:label "Poststed" :name "poststed" :width 20
+                 (text-input (:label "Postcode" :name "postcode" :width 4
+                                     :id "customer-postcode" :inputmode "numeric" :value "30"
+                                     :error "The postcode must have 4 digits"))
+                 (text-input (:label "Town" :name "town" :width 20
                                      :value "Drammen")))
-               (radios (:legend "Kundetype" :name "kundetype" :id "kunde-kundetype"
-                                :error "Velg kundetype"
-                                :choices '(("bedrift" "Bedrift" :hint "Faktura på EHF.")
-                                           ("privat" "Privatperson")
-                                           ("offentlig" "Offentlig virksomhet"
-                                            :hint "Faktura med EHF og bestillingsnummer."))))
-               (checkbox (:label "Kunden vil ha nyhetsbrev på e-post" :name "nyhetsbrev"
+               (radios (:legend "Kind of customer" :name "customer-kind" :id "customer-kind"
+                                :error "Choose the kind of customer"
+                                :choices '(("business" "Business" :hint "Invoiced by EHF.")
+                                           ("private" "Private person")
+                                           ("public" "Public body"
+                                            :hint "Invoiced by EHF with an order number."))))
+               (checkbox (:label "The customer wants the newsletter by email" :name "newsletter"
                                  :checked t))
-               (textarea (:label "Notat" :name "notat" :optional t :rows 3
-                                 :hint "Bare for dere, kunden ser det ikke."
-                                 :value "Ring før levering, porten er låst etter kl. 16."))
-               (form-actions (:cancel "/kunder")
-                 (button (:type "submit") "Lagre kunde")
-                 (button (:type "submit" :variant :outline :name "neste" :value "ny")
-                         "Lagre og legg til ny")))))
-   (("Lagre, en annen handling og avbryt" :layout :stack)
-    (form-actions (:cancel "/ordre")
-      (button (:type "submit") "Lagre ordre")
-      (button (:type "submit" :variant :outline :name "kladd" :value "ja") "Lagre som kladd")))
-   (("Bare én knapp" :layout :stack)
+               (textarea (:label "Note" :name "note" :optional t :rows 3
+                                 :hint "Only for you; the customer does not see it."
+                                 :value "Call before delivery, the gate is locked after 4 pm."))
+               (form-actions (:cancel "/customers")
+                 (button (:type "submit") "Save the customer")
+                 (button (:type "submit" :variant :outline :name "next" :value "new")
+                         "Save and add another")))))
+   (("Save, another action and cancel" :layout :stack)
+    (form-actions (:cancel "/orders")
+      (button (:type "submit") "Save the order")
+      (button (:type "submit" :variant :outline :name "draft" :value "yes") "Save as a draft")))
+   (("Only one button" :layout :stack)
     (form-actions ()
-      (button (:type "submit" :icon-end :arrow-right) "Fortsett")))
-   (("Slette" :layout :stack)
-    (form-actions (:cancel "/kunder/10234" :cancel-label "Nei, behold kunden")
-      (button (:type "submit" :variant :destructive) "Ja, slett Vestvik Bygg AS"))))
+      (button (:type "submit" :icon-end :arrow-right) "Continue")))
+   (("Deleting" :layout :stack)
+    (form-actions (:cancel "/customers/10234" :cancel-label "No, keep the customer")
+      (button (:type "submit" :variant :destructive) "Yes, delete Vestvik Building Ltd"))))
   `(:div ,(attrs (list :class "tun-form-actions" :id id) attributes)
          (:div (:@ :class "tun-form-actions-row")
                ,@children

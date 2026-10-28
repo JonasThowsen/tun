@@ -96,7 +96,7 @@ removed when OCTETS is NIL."
       (is (search "application/manifest+json" (header :content-type headers)))
       (is (string= "no-cache" (header :cache-control headers)))
       (let ((manifest (parse-json body)))
-        (is (equal '("/" "/" "/" "Prøveappen" "Prøve" "standalone" "no" "#fafafa" "#ffffff")
+        (is (equal '("/" "/" "/" "Prøveappen" "Prøve" "standalone" "en" "#fafafa" "#ffffff")
                    (mapcar (lambda (key) (jget manifest key))
                            '("id" "start_url" "scope" "name" "short_name" "display" "lang"
                              "theme_color" "background_color"))))
@@ -144,12 +144,36 @@ removed when OCTETS is NIL."
         (web-request port "/offline" :jar (web-login port "employee:anna"))
       (is (= 200 status))
       (is (search "text/html" (header :content-type headers)))
-      (is (search "Du er frakoblet" body))
-      (is (search "Prøv igjen" body))
-      (is (search "href=\"\"" body) "«Prøv igjen» loads the address again")
+      (is (search "You are offline" body))
+      (is (search "Try again" body))
+      (is (search "href=\"\"" body) "«Try again» loads the address again")
       (is (search "rel=\"manifest\"" body))
       (is (not (search "anna" body)))
-      (is (not (search "Logg ut" body))))))
+      (is (not (search "Sign out" body))))))
+
+;; spec/i18n.md 2.1, 3.6: the manifest's lang, the offline page and the
+;; worker's text for a push without data follow the tenant's language.
+(test the-web-app-speaks-the-tenants-language
+  (with-test-server (port :class 'installable-app)
+    (flet ((manifest-lang ()
+             (jget (parse-json (sb-ext:octets-to-string
+                                (nth-value 1 (web-octets port "/manifest.webmanifest"))
+                                :external-format :utf-8))
+                   "lang"))
+           (worker () (nth-value 1 (web-request port "/sw.js"))))
+      (let ((english (worker)))
+        (is (equal "en" (manifest-lang)))
+        (is (search "const unnamed = \"You have a new notification\";" english))
+        (is (search "body: unnamed" english))
+        (call-ok "settings_set" "admin:ada" "key" "locale.language" "value" "nb")
+        (is (equal "nb" (manifest-lang)))
+        (let ((norwegian (worker)))
+          (is (search "const unnamed = \"Du har et nytt varsel\";" norwegian))
+          (is (not (search "You have a new notification" norwegian)))
+          (is (string/= (subseq english 0 (search "const offline" english))
+                        (subseq norwegian 0 (search "const offline" norwegian)))
+              "a new cache, since the offline page it keeps changed"))
+        (is (search "Du er frakoblet" (nth-value 1 (web-request port "/offline"))))))))
 
 (test the-service-worker-keeps-the-assets-and-the-offline-page
   (with-test-server (port :class 'installable-app)

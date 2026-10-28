@@ -34,6 +34,43 @@ with claimed identity parses it; returns (values status response-json session)."
       (is (= 202 status))
       (is (null json)))))
 
+(test initialize-names-the-tenants-currency-and-time-zone-first
+  ;; spec/i18n.md 7: the instructions start with the locale's line, before
+  ;; Tun's paragraph and the client's.
+  (with-test-app ()
+    (flet ((instructions ()
+             (jget (jget (nth-value 1 (rpc "initialize" :params (jobj "protocolVersion" "2025-06-18")))
+                         "result")
+                   "instructions")))
+      (let ((text (instructions)))
+        (is (string-prefix-p "This tenant's currency is EUR, which has 2 minor digits" text))
+        (is (search "Its time zone is UTC." (subseq text 0 (position #\Newline text)))
+            "on the first line")
+        (is (search (format nil "~%~%Every tool is generated") text) "Tun's paragraph after it"))
+      (call-ok "settings_set" "admin:root" "key" "locale.currency" "value" "ISK")
+      (call-ok "settings_set" "admin:root" "key" "locale.time_zone" "value" "Europe/Oslo")
+      (let ((text (instructions)))
+        (is (string-prefix-p "This tenant's currency is ISK, which has 0 minor digits" text)
+            "the tenant's, as it is set now")
+        (is (search "Its time zone is Europe/Oslo." (subseq text 0 (position #\Newline text))))))))
+
+(test registry-describe-gives-the-tenants-locale
+  ;; spec/i18n.md 7, core.md 3.9.
+  (with-test-app ()
+    (flet ((locale () (jget (call-ok "registry_describe" "viewer:vera") "locale")))
+      (let ((locale (locale)))
+        (is (equal '("en" ("en" "nb") "EUR" 2 "UTC")
+                   (list (jget locale "language") (coerce (jget locale "languages") 'list)
+                         (jget locale "currency") (jget locale "minor_digits")
+                         (jget locale "time_zone")))))
+      (call-ok "settings_set" "admin:root" "key" "locale.language" "value" "nb")
+      (call-ok "settings_set" "admin:root" "key" "locale.currency" "value" "ISK")
+      (call-ok "settings_set" "admin:root" "key" "locale.time_zone" "value" "Europe/Oslo")
+      (let ((locale (locale)))
+        (is (equal '("nb" "ISK" 0 "Europe/Oslo")
+                   (list (jget locale "language") (jget locale "currency")
+                         (jget locale "minor_digits") (jget locale "time_zone"))))))))
+
 (test actor-header-is-required
   (with-test-app ()
     (dolist (bad (list nil "" "employee" "boss:anna" "employee:" "employee:an na"))
@@ -54,7 +91,7 @@ with claimed identity parses it; returns (values status response-json session)."
            (create (find "customers_create" tools :key (lambda (tl) (jget tl "name")) :test #'string=)))
       (is (equal (sort (copy-list names) #'string<)
                  (sort (mapcar #'operation-tool (visible-operations *app*)) #'string<)))
-      (is (string= "Opprett kunde" (jget create "title")))
+      (is (string= "Create customer" (jget create "title")))
       (is (stringp (jget create "description")))
       (is (member "name" (coerce (jget (jget create "inputSchema") "required") 'list) :test #'string=))
       (is (eq nil (jget (jget create "annotations") "readOnlyHint")))
