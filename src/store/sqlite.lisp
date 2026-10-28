@@ -472,11 +472,20 @@ migration columns (recorded as the kernel's own first migrations)."
 (defun column-owner (field)
   (field-module field))
 
+(defun record-core-major ()
+  (ensure-core-major
+   (mapcar #'first (query "SELECT \"migration\" FROM \"schema_history\" WHERE \"module\" = ?"
+                          +core-major-module+))
+   (lambda (statement migration)
+     (exec "INSERT INTO \"schema_history\" (\"statement\", \"applied_at\", \"module\", \"migration\") VALUES (?, ?, ?, ?)"
+           statement (format-rfc3339 (get-universal-time)) +core-major-module+ migration))))
+
 (defmethod store-migrate ((store sqlite-store) classes)
   (store-call-in-transaction
    store
    (lambda ()
      (ensure-schema-history)
+     (record-core-major)
      ;; Two passes: the kernel's and the modules' tables and columns in
      ;; dependency order (the order the classes were defined), then the
      ;; client's (tun-platform.md 2.6 and 2.7).

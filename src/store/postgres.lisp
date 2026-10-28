@@ -707,11 +707,21 @@ client's own migrations."
           (exec (format nil "CREATE UNIQUE INDEX ~a ON ~a (~{~a~^, ~})"
                         (quote-ident name) (quote-ident table) (mapcar #'quote-ident columns))))))))
 
+(defun record-core-major ()
+  (ensure-core-major
+   (mapcar #'first (query "SELECT \"migration\" FROM \"schema_history\" WHERE \"module\" = $1"
+                          +core-major-module+))
+   (lambda (statement migration)
+     (exec "INSERT INTO \"schema_history\" (\"statement\", \"applied_at\", \"module\", \"migration\")
+            VALUES ($1, $2, $3, $4)"
+           statement (format-rfc3339 (get-universal-time)) +core-major-module+ migration))))
+
 (defmethod store-migrate ((store postgres-store) classes)
   (store-call-in-transaction
    store
    (lambda ()
      (ensure-schema-history)
+     (record-core-major)
      (ensure-contents-table)
      ;; Two passes, as on SQLite: the kernel's and the modules' tables and
      ;; columns in dependency order, then the client's (tun-platform.md 2.6

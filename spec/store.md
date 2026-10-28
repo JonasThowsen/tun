@@ -58,6 +58,31 @@ parameter is refused at start.
    column types are `BIGINT` for integers and booleans, `NUMERIC` for
    decimals and `TEXT` for the rest. `introspect_schema` reports each
    adapter's own type names.
+10. **A newer major's database is refused.** A process from core 1.23.1 on
+    records once, inside its migrate transaction, that core's major
+    version M has opened the database: a `schema_history` row with
+    `module` `tun-core`, `migration` `core-major-M` and `statement`
+    `core major M opened this database`. Before it migrates anything, in
+    the same transaction, it refuses to start on a database where a
+    higher major has recorded its mark: the server exits with code 2, names
+    both majors on stderr and closes the connections it opened. A
+    database with no mark, or only marks of its own major or lower, opens
+    as before, and within one major nothing changes.
+    - The module value `tun-core` has a hyphen, so no module can have it
+      (module names are `[a-z][a-z0-9_]*`), and core's own migrations
+      under `core` keep their numbers: `ddl-record` numbers a module's
+      migrations by counting its rows.
+    - The mark is not a migration, and its id is not of the
+      `<module>_<nnnn>_<name>` form; `introspect_schema` lists it with the
+      applied migrations.
+    - What it guards: a Tun from 1.23.1 on, starting on a database a
+      higher major has opened, whether in a blue/green switch, a rollback
+      by pin or by mistake. What it does not: a process of a lower major
+      that is already running is not stopped, and a pin back to 1.23.0 or
+      earlier starts unchecked. A higher major therefore records its mark
+      before, or in the same transaction as, its first change an older
+      major cannot read.
+    - The memory store keeps no history and is not affected.
 
 ## 3. Two processes on one Postgres database
 

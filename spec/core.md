@@ -483,6 +483,10 @@ data written before the move is read the same way after it.
 
 ### 6.4 The rollback preflight
 
+A rollback to a lower core major is not checked here: a core from 1.23.1
+on refuses to start on a database a higher major has opened, and an
+earlier one is not checked (`store.md` §2, item 10).
+
 Additive migrations let an older core start on a newer database, but not
 read everything in it. Before a tenant moves back to an older core or
 module, the newer server checks the database against the older code's

@@ -78,6 +78,7 @@
    #:store-open #:store-close #:store-migrate #:store-call-in-transaction #:store-insert
    #:store-update #:store-delete #:store-find #:store-select #:store-lock-row #:store-description
    #:store-claim-presence #:store-present-p #:store-presences
+   #:+core-major-module+ #:newer-database #:ensure-core-major
    #:with-transaction #:call-in-transaction #:assert-writable #:insert #:save #:delete-entity #:fetch #:fetch!
    #:select #:select-one #:lock-row #:where-field #:where-value->db #:read-only-violation
    #:store-describe-schema #:store-write-queue-depth #:store-runs-queries-p #:store-query

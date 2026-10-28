@@ -138,6 +138,40 @@ a database with one process, knows only this process's.")
 (defgeneric store-description (store))
 
 ;;; ------------------------------------------------------------------
+;;; Which core major opened a database (spec/store.md 2, item 10)
+
+(defparameter +core-major-module+ "tun-core"
+  "The schema_history module of the major marks: no module's name has a
+hyphen, and core's own migrations, numbered by counting rows under \"core\",
+keep their numbers.")
+
+(define-condition newer-database (error)
+  ((recorded :initarg :recorded :reader newer-database-recorded)
+   (running :initarg :running :reader newer-database-running))
+  (:report (lambda (c s)
+             (format s "Core major ~d has opened this database; core ~a (major ~d) ~
+                        cannot read what it may have changed and refuses to start."
+                     (newer-database-recorded c) +core-version+ (newer-database-running c)))))
+
+(defun ensure-core-major (marks record)
+  "Signal NEWER-DATABASE when MARKS, the migration ids recorded under
++CORE-MAJOR-MODULE+, name a major above this core's.  Otherwise, unless this
+major's mark is among them, call RECORD with the statement and migration id
+of its mark.  A durable adapter calls this in its migrate transaction before
+it changes anything, so a refused start changes nothing."
+  (let ((running (first (parse-version +core-version+)))
+        (highest (loop for mark in marks
+                       for major = (cl-ppcre:register-groups-bind ((#'parse-integer major))
+                                       ("^core-major-(\\d+)$" mark)
+                                     major)
+                       when major maximize major)))
+    (when (and highest (> highest running))
+      (error 'newer-database :recorded highest :running running))
+    (let ((mark (format nil "core-major-~d" running)))
+      (unless (member mark marks :test #'string=)
+        (funcall record (format nil "core major ~d opened this database" running) mark)))))
+
+;;; ------------------------------------------------------------------
 ;;; Transactions
 
 (defmacro with-transaction ((&optional (mode :write)) &body body)

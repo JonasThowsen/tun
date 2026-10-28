@@ -82,6 +82,9 @@ by: client or dependency).
 - Rollback: re-pin one step back and restart on the same database; it must
   pass that module's `--phase before` again. A module whose migration cannot be rolled back one step says so in
   its README, and the upgrade command refuses `rollback` for it.
+  A core from 1.23.1 on refuses to start on a database a higher core
+  major has opened (`store.md` §2, item 10); an earlier one is not
+  checked.
 - Compatibility: a module's README states the core revision range it builds
   against. A client build fails, with the constraint named, when a pin is
   outside the range.

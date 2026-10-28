@@ -167,6 +167,83 @@ server is there, on Postgres."
               "~a: ALTER TABLE ... ADD COLUMN ... DEFAULT backfilled the existing row" store))))))
 
 ;;; ------------------------------------------------------------------
+;;; Which core major opened a database (spec/store.md 2, item 10)
+
+(defun core-major-marks ()
+  "The (migration statement) rows recorded under the major marks' module."
+  (with-application (*app*)
+    (with-transaction (:read)
+      (raw-sql (format nil "SELECT migration, statement FROM schema_history
+                            WHERE module = '~a' ORDER BY seq" +core-major-module+)))))
+
+(defun schema-snapshot (db)
+  "DB's tables, columns and history as JSON text, read without migrating."
+  (let ((store (tun.runtime::make-store db)))
+    (store-open store)
+    (unwind-protect
+         (multiple-value-bind (tables migrations) (store-describe-schema store)
+           (list (to-json-string tables) (to-json-string migrations)))
+      (store-close store))))
+
+(defun store-connected-p (store)
+  (and (etypecase store
+         (tun.store.sqlite:sqlite-store (tun.store.sqlite::writer-connection store))
+         (tun.store.postgres:postgres-store (tun.store.postgres::writer-connection store)))
+       t))
+
+(test opening-a-database-records-its-core-major-once
+  (with-each-durable-store (store db "major-mark")
+    (with-test-app (:db db))
+    (with-test-app (:db db)
+      (is (equal '(("core-major-1" "core major 1 opened this database")) (core-major-marks))
+          "~a: one mark after two starts" store)
+      (multiple-value-bind (tables migrations) (with-application (*app*) (store-describe-schema *store*))
+        (declare (ignore tables))
+        (is (find "core-major-1" (coerce migrations 'list) :key (lambda (m) (jget m "id")) :test #'equal)
+            "~a: introspect_schema lists the mark" store)))))
+
+(test a-database-with-no-mark-opens-and-gains-one
+  (with-each-durable-store (store db "major-unmarked")
+    (with-test-app (:db db)
+      (call-ok "widgets_create" "employee:anna" "name" "Fra 1.23.0")
+      ;; A database from before 1.23.1 has no mark.
+      (with-application (*app*)
+        (with-transaction (:write)
+          (raw-sql (format nil "DELETE FROM schema_history WHERE module = '~a'" +core-major-module+)))))
+    (with-test-app (:db db)
+      (is (= 1 (jget (call-ok "widgets_count" "viewer:vera") "count")) "~a: it opens as before" store)
+      (is (equal '("core-major-1") (mapcar #'first (core-major-marks)))))))
+
+(test a-database-a-newer-major-opened-is-refused
+  (with-each-durable-store (store db "major-newer")
+    (with-test-app (:db db)
+      (call-ok "widgets_create" "employee:anna" "name" "Fra 2.0")
+      (with-application (*app*)
+        (with-transaction (:write)
+          ;; What a 2.0 start would leave: its mark beside 1's, and a
+          ;; column this major's migration would add back if it ran.
+          (raw-sql (format nil "INSERT INTO schema_history (statement, applied_at, module, migration)
+                                VALUES ('core major 2 opened this database', '2026-11-01T00:00:00Z',
+                                        '~a', 'core-major-2')" +core-major-module+))
+          (raw-sql "ALTER TABLE widgets DROP COLUMN status"))))
+    (let ((before (schema-snapshot db))
+          (opened (tun.runtime::make-store db)))
+      (let ((refusal (handler-case (progn (tun.runtime:open-application 'application :store opened
+                                                                           :test-clock t)
+                                          nil)
+                       (newer-database (e) e))))
+        (is (typep refusal 'newer-database) "~a: the start is refused" store)
+        (when refusal
+          (is (string= (format nil "Core major 2 has opened this database; core ~a (major 1) ~
+                                    cannot read what it may have changed and refuses to start."
+                               +core-version+)
+                       (princ-to-string refusal))
+              "~a: the message names both majors" store)))
+      (is (not (store-connected-p opened)) "~a: the refused start closed its connections" store)
+      (is (equal before (schema-snapshot db))
+          "~a: nothing was migrated or recorded" store))))
+
+;;; ------------------------------------------------------------------
 ;;; Ledger invariant under concurrency
 
 (defun stock-product (on-hand)

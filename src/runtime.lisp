@@ -72,13 +72,21 @@ combination and that every job can carry its arguments, and restore the virtual 
     (check-enabled-modules app)
     (tun.web:check-http-route-conflicts)
     (store-open store)
-    (store-migrate store (all-entity-classes))
-    ;; Every record policy and query against the migrated schema
-    ;; (spec/store.md 6.6, 5.7); a refusal closes the connections it opened.
-    (handler-bind ((error (lambda (e) (declare (ignore e)) (store-close store))))
-      (with-application (app)
-        (check-record-policies)
-        (check-queries)))
+    ;; Migrate, refusing a database a newer core major has opened
+    ;; (spec/store.md 2, item 10), then check every record policy and query
+    ;; against the migrated schema (6.6, 5.7).  A refusal closes the
+    ;; connections it opened once the migrate transaction has unwound,
+    ;; since that transaction holds the writer connection.
+    (let ((checked nil))
+      (unwind-protect
+           (progn
+             (store-migrate store (all-entity-classes))
+             (with-application (app)
+               (check-record-policies)
+               (check-queries))
+             (setf checked t))
+        (unless checked
+          (store-close store))))
     (when test-clock
       (with-application (app)
         (let ((saved (with-transaction (:read) (read-setting "test_clock.now"))))
@@ -448,17 +456,23 @@ makes its scenario's records there (spec/preview.md 3)."
       (check-sign-in application-class (flag "--claimed-identity") name)
       (check-mail application-class (flag "--claimed-identity") name)
       (tun.errors:check-error-mail application-class name)
-      (let* ((app (open-application application-class
-                                    :store (make-store (database-designator db)
-                                                       :synchronous synchronous
-                                                       :group-commit group-commit)
-                                    :test-clock test-clock
-                                    :debug-tools (flag "--debug-tools")
-                                    :allow-eval (flag "--allow-eval")
-                                    :repl-port repl-port
-                                    :public-url public-url
-                                    :log-requests log
-                                    :identity (if (flag "--claimed-identity") :claimed :authenticated)))
+      (let* ((app (handler-case
+                      (open-application application-class
+                                        :store (make-store (database-designator db)
+                                                           :synchronous synchronous
+                                                           :group-commit group-commit)
+                                        :test-clock test-clock
+                                        :debug-tools (flag "--debug-tools")
+                                        :allow-eval (flag "--allow-eval")
+                                        :repl-port repl-port
+                                        :public-url public-url
+                                        :log-requests log
+                                        :identity (if (flag "--claimed-identity") :claimed :authenticated))
+                    ;; A database a newer core major has opened (spec/store.md
+                    ;; 2, item 10) is refused as the other start checks are.
+                    (newer-database (refusal)
+                      (format *error-output* "~&~a: ~a~%" name refusal)
+                      (sb-ext:exit :code 2))))
              (acceptor (progn
                          (when before-serving
                            (funcall before-serving app))
