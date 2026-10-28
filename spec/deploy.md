@@ -133,6 +133,23 @@ after `startAt`. The dumps hold customers' personal data, so the key to
 the copies is kept apart from the machine. Where the copies go is the
 host's choice.
 
+Before a deploy that must be able to go back, such as a new core major,
+take a dump of its own from the operator's machine. It needs no sudo on
+the host, only the deploy user's ssh key and the `pg_dump` on the host's
+path, and the secret is never shown:
+
+```
+sops -d secrets/TARGET.env | grep '^DATABASE_URL=' | cut -d= -f2- \
+  | ssh USER@HOST 'read -r url; pg_dump --no-owner --no-privileges "$url"' \
+  | gzip > TARGET-$(date +%F).sql.gz
+```
+
+The host reads `DATABASE_URL` from standard input, so it is in no file and
+no shell history; it is in `pg_dump`'s arguments while the dump runs, where
+other users of the host could see it. The dump lands on the operator's
+machine, where the nightly rotation does not replace it, and it restores
+as below.
+
 To restore a dump, whether last night's, the one before or one fetched
 from the copies, on a host where the tenant's role USER exists:
 
