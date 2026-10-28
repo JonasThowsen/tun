@@ -655,3 +655,28 @@ every thread, since the server and the outbox work in their own."
                                   "Du er tildelt en ny oppgave."))
                     (is (search text page) "the notifications page lacks ~s" text)))))))
       (is (null misses) "notifications texts with no Norwegian: ~s" misses))))
+
+(test message-links-are-at-the-public-url
+  ;; messaging README: quote.link, link.feedback and link.unsubscribe are
+  ;; absolute-url of their paths, the path alone without a public URL.
+  (let ((tun.core::*message-templates* (copy-list tun.core::*message-templates*)))
+    (tun.core::register-message-template "unit_links" 'unit-links :source :client :manual t
+       :subject "Links" :text "{{quote.link}} {{link.feedback}} {{link.unsubscribe}}")
+    (flet ((links (public-url)
+             (with-test-app (:public-url public-url)
+               (let* ((customer (make-customer)) (product (make-product))
+                      (order (jget (new-order customer "lines" (lines product 1)) "id")))
+                 (call-ok "orders_send_quote" "employee:anna" "id" order)
+                 (wait-for-workers *app*)
+                 (values (cl-ppcre:split " " (jget (call-ok "messages_preview" "employee:e"
+                                                            "template" "unit_links" "order_id" order)
+                                                   "body"))
+                         (jget (call-ok "quotes_get" "admin:a" "order_id" order) "id"))))))
+      (multiple-value-bind (links quote) (links "https://shop.example")
+        (is (equal (format nil "https://shop.example/offer/~a" quote) (first links)))
+        (is (string-prefix-p "https://shop.example/feedback/" (second links)))
+        (is (string-prefix-p "https://shop.example/unsubscribe/" (third links))))
+      (multiple-value-bind (links quote) (links nil)
+        (is (equal (format nil "/offer/~a" quote) (first links)))
+        (is (string-prefix-p "/feedback/" (second links)))
+        (is (string-prefix-p "/unsubscribe/" (third links)))))))

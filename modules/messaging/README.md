@@ -108,9 +108,9 @@ other missing path renders as the empty string.
 | `order.total` | the order's total |
 | `delivery.time`, `delivery.address`, `delivery.method` | `kl. HH:MM` from the delivery side's earliest time, or `ikke avtalt`; the site address or `adressen dere oppga`; the delivery method's label in the tenant's language, or empty |
 | `manuals_paragraph` | `Digital bruksanvisning:` and one `<product>: <url>` line per rental product with a manual URL, then a blank line; or empty |
-| `quote.link`, `quote.code`, `quote.valid_until` | `<links.base_url>/offer/<quote id>`; the access code as `XXXXX-XXXXX`; the expiry as an instant |
+| `quote.link`, `quote.code`, `quote.valid_until` | `absolute-url` of `/offer/<quote id>`, the server's public URL and the path (`deploy.md` §1), or the path alone on a server without one; the access code as `XXXXX-XXXXX`; the expiry as an instant |
 | `quote.questions_paragraph` | `Vi mangler noen opplysninger:` and one `- <question>` line per open question of the order, then a blank line; or empty |
-| `link.feedback`, `link.unsubscribe` | `<links.base_url>/feedback/<token>` (inbox README §3.4), `<links.base_url>/unsubscribe/<token>` (customers README §6) |
+| `link.feedback`, `link.unsubscribe` | `absolute-url` of `/feedback/<token>` (inbox README §3.4) and of `/unsubscribe/<token>` (customers README §6), as `quote.link` |
 | `customer_review_paragraph` | `Ellers setter vi stor pris på en aldri så liten anbefaling:` and the setting `customer_review.url`, when the client declares and sets it; or empty |
 | `message` | the free text of a manual `order_message`; default `Ta kontakt ved å svare på denne e-posten hvis noe må avklares.` |
 

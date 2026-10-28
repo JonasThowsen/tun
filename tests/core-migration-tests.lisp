@@ -183,6 +183,26 @@ every module, a 1.x tenant of core alone none."
         (is (member "core-major-2" (major-mark-ids db) :test #'string=)
             "~a: the database has core 2.0's mark" label)))))
 
+(test a-stored-links-base-url-stays-unread
+  ;; spec/core.md 5.3: core 2.1 declares no links.base_url; the value 1.x
+  ;; stored moves to its 2.0 key and stays, for a revert to find.
+  (dolist (label (durable-labels))
+    (let ((db (restore-fixture "core" label)))
+      (is (null (start db)) "~a: it opens" label)
+      (is (equal "\"https://tenant.example\""
+                 (second (assoc "links.base_url" (setting-values db) :test #'string=)))
+          "~a: the row stays" label)
+      (with-test-app (:db db)
+        (is (null (find-by "key" "links.base_url" (jget (call-ok "settings_list" "admin:ada") "items")))
+            "~a: nothing lists it" label)
+        (is (equal "not_found" (nth-value 1 (call "settings_get" "admin:ada" "key" "links.base_url")))
+            "~a" label))
+      (drop-loaded-module-secrets db)
+      (is (eql 0 (revert db)) "~a: it reverts" label)
+      (is (equal "\"https://tenant.example\""
+                 (second (assoc "lenker.base_url" (setting-values db) :test #'string=)))
+          "~a: the revert moves it back" label))))
+
 (test a-new-database-gets-the-mark-and-no-locale
   (dolist (label (durable-labels))
     (let ((db (if (string= label "sqlite")

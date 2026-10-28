@@ -177,8 +177,6 @@ KEY), for the checks of spec/i18n.md 3.7."
     (fail :invalid-input "Invalid value for the setting ~a (~a)"
           (setting-declaration-key decl) (setting-declaration-type decl))))
 
-(define-setting "links.base_url"
-    (:type "url" :default "https://tun.example" :description "The base URL of links sent to customers."))
 (define-setting "links.secret"
     (:type "secret" :description "Signs links sent to customers. Changing it voids every link sent."))
 

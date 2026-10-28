@@ -13,8 +13,6 @@
    "Innstillingen ~a er ikke deklarert")
   ("Invalid value for the setting ~a (~a)"
    "Ugyldig verdi for innstillingen ~a (~a)")
-  ("The base URL of links sent to customers."
-   "Base-URL for kundelenker.")
   ("Signs links sent to customers. Changing it voids every link sent."
    "Signerer kundelenker. Rotasjon ugyldiggjør gamle lenker.")
   ("The language of the pages, and of the copy Tun stores and sends."

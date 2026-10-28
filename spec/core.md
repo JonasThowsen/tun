@@ -449,12 +449,17 @@ used, with no restart; a setting may instead be read from the environment
 (`:env`, `outbound.md`). `settings_list` (admin) lists every setting with
 secrets as `"***"`; `settings_get` (employee) refuses a secret with
 `forbidden`; `settings_set` (admin) checks the value against the type and
-answers `not_found` for an undeclared key. Core declares `links.base_url`
-(absolute links in messages), `links.secret` (the secret behind links,
-generated at first start), `push.secret` (the secret Tun's key for push
-notifications is derived from, `push.md` §6.3, generated the same way),
-and `locale.language`, `locale.currency` and `locale.time_zone`
-(`i18n.md` §9).
+answers `not_found` for an undeclared key. Core declares `links.secret`
+(the secret behind links, generated at first start), `push.secret` (the
+secret Tun's key for push notifications is derived from, `push.md` §6.3,
+generated the same way), and `locale.language`, `locale.currency` and
+`locale.time_zone` (`i18n.md` §9). Absolute links come from the server's
+public URL (`absolute-url`, `deploy.md` §1), not from a setting.
+
+A setting no longer declared keeps its stored value: nothing reads or
+lists it, and `settings_get` and `settings_set` answer `not_found`, but
+an older revision that declares it finds the value it had. Core 2.1 drops
+`links.base_url` this way.
 
 ### 5.4 Link tokens
 

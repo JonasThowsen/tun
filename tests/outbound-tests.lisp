@@ -314,5 +314,5 @@ free port, and URL bound to its /v1/check."
     (is (search "the environment variable TYPESAFE_API_KEY" html))
     (is (not (search "<form" html))))
   (is (search "<form" (tun.html:render-html
-                       (tun.web::setting-card (jobj "key" "links.base_url" "type" "url" "secret" nil
+                       (tun.web::setting-card (jobj "key" "test.url" "type" "url" "secret" nil
                                                     "value" "https://tun.example" "description" ""))))))

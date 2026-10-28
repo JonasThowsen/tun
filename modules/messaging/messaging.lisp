@@ -116,7 +116,7 @@
       (when (and customer (not (customer-erased customer)))
         (put "customer.name" (if (blank-p (customer-name customer)) (tr "Customer") (customer-name customer)))
         (put "customer.email" (customer-email customer))
-        (put "link.unsubscribe" (format nil "~a/unsubscribe/~a" (setting-value-at-use "links.base_url") (link-token "avmeld" (entity-id customer)))))
+        (put "link.unsubscribe" (absolute-url (format nil "/unsubscribe/~a" (link-token "avmeld" (entity-id customer))))))
       (when order
         (put "order.id" (entity-id order)) (put "order.ref" (format nil "ref:~a" (entity-id order)))
         (put "order.date" (message-date (order-event-date order))) (put "order.period" (message-period order))
@@ -139,11 +139,11 @@
           (put "delivery.method" (let ((method (jget side "method")))
                                    (if (stringp method) (logistics-method-label method) ""))))
         (put "manuals_paragraph" (manuals-paragraph order))
-        (put "link.feedback" (format nil "~a/feedback/~a" (setting-value-at-use "links.base_url") (link-token "tilbakemelding" (entity-id order))))
+        (put "link.feedback" (absolute-url (format nil "/feedback/~a" (link-token "tilbakemelding" (entity-id order)))))
         (let ((quote (quote-for-order (entity-id order))))
           (when quote
             (let* ((q (entity->json quote)) (code (jget q "access_code")))
-              (put "quote.link" (format nil "~a/offer/~a" (setting-value-at-use "links.base_url") (entity-id quote)))
+              (put "quote.link" (absolute-url (format nil "/offer/~a" (entity-id quote))))
               (put "quote.code" (format nil "~a-~a" (subseq code 0 5) (subseq code 5)))
               (put "quote.valid_until" (timestamp-text (jget q "expires_at"))))))
         (put "quote.questions_paragraph" (if (order-open-questions order)

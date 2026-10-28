@@ -18,9 +18,10 @@ needs, from the environment:
   an `http` or `https` URL is refused at start (exit 2). When it is set:
   - links the server prints and sends use it: the setup line
     (`auth.md` §4), a provider's callback URL (`auth.md` §3.5), and the
-    links a client puts in mail, which it makes with `absolute-url`
-    (`docs/client-api.md`); without it `absolute-url` answers the path
-    alone;
+    links a client or a module puts in mail, which it makes with
+    `absolute-url` (`docs/client-api.md`), such as the messaging module's
+    offer, feedback and unsubscribe links; without it `absolute-url`
+    answers the path alone;
   - when it is `https`, every answer to a request that came over HTTPS
     carries `Strict-Transport-Security: max-age=31536000`, and a `GET` or
     `HEAD` that the proxy reports came over plain HTTP
