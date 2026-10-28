@@ -512,7 +512,7 @@ gets a new id each time, of its workflows and of the client's customers."
                                              '("server" "--rollback-preflight" "x"))
                                             nowhere))
                           "with DATABASE_URL alone"))
-            (setf (uiop:getenv "DATABASE_URL") (or saved "")))))
+            (restore-database-url saved))))
       (drop-loaded-module-secrets db)
       (revert db)
       (signals file-error (preflight db nowhere)
@@ -522,6 +522,12 @@ gets a new id each time, of its workflows and of the client's customers."
           (is (member code '(0 3)) "~a: and checks it as before: ~a" label said)
           (is (search "rollback preflight: " said))
           (is (not (search "--revert-to-core-1" said)) "~a: with no word of the revert" label))))))
+
+(defun restore-database-url (saved)
+  "Put DATABASE_URL back as SAVED had it, unset when it was."
+  (if saved
+      (setf (uiop:getenv "DATABASE_URL") saved)
+      (sb-posix:unsetenv "DATABASE_URL")))
 
 (test the-preflight-without-a-database-is-refused
   (multiple-value-bind (code said) (preflight nil "registry.json")
@@ -534,5 +540,5 @@ gets a new id each time, of its workflows and of the client's customers."
     (unwind-protect
          (progn (setf (uiop:getenv "DATABASE_URL") db)
                 (is (equal db (tun.runtime::argv-database '("server" "--revert-to-core-1")))))
-      (setf (uiop:getenv "DATABASE_URL") (or saved "")))
+      (restore-database-url saved))
     (is (equal "other" (tun.runtime::argv-database '("server" "--db" "other"))))))

@@ -106,7 +106,7 @@ other missing path renders as the empty string.
 | `order.site`, `order.site_suffix` | the site address or empty; ` på <address>` or empty |
 | `order.lines` | one line per order line, `<product> · <quantity>: <amount>`, the amount after the line's price mode; joined by newlines |
 | `order.total` | the order's total |
-| `delivery.time`, `delivery.address`, `delivery.method` | `kl. HH:MM` from the delivery side's earliest time, or `ikke avtalt`; the site address or `adressen dere oppga`; the delivery method or empty |
+| `delivery.time`, `delivery.address`, `delivery.method` | `kl. HH:MM` from the delivery side's earliest time, or `ikke avtalt`; the site address or `adressen dere oppga`; the delivery method's label in the tenant's language, or empty |
 | `manuals_paragraph` | `Digital bruksanvisning:` and one `<product>: <url>` line per rental product with a manual URL, then a blank line; or empty |
 | `quote.link`, `quote.code`, `quote.valid_until` | `<links.base_url>/offer/<quote id>`; the access code as `XXXXX-XXXXX`; the expiry as an instant |
 | `quote.questions_paragraph` | `Vi mangler noen opplysninger:` and one `- <question>` line per open question of the order, then a blank line; or empty |

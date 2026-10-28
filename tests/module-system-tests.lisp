@@ -62,6 +62,17 @@ developer's dashboard (modules/dashboard/README.md).")
   (is (search (format nil "coreVersion = \"~a\";" +core-version+)
               (file-text (merge-pathnames "flake.nix" (asdf:system-source-directory "tun"))))))
 
+(test the-test-support-package-holds-every-file-its-system-loads
+  ;; A client's dev shell builds tun-test-support from the flake's file
+  ;; list, not from this tree, so a file left out fails only there.
+  (let* ((system (asdf:find-system "tun-test-support"))
+         (root (asdf:system-source-directory system))
+         (flake (file-text (merge-pathnames "flake.nix" root))))
+    (dolist (component (asdf:required-components system :other-systems nil
+                                                        :component-type 'asdf:cl-source-file))
+      (let ((file (enough-namestring (asdf:component-pathname component) root)))
+        (is (search (format nil "./~a" file) flake) "flake.nix's testSupport leaves out ~a" file)))))
+
 (test every-module-uses-only-public-interfaces
   (dolist (module (all-modules))
     (let ((violations (module-violations (module-name module))))
