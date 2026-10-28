@@ -2,7 +2,7 @@
 
 - loop: major-guard
 - mode: autonomous
-- stage: ship
+- stage: done
 - base: 4ee9d7c3099692a3e75726c01dbce779908e2aa3
 - verified: 28b54133a0f05aed89e3bf996e770c298431bb82
 - shown: 28b54133a0f05aed89e3bf996e770c298431bb82
@@ -86,3 +86,4 @@ already mailed and every push subscription stops working.
 - 2026-10-28 06:57  shown (/)
 - 2026-10-28 07:09  gate B asked of a reviewer
 - 2026-10-28 07:14  gate B: approve (reviewer): the guard runs in the migrate write transaction right after ensure-schema-history on both stores, so a refusal rolls back everything; open-application closes the store once the transaction unwinds and main exits 2 with the message; the store tests fail on both stores with the guard removed, and criterion 2 reproduced on the built server
+- 2026-10-28 07:15  finished at tun cff5a2b
