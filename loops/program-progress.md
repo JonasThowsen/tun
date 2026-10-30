@@ -2,7 +2,7 @@
 
 - loop: program-progress
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 417e0f7e1ea03f6c9004027f6c24ca9f5c5bf4cc
 - verified: 5a6b5946d530be7fa5513ef867a2fe105e608f82
 - shown: 5a6b5946d530be7fa5513ef867a2fe105e608f82
@@ -63,3 +63,4 @@ program's output only when it has ended.
 - 2026-10-30 20:11  shown (/)
 - 2026-10-30 20:11  gate B asked of the person
 - 2026-10-30 20:12  gate B: approve (jonas): «Approve and push»
+- 2026-10-30 20:12  finished at tun d23c669
