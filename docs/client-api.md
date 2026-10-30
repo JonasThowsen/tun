@@ -641,7 +641,9 @@ start, runs past its time or writes too much; a code other than 0 is an
 answer; read a JSON output with `parse-json`, and a failure's message
 with `operation-error-message`. Only `PATH`, `HOME`, `TMPDIR`, `LANG` and
 `SSH_AUTH_SOCK` of the server's environment reach it, and a test answers
-for it by binding `*program-handler*`.
+for it by binding `*program-handler*`. `:on-error-line` follows a long
+program while it runs: the function is called with each line it writes to
+standard error, as it writes it, such as a deploy's stages.
 
 ## Background jobs
 

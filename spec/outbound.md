@@ -155,8 +155,9 @@ tests.
   Calling an undeclared name is an error in the client's code, not a
   failure of the program.
 - `(run-program NAME ARGUMENTS &key directory input environment
-  (timeout 10))`, in the TUN package, runs NAME with ARGUMENTS, a list of
-  strings passed as they are, with no shell between. DIRECTORY, an
+  (timeout 10) on-error-line)`, in the TUN package, runs NAME with
+  ARGUMENTS, a list of strings passed as they are, with no shell between.
+  DIRECTORY, an
   absolute path to a directory, is where it runs; without it, the
   server's working directory. INPUT, a text, is written to its standard
   input, which is then closed; without it, standard input is empty.
@@ -165,6 +166,16 @@ tests.
   replaced. A code other than 0 is an answer, not a failure: a program
   such as nixploy says what went wrong in its code and output, and the
   client decides what that means.
+- `:on-error-line FUNCTION` reads a program's progress while it runs:
+  FUNCTION is called with each line the program writes to its standard
+  error, as soon as the line is complete, without its newline and decoded
+  as UTF-8; a last line without a newline is passed when the program
+  ends, and a line longer than 16 KiB is passed in pieces of 16 KiB. The
+  lines are still in the standard error `run-program` values. FUNCTION
+  runs in the thread that runs the program, between reads, and the
+  program's time runs while it does. An error FUNCTION signals stops the
+  program, as running past its time does, and is signalled from
+  `run-program` as it is.
 - The program's environment holds `PATH`, `HOME`, `TMPDIR`, `LANG` and
   `SSH_AUTH_SOCK` as the server has them, when it has them, and then
   ENVIRONMENT, an alist of names and values, both strings. Nothing else
@@ -204,8 +215,9 @@ tests.
   the program, with its output, its exit code and its error output as
   three values; an exit code of NIL is a program that could not be
   started. `run-program` checks its arguments, records the step and
-  signals as it does for a real program. A test binds it as it binds
-  `*http-json-handler*` (§4).
+  signals as it does for a real program, and calls `:on-error-line` with
+  each line of the handler's error output before it returns. A test binds
+  it as it binds `*http-json-handler*` (§4).
 
 ```lisp
 (let ((*program-handler* (lambda (name arguments directory input environment)

@@ -20,6 +20,9 @@
 ;;;; The caller's thread feeds the input and drains both outputs in one
 ;;;; loop, touching a pipe only when poll says it is ready, so a program
 ;;;; that fills one pipe while the other waits to be read cannot deadlock.
+;;;; With :ON-ERROR-LINE the same loop hands the caller each line of
+;;;; standard error as it completes, so a deploy's progress can be shown
+;;;; while it runs.
 
 (in-package #:tun.outbound)
 
@@ -54,6 +57,10 @@ trace keeps.")
 (defparameter +pipe-chunk+ 4096
   "The most octets written to the program's input at once: a pipe that poll
 says is writable takes this many without blocking.")
+
+(defparameter +line-piece+ (* 16 1024)
+  "The most octets of standard error one call of :ON-ERROR-LINE is handed: a
+longer line comes in pieces.")
 
 ;;; ------------------------------------------------------------------
 ;;; The failure, and its messages in English with Norwegian in the
@@ -105,7 +112,7 @@ the program NAME."
        (not (find #\= (car entry)))
        (argument-string-p (cdr entry))))
 
-(defun check-run (name arguments directory input environment timeout)
+(defun check-run (name arguments directory input environment timeout on-error-line)
   "Signal an error, in the client's code, unless NAME is a program the
 application declares and the rest are what RUN-PROGRAM takes."
   (unless *application*
@@ -127,7 +134,10 @@ application declares and the rest are what RUN-PROGRAM takes."
     (error "run-program: the environment is an alist of names and values, both strings, ~
             not ~s" environment))
   (unless (typep timeout '(real 1 3600))
-    (error "run-program: the timeout is from 1 to 3600 seconds, not ~s" timeout)))
+    (error "run-program: the timeout is from 1 to 3600 seconds, not ~s" timeout))
+  (unless (or (null on-error-line) (functionp on-error-line)
+              (and (symbolp on-error-line) (fboundp on-error-line)))
+    (error "run-program: on-error-line is a function, not ~s" on-error-line)))
 
 (defun program-path (name)
   "The executable file NAME on the server's PATH, as execvp would find it,
@@ -185,6 +195,71 @@ is then taken; else NIL."
     (decf (application-programs-running app))))
 
 ;;; ------------------------------------------------------------------
+;;; Lines of standard error, handed on as they complete
+
+(defun octets-text (octets &key (start 0) end)
+  "OCTETS from START to END as UTF-8, with an invalid byte replaced."
+  (sb-ext:octets-to-string octets :start start :end end
+                                  :external-format (list :utf-8 :replacement
+                                                         (code-char #xFFFD))))
+
+(defclass line-reader ()
+  ((function :initarg :function :reader line-function
+             :documentation "Called with each line, as text.")
+   (pending :initform (make-array 1024 :element-type '(unsigned-byte 8)
+                                       :adjustable t :fill-pointer 0)
+            :accessor line-pending
+            :documentation "What came after the last line handed on."))
+  (:documentation "Hands a function each line of what a program writes, as the
+lines complete (spec/outbound.md 6)."))
+
+(defun piece-end (pending start)
+  "Where a piece of at most +LINE-PIECE+ octets of PENDING from START ends:
+before a character the limit would cut, not inside it."
+  (let ((end (+ start +line-piece+)))
+    ;; An octet 10xxxxxx continues the character before it.
+    (loop while (and (> end start) (= #x80 (logand #xC0 (aref pending end))))
+          do (decf end))
+    (if (= end start) (+ start +line-piece+) end)))
+
+(defun read-lines (reader octets count)
+  "Add the first COUNT octets of OCTETS to what READER holds, and hand on
+each line they complete, and each piece of a line too long to wait for."
+  (let ((pending (line-pending reader))
+        (start 0))
+    (loop for index below count
+          do (vector-push-extend (aref octets index) pending (max 1024 count)))
+    (loop
+      (let ((newline (position 10 pending :start start))
+            (limit (+ start +line-piece+)))
+        (cond ((and newline (<= newline limit))
+               (funcall (line-function reader) (octets-text pending :start start :end newline))
+               (setf start (1+ newline)))
+              ((> (length pending) limit)
+               (let ((end (piece-end pending start)))
+                 (funcall (line-function reader) (octets-text pending :start start :end end))
+                 (setf start end)))
+              (t (return)))))
+    (replace pending pending :start2 start)
+    (decf (fill-pointer pending) start)))
+
+(defun finish-lines (reader)
+  "Hand on what READER holds after the last line: the program has ended."
+  (let ((pending (line-pending reader)))
+    (when (plusp (length pending))
+      (let ((text (octets-text pending)))
+        (setf (fill-pointer pending) 0)
+        (funcall (line-function reader) text)))))
+
+(defun pass-error-lines (function text)
+  "Hand FUNCTION each line of TEXT, as a program's would be: what a test's
+handler answers as standard error."
+  (let ((reader (make-instance 'line-reader :function function))
+        (octets (sb-ext:string-to-octets text :external-format :utf-8)))
+    (read-lines reader octets (length octets))
+    (finish-lines reader)))
+
+;;; ------------------------------------------------------------------
 ;;; The program's pipes
 
 (defclass captured-output ()
@@ -194,7 +269,9 @@ is then taken; else NIL."
                                       :adjustable t :fill-pointer 0)
            :accessor captured-octets)
    (open :initform t :accessor captured-open-p
-         :documentation "NIL once the pipe has given its end."))
+         :documentation "NIL once the pipe has given its end.")
+   (lines :initarg :lines :initform nil :reader captured-lines
+          :documentation "A LINE-READER that is handed what is read, or NIL."))
   (:documentation "What a program writes to one of its outputs, read as it comes."))
 
 (defun captured-full-p (capture)
@@ -222,17 +299,23 @@ was read or the pipe ended."
         (cond ((and (null count) (eql errno sb-unix:eintr)) nil)
               ((or (null count) (zerop count))
                (setf (captured-open-p capture) nil)
+               (finish-captured-lines capture)
                t)
               (t (keep-octets capture buffer count)
+                 (when (captured-lines capture)
+                   (read-lines (captured-lines capture) buffer count))
                  t))))))
+
+(defun finish-captured-lines (capture)
+  "Hand on the last line of CAPTURE, when its lines are read."
+  (when (captured-lines capture)
+    (finish-lines (captured-lines capture))))
 
 (defun captured-text (capture)
   "What CAPTURE holds, at most +OUTPUT-LIMIT+ octets of it, as UTF-8 with an
 invalid byte replaced."
   (let ((octets (captured-octets capture)))
-    (sb-ext:octets-to-string octets :end (min (length octets) +output-limit+)
-                                    :external-format (list :utf-8 :replacement
-                                                           (code-char #xFFFD)))))
+    (octets-text octets :end (min (length octets) +output-limit+))))
 
 (defclass program-input ()
   ((stream :initarg :stream :reader input-stream
@@ -348,19 +431,22 @@ they are left to be stopped with its group."
               ((not (sb-ext:process-alive-p process))
                ;; It has exited, so all it wrote is in the pipes already.
                (drain output errors buffer)
-               (return (if (or (captured-full-p output) (captured-full-p errors))
-                           :too-much
-                           (process-answer process))))
+               (when (or (captured-full-p output) (captured-full-p errors))
+                 (return :too-much))
+               (finish-captured-lines errors)
+               (return (process-answer process)))
               ((>= (get-internal-real-time) end)
                (return :timeout))
               ((not progress)
                (wait-for-output output errors)))))))
 
-(defun run-process (app path arguments directory input environment seconds)
-  "Run PATH with ARGUMENTS for at most SECONDS.  Values how it ended (as
+(defun run-process (app path arguments directory input environment seconds on-error-line)
+  "Run PATH with ARGUMENTS for at most SECONDS, handing ON-ERROR-LINE, when
+given, each line of its standard error as it comes.  Values how it ended (as
 DRIVE does, or :NOT-STARTED), the exit code, the output and the error output.
 APP's place for programs is given back once the program's group has ended,
-by a thread of its own when the group has not ended by then."
+by a thread of its own when the group has not ended by then, as when
+ON-ERROR-LINE signals."
   (let ((process nil))
     (unwind-protect
          (progn
@@ -374,7 +460,10 @@ by a thread of its own when the group has not ended by then."
                      (output (make-instance 'captured-output
                                             :stream (sb-ext:process-output process)))
                      (errors (make-instance 'captured-output
-                                            :stream (sb-ext:process-error process))))
+                                            :stream (sb-ext:process-error process)
+                                            :lines (and on-error-line
+                                                        (make-instance 'line-reader
+                                                                       :function on-error-line)))))
                  (unwind-protect
                       (multiple-value-bind (outcome code)
                           (drive process input output errors seconds)
@@ -409,7 +498,7 @@ it."
 ;;; ------------------------------------------------------------------
 ;;; One run
 
-(defun run-outcome (name arguments directory input environment seconds)
+(defun run-outcome (name arguments directory input environment seconds on-error-line)
   "Run the program NAME, or ask *PROGRAM-HANDLER*, within SECONDS and the
 tenant's places.  Values how it ended, the exit code, the output and the
 error output."
@@ -421,10 +510,14 @@ error output."
                (cond ((null app) :full)
                      (handler
                       (unwind-protect
-                           (handler-answer handler name arguments directory input environment)
+                           (multiple-value-bind (outcome code output error-output)
+                               (handler-answer handler name arguments directory input environment)
+                             (when (and on-error-line (eq outcome :exited))
+                               (pass-error-lines on-error-line error-output))
+                             (values outcome code output error-output))
                         (release-program-place app)))
                      (t (run-process app path arguments directory input environment
-                                     seconds))))))))
+                                     seconds on-error-line))))))))
 
 (defun outcome-detail (outcome code)
   "What the trace shows of a run's OUTCOME."
@@ -435,28 +528,36 @@ error output."
     (:not-started "could not start")
     (:too-much "output too large")
     (:full "full")
-    (:no-time "no time")))
+    (:no-time "no time")
+    ((nil) "stopped by the caller")))
 
-(defun run-program (name arguments &key directory input environment (timeout 10))
+(defun run-program (name arguments &key directory input environment (timeout 10)
+                                        on-error-line)
   "Run NAME, a program the application declares with (:programs ...), with
 ARGUMENTS, a list of strings passed as they are with no shell between.
 DIRECTORY, an absolute path, is where it runs; INPUT, a string, its standard
 input; ENVIRONMENT, an alist of strings, is added to the few variables of the
 server's it sees.  Values its standard output, its exit code and its standard
 error, the outputs decoded as UTF-8.  A code other than 0 is an answer.
-Signals PROGRAM-FAILURE when the program cannot be started, runs past TIMEOUT
-seconds (from 1 to 3600, and held to the operation's deadline less one
-second), writes more than 8 MB to either output, or when four of the
-tenant's programs are running (spec/outbound.md 6)."
-  (check-run name arguments directory input environment timeout)
+ON-ERROR-LINE, a function, is called with each line of standard error as the
+program writes it; an error it signals stops the program and is signalled
+from here.  Signals PROGRAM-FAILURE when the program cannot be started, runs
+past TIMEOUT seconds (from 1 to 3600, and held to the operation's deadline
+less one second), writes more than 8 MB to either output, or when four of
+the tenant's programs are running (spec/outbound.md 6)."
+  (check-run name arguments directory input environment timeout on-error-line)
   (let ((seconds (seconds-allowed timeout))
-        (started (trace-clock-us)))
-    (multiple-value-bind (outcome code output error-output)
-        (run-outcome name arguments directory input environment seconds)
+        (started (trace-clock-us))
+        (outcome nil) (code nil) (output nil) (error-output nil))
+    (unwind-protect
+         (multiple-value-setq (outcome code output error-output)
+           (run-outcome name arguments directory input environment seconds on-error-line))
+      ;; Recorded also when ON-ERROR-LINE stopped the run, which then has
+      ;; no outcome.
       (note-step :external :name (run-name name arguments) :source :core
                            :detail (outcome-detail outcome code)
-                           :started started :duration (- (trace-clock-us) started))
-      (case outcome
-        ((:exited :signaled) (values output code error-output))
-        (t (program-failure outcome name :output output :error-output error-output
-                                         :seconds (ceiling seconds)))))))
+                           :started started :duration (- (trace-clock-us) started)))
+    (case outcome
+      ((:exited :signaled) (values output code error-output))
+      (t (program-failure outcome name :output output :error-output error-output
+                                       :seconds (ceiling seconds))))))
