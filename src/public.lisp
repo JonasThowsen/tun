@@ -89,6 +89,9 @@ the listed symbols (the same symbol objects, not copies)."
    #:absolute-url
    ;; inside operations, rules, workflows
    #:fail #:input-value #:input-provided-p #:operation-result #:invoke
+   ;; an operation's refusal, such as a remote-failure or program-failure a
+   ;; client handles: its code and its message in the current language
+   #:operation-error #:operation-error-code #:operation-error-message
    ;; a :wait operation's body waits for a change (spec/waiting.md)
    #:await
    ;; who is asking: record policies (spec/store.md 6) compare with the actor's name
@@ -96,8 +99,10 @@ the listed symbols (the same symbol objects, not copies)."
    ;; the messaging port: sends through the messaging module when it is enabled
    #:notify
    #:fetch #:fetch! #:select #:select-one #:define-query
-   ;; JSON: a record as callers see it, for results that hold several
-   #:entity->json #:jobj #:jarr #:jget
+   ;; JSON: a record as callers see it, for results that hold several; and
+   ;; reading and writing JSON text, such as a program's output
+   ;; (spec/outbound.md 6)
+   #:entity->json #:jobj #:jarr #:jget #:parse-json #:json-parse-failure #:to-json-string
    ;; rank keys: records in an order a person chose (spec/core.md 2.6)
    #:rank-between #:rank-order-error #:rank-order-error-low #:rank-order-error-high)
   ;; Writes, guarded: an extension's own fields and records only

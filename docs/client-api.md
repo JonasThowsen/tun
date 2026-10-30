@@ -638,9 +638,10 @@ way: declared in `define-application` with `(:programs "nixploy")`, then
 and its error output, with no shell between (`spec/outbound.md` §6). It
 signals `program-failure` (code `unavailable`) when the program cannot
 start, runs past its time or writes too much; a code other than 0 is an
-answer. Only `PATH`, `HOME`, `TMPDIR`, `LANG` and `SSH_AUTH_SOCK` of the
-server's environment reach it, and a test answers for it by binding
-`*program-handler*`.
+answer; read a JSON output with `parse-json`, and a failure's message
+with `operation-error-message`. Only `PATH`, `HOME`, `TMPDIR`, `LANG` and
+`SSH_AUTH_SOCK` of the server's environment reach it, and a test answers
+for it by binding `*program-handler*`.
 
 ## Background jobs
 
