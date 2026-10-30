@@ -1,9 +1,9 @@
 # Calling other systems
 
-Status: v1, 2026-10-21. How a client's code calls another system's JSON
-API, such as asking TypeSafe's Jev to judge an item before it is filed,
-with a key read from the environment; and how its tests answer for that
-system.
+Status: v1, 2026-10-21; §6 2026-10-30. How a client's code calls another
+system's JSON API, such as asking TypeSafe's Jev to judge an item before it
+is filed, with a key read from the environment, or runs a program on the
+server, such as nixploy (§6); and how its tests answer for them.
 
 ## 1. A JSON POST
 
@@ -128,3 +128,88 @@ instead when no answer did: a port decides for itself what a status
 means. It has §1's limits (HTTPS verified, no redirect, the operation's
 deadline, four calls at once) and is a step in the trace as §2 says,
 with the name the port gives it.
+
+## 6. Running a program
+
+A client that drives a command-line tool, such as a dashboard that runs
+`nixploy status --json` for each target it shows, runs it through a port
+as it calls an API: declared, bounded, in the trace, and answered for in
+tests.
+
+```lisp
+(define-application fleet ()
+  (:programs "nixploy" "git")
+  …)
+
+(define-operation targets-status ((target :type (string :max 100) :required t))
+    (:kind :read :policy :employee :title "Status of a target")
+  (multiple-value-bind (output code)
+      (run-program "nixploy" (list "status" "--target" target "--json")
+                   :directory (project-checkout) :timeout 60)
+    (jobj "exit" code "status" (parse-json output))))
+```
+
+- `(:programs NAME…)` in `define-application` declares the programs the
+  application may run, each a file name looked up on the server's `PATH`.
+  A server whose `PATH` lacks one is refused at start (exit 2), naming it.
+  Calling an undeclared name is an error in the client's code, not a
+  failure of the program.
+- `(run-program NAME ARGUMENTS &key directory input environment
+  (timeout 10))`, in the TUN package, runs NAME with ARGUMENTS, a list of
+  strings passed as they are, with no shell between. DIRECTORY, an
+  absolute path to a directory, is where it runs; without it, the
+  server's working directory. INPUT, a text, is written to its standard
+  input, which is then closed; without it, standard input is empty.
+- It values the program's standard output as text, its exit code, and its
+  standard error as text, both decoded as UTF-8 with an invalid byte
+  replaced. A code other than 0 is an answer, not a failure: a program
+  such as nixploy says what went wrong in its code and output, and the
+  client decides what that means.
+- The program's environment holds `PATH`, `HOME`, `TMPDIR`, `LANG` and
+  `SSH_AUTH_SOCK` as the server has them, when it has them, and then
+  ENVIRONMENT, an alist of names and values, both strings. Nothing else
+  of the server's environment reaches it: not `DATABASE_URL` or any other
+  secret of the deployment's SOPS file (`deploy.md` §3). A key the program
+  needs is passed in ENVIRONMENT or INPUT, read from a setting declared
+  with `:env` (§3), never in ARGUMENTS, which other users of the host can
+  see while it runs and which the trace records (§6.1).
+- It signals `program-failure`, an operation error with code
+  `unavailable` like `remote-failure`, when the program cannot be started,
+  when it runs past the time allowed, when it writes more than 8 MB to
+  its standard output or its standard error, and when four programs of
+  the tenant are running already. The message names the program and what
+  happened, in English and translated in the catalogues: «nixploy did not
+  finish within 60 seconds». `(program-failure-name C)` is the program,
+  and `(program-failure-output C)` and `(program-failure-error-output C)`
+  what it had written by then, or NIL.
+- A program past its time is stopped with everything it started: it runs
+  in a process group of its own, which is sent `SIGTERM` and, five
+  seconds later, `SIGKILL`. A program that ends while its children go on
+  holding its output open has ended; the children are stopped the same
+  way.
+- TIMEOUT is in seconds, from 1 to 3600. Inside an operation it is held
+  to the operation's deadline less one second, as a call is (§1). A long
+  program, such as a deploy, runs from a job with `:transaction nil`
+  (`jobs.md` §4.2), whose own `:timeout` must allow it.
+
+### 6.1 In the trace and in tests
+
+- Each run is a step of kind `external` in the request's trace. Its
+  name is the program and its arguments joined by spaces, clipped to 300
+  characters, such as `nixploy status --target production --json`. Its
+  detail is `exit 0`, or what came instead of an exit, and it has the
+  run's duration. Input, environment and output are not recorded.
+- `*program-handler*`, in the TUN package, is NIL or a function
+  `(NAME ARGUMENTS DIRECTORY INPUT ENVIRONMENT)` that answers in place of
+  the program, with its output, its exit code and its error output as
+  three values; an exit code of NIL is a program that could not be
+  started. `run-program` checks its arguments, records the step and
+  signals as it does for a real program. A test binds it as it binds
+  `*http-json-handler*` (§4).
+
+```lisp
+(let ((*program-handler* (lambda (name arguments directory input environment)
+                           (declare (ignore name directory input environment))
+                           (values (to-json-string (jobj "target" (third arguments))) 0 ""))))
+  (invoke 'targets-status :target "production"))
+```

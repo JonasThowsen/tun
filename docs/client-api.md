@@ -631,6 +631,17 @@ that returns a status and an answer:
   (invoke 'items-check :title "Knappen virker ikke"))
 ```
 
+A program on the server, such as `nixploy` or `git`, is run the same
+way: declared in `define-application` with `(:programs "nixploy")`, then
+`(run-program "nixploy" (list "status" "--target" target "--json")
+:directory checkout :timeout 60)`, which values its output, its exit code
+and its error output, with no shell between (`spec/outbound.md` §6). It
+signals `program-failure` (code `unavailable`) when the program cannot
+start, runs past its time or writes too much; a code other than 0 is an
+answer. Only `PATH`, `HOME`, `TMPDIR`, `LANG` and `SSH_AUTH_SOCK` of the
+server's environment reach it, and a test answers for it by binding
+`*program-handler*`.
+
 ## Background jobs
 
 Work that should happen later, again when it fails, or out of the

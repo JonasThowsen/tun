@@ -45,6 +45,11 @@
   ((stopping :initform nil :accessor application-stopping-p)
    (provider-calls :initform nil :accessor application-provider-calls)
    (provider-calls-lock :initform (sb-thread:make-mutex :name "provider calls") :reader application-provider-calls-lock)
+   (programs-running :initform 0 :accessor application-programs-running :type (integer 0)
+                     :documentation "How many programs the tenant runs now, one still being
+stopped included (spec/outbound.md 6).")
+   (programs-lock :initform (sb-thread:make-mutex :name "programs")
+                  :reader application-programs-lock)
    (workers :initform nil :accessor application-workers)
    (workers-lock :initform (sb-thread:make-mutex :name "application workers") :reader application-workers-lock)
    (name :initarg :name :initform "tun" :reader application-name)

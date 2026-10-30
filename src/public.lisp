@@ -119,10 +119,14 @@ the listed symbols (the same symbol objects, not copies)."
   ;; Files attached to records: the FILES parameter type is above
   ;; (spec/files.md 4.1); a record's files in a client's operation (4.2)
   (#:tun.files #:attach-files #:attachments-of)
-  ;; Calling other systems' JSON APIs, and answering for them in tests
+  ;; Calling other systems' JSON APIs and running the programs an
+  ;; application declares, and answering for both in tests
   ;; (spec/outbound.md)
   (#:tun.outbound #:http-json-post #:*http-json-handler*
-   #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url)
+   #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url
+   #:run-program #:*program-handler*
+   #:program-failure #:program-failure-name #:program-failure-output
+   #:program-failure-error-output)
   ;; Jobs: work later, again when it fails, in the background (spec/jobs.md)
   (#:tun.jobs #:define-job #:enqueue-job #:cancel-job #:snooze-job #:fail-job #:last-attempt-p
    #:define-schedule #:define-trigger)

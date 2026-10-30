@@ -12,11 +12,17 @@
 ;;;; HTTP-POST is the same call for Tun's own ports whose body is not JSON,
 ;;;; such as a push notification (spec/outbound.md 5): it answers any
 ;;;; status and leaves its meaning to the port.
+;;;;
+;;;; Running a program on the server, the same idea for a command-line
+;;;; tool, is in programs.lisp (spec/outbound.md 6).
 
 (defpackage #:tun.outbound
   (:use #:cl #:tun.core)
   (:export #:http-json-post #:*http-json-handler* #:http-post
-           #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url))
+           #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url
+           #:run-program #:*program-handler* #:missing-programs
+           #:program-failure #:program-failure-name #:program-failure-output
+           #:program-failure-error-output))
 
 (in-package #:tun.outbound)
 

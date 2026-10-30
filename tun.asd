@@ -80,7 +80,7 @@
                ;; HTML as data, before mail: a mail's HTML part is built of it.
                (:module "html" :pathname "web" :components ((:file "html")))
                (:module "mail" :components ((:file "mail") (:file "html") (:file "resend")))
-               (:module "outbound" :components ((:file "outbound")))
+               (:module "outbound" :components ((:file "outbound") (:file "programs")))
                (:module "files" :components ((:file "package") (:file "formats") (:file "multipart")
                                              (:file "attachments")))
                (:module "platform"
@@ -169,6 +169,7 @@
                              (:file "api-tests")
                              (:file "waiting-tests")
                              (:file "outbound-tests")
+                             (:file "program-tests")
                              (:file "web-app-tests")
                              (:file "mail-tests")
                              (:file "mail-html-tests")

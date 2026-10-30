@@ -406,6 +406,17 @@ neither is given, and NIL and T when the one given is not an IP address."
           (sb-ext:exit :code 2)))
     (finish-output *error-output*)))
 
+(defun check-programs (application-class name &key (exit (lambda (code) (sb-ext:exit :code code))))
+  "Refuse to start (EXIT with code 2) when a program APPLICATION-CLASS
+declares with (:programs ...) is not on PATH, naming each one missing
+(spec/outbound.md 6).  Only a server looks: tests and OPEN-APPLICATION do not."
+  (let ((missing (tun.outbound:missing-programs application-class)))
+    (dolist (program missing)
+      (format *error-output* "~&~a: the program ~a is not on PATH~%" name program))
+    (finish-output *error-output*)
+    (when missing
+      (funcall exit 2))))
+
 (defun thread-guard-hook (condition hook)
   "Debugger hook for servers: an unhandled condition in a worker thread ends
 that thread only (unwinding its cleanups); only the main thread exits."
@@ -528,6 +539,7 @@ makes its scenario's records there (spec/preview.md 3)."
       (when (and repl-port (not (flag "--debug-tools")))
         (format *error-output* "~a: --repl-port is debug-only: add --debug-tools~%" name)
         (sb-ext:exit :code 2))
+      (check-programs application-class name)
       (check-sign-in application-class (flag "--claimed-identity") name)
       (check-mail application-class (flag "--claimed-identity") name)
       (tun.errors:check-error-mail application-class name)

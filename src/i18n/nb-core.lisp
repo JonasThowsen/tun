@@ -167,3 +167,17 @@
    "Id ~a finnes allerede")
   ("Already exists (a unique value was repeated)"
    "Finnes allerede (unik verdi brutt)"))
+
+;;; Running a program on the server (spec/outbound.md 6)
+
+(define-translations "nb"
+  ("~a did not finish within ~d second~:p"
+   "~a ble ikke ferdig innen ~d sekund~:*~[er~;~:;er~]")
+  ("~a could not be started"
+   "~a kunne ikke startes")
+  ("~a wrote more than 8 MB"
+   "~a skrev mer enn 8 MB")
+  ("~a was not started: four programs are running already"
+   "~a ble ikke startet: fire programmer kjører allerede")
+  ("~a was not started: the operation has less than a second left"
+   "~a ble ikke startet: operasjonen har under ett sekund igjen"))

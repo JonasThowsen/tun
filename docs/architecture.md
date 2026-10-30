@@ -181,6 +181,7 @@ precedence order. The full API is in `client-api.md`. In short:
 | A screen | a method on `render-screen` for the screen's keyword |
 | Configuration | `define-setting`, typed, with durable per-tenant values, or read from the environment with `:env` |
 | Call another system's API | `http-json-post`, in a read; `remote-failure` when it gives no usable answer |
+| Run a program on the server | `(:programs "nixploy")` in `define-application` and `run-program`; `program-failure` when it gives no answer |
 | Install as an app | `(:web-app :icons "icons/" ...)` in `define-application`: manifest, icons, service worker |
 | Notify people's phones | `ui:push-switch` on a page, and `notify-push` in an operation (installable clients) |
 | Files on a record | `:attachments` on the entity, a `files` parameter and `attach-files`; `ui:file-input` and `ui:attachments` |
