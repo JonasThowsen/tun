@@ -2,7 +2,7 @@
 
 - loop: combobox
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 268822c05688be422b0030571f13dab810c0f5db
 - verified: 0590beb2fa80a84d08a8879c30e0d2d569db9e52
 - shown: 0590beb2fa80a84d08a8879c30e0d2d569db9e52
@@ -72,3 +72,4 @@ shows as a card per row with every column.
 - 2026-10-31 22:25  shown (/find, /ui)
 - 2026-10-31 22:25  gate B asked of the person
 - 2026-10-31 22:28  gate B: approve (jonas): «Approve and push (Recommended)»
+- 2026-10-31 22:28  finished at tun b30110d
