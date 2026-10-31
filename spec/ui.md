@@ -312,7 +312,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Group (file in `src/web/ui/`) | Components |
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
-| Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
+| Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
 | Data (`data`, `board`, `files`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
@@ -320,6 +320,24 @@ A component is defined with `define-component` in the package `TUN.UI`:
 
 `file-input` and `attachments`, a record's files, are specified in
 `files.md` §6.
+
+`combobox` is a text field that finds one of its `:options`, texts, as
+one types. Focusing or tapping it opens a list of every option under it;
+typing narrows the list to the options holding the text, ignoring case,
+anywhere in the option, and says «No match» when none does. A tap, a
+click, or the arrow keys and Enter pick an option: the field holds its
+text and the list closes, as it does on Escape and when the field loses
+focus. The field is `role=combobox` with `aria-expanded`,
+`aria-controls` and `aria-activedescendant`, its list a `listbox` of
+`option`s with `aria-selected`; it takes `:hint`, `:error`, `:value`,
+`:placeholder` and `:required` as `text-input` does. The value posted is
+the text in the field. With `:strict t` the submit buttons of its form
+(inside it, or naming it with `form`) are disabled until the field holds
+exactly one option, and enabled again as soon as it does; the server
+still checks the value. `:button`, such as the form's submit button,
+stands at the end of the field's row. Without the script the field is a text input
+with the browser's own list of the options (`<datalist>`), and nothing
+is disabled.
 
 `dialog` with `:shortcut` opens on that key from anywhere on the page;
 Ctrl is Cmd on a Mac, and a key without Ctrl is left to a field being
@@ -347,7 +365,9 @@ format string): ascending, or descending when it is sorted ascending
 already, with an arrow, and `aria-sort` on the column `:sorted :asc` or
 `:desc`. The page sorts the rows; the link reloads it, so sorting works
 without JavaScript. On a narrow screen the sortable headers stay, as a
-row of links above the cards. `confirm-panel` is the form a `:confirm` operation
+row of links above the cards. A column given `:narrow nil` is left out
+of the cards, and kept in the table on a wide screen: a page says which
+columns a phone can do without. `confirm-panel` is the form a `:confirm` operation
 shows before it runs. `flash` is a message carried over a redirect.
 
 ### 6.1 The board
@@ -620,8 +640,9 @@ form of `field`s with an `error-summary`, a confirmation is a
 
 - A client's theme (`define-theme`) beyond overriding tokens in the
   `client` layer.
-- Charts, a date picker beyond the browser's own, a combobox with
-  search.
+- Charts, a date picker beyond the browser's own, a combobox whose
+  values differ from the texts it shows, or that asks the server for its
+  options.
 - htmx's own extensions (server-sent events, the head merge,
   morphing).
 - Path patterns with typed parameters for pages (`/saker/:item`), and

@@ -26,7 +26,7 @@
     ;; What the design system's components are made of (spec/ui.md 5).
     "abbr" "article" "aside" "col" "colgroup" "details" "dialog" "figcaption" "figure" "footer"
     "header" "hgroup" "img" "kbd" "main" "mark" "menu" "meter" "nav" "optgroup" "output" "progress"
-    "s" "search" "sub" "summary" "sup" "time"
+    "s" "search" "sub" "summary" "sup" "time" "datalist"
     ;; Inline SVG for icons: shapes only, nothing that loads or runs.
     "svg" "g" "path" "circle" "ellipse" "line" "polyline" "polygon" "rect"))
 
@@ -35,7 +35,7 @@
     "selected" "checked" "disabled" "required" "min" "max" "step" "placeholder" "lang" "role"
     "accept" "alt" "autocomplete" "autofocus" "cols" "command" "commandfor" "datetime" "dir" "enterkeyhint"
     "form" "formaction" "formmethod" "formnovalidate" "headers" "height" "hidden" "high" "inert"
-    "inputmode" "label" "loading" "low" "maxlength" "minlength" "multiple" "novalidate" "open"
+    "inputmode" "label" "list" "loading" "low" "maxlength" "minlength" "multiple" "novalidate" "open"
     "optimum" "pattern" "popover" "popovertarget" "popovertargetaction" "readonly" "reversed"
     "rows" "scope" "size" "spellcheck" "src" "start" "tabindex" "width"
     ;; A form that sends files, a link that downloads one, an image decoded aside.

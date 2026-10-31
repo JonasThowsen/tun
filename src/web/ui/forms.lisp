@@ -276,7 +276,7 @@ fields «(optional)» with OPTIONAL.")
 (defun text-input-markup (class id &key type name value hint error required placeholder
                                      autocomplete inputmode disabled readonly width
                                      attributes)
-  "The <input> of TEXT-INPUT and INPUT-GROUP, with class CLASS and id ID."
+  "The <input> of TEXT-INPUT, COMBOBOX and INPUT-GROUP, with class CLASS and id ID."
   (let ((type (option-string type)))
     (unless (member type +text-input-types+ :test #'string=)
       (error "~s is not a text input type; use one of ~{~a~^, ~}" type +text-input-types+))
@@ -370,6 +370,246 @@ when users fill in their own details.")
                                :disabled disabled :readonly readonly
                                :width (unless (eq width :full) width)
                                :attributes attributes))))
+
+;;; ------------------------------------------------------------------
+;;; Combobox
+
+(define-component combobox ((&key label name options value hint error required optional
+                                  label-hidden placeholder strict button disabled id attributes))
+  (:group "Forms")
+  (:doc "A text field that finds one of many known answers as the user types, such as a
+customer or a product by its name. OPTIONS is a list of texts; the value sent is the text in
+the field. With STRICT the form's submit buttons wait until the field holds one of the
+options; the page must still check the value. BUTTON, such as the form's submit button,
+stands at the end of the field's row. For a few answers, a select or radios are better.")
+  (:source "WAI-ARIA combobox pattern (list autocomplete); Basecoat combobox (Vega), its look")
+  (:css "
+.tun-combobox {
+  display: flex;
+  align-items: flex-start;
+  gap: calc(var(--spacing) * 2);
+  & .tun-combobox-control { position: relative; flex: 1; min-width: 0; }
+  & > .tun-button { flex: none; }
+  & .tun-combobox-listbox {
+    position: absolute;
+    z-index: 50;
+    inset-inline: 0;
+    top: calc(100% + var(--spacing));
+    max-height: min(18rem, 50dvh);
+    margin: 0;
+    padding: var(--spacing);
+    overflow-y: auto;
+    overscroll-behavior: contain;
+    list-style: none;
+    border-radius: var(--radius-md);
+    background-color: var(--popover);
+    color: var(--popover-foreground);
+    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
+      var(--shadow-md);
+    &[hidden] { display: none; }
+  }
+  & .tun-combobox-option, & .tun-combobox-none {
+    display: flex;
+    min-height: var(--control-height-sm);
+    align-items: center;
+    padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
+    border-radius: var(--radius-sm);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    overflow-wrap: anywhere;
+    @media (pointer: coarse) { min-height: var(--control-height); }
+    &[hidden] { display: none; }
+  }
+  & .tun-combobox-option {
+    cursor: default;
+    user-select: none;
+    &[aria-selected='true'] { background-color: var(--accent); color: var(--accent-foreground); }
+    @media (hover: hover) {
+      &:hover { background-color: var(--accent); color: var(--accent-foreground); }
+    }
+  }
+  & .tun-combobox-none { color: var(--muted-foreground); }
+}")
+  (:script "
+// The combobox pattern on a text field (spec/ui.md 6): its options under it,
+// narrowed to those holding the text typed, ignoring case, and picked with a
+// tap, a click, or the arrow keys and Enter.  Focus stays in the field.  A
+// strict combobox holds back its form's submit buttons until the field
+// holds an option.
+const comboboxParts = (box) => ({
+  box,
+  input: box.querySelector('.tun-combobox-input'),
+  list: box.querySelector('[role=listbox]'),
+  options: [...box.querySelectorAll('[role=option]')],
+  none: box.querySelector('.tun-combobox-none'),
+});
+const comboboxOf = (element) => element.closest('[data-tun-combobox]');
+const comboboxShown = (parts) => parts.options.filter((option) => !option.hidden);
+
+const comboboxActivate = (parts, option) => {
+  for (const each of parts.options)
+    each.setAttribute('aria-selected', each === option ? 'true' : 'false');
+  if (option) {
+    parts.input.setAttribute('aria-activedescendant', option.id);
+    option.scrollIntoView({ block: 'nearest' });
+  } else parts.input.removeAttribute('aria-activedescendant');
+};
+
+const comboboxNarrow = (parts) => {
+  const text = parts.input.value.trim().toLowerCase();
+  for (const option of parts.options)
+    option.hidden = !option.dataset.value.toLowerCase().includes(text);
+  parts.none.hidden = comboboxShown(parts).length > 0;
+  comboboxActivate(parts, null);
+};
+
+const comboboxOpen = (parts) => {
+  comboboxNarrow(parts);
+  parts.list.hidden = false;
+  parts.input.setAttribute('aria-expanded', 'true');
+};
+
+const comboboxClose = (parts) => {
+  parts.list.hidden = true;
+  parts.input.setAttribute('aria-expanded', 'false');
+  comboboxActivate(parts, null);
+};
+
+// The submit buttons a strict combobox holds back are marked, so that it
+// never enables a button something else disabled.
+const comboboxHoldForm = (parts) => {
+  const form = parts.input.form;
+  if (!form || !parts.box.hasAttribute('data-tun-combobox-strict')) return;
+  const chosen = parts.options.some((option) => option.dataset.value === parts.input.value);
+  for (const button of form.elements) {
+    if (button.type !== 'submit') continue;
+    if (!chosen && !button.disabled) {
+      button.disabled = true;
+      button.dataset.tunComboboxHeld = '';
+    } else if (chosen && 'tunComboboxHeld' in button.dataset) {
+      button.disabled = false;
+      delete button.dataset.tunComboboxHeld;
+    }
+  }
+};
+
+const comboboxPick = (parts, option) => {
+  parts.input.value = option.dataset.value;
+  comboboxClose(parts);
+  comboboxHoldForm(parts);
+  parts.input.dispatchEvent(new Event('change', { bubbles: true }));
+};
+
+// The script draws the list itself, so the browser's own list, what works
+// without it, goes.
+tunOnContent((root) => {
+  for (const box of root.querySelectorAll('[data-tun-combobox]')) {
+    const parts = comboboxParts(box);
+    parts.input.removeAttribute('list');
+    comboboxHoldForm(parts);
+  }
+});
+
+document.addEventListener('focusin', (event) => {
+  if (event.target.matches?.('.tun-combobox-input')) comboboxOpen(comboboxParts(comboboxOf(event.target)));
+});
+document.addEventListener('click', (event) => {
+  const option = event.target.closest?.('.tun-combobox [role=option]');
+  if (option) {
+    comboboxPick(comboboxParts(comboboxOf(option)), option);
+    return;
+  }
+  if (event.target.matches?.('.tun-combobox-input')) comboboxOpen(comboboxParts(comboboxOf(event.target)));
+});
+// A press on the list keeps the focus in the field, so it does not close
+// before the click picks.
+document.addEventListener('mousedown', (event) => {
+  if (event.target.closest?.('.tun-combobox [role=listbox]')) event.preventDefault();
+});
+document.addEventListener('focusout', (event) => {
+  if (event.target.matches?.('.tun-combobox-input')) comboboxClose(comboboxParts(comboboxOf(event.target)));
+});
+document.addEventListener('input', (event) => {
+  if (!event.target.matches?.('.tun-combobox-input')) return;
+  const parts = comboboxParts(comboboxOf(event.target));
+  comboboxOpen(parts);
+  comboboxHoldForm(parts);
+});
+document.addEventListener('keydown', (event) => {
+  if (!event.target.matches?.('.tun-combobox-input')) return;
+  const parts = comboboxParts(comboboxOf(event.target));
+  const open = !parts.list.hidden;
+  const shown = comboboxShown(parts);
+  const active = shown.findIndex((option) => option.getAttribute('aria-selected') === 'true');
+  if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
+    event.preventDefault();
+    if (!open) comboboxOpen(parts);
+    if (shown.length === 0) return;
+    const step = event.key === 'ArrowDown' ? 1 : -1;
+    const next = active < 0 ? (step > 0 ? 0 : shown.length - 1)
+      : (active + step + shown.length) % shown.length;
+    comboboxActivate(parts, shown[next]);
+  } else if (event.key === 'Enter' && open && active >= 0) {
+    event.preventDefault();
+    comboboxPick(parts, shown[active]);
+  } else if (event.key === 'Escape' && open) {
+    event.preventDefault();
+    comboboxClose(parts);
+  }
+});")
+  (:examples
+   (("Finding a customer" :layout :stack)
+    (combobox (:label "Customer" :name "customer"
+               :hint "Type part of the name."
+               :options '("Fjord Coffee Ltd" "Hansen Building and Construction Ltd"
+                          "Kari Nordmann" "The Corner Bakery" "Tromsø Bicycle Workshop"))))
+   (("Strict, in a form" :layout :stack)
+    `(:form (:@ :method "post" :action "/deploys" :novalidate t)
+            ,(combobox (:label "Target" :name "target" :strict t
+                        :placeholder "Search for a target"
+                        :options '("ferdig / production" "ferdig / staging"
+                                   "showcase / production" "showcase / staging")
+                        :button (button (:type "submit" :icon :upload) "Deploy")))))
+   (("With an error" :layout :stack)
+    (combobox (:label "Product" :name "product" :value "Oak"
+               :error "Choose a product from the list"
+               :options '("Oak worktop, 240 cm" "Oak worktop, 300 cm" "Ash worktop, 240 cm")))))
+  (require-label 'combobox label)
+  (dolist (option options)
+    (check-type option string))
+  (let* ((id (or id (element-id (or name "combobox"))))
+         (listbox (format nil "~a-listbox" id))
+         (choices (format nil "~a-choices" id)))
+    (field* (list :label label :for id :hint hint :error error :optional optional
+                  :label-hidden label-hidden)
+            `(:div ,(attrs (list :class "tun-combobox" :data-tun-combobox ""
+                                 :data-tun-combobox-strict (when strict "")))
+                   (:div (:@ :class "tun-combobox-control")
+                     ,(text-input-markup "tun-text-input tun-combobox-input" id
+                                         :type :text :name name :value value :hint hint :error error
+                                         :required required :placeholder placeholder
+                                         :autocomplete "off" :disabled disabled
+                                         :attributes (append
+                                                      (list :role "combobox" :list choices
+                                                            :aria-autocomplete "list"
+                                                            :aria-expanded "false"
+                                                            :aria-controls listbox)
+                                                      attributes))
+                     (:datalist (:@ :id ,choices)
+                                ,@(mapcar (lambda (option) `(:option (:@ :value ,option)))
+                                          options))
+                     (:ul (:@ :class "tun-combobox-listbox" :id ,listbox :role "listbox"
+                              :aria-label ,label :hidden "")
+                          ,@(loop for option in options
+                                  for n from 0
+                                  collect `(:li (:@ :class "tun-combobox-option"
+                                                    :id ,(format nil "~a-option-~d" id n)
+                                                    :role "option" :aria-selected "false"
+                                                    :data-value ,option)
+                                                ,option))
+                          (:li (:@ :class "tun-combobox-none" :role "presentation" :hidden "")
+                               ,(tr "No match"))))
+                   ,@(when button (list button))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Textarea

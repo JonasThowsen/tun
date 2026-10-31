@@ -23,6 +23,8 @@
    "For å gå videre må du rette opp følgende feil:")
   ("Cancel"
    "Avbryt")
+  ("No match"
+   "Ingen treff")
   ;; Data
   ("No entries."
    "Ingen oppføringer.")

@@ -200,3 +200,45 @@ refusal of it."
                                     `(:p (:a (:@ :href ,(format nil "/items/~a" (jget card "id")))
                                              ,(tr "To the item")))))
                   (list (ui:empty-state (:title (tr "No attachments"))))))))
+
+;;; ------------------------------------------------------------------
+;;; Finding an item by its title (spec/ui.md 6): a strict combobox, and the
+;;; items as a table whose status a phone leaves out.
+
+(defun find-form (titles &key value error)
+  `(:form (:@ :method "post" :action "/find" :novalidate t)
+          ,(ui:stack (:gap :md)
+             (ui:combobox (:label (tr "Item") :name "title" :strict t :value value :error error
+                           :placeholder (tr "Type part of the title")
+                           :options titles
+                           :button (ui:button (:type "submit" :icon :arrow-right)
+                                     (tr ("Open" :context "verb"))))))))
+
+(defun find-body (cards &rest form-options)
+  (list (apply #'find-form (mapcar (lambda (card) (jget card "title")) cards) form-options)
+        (ui:table (:caption (tr "Items") :caption-hidden t
+                   :columns (list (tr "Title") (list (tr "Status") :narrow nil)
+                                  (list (tr "Reported on") :width :min))
+                   :rows (mapcar (lambda (card)
+                                   (list (jget card "title")
+                                         (column-title (jget card "status"))
+                                         (or (jget card "reported_on") "")))
+                                 cards)
+                   :row-href (mapcar (lambda (card) (format nil "/items/~a" (jget card "id")))
+                                     cards)))))
+
+(define-page find-page ("find" :title "Find" :icon :search :policy :employee)
+    (method path form query)
+  (declare (ignore query))
+  (let ((cards (coerce (jget (web-call "cards_list" (jobj)) "items") 'list)))
+    (cond (path (values 404 (tr "Find") (list (ui:alert (:variant :warning
+                                                         :title (tr "Page not found"))))))
+          ((eq method :post)
+           (let ((card (find (jget form "title") cards
+                             :key (lambda (card) (jget card "title")) :test #'equal)))
+             (if card
+                 (values 303 (format nil "/items/~a" (jget card "id")))
+                 (values 422 (tr "Find")
+                         (find-body cards :value (jget form "title")
+                                          :error (tr "Choose an item from the list"))))))
+          (t (values 200 (tr "Find") (find-body cards))))))

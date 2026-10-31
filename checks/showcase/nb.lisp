@@ -98,4 +98,9 @@
   ("Send the notification" "Send varselet")
   ("Sent" "Sendt")
   ("The notification goes to ~d device~:p."
-   "Varselet går til ~d ~:*~[enheter~;enhet~:;enheter~]."))
+   "Varselet går til ~d ~:*~[enheter~;enhet~:;enheter~].")
+  ("Find" "Finn")
+  ("Item" "Sak")
+  ("Type part of the title" "Skriv en del av tittelen")
+  (("Open" :context "verb") "Åpne")
+  ("Choose an item from the list" "Velg en sak fra listen"))

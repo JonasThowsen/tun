@@ -200,3 +200,45 @@
                                page)))
           (let ((page (form-of 'file-notes-get)))
             (is (not (search "enctype" page)) "a form without files is not multipart")))))))
+
+;;; ------------------------------------------------------------------
+;;; Combobox
+
+(test a-combobox-is-a-labelled-field-with-its-options-twice
+  (let ((page (forms-html (tun.ui:combobox (:label "Mål" :name "target" :id "mål"
+                                                   :hint "Skriv en del av navnet."
+                                                   :options '("ferdig / production"
+                                                              "showcase / staging"))))))
+    (is (equal "mål" (forms-attribute page "label" "for")))
+    (is (equal "combobox" (forms-attribute page "input" "role")))
+    (is (equal "list" (forms-attribute page "input" "aria-autocomplete")))
+    (is (equal "false" (forms-attribute page "input" "aria-expanded")))
+    (is (equal "mål-listbox" (forms-attribute page "input" "aria-controls")))
+    (is (equal "mål-hint" (forms-attribute page "input" "aria-describedby")))
+    (is (equal "off" (forms-attribute page "input" "autocomplete"))
+        "the browser's own suggestions would cover the list")
+    (is (equal "mål-choices" (forms-attribute page "input" "list"))
+        "without the script, the browser's own list")
+    (is (search "<datalist id=\"mål-choices\"><option value=\"ferdig / production\">" page))
+    (is (search "<ul class=\"tun-combobox-listbox\" id=\"mål-listbox\" role=\"listbox\" aria-label=\"Mål\" hidden" page))
+    (is (search "id=\"mål-option-1\" role=\"option\" aria-selected=\"false\" data-value=\"showcase / staging\">showcase / staging</li>" page))
+    (is (search "role=\"presentation\" hidden=\"\">No match</li>" page) "a text for no match")
+    (is (null (search "data-tun-combobox-strict" page)) "not strict unless asked")))
+
+(test a-strict-combobox-says-so-and-keeps-its-value
+  (let ((page (forms-html (tun.ui:combobox (:label "Mål" :name "target" :strict t
+                                                   :value "ferdig / production"
+                                                   :error "Velg et mål fra listen"
+                                                   :options '("ferdig / production"))))))
+    (is (search "data-tun-combobox-strict" page))
+    (is (equal "ferdig / production" (forms-attribute page "input" "value")))
+    (is (equal "true" (forms-attribute page "input" "aria-invalid"))))
+  (let ((page (forms-html (tun.ui:combobox (:label "Mål" :name "target" :options '("a")
+                                                   :button (tun.ui:button (:type "submit")
+                                                             "Rull ut"))))))
+    (is (forms-in-order-p page "class=\"tun-combobox-control\"" "role=\"listbox\""
+                          "type=\"submit\"")
+        "the button after the field and its list, on its row"))
+  (signals error (tun.ui:combobox (:name "target" :options '("a"))) "it needs a label")
+  (signals error (tun.ui:combobox (:label "Mål" :options '(("a" "A"))))
+           "options are texts"))

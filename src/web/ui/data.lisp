@@ -12,16 +12,19 @@
 
 (defun table-column (column)
   "COLUMN of a table, a header string or a list (HEADER &key ALIGN WIDTH WRAP
-SORT SORTED), as a plist with every option.  SORT is the key the page sorts
-the column by; SORTED is :ASC or :DESC on the column the rows are sorted by."
-  (destructuring-bind (header &key (align :start) width wrap sort sorted)
+SORT SORTED NARROW), as a plist with every option.  SORT is the key the page
+sorts the column by; SORTED is :ASC or :DESC on the column the rows are
+sorted by.  NARROW NIL leaves the column out of the cards a narrow screen
+shows."
+  (destructuring-bind (header &key (align :start) width wrap sort sorted (narrow t))
       (if (listp column) column (list column))
     (check-type header string)
     (check-type align (member :start :center :end))
     (check-type width (member nil :min :sm :md :lg))
     (check-type sort (or null string))
     (check-type sorted (member nil :asc :desc))
-    (list :header header :align align :width width :wrap wrap :sort sort :sorted sorted)))
+    (list :header header :align align :width width :wrap wrap :sort sort :sorted sorted
+          :narrow narrow)))
 
 (defun sort-link (sort-href key direction)
   "Where the header of a column sorted by KEY leads, to sort it in DIRECTION
@@ -53,11 +56,12 @@ with an arrow; aria-sort says how the rows are sorted."
 
 (defun table-cell-attributes (column)
   "The attributes a header or data cell of COLUMN carries for its alignment,
-width and wrapping."
-  (destructuring-bind (&key align width wrap &allow-other-keys) column
+width and wrapping, and whether a narrow screen leaves it out."
+  (destructuring-bind (&key align width wrap narrow &allow-other-keys) column
     (list :data-align (unless (eq align :start) (option-string align))
           :data-width (option-string width)
-          :data-wrap (when wrap "true"))))
+          :data-wrap (when wrap "true")
+          :data-narrow (unless narrow "false"))))
 
 (defun table-cell (column content &optional href)
   "A data cell of COLUMN holding CONTENT.  The cell carries its column's header
@@ -100,7 +104,8 @@ values stand with their column's name. With ROW-HREF the whole row is a link to 
 amounts and numbers are right-aligned with :align :end. A column with :sort KEY can be
 sorted: its header becomes a link to SORT-HREF (a function of the key and \"asc\" or
 \"desc\", or a format string), and :sorted :asc or :desc shows how the rows are sorted. The
-page sorts; the table only shows the headers.")
+page sorts; the table only shows the headers. A column with :narrow nil is left out of the
+cards, for a value a phone can do without.")
   (:source "Basecoat table (Vega); cards on a phone after GOV.UK and Aksel")
   (:css "
 .tun-table {
@@ -247,7 +252,7 @@ page sorts; the table only shows the headers.")
       text-align: end;
     }
     & td[data-wrap] { min-width: 0; }
-    & td:has(> .tun-table-value:empty) { display: none; }
+    & td:has(> .tun-table-value:empty), & td[data-narrow='false'] { display: none; }
     & .tun-table-label {
       display: block;
       flex-shrink: 0;
@@ -315,6 +320,14 @@ page sorts; the table only shows the headers.")
                              ("Oak worktop, 240 cm" "1" "€4,990.00" "€4,990.00")
                              ("Driving" "38 km" "€5.00" "€190.00"))
                      :footer '("Total excluding VAT" nil nil "€10,280.00"))))
+   (("Columns a phone leaves out" :layout :stack)
+    (table (:caption "Orders, short on a phone"
+                     :columns '(("Order" :width :min) "Customer" ("Date" :width :min :narrow nil)
+                                ("Status" :narrow nil) ("Amount" :align :end))
+                     :rows '(("10482" "Fjord Coffee Ltd" "12 Oct 2026" "New" "€4,380.00")
+                             ("10481" "Hansen Building and Construction Ltd" "11 Oct 2026"
+                              "In progress" "€128,950.00"))
+                     :row-href (lambda (row) (format nil "/orders/~a" (first row))))))
    (("Sortable columns" :layout :stack)
     (table (:caption "Items"
                      :columns '(("Item" :sort "title") ("Customer" :sort "customer")

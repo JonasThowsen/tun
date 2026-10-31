@@ -45,6 +45,18 @@ aria-current=\"page\", in any order."
     (is (= 1 (count-matches "class=\"tun-table-row-link\"" html))
         "a NIL in the list leaves its row without a link")))
 
+(test a-column-a-phone-leaves-out-is-marked-on-its-header-and-cells
+  (let ((html (tun.html:render-html
+               (tun.ui:table (:columns '("Ordre" ("Dato" :narrow nil) "Beløp")
+                                       :rows '(("10482" "12.10.2026" "4 380,00 kr")
+                                               ("10481" "11.10.2026" "128 950,00 kr")))))))
+    (is (= 3 (count-matches "data-narrow=\"false\"" html))
+        "the header and both of its cells")
+    (is (search "<td data-narrow=\"false\"><span class=\"tun-table-label\">Dato</span>" html))
+    (is (null (search "data-narrow=\"true\"" html)) "the other columns carry nothing"))
+  (signals error (tun.ui:table (:columns '(("Ordre" :phone nil)) :rows '()))
+           "an option the column does not take"))
+
 (test a-table-refuses-rows-that-do-not-fit-its-columns
   (signals error (tun.ui:table (:columns '("Ordre" "Kunde") :rows '(("10482")))))
   (signals error (tun.ui:table (:columns '("Ordre") :rows '(("1") ("2"))
