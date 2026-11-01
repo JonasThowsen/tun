@@ -2,7 +2,7 @@
 
 - loop: combobox-over
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 4070a9d795956e1d81212a304f96cc255243b714
 - after: combobox
 - verified: af8ef84ecda1cfbdd962440f45db7aa24bc679da
@@ -54,3 +54,4 @@ combobox loop's check drove it on a page with no card around it.
 - 2026-11-01 10:43  shown (/find)
 - 2026-11-01 10:43  gate B asked of the person
 - 2026-11-01 11:22  gate B: approve (jonas): «Approve and push (Recommended)», after the core version was raised to 2.4.1
+- 2026-11-01 11:22  finished at tun 638e82b
