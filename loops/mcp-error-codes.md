@@ -2,7 +2,7 @@
 
 - loop: mcp-error-codes
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 038c0f51b2efea5e0935f00401b2bc403b051b27
 - after: combobox-over
 - verified: fc55bbb635452b7b1b4d03ed02e82d2d359f4c0b
@@ -52,3 +52,7 @@ request's log line is lost.
 - 2026-11-01 19:25  shown (/ui)
 - 2026-11-01 19:25  gate B asked of the person
 - 2026-11-01 19:26  gate B: approve (jonas): «Approve and push (Recommended)»
+- 2026-11-01 19:30  gate C asked of the person
+- 2026-11-01 19:39  gate C: approve (jonas): «Approve, deploy via dashboard (Recommended)»
+- 2026-11-01 19:40  Tun f8ad46f in ferdig 872d6ac, deployed to production through nixploy-dashboard (dpl_6vge055yd2t8h114, succeeded in 75 s)
+- 2026-11-01 19:40  finished at tun f8ad46f
