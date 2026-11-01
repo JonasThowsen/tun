@@ -490,3 +490,69 @@ on the Ith of APPLICATIONS; the vector of results (an error as the condition)."
           (with-transaction (:read)
             (is (every (lambda (wf) (string= "executed" (tun.workflows:workflow-status wf)))
                        (select 'tun.workflows:workflow))))))))
+
+;;; ------------------------------------------------------------------
+;;; A database not there at start is waited for (spec/store.md 1)
+
+(defclass flaky-store (tun.store.memory:memory-store)
+  ((failures :initarg :failures :accessor flaky-failures))
+  (:documentation "A memory store that cannot reach its database for its
+first FAILURES opens."))
+
+(defmethod store-open ((store flaky-store))
+  (if (plusp (flaky-failures store))
+      (progn (decf (flaky-failures store))
+             (error 'database-unreachable :reason "postgres:db.example cannot be reached: refused"))
+      (call-next-method)))
+
+(defun start-with (failures)
+  "What OPEN-FOR-SERVING answers for a store that fails FAILURES opens, the
+waits it took and what it said."
+  (let ((waits '())
+        (said (make-string-output-stream)))
+    (let ((opened (let ((tun.runtime::*database-wait-sleep* (lambda (seconds) (push seconds waits)))
+                        (*error-output* said))
+                    (tun.runtime::open-for-serving
+                     'application "server"
+                     :store (make-instance 'flaky-store :failures failures) :test-clock t))))
+      (when (typep opened 'application)
+        (tun.runtime:close-application opened))
+      (values opened (reverse waits) (get-output-stream-string said)))))
+
+(test a-database-not-there-at-start-is-waited-for
+  (multiple-value-bind (opened waits said) (start-with 2)
+    (is (typep opened 'application) "it opens once the database answers")
+    (is (equal '(1 2) waits))
+    (is (search "server: postgres:db.example cannot be reached: refused; trying again in 1 s" said))
+    (is (search "trying again in 2 s" said)))
+  (multiple-value-bind (opened waits said) (start-with 0)
+    (is (typep opened 'application))
+    (is (null waits) "a database that answers is not waited for")
+    (is (string= "" said))))
+
+(test a-database-still-not-there-after-a-minute-ends-the-start
+  (multiple-value-bind (opened waits said) (start-with 100)
+    (is (eq :unreachable opened) "the server then exits 1")
+    (is (equal '(1 2 4 8 16 29) waits))
+    (is (= 60 (reduce #'+ waits)) "a minute in all")
+    (is (search "still not there after a minute, exiting" said))))
+
+(test postgres-that-refuses-the-connection-is-unreachable
+  ;; Nothing listens on port 1: the connection is refused, as by a
+  ;; database that is restarting.
+  (let ((store (tun.runtime::make-store "postgresql://tun@127.0.0.1:1/nowhere")))
+    (let ((condition (handler-case (progn (store-open store) nil)
+                       (database-unreachable (c) c))))
+      (is (typep condition 'database-unreachable))
+      (when condition
+        (is (search "cannot be reached" (database-unreachable-reason condition)))
+        (is (null (search "password" (database-unreachable-reason condition))))))))
+
+(test postgres-that-answers-with-another-refusal-is-not-waited-for
+  (when (postgres-available-p)
+    (let* ((url (scratch-postgres "unreachable"))
+           (missing (cl-ppcre:regex-replace "/[^/?]+(\\?|$)" url "/no_such_database_here\\1"))
+           (condition (handler-case (progn (store-open (tun.runtime::make-store missing)) nil)
+                        (error (c) c))))
+      (is (not (typep condition 'database-unreachable))
+          "a database that does not exist is no restart: ~a" condition))))

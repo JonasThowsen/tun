@@ -97,6 +97,7 @@
    #:store-update #:store-delete #:store-find #:store-select #:store-lock-row #:store-description
    #:store-claim-presence #:store-present-p #:store-presences
    #:+core-major-module+ #:newer-database #:ensure-core-major #:check-core-major
+   #:database-unreachable #:database-unreachable-reason
    #:core-major-mark #:running-major #:highest-major
    ;; core 2.0's migration and its revert (spec/i18n.md 4.4 to 4.6)
    #:make-database-access #:prepare-database #:revert-database

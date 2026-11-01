@@ -153,6 +153,14 @@ keep their numbers.")
                         cannot read what it may have changed and refuses to start."
                      (newer-database-recorded c) +core-version+ (newer-database-running c)))))
 
+(define-condition database-unreachable (error)
+  ((reason :initarg :reason :reader database-unreachable-reason))
+  (:report (lambda (c s) (write-string (database-unreachable-reason c) s)))
+  (:documentation "A store cannot reach its database as it opens: the
+connection is refused or fails, or the database is starting up or shutting
+down.  A server waits for it at start (spec/store.md 1); the reason names
+the database without its password."))
+
 (defun mark-major (mark)
   "The major MARK, a migration id under +CORE-MAJOR-MODULE+, names: 2 for
 core-major-2; NIL for any other id."

@@ -252,17 +252,47 @@ refuses before reading REGISTRY-PATH (spec/i18n.md 4.6)."
            (finish-output)
            (if findings 3 0)))))
 
+(defparameter *database-waits* '(1 2 4 8 16 29)
+  "The seconds a server starting waits before each new try at a database it
+cannot reach: a minute in all (spec/store.md 1).")
+
+(defvar *database-wait-sleep* #'sleep
+  "How a server starting waits between its tries at the database: SLEEP;
+a test makes it instant.")
+
 (defun open-for-serving (application-class name &rest initargs)
-  "OPEN-APPLICATION of APPLICATION-CLASS with INITARGS, or NIL when the
-database is refused, after saying why on standard error: one a newer core
-major has opened (spec/store.md 2, item 10), or one core 2.0 cannot take
-(spec/i18n.md 4.3 to 4.5).  The server then exits 2, as the other start
-checks do."
-  (handler-case (apply #'open-application application-class initargs)
-    ((or newer-database database-refused) (refusal)
-      (format *error-output* "~&~a: ~a~%" name refusal)
-      (finish-output *error-output*)
-      nil)))
+  "OPEN-APPLICATION of APPLICATION-CLASS with INITARGS, after saying why on
+standard error when it cannot: NIL when the database is refused, one a newer
+core major has opened (spec/store.md 2, item 10) or one core 2.0 cannot take
+(spec/i18n.md 4.3 to 4.5), and the server then exits 2, as the other start
+checks do; :UNREACHABLE when the database could not be reached for a minute,
+tried again after each of *DATABASE-WAITS*, and the server then exits 1 so
+that what runs it starts it again later (spec/store.md 1)."
+  (flet ((say (control &rest arguments)
+           (format *error-output* "~&~a: ~?~%" name control arguments)
+           (finish-output *error-output*)))
+    (loop for waits on (cons 0 *database-waits*)
+          for wait = (first waits)
+          do (when (plusp wait)
+               (funcall *database-wait-sleep* wait))
+             (handler-case (return (apply #'open-application application-class initargs))
+               ((or newer-database database-refused) (refusal)
+                 (say "~a" refusal)
+                 (return nil))
+               (database-unreachable (unreachable)
+                 (cond ((rest waits)
+                        (say "~a; trying again in ~d s" unreachable (second waits)))
+                       (t (say "~a; still not there after a minute, exiting" unreachable)
+                          (return :unreachable))))))))
+
+(defun opened-or-exit (opened)
+  "OPENED, what OPEN-FOR-SERVING answered, when it is an application; else
+the server exits: 2 when its database was refused, 1 when it could not be
+reached."
+  (case opened
+    ((nil) (sb-ext:exit :code 2))
+    (:unreachable (sb-ext:exit :code 1))
+    (t opened)))
 
 (defun rollback-preflight (application-class db registry-path)
   "Findings (a list of (kind . count), sorted) for rolling the database DB
@@ -543,7 +573,7 @@ makes its scenario's records there (spec/preview.md 3)."
       (check-sign-in application-class (flag "--claimed-identity") name)
       (check-mail application-class (flag "--claimed-identity") name)
       (tun.errors:check-error-mail application-class name)
-      (let* ((app (or (open-for-serving application-class name
+      (let* ((app (opened-or-exit (open-for-serving application-class name
                                         :store (make-store (database-designator db)
                                                            :synchronous synchronous
                                                            :group-commit group-commit)
@@ -553,8 +583,7 @@ makes its scenario's records there (spec/preview.md 3)."
                                         :repl-port repl-port
                                         :public-url public-url
                                         :log-requests log
-                                        :identity (if (flag "--claimed-identity") :claimed :authenticated))
-                      (sb-ext:exit :code 2)))
+                                        :identity (if (flag "--claimed-identity") :claimed :authenticated))))
              (acceptor (progn
                          (when before-serving
                            (funcall before-serving app))

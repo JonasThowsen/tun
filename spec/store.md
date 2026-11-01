@@ -23,6 +23,15 @@ When `--db` is absent, the server reads the `DATABASE_URL` environment
 variable instead, so a password stays off the command line. When neither
 is given, it exits 2 and says so.
 
+A server whose Postgres database cannot be reached at start (the
+connection is refused or fails, or the database is starting up or
+shutting down) waits for it: it says so on standard error, naming the
+database's host and not its password, and tries again after 1, 2, 4, 8,
+16 and 29 seconds, a minute in all. When the database is still not there
+then, it exits 1, so that whatever runs it (systemd, Podman) starts it
+again later. A database that refuses the server for another reason
+(authentication, a newer core) is not waited for.
+
 A Postgres URL has the form
 `postgresql://[user[:password]@][host][:port]/database[?host=DIR]`.
 A `host` query parameter, or a host that starts with `/`, names the

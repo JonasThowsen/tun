@@ -171,7 +171,18 @@ is over either way."
       (close-connection connection)))
 
 (defmethod store-open ((store postgres-store))
-  (checkin store (checkout store))
+  ;; The first connection says whether the database is there at all; one
+  ;; that is not, or is starting up or shutting down, is waited for at
+  ;; start (spec/store.md 1).  Other refusals, such as a wrong password,
+  ;; are not.
+  (handler-case (checkin store (checkout store))
+    ((or cl-postgres:database-connection-error cl-postgres-error:cannot-connect-now
+         cl-postgres-error:server-shutdown)
+        (condition)
+      (error 'database-unreachable
+             :reason (format nil "~a cannot be reached: ~a"
+                             (store-description store)
+                             (string-trim '(#\Space #\Newline) (princ-to-string condition))))))
   (sb-thread:with-mutex ((write-lock store))
     (unless (writer-connection store)
       (setf (writer-connection store) (open-connection store))))
