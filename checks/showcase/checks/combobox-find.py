@@ -1,5 +1,6 @@
-"""A strict combobox finds an item by part of its title: on a phone, a tap
-opens every option, typing narrows them and a tap picks one, which lets
+"""A strict combobox, in a card, finds an item by part of its title: on a
+phone, a tap opens every option over the page, typing narrows them and a tap
+picks one, which lets
 «Open» be pressed; on a desktop, the arrow keys and Enter pick, Escape
 closes, and a title typed in full counts; a form htmx swapped in works the
 same; without the script the browser's own list stands in; and the table
@@ -21,6 +22,19 @@ def is_open(page):
     return page.locator(LISTBOX).is_visible()
 
 
+def on_screen(page):
+    """Whether the first option shown is inside the window and on top at its
+    centre: Playwright counts an option a card cuts off as visible."""
+    return page.locator(LISTBOX).evaluate("""list => {
+      const option = [...list.querySelectorAll('[role=option]')].find(o => !o.hidden);
+      if (!option) return false;
+      const box = option.getBoundingClientRect();
+      const x = box.left + box.width / 2, y = box.top + box.height / 2;
+      return box.height > 0 && y > 0 && y < innerHeight && x > 0 && x < innerWidth
+        && option.contains(document.elementFromPoint(x, y));
+    }""")
+
+
 def open_button(page):
     return page.get_by_role("button", name="Open", exact=True)
 
@@ -39,9 +53,11 @@ def run(t):
     t.check(not is_open(phone), "phone: the list starts closed")
     phone.locator(INPUT).tap()
     t.check(is_open(phone) and len(shown(phone)) == 30, f"phone: a tap shows all 30: {len(shown(phone))}")
+    t.check(on_screen(phone), "phone: on top of the page, not cut off by the card")
     t.check(phone.locator(INPUT).get_attribute("aria-expanded") == "true", "phone: aria-expanded")
     phone.keyboard.type("ACC")
     t.check(shown(phone) == ["Export to accounting"], f"phone: «ACC» narrows it: {shown(phone)}")
+    t.check(on_screen(phone), "phone: the one left is on screen")
     t.check(open_button(phone).is_disabled(), "phone: a part of a title is not an item")
     phone.locator(f"{LISTBOX} [role=option]", has_text="Export to accounting").tap()
     t.check(phone.locator(INPUT).input_value() == "Export to accounting", "phone: a tap picks it")
@@ -62,7 +78,7 @@ def run(t):
     desktop.goto("/find")
     t.check(status_shown(desktop), "desktop: the table keeps the status")
     desktop.locator(INPUT).focus()
-    t.check(is_open(desktop), "desktop: focus opens the list")
+    t.check(is_open(desktop) and on_screen(desktop), "desktop: focus opens the list, on screen")
     desktop.keyboard.type("item 2")
     t.check(shown(desktop) == ["Item 2", "Item 20", "Item 21", "Item 22", "Item 23", "Item 24",
                                "Item 25"], f"desktop: ignoring case: {shown(desktop)}")

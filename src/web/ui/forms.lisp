@@ -390,14 +390,15 @@ stands at the end of the field's row. For a few answers, a select or radios are 
   gap: calc(var(--spacing) * 2);
   & .tun-combobox-control { position: relative; flex: 1; min-width: 0; }
   & > .tun-button { flex: none; }
+  /* A popover in the top layer, so no card or dialog around the field cuts
+     it off; the script places it under the field, or above it. */
   & .tun-combobox-listbox {
-    position: absolute;
-    z-index: 50;
-    inset-inline: 0;
-    top: calc(100% + var(--spacing));
+    position: fixed;
+    inset: auto;
     max-height: min(18rem, 50dvh);
     margin: 0;
     padding: var(--spacing);
+    border: 0;
     overflow-y: auto;
     overscroll-behavior: contain;
     list-style: none;
@@ -406,7 +407,6 @@ stands at the end of the field's row. For a few answers, a select or radios are 
     color: var(--popover-foreground);
     box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
       var(--shadow-md);
-    &[hidden] { display: none; }
   }
   & .tun-combobox-option, & .tun-combobox-none {
     display: flex;
@@ -433,9 +433,10 @@ stands at the end of the field's row. For a few answers, a select or radios are 
   (:script "
 // The combobox pattern on a text field (spec/ui.md 6): its options under it,
 // narrowed to those holding the text typed, ignoring case, and picked with a
-// tap, a click, or the arrow keys and Enter.  Focus stays in the field.  A
-// strict combobox holds back its form's submit buttons until the field
-// holds an option.
+// tap, a click, or the arrow keys and Enter.  Focus stays in the field.  The
+// list is a popover, placed under the field, or above it when there is more
+// room there, and kept there while the page scrolls.  A strict combobox
+// holds back its form's submit buttons until the field holds an option.
 const comboboxParts = (box) => ({
   box,
   input: box.querySelector('.tun-combobox-input'),
@@ -445,6 +446,29 @@ const comboboxParts = (box) => ({
 });
 const comboboxOf = (element) => element.closest('[data-tun-combobox]');
 const comboboxShown = (parts) => parts.options.filter((option) => !option.hidden);
+const comboboxIsOpen = (parts) => parts.list.matches(':popover-open');
+
+const comboboxPlace = (parts) => {
+  const edge = 8;
+  const gap = 4;
+  const field = parts.input.getBoundingClientRect();
+  const below = window.innerHeight - field.bottom - gap - edge;
+  const above = field.top - gap - edge;
+  const list = parts.list;
+  list.style.left = `${field.left}px`;
+  list.style.width = `${field.width}px`;
+  list.style.maxHeight = '';
+  const height = list.offsetHeight;
+  if (height <= below || below >= above) {
+    list.style.top = `${field.bottom + gap}px`;
+    list.style.bottom = '';
+    if (height > below) list.style.maxHeight = `${Math.max(below, 0)}px`;
+  } else {
+    list.style.top = '';
+    list.style.bottom = `${window.innerHeight - field.top + gap}px`;
+    if (height > above) list.style.maxHeight = `${Math.max(above, 0)}px`;
+  }
+};
 
 const comboboxActivate = (parts, option) => {
   for (const each of parts.options)
@@ -465,15 +489,25 @@ const comboboxNarrow = (parts) => {
 
 const comboboxOpen = (parts) => {
   comboboxNarrow(parts);
-  parts.list.hidden = false;
+  if (!comboboxIsOpen(parts)) parts.list.showPopover();
+  comboboxPlace(parts);
   parts.input.setAttribute('aria-expanded', 'true');
 };
 
 const comboboxClose = (parts) => {
-  parts.list.hidden = true;
+  if (comboboxIsOpen(parts)) parts.list.hidePopover();
   parts.input.setAttribute('aria-expanded', 'false');
   comboboxActivate(parts, null);
 };
+
+// An open list follows its field when the page, or a part of it, scrolls,
+// and when the window changes size.
+const comboboxFollow = () => {
+  for (const list of document.querySelectorAll('.tun-combobox-listbox:popover-open'))
+    comboboxPlace(comboboxParts(comboboxOf(list)));
+};
+window.addEventListener('scroll', comboboxFollow, { capture: true, passive: true });
+window.addEventListener('resize', comboboxFollow);
 
 // The submit buttons a strict combobox holds back are marked, so that it
 // never enables a button something else disabled.
@@ -538,7 +572,7 @@ document.addEventListener('input', (event) => {
 document.addEventListener('keydown', (event) => {
   if (!event.target.matches?.('.tun-combobox-input')) return;
   const parts = comboboxParts(comboboxOf(event.target));
-  const open = !parts.list.hidden;
+  const open = comboboxIsOpen(parts);
   const shown = comboboxShown(parts);
   const active = shown.findIndex((option) => option.getAttribute('aria-selected') === 'true');
   if (event.key === 'ArrowDown' || event.key === 'ArrowUp') {
@@ -599,7 +633,7 @@ document.addEventListener('keydown', (event) => {
                                 ,@(mapcar (lambda (option) `(:option (:@ :value ,option)))
                                           options))
                      (:ul (:@ :class "tun-combobox-listbox" :id ,listbox :role "listbox"
-                              :aria-label ,label :hidden "")
+                              :aria-label ,label :popover "manual")
                           ,@(loop for option in options
                                   for n from 0
                                   collect `(:li (:@ :class "tun-combobox-option"

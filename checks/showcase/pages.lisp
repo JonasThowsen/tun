@@ -215,7 +215,10 @@ refusal of it."
                                      (tr ("Open" :context "verb"))))))))
 
 (defun find-body (cards &rest form-options)
-  (list (apply #'find-form (mapcar (lambda (card) (jget card "title")) cards) form-options)
+  ;; In a card, which hides what overflows it, as a page's form often is:
+  ;; the combobox's list shows over it all the same.
+  (list (ui:card (:title (tr "Open an item"))
+          (apply #'find-form (mapcar (lambda (card) (jget card "title")) cards) form-options))
         (ui:table (:caption (tr "Items") :caption-hidden t
                    :columns (list (tr "Title") (list (tr "Status") :narrow nil)
                                   (list (tr "Reported on") :width :min))

@@ -327,7 +327,9 @@ typing narrows the list to the options holding the text, ignoring case,
 anywhere in the option, and says «No match» when none does. A tap, a
 click, or the arrow keys and Enter pick an option: the field holds its
 text and the list closes, as it does on Escape and when the field loses
-focus. The field is `role=combobox` with `aria-expanded`,
+focus. The list shows over the page, under the field (or above it
+when there is more room there), so a card or a dialog around the field
+never cuts it off. The field is `role=combobox` with `aria-expanded`,
 `aria-controls` and `aria-activedescendant`, its list a `listbox` of
 `option`s with `aria-selected`; it takes `:hint`, `:error`, `:value`,
 `:placeholder` and `:required` as `text-input` does. The value posted is

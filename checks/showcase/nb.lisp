@@ -100,6 +100,7 @@
   ("The notification goes to ~d device~:p."
    "Varselet går til ~d ~:*~[enheter~;enhet~:;enheter~].")
   ("Find" "Finn")
+  ("Open an item" "Åpne en sak")
   ("Item" "Sak")
   ("Type part of the title" "Skriv en del av tittelen")
   (("Open" :context "verb") "Åpne")
