@@ -84,6 +84,20 @@ with claimed identity parses it; returns (values status response-json session)."
     (is (= -32602 (jget (jget (nth-value 1 (rpc "tools/call" :params (jobj "name" "finnes_ikke"))) "error")
                         "code")))))
 
+(test a-protocol-error-has-its-log-line
+  (with-test-app ()
+    (flet ((logged-code ()
+             (jget (tun.errors:log-line (first (finished-requests)) nil) "code")))
+      (tun.mcp:handle-mcp *app* (parse-actor "employee:anna") "{nope")
+      (is (equal "parse_error" (logged-code)))
+      (rpc "nonsense/method")
+      (is (equal "method_not_found" (logged-code)) "the line a string code could not write")
+      (rpc "tools/call" :params (jobj "name" "finnes_ikke"))
+      (is (equal "invalid_params" (logged-code)))
+      (rpc "tools/list" :actor "boss:anna")
+      (is (equal "invalid_actor" (logged-code)))))
+  (is (eq :jsonrpc-32001 (tun.mcp::rpc-code-name -32001)) "any other code"))
+
 (test tools-list-is-the-registry
   (with-test-app ()
     (let* ((tools (coerce (jget (jget (nth-value 1 (rpc "tools/list" :actor "viewer:vera")) "result") "tools") 'list))

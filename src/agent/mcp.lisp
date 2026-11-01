@@ -128,10 +128,13 @@ params._meta, or NIL: where a waiting call's progress goes (spec/waiting.md 2)."
         (t (rpc-fail -32601 "Unknown method: ~a" (shown-name method)))))
 
 (defun rpc-code-name (code)
+  "The error code a JSON-RPC error CODE is recorded with: a keyword, as every
+other error's code is, so the log line, the trace and a fault's fingerprint
+read it alike (:method-not-found is «method_not_found» there)."
   (case code
-    (-32700 "parse_error") (-32600 "invalid_request") (-32601 "method_not_found")
-    (-32602 "invalid_params") (-32603 "internal_error") (-32000 "invalid_actor")
-    (t (format nil "jsonrpc_~d" code))))
+    (-32700 :parse-error) (-32600 :invalid-request) (-32601 :method-not-found)
+    (-32602 :invalid-params) (-32603 :internal-error) (-32000 :invalid-actor)
+    (t (intern (format nil "JSONRPC-~d" (abs code)) :keyword))))
 
 (defparameter +missing-actor-message+
   "X-Tun-Actor is missing or not valid (expected role:name, the role admin, employee or viewer)")
