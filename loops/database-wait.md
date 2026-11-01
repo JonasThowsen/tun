@@ -2,7 +2,7 @@
 
 - loop: database-wait
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: f40c1e58df3a7753f58f8eddfa668da0797368ef
 - after: mcp-error-codes
 - verified: 1b0eb3cec76ebbda27e552f5eb3d29c0f96eacb2
@@ -53,3 +53,7 @@ Jonas chose «File them, fix startup first (Recommended)».
 - 2026-11-01 21:40  shown (/ui)
 - 2026-11-01 21:40  gate B asked of the person
 - 2026-11-01 21:47  gate B: approve (jonas): «Approve and push (Recommended)»
+- 2026-11-01 21:58  gate C asked of the person
+- 2026-11-01 21:58  gate C: approve (jonas): «Approve both (Recommended)»
+- 2026-11-01 21:59  Tun f4c7bde in ferdig cdc0bcd, deployed to production through nixploy-dashboard (dpl_436df9jrvbt3kwsz, succeeded in 73 s); in nixploy-dashboard 9bb7df9, deployed with it
+- 2026-11-01 21:59  finished at tun f4c7bde
