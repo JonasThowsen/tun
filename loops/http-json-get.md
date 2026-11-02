@@ -2,7 +2,7 @@
 
 - loop: http-json-get
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: ba2113321e3de26dde3ebeef65aac714ff7c4662
 - verified: f4866aeab03a53646b1673928ea85f9bd43f8a23
 - shown: f4866aeab03a53646b1673928ea85f9bd43f8a23
@@ -94,3 +94,4 @@ Jonas's choice, after this loop.
 - 2026-11-02 16:42  shown (/ui)
 - 2026-11-02 16:42  gate B asked of a reviewer
 - 2026-11-02 16:44  gate B: approve (reviewer): Earlier findings fixed; each criterion tested; verify round 3 green
+- 2026-11-02 16:44  finished at tun 87a359c
