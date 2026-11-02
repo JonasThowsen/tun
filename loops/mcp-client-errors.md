@@ -2,7 +2,7 @@
 
 - loop: mcp-client-errors
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 58ecabfacbc40fd151fba6e296d70145641207cc
 - verified: 0b4c9f1c5ae10be12c2053b3a2a7cdb25eeb8ebf
 - shown: 0b4c9f1c5ae10be12c2053b3a2a7cdb25eeb8ebf
@@ -64,3 +64,7 @@ Compatibility). Tun's answer is right; its record of it is not.
 - 2026-11-02 13:17  shown (/ui)
 - 2026-11-02 13:17  gate B asked of the person
 - 2026-11-02 13:23  gate B: approve (jonas): «Approve and push (Recommended)»
+- 2026-11-02 13:24  gate C asked of the person
+- 2026-11-02 13:24  gate C: approve (jonas): «Approve ferdig (Recommended)»: Tun 2.4.7 to ferdig (production via nixploy-dashboard); nixploy-dashboard not now
+- 2026-11-02 13:27  deployed: ferdig 9baef05 (Tun 3ef265d, core 2.4.7) to production, dpl_bjnnkp5rj1mem68x succeeded; nixploy-dashboard left for later, per gate C
+- 2026-11-02 13:27  finished at tun 3ef265d
