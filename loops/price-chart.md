@@ -2,7 +2,7 @@
 
 - loop: price-chart
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 60e5b44287bce8db630cae50ae1709bfcda72f34
 - after: http-json-get
 - verified: f64b5fd24e5403593aeac840048a0dc451247bee
@@ -122,3 +122,4 @@ http-json-get, before this one).
 - 2026-11-02 17:26  shown (/prices, /prices/ORK.OL, /ui/line-chart)
 - 2026-11-02 17:26  gate B asked of a reviewer
 - 2026-11-02 17:28  gate B: approve (reviewer): Earlier findings fixed; every criterion tested or checked; verify round 2 green. Minor notes: refill three spec lines, live region wording, duplicate card title in the showcase, focus-away not checked
+- 2026-11-02 17:28  finished at tun 2e524f3
