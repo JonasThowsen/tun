@@ -99,7 +99,7 @@
     (multiple-value-bind (result rid) (http-tool port "viewer:vera" "no_such_tool" (jobj))
       (declare (ignore result))
       (let ((trace (trace-of rid)))
-        (is (string= "error" (jget trace "outcome")))
+        (is (string= "rejected" (jget trace "outcome")) "the client's error")
         (is (string= "invalid_params" (jget (jget trace "error") "code")) "an unknown tool is retained too")))
     (is (string= "not_found" (nth-value 1 (call "introspect_request" "admin:ada" "request_id" "req_ukjent"))))))
 

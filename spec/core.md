@@ -865,8 +865,15 @@ code with a checkout and fails on a live patch (`docs/architecture.md`).
 
 ### 8.4 Outcome, retention and field sources
 
-- `outcome` is `rejected` only for `forbidden`, `confirmation_invalid` and
-  `idempotency_conflict`. Every other error, `invalid_input` and
+- `outcome` is `rejected` for an operation that ends with `forbidden`,
+  `confirmation_invalid` or `idempotency_conflict`, and for a request
+  refused before any operation runs: `unauthenticated`, a body the
+  transport will not read, an `/api` error below 500, and on `/mcp` a
+  JSON-RPC error the client caused (`parse_error`, `invalid_request`,
+  `method_not_found`, as for MCP 2026-07-28's `server/discover`, which a
+  client sends first to learn that Tun speaks the older revision,
+  `invalid_params`, an unknown tool among them, and `invalid_actor`).
+  Every other error, an operation's `invalid_input` and
   `deadline_exceeded` included, is `error`, with a backtrace.
 - `field_sources` covers an entity's own top-level fields; the fields of an
   embedded entity, such as an order line, appear under that entity.

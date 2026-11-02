@@ -136,6 +136,16 @@ read it alike (:method-not-found is «method_not_found» there)."
     (-32602 :invalid-params) (-32603 :internal-error) (-32000 :invalid-actor)
     (t (intern (format nil "JSONRPC-~d" (abs code)) :keyword))))
 
+(defparameter +client-rpc-codes+ '(-32700 -32600 -32601 -32602 -32000)
+  "The JSON-RPC error codes that are the client's: JSON-RPC 2.0's for a body,
+a request, a method or params that are wrong, and Tun's for a missing or
+malformed actor.  A request answered with one is rejected, as an /api
+error below 500 is; any other code is the server's (core.md §8.4).")
+
+(defun rpc-outcome (code)
+  "The outcome a request answered with the JSON-RPC error CODE is retained with."
+  (if (member code +client-rpc-codes+) "rejected" "error"))
+
 (defparameter +missing-actor-message+
   "X-Tun-Actor is missing or not valid (expected role:name, the role admin, employee or viewer)")
 
@@ -184,8 +194,9 @@ request as disconnected, and nothing is returned to write."
               ;; A JSON-RPC error no operation recorded: unknown tool or method, bad JSON, no actor.
               (let ((err (and json (jget json "error"))))
                 (when (and err (not (request-outcome record)))
-                  (set-request-outcome record "error" :code (rpc-code-name (jget err "code"))
-                                                      :message (jget err "message"))))
+                  (let ((code (jget err "code")))
+                    (set-request-outcome record (rpc-outcome code) :code (rpc-code-name code)
+                                                                   :message (jget err "message")))))
               (if json
                   (multiple-value-bind (json text) (encoded-response json record)
                     (if (and *stream-answer* (funcall *stream-answer* text))
