@@ -37,24 +37,6 @@ is for the server's log and never holds a secret.")
 ;;; ------------------------------------------------------------------
 ;;; Encodings
 
-(defun url-encode (string)
-  "STRING percent-encoded as RFC 3986 wants a query value: UTF-8, every byte
-but the unreserved characters escaped."
-  (with-output-to-string (out)
-    (loop for byte across (sb-ext:string-to-octets string :external-format :utf-8)
-          for char = (code-char byte)
-          do (if (or (char<= #\a char #\z) (char<= #\A char #\Z) (char<= #\0 char #\9)
-                     (find char "-._~"))
-                 (write-char char out)
-                 (format out "%~2,'0X" byte)))))
-
-(defun query-string (parameters)
-  "PARAMETERS, an alist of strings, as a URL query without the ?."
-  (format nil "~{~a~^&~}"
-          (mapcar (lambda (pair)
-                    (format nil "~a=~a" (url-encode (car pair)) (url-encode (cdr pair))))
-                  parameters)))
-
 (defun base64url (octets)
   "OCTETS in unpadded base64url (RFC 4648 5), as PKCE and JWTs use it."
   (let ((standard (cl-base64:usb8-array-to-base64-string octets)))

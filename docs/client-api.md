@@ -619,10 +619,24 @@ Its key comes from the environment, through a setting declared with `:env`
           (remote-failure () (jobj "checked" nil))))))
 ```
 
+An API that is read with a GET, such as a price service, is called with
+`(http-json-get url :query ... :headers ... :timeout ...)`. It answers and
+fails as `http-json-post` does. QUERY is an alist whose names and values
+it percent-encodes, so a ticker such as `^GSPC` or a name with `ø` needs
+no escaping of its own. A `User-Agent` in the headers replaces the HTTP
+library's own, for a system that asks its clients to name themselves:
+
+```lisp
+(http-json-get "https://api.prices.example/v1/daily"
+               :query `(("symbol" . "EQNR.OL") ("key" . ,key))
+               :headers '(("User-Agent" . "kurs/1.0 (jonas@example.no)")))
+```
+
 Each call is a step in the request's trace, with the URL but not its query,
 headers or body. A test answers for the other system by binding
 `*http-json-handler*` to a function of the URL, the body and the headers
-that returns a status and an answer:
+that returns a status and an answer. For a GET it is given the URL with
+its query, and NIL for the body:
 
 ```lisp
 (let ((*http-json-handler* (lambda (url body headers)

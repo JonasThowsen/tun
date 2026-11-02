@@ -9,6 +9,7 @@
 (defpackage #:tun.auth
   (:use #:cl #:tun.core)
   (:import-from #:tun.mail #:send-mail)
+  (:import-from #:tun.outbound #:query-string)
   (:export
    ;; accounts
    #:account #:account-name #:account-display-name #:account-kind #:account-role

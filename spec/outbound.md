@@ -1,6 +1,7 @@
 # Calling other systems
 
-Status: v1, 2026-10-21; §6 2026-10-30. How a client's code calls another
+Status: v1, 2026-10-21; §6 2026-10-30; §1 (the URL as sent), §1.2,
+§1.3, §2 and §4 for a GET, 2026-11-02. How a client's code calls another
 system's JSON API, such as asking TypeSafe's Jev to judge an item before it
 is filed, with a key read from the environment, or runs a program on the
 server, such as nixploy (§6); and how its tests answer for them.
@@ -28,6 +29,9 @@ server, such as nixploy (§6); and how its tests answer for them.
   `https` URL. It sends `Content-Type` and `Accept` as
   `application/json`, then HEADERS, an alist of names and values, both
   strings.
+- URL is sent as written: an escape in it, such as `%5E`, is not
+  escaped again. Its `#fragment` is not sent, and an empty path is sent
+  as `/`, so `https://api.example.no?q=1` asks for `/?q=1`.
 - An answer with a status from 200 to 299 is the result: its body
   parsed as JSON, read as `jget` reads any JSON, or `:null` for an empty
   body. The status is the second value.
@@ -64,12 +68,47 @@ too. Work that must call out and then write calls from a job with
 of an operation, which runs in a write of its own, as `invoices_send`
 does with the accounting port (`core.md` §7.3).
 
+### 1.2 A JSON GET
+
+```lisp
+(http-json-get "https://api.prices.example/v1/daily"
+               :query `(("symbol" . "EQNR.OL") ("key" . ,key))
+               :headers '(("User-Agent" . "kurs/1.0 (jonas@example.no)")))
+```
+
+- `(http-json-get URL &key query headers (timeout 10))`, in the TUN
+  package, sends a GET to URL with `Accept` as `application/json`, then
+  HEADERS, and no body. Its answer, its failures and its limits are
+  `http-json-post`'s (§1): the JSON and the status for a status from 200
+  to 299, and `remote-failure` otherwise.
+- QUERY is an alist of names and values, both strings. Each is
+  percent-encoded as UTF-8, every byte but the letters, digits and
+  `-._~`, and the pairs are joined with `&` and appended to URL after
+  `?`, or after `&` when URL has a query of its own; after nothing when
+  URL ends in `?` or `&` already. `^GSPC` is sent as `%5EGSPC`. Without
+  QUERY, or with an empty one, URL is sent as it is.
+  A name or a value that is not a string is an error in the caller's
+  code, as a header that is not is.
+- A `#fragment` of URL is not sent; QUERY goes before it.
+- The URL of a `remote-failure` (`remote-failure-url`) is the URL as
+  sent, with QUERY appended and without a fragment.
+
+### 1.3 Headers
+
+- A header in HEADERS named `User-Agent`, in any case, is the one sent,
+  in place of the HTTP library's own, for `http-json-get` and
+  `http-json-post`; of two, the first. Some systems ask a client to
+  name itself there, with a way to reach its owner, such as SEC EDGAR
+  and OpenStreetMap's Nominatim.
+
 ## 2. In the trace
 
 - Each call is a step of kind `external` in the request's trace
   (`introspect_request`, `core.md` §8.1). Its name is the
-  method and the URL without its query, which may hold a key, such as
-  `POST https://api.typesafe.ai/v1/systemone`. Its detail is the status,
+  method and the URL without its query or a user and password, any of
+  which may hold a key, such as
+  `POST https://api.typesafe.ai/v1/systemone` or
+  `GET https://api.prices.example/v1/daily`. Its detail is the status,
   or what came instead of an answer, and it has the call's duration.
 - Headers and bodies are not recorded, as they may hold a key or a
   person's text.
@@ -102,10 +141,11 @@ does with the accounting port (`core.md` §7.3).
 - `*http-json-handler*`, in the TUN package, is NIL or a function
   `(URL BODY HEADERS)` that answers in place of the network. It is
   called with the body as the other system would receive it, parsed
-  again from the text that would be sent. It returns the status and the
+  again from the text that would be sent. For `http-json-get` the URL
+  has its query appended and the body is NIL. It returns the status and the
   answer, a JSON value or a text, as two values; a status of NIL is no
   answer at all. `http-json-post` treats the answer as it treats a real
-  one (§1), and records the step (§2).
+  one (§1), and records the step (§2); so does `http-json-get`.
 - A test binds it with `let` around calls made in its own thread. A call
   that runs in a server's thread sees its global value, so a test over
   HTTP sets that and restores it.

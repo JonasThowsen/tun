@@ -14,18 +14,22 @@
             :documentation "The next answers, in order: (STATUS TEXT &optional HEADERS).
 Then 200 with {\"ok\":true}.")
    (requests :initform nil :accessor remote-requests
-             :documentation "Each request as a plist (:path :query :authorization
-:content-type :accept :body), newest first."))
+             :documentation "Each request as a plist (:method :path :query :authorization
+:user-agent :content-type :accept :body), newest first."))
   (:default-initargs :address "127.0.0.1" :access-log-destination nil
                      :message-log-destination nil))
 
 (defmethod hunchentoot:acceptor-dispatch-request ((remote fake-remote) request)
-  (push (list :path (hunchentoot:script-name request)
+  (push (list :method (hunchentoot:request-method request)
+              :path (hunchentoot:script-name request)
               :query (hunchentoot:query-string request)
               :authorization (hunchentoot:header-in* :authorization)
+              :user-agent (hunchentoot:header-in* :user-agent)
               :content-type (hunchentoot:header-in* :content-type)
               :accept (hunchentoot:header-in* :accept)
-              :body (parse-json (hunchentoot:raw-post-data :force-text t :external-format :utf-8)))
+              :body (let ((text (hunchentoot:raw-post-data :force-text t
+                                                           :external-format :utf-8)))
+                      (and text (plusp (length text)) (parse-json text))))
         (remote-requests remote))
   (destructuring-bind (status text &optional headers)
       (or (pop (remote-answers remote)) (list 200 "{\"ok\":true}"))
@@ -183,6 +187,90 @@ free port, and URL bound to its /v1/check."
       (signals error (http-json-post "https://example.no/" (jobj) :timeout 61)))))
 
 ;;; ------------------------------------------------------------------
+;;; A GET (spec/outbound.md 1.2) and the User-Agent (1.3)
+
+(test a-get-sends-its-query-encoded-and-no-body
+  (with-fake-remote (remote url)
+    (setf (remote-answers remote) (list (list 200 "{\"price\":430.5}")))
+    (multiple-value-bind (json status)
+        (http-json-get url :query '(("symbol" . "^GSPC") ("city" . "Bodø"))
+                           :headers '(("Authorization" . "Bearer sk-1")))
+      (is (= 200 status))
+      (is (= 430.5d0 (jget json "price"))))
+    (let ((request (first (remote-requests remote))))
+      (is (eq :get (getf request :method)))
+      (is (equal "/v1/check" (getf request :path)))
+      (is (equal "symbol=%5EGSPC&city=Bod%C3%B8" (getf request :query)))
+      (is (equal "Bearer sk-1" (getf request :authorization)))
+      (is (equal "application/json" (getf request :accept)))
+      (is (null (getf request :content-type)) "no body, so no content type")
+      (is (null (getf request :body))))))
+
+(test a-get-query-joins-the-url-it-is-given
+  (with-fake-remote (remote url)
+    (flet ((query-sent (url &optional query)
+             (http-json-get url :query query)
+             (getf (first (remote-requests remote)) :query)))
+      (is (null (query-sent url)) "no query, no ?")
+      (is (null (query-sent url '())) "an empty query, no ?")
+      (is (equal "a=1" (query-sent (format nil "~a?a=1" url))) "a URL's own query, as it is")
+      (is (equal "a=1&b=2" (query-sent (format nil "~a?a=1" url) '(("b" . "2")))))
+      (is (equal "b=2" (query-sent (format nil "~a?" url) '(("b" . "2")))))
+      (is (equal "a=1&b=2" (query-sent (format nil "~a?a=1&" url) '(("b" . "2")))))
+      (is (equal "b=2" (query-sent (format nil "~a#top" url) '(("b" . "2"))))
+          "the query goes before the fragment, which is not sent"))
+    (signals error (http-json-get url :query '(("a" . 1))))
+    (signals error (http-json-get url :query "a=1"))))
+
+(test a-url-is-sent-as-written-without-its-fragment
+  (with-fake-remote (remote url)
+    (let ((root (subseq url 0 (search "/v1/check" url))))
+      (http-json-get root :query '(("symbol" . "EQNR.OL")))
+      (let ((request (first (remote-requests remote))))
+        (is (equal "/" (getf request :path)) "an empty path is sent as /")
+        (is (equal "symbol=EQNR.OL" (getf request :query)) "and keeps its query"))
+      (http-json-post (format nil "~a?q=1" root) (jobj))
+      (is (equal "q=1" (getf (first (remote-requests remote)) :query))
+          "for a POST too"))
+    (http-json-post (format nil "~a?q=%5E#top" url) (jobj))
+    (let ((request (first (remote-requests remote))))
+      (is (equal "/v1/check" (getf request :path)) "a POST's fragment is not sent")
+      (is (equal "q=%5E" (getf request :query)) "and its escapes are not escaped again"))))
+
+(test a-get-fails-as-a-post-does-and-names-the-url-it-sent
+  (with-fake-remote (remote url)
+    (setf (remote-answers remote) (list (list 503 "{\"error\":\"overloaded\"}")
+                                        (list 200 "<html>")))
+    (let ((c (failure-of (lambda () (http-json-get url :query '(("q" . "ø")))))))
+      (is (eq :unavailable (operation-error-code c)))
+      (is (= 503 (remote-failure-status c)))
+      (is (equal "overloaded" (jget (remote-failure-body c) "error")))
+      (is (equal (format nil "~a?q=%C3%B8" url) (remote-failure-url c)) "the URL as sent")
+      (is (equal (format nil "~a svarte 503" (host-of url)) (operation-error-message c))))
+    (is (search "ikke med JSON" (operation-error-message (failure-of (lambda ()
+                                                                         (http-json-get url))))))))
+
+(test a-user-agent-in-the-headers-is-the-one-sent
+  (with-fake-remote (remote url)
+    (flet ((agent-sent (call)
+             (funcall call)
+             (getf (first (remote-requests remote)) :user-agent)))
+      (let ((agent "kurs/1.0 (jonas@example.no)"))
+        (is (equal agent (agent-sent (lambda ()
+                                       (http-json-get url :headers `(("User-Agent" . ,agent))))))
+            "in place of drakma's, not beside it")
+        (is (equal agent (agent-sent (lambda ()
+                                       (http-json-post url (jobj)
+                                                       :headers `(("user-agent" . ,agent))))))
+            "in any case, for a POST too"))
+      (is (equal "first"
+                 (agent-sent (lambda ()
+                               (http-json-get url :headers '(("User-Agent" . "first")
+                                                             ("USER-AGENT" . "second"))))))
+          "of two, the first")
+      (is (search "Drakma" (agent-sent (lambda () (http-json-get url))))
+          "without one, the library's own"))))
+
 ;;; In an operation, in the trace, and answered by a test (spec/outbound.md 2, 4)
 
 (defvar *remote-url* nil "Where WIDGETS-ASK-REMOTE asks.")
@@ -191,6 +279,10 @@ free port, and URL bound to its /v1/check."
     (:entity widget :kind :read :title "Spør et annet system")
   (http-json-post *remote-url* (jobj "input" text)
                   :headers '(("Authorization" . "Bearer sk-hemmelig"))))
+
+(define-operation widgets-read-remote ((symbol :type (string :max 20) :required t))
+    (:entity widget :kind :read :title "Read from another system")
+  (http-json-get *remote-url* :query `(("symbol" . ,symbol) ("key" . "sk-i-adressen"))))
 
 (defun trace-steps (request-id)
   "The steps of the request REQUEST-ID, read in a request of its own."
@@ -224,6 +316,35 @@ free port, and URL bound to its /v1/check."
                         :key (lambda (s) (jget s "kind")) :test #'equal)))
         (is (equal "POST https://api.example.no/v1/check" (jget step "name"))
             "nor its user and password")))))
+
+(test the-trace-shows-a-get-without-its-query
+  (with-test-app ()
+    (let ((*remote-url* "https://api.example.no/v8/chart")
+          (*request-id* (new-id "req"))
+          (*http-json-handler* (lambda (url body headers)
+                                 (declare (ignore url body headers))
+                                 (values 200 (jobj "ok" t)))))
+      (call-ok "widgets_read_remote" "employee:anna" "symbol" "EQNR.OL")
+      (let ((step (find "external" (trace-steps *request-id*)
+                        :key (lambda (s) (jget s "kind")) :test #'equal)))
+        (is (equal "GET https://api.example.no/v8/chart" (jget step "name")))
+        (is (equal "200" (jget step "detail")))))))
+
+(test a-handler-answers-for-a-get
+  (with-test-app ()
+    (let* ((seen '())
+           (*remote-url* "https://api.example.no/v8/chart")
+           (*http-json-handler* (lambda (url body headers)
+                                  (push (list url body headers) seen)
+                                  (values 200 (jobj "symbol" "EQNR.OL")))))
+      (is (equal "EQNR.OL" (jget (call-ok "widgets_read_remote" "employee:anna"
+                                          "symbol" "EQNR.OL")
+                                 "symbol")))
+      (destructuring-bind (url body headers) (first seen)
+        (is (equal "https://api.example.no/v8/chart?symbol=EQNR.OL&key=sk-i-adressen" url)
+            "the URL with its query")
+        (is (null body) "a GET has no body")
+        (is (null headers))))))
 
 (test a-handler-answers-for-the-other-system
   (with-test-app ()
