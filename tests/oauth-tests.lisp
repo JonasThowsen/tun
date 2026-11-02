@@ -158,7 +158,7 @@ as WorkOS, whose key set holds the test key as k1."
         (is (eq t error-p))
         (is (string= "forbidden" (error-code-of json)) "no token for oneself through OAuth")))
     (let ((jar (nth-value 3 (link-in-browser port provider "user_kari" "kari@example.no"))))
-      (is (search (format nil "claude mcp add --transport http ~a ~a"
+      (is (search (format nil "claude mcp add --scope user --transport http ~a ~a"
                           (string-downcase (application-name *app*)) (mcp-url port))
                   (nth-value 1 (web-request port "/access" :jar jar)))
           "/access shows how to connect without a token"))

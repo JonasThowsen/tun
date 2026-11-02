@@ -484,8 +484,8 @@ type web application in Google Cloud Console, with
 `PUBLIC_URL/auth/google/callback` as an authorized redirect URI.
 
 With WorkOS, MCP clients that speak OAuth, such as Claude Code, connect as
-the person without an access token: `claude mcp add --transport http NAME
-PUBLIC_URL/mcp`, and the person signs in through AuthKit
+the person without an access token: `claude mcp add --scope user --transport
+http NAME PUBLIC_URL/mcp`, and the person signs in through AuthKit
 (`spec/auth.md` §5.1). In the dashboard, turn on Client ID Metadata
 Documents and Dynamic Client Registration (Connect → Configuration) and
 add `PUBLIC_URL/mcp` as a Resource Indicator.

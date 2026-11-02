@@ -401,6 +401,10 @@ apply. A replay of `tokens_create` with the same `request_key` returns the
 original result with `token` set to null. The UI's page
 `/access` («Access», «Tilgang») calls the same tools: every person sees
 their own tokens there, and an admin also sees accounts and every token.
+It gives the command that connects Claude Code for every folder on the
+machine, `claude mcp add --scope user --transport http NAME PUBLIC_URL/mcp`:
+with OAuth (§5.1) as it is, and with a new token followed by `--header
+"Authorization: Bearer TOKEN"`.
 
 ## 7. Secrets in records and results
 

@@ -509,7 +509,7 @@ parsed body (NIL when empty) and the headers."
             (let ((token (cl-ppcre:scan-to-strings "tun_[0-9a-z]{40}" body)))
               (is (= 200 status))
               (is (stringp token))
-              (is (search "claude mcp add --transport http" body))
+              (is (search "claude mcp add --scope user --transport http" body))
               (is (string= "viewer:claude" (whoami port token)))
               (is (not (search token (nth-value 1 (post "/access/tokens" (token-form)))))
                   "sending the form again does not show the token")

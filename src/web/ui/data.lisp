@@ -1164,7 +1164,7 @@ document.addEventListener('click', async (event) => {
   (:examples
    (("A command" :layout :stack)
     (code-block (:copy-label "Copy the command")
-                "claude mcp add --transport http tun https://customer.example.com/mcp"))
+                "claude mcp add --scope user --transport http tun https://customer.example.com/mcp"))
    (("An access token with a title, broken over several lines" :layout :stack)
     (code-block (:title "Access token" :wrap t :copy-label "Copy the access token")
                 "tun_live_7f3a9c2e1b8d4f60a5e7c9b1d3f2a4e6c8b0d2f4a6e8c0b2d4f6a8e0c2b4d6f8"))

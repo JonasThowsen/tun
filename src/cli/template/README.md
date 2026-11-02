@@ -47,7 +47,7 @@ Open it, choose a name and «Fortsett», and sign in through WorkOS; that
 makes you the administrator. Then add people and agents at `/access`. A
 person signs in through WorkOS with the email their account has.
 Claude Code connects as you through WorkOS, once you have signed in in
-the browser, with `claude mcp add --transport http {{name}}
+the browser, with `claude mcp add --scope user --transport http {{name}}
 https://DOMAIN/mcp` (in the WorkOS dashboard, turn on Client ID Metadata
 Documents and Dynamic Client Registration, and add `https://DOMAIN/mcp`
 as a Resource Indicator). Agents and scripts use access tokens:
@@ -56,9 +56,12 @@ for agent accounts. A token acts as its account, never as more, and is shown onc
 Claude Code connects with it:
 
 ```
-claude mcp add --transport http {{name}} https://DOMAIN/mcp \
+claude mcp add --scope user --transport http {{name}} https://DOMAIN/mcp \
   --header "Authorization: Bearer TOKEN"
 ```
+
+Run it in your own terminal, not in Claude Code, so the token stays out
+of the conversation.
 
 Locally, `bin/serve --claimed-identity` needs no WorkOS: it lets any
 request name its own actor, as `/login?actor=admin:you` or an `X-Tun-Actor` header. That is for

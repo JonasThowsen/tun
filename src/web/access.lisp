@@ -377,8 +377,7 @@ FORM; else NIL."
                              :description (tr "Claude Code and other MCP clients that can do OAuth sign in as you through WorkOS, without a token."))
                   (ui:code-block (:title (tr "For Claude Code")
                                   :copy-label (tr "Copy the command"))
-                                 (format nil "claude mcp add --transport http ~a ~a"
-                                         (server-name) (site-url "/mcp")))))
+                                 (claude-command))))
               (ui:section (:title (tr "My tokens") :description (own-tokens-text))
                 (token-table (items "tokens_list" "account_id" (jget account "id"))))
               (operation-form (find-operation-by-tool "tokens_create") "/access/tokens"
@@ -443,9 +442,11 @@ name in lower case, with a hyphen for anything a shell would split on."
   (string-trim "-" (substitute-if-not #\- #'alphanumericp
                                       (string-downcase (application-name *web-app*)))))
 
-(defun claude-command (token)
-  "The command that connects Claude Code to this server's MCP with TOKEN."
-  (format nil "claude mcp add --transport http ~a ~a \\~%  --header \"Authorization: Bearer ~a\""
+(defun claude-command (&optional token)
+  "The command that connects Claude Code to this server's MCP, with TOKEN or,
+without one, through OAuth; for every folder on the machine, since without
+--scope Claude Code keeps a server for the folder it was added in."
+  (format nil "claude mcp add --scope user --transport http ~a ~a~@[ \\~%  --header \"Authorization: Bearer ~a\"~]"
           (server-name) (site-url "/mcp") token))
 
 (defun token-notice (json)
