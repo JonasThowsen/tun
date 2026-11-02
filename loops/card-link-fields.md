@@ -2,7 +2,7 @@
 
 - loop: card-link-fields
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 9ffa5a1bfee3a955afb01af717ccce349065b8e7
 - verified: 02e378ebc5f95889422178502355ad28bdc6d4aa
 - shown: 02e378ebc5f95889422178502355ad28bdc6d4aa
@@ -54,3 +54,4 @@ card stays the link.
 - 2026-11-02 12:36  shown (/ui/card)
 - 2026-11-02 12:36  gate B asked of the person
 - 2026-11-02 13:01  gate B: approve (jonas): «Approve and push (Recommended)»
+- 2026-11-02 13:01  finished at tun 149fc8c
