@@ -534,7 +534,7 @@ button or a link in the top corner.")
     transition-property: background-color, box-shadow;
     transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease);
-    & :is(a, button, input, select, label):not(.tun-card-link) {
+    & :is(a, button, input, select, textarea, label):not(.tun-card-link) {
       position: relative;
       z-index: 1;
     }
@@ -574,6 +574,12 @@ button or a link in the top corner.")
     (card (:title "Invoices falling due" :href "/invoices?status=due" :size :sm
                   :description "4 invoices, €31,250.00")
           '(:p "The oldest fell due on 3 October.")))
+   ("A card that is a link, with a form in it"
+    (card (:title "Fitting at Kari Nordmann's" :href "/jobs/1042" :size :sm
+                  :description "Tuesday at 08:00")
+          `(:form (:@ :method "post" :action "/jobs/1042/notes")
+                  ,(textarea (:label "Note for the fitter" :name "note" :rows 2))
+                  ,(button (:type "submit" :variant :outline :size :sm) "Add the note"))))
    ("Content only"
     (card ()
           '(:p "A card without a title is only a frame around its content, for example a note

@@ -360,6 +360,11 @@ Mac, an iPhone or an iPad the Ctrl cap reads «⌘». A shortcut is a key
 or Ctrl and a key, the ones a dialog opens on; any other, such as `""`,
 `"Ctrl+"` or `"Shift+K"`, cannot be made.
 
+`card` with `:href` is a link as a whole: its title is the link's text,
+and a tap or a click anywhere on it follows the link, except on the
+controls in it (links, buttons, fields, text areas, selects and
+labels), which stay above the link and work as themselves.
+
 `table` keeps its columns on a wide screen and shows each row as a card
 on a narrow one. A column given `:sort KEY` has a header that is a link
 to `:sort-href` (a function of the key and `"asc"` or `"desc"`, or a
