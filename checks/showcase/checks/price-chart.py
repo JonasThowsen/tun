@@ -126,6 +126,10 @@ def run(t):
             .startswith(second), f"the arrow keys move it, and the live region says {second}")
     page.keyboard.press("Escape")
     t.check(not tooltip(page).is_visible(), "Escape hides it")
+    page.keyboard.press("End")
+    t.check(tooltip(page).is_visible(), "the keys show it again")
+    page.keyboard.press("Tab")
+    t.check(not tooltip(page).is_visible(), "moving focus away hides it")
 
     off = t.desktop(javascript=False)
     off.sign_in("employee:anna")

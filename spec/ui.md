@@ -289,9 +289,9 @@ A component is defined with `define-component` in the package `TUN.UI`:
   screen can use any component. Its SVG is shapes only (`svg`, `g`,
   `path`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `rect`) with
   their geometry and paint, and `preserveAspectRatio`, which only says how
-  a drawing fits its box; nothing in it loads or runs. That output may carry these htmx
-  attributes, with or without `data-` and with the modifiers `:inherited`
-  and `:append`: `hx-get`, `hx-post` (a same-site path or an http(s) URL,
+  a drawing fits its box; nothing in it loads or runs. That output may
+  carry these htmx attributes, with or without `data-` and with the
+  modifiers `:inherited` and `:append`: `hx-get`, `hx-post` (a same-site path or an http(s) URL,
   as `href`), `hx-target`, `hx-swap`, `hx-trigger`, `hx-select`,
   `hx-select-oob`, `hx-swap-oob`, `hx-push-url`, `hx-replace-url`,
   `hx-indicator`, `hx-include`, `hx-vals`, `hx-confirm`, `hx-boost`,
@@ -441,9 +441,11 @@ small tooltip), drawn as plain SVG by Tun.
   it, or the arrow keys when it has focus (Home and End for the first
   and last point), moves a vertical hairline to the nearest point and
   shows a tooltip there with the value first, then the date (with the
-  time of day when the x labels show times); the tooltip is a polite
-  live region, so a screen reader says it as the keys move it. Escape
-  hides both; leaving the plot or moving focus away does too.
+  time of day when the x labels show times). The same value and date go
+  to a visually hidden polite live region beside the plot, so a screen
+  reader says them as the keys or the pointer move. Escape hides the
+  hairline and the tooltip; leaving the plot or moving focus away does
+  too.
 - With no points, «No data» stands in place of the plot, and there is no
   table.
 
@@ -729,9 +731,9 @@ form of `field`s with an `error-summary`, a confirmation is a
   `client` layer.
 - Charts other than one line over time: several series in one chart
   (comparing shares, a moving average), bars, areas, stacks, scatter, and
-  a chart's own time range control; a date picker beyond the browser's own, a combobox whose
-  values differ from the texts it shows, or that asks the server for its
-  options.
+  a chart's own time range control.
+- A date picker beyond the browser's own, a combobox whose values differ
+  from the texts it shows, or that asks the server for its options.
 - htmx's own extensions (server-sent events, the head merge,
   morphing).
 - Path patterns with typed parameters for pages (`/saker/:item`), and
