@@ -105,3 +105,12 @@
   ("Type part of the title" "Skriv en del av tittelen")
   (("Open" :context "verb") "Åpne")
   ("Choose an item from the list" "Velg en sak fra listen"))
+
+;;; Prices (prices.lisp)
+
+(define-translations "nb"
+  ("Prices" "Kurser")
+  ("Watchlist" "Følgeliste")
+  ("Share" "Aksje")
+  ("Three months" "Tre måneder")
+  ("Last" "Siste"))

@@ -80,7 +80,8 @@ the listed symbols (the same symbol objects, not copies)."
    ;; copy in the tenant's language, amounts, dates and numbers as it writes
    ;; them (spec/i18n.md)
    #:tr #:deferred-tr #:define-translations #:label #:with-language #:current-language
-   #:money-text #:date-text #:timestamp-text #:number-text #:local-date-of #:local-time-of
+   #:money-text #:date-text #:day-text #:timestamp-text #:number-text #:local-date-of
+   #:local-time-of
    ;; the application and its context
    #:application #:*application* #:entity #:stored-entity #:entity-id
    #:now #:today #:local-today #:date-add-days #:date-add-months #:date-at #:date-of #:parse-date #:format-date #:format-quantity

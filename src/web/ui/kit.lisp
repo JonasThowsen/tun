@@ -313,6 +313,8 @@ textarea { resize: vertical; }
   --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 10%));
   --input: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 15%));
   --ring: light-dark(oklch(0.708 0 0), oklch(0.556 0 0));
+  /* A chart's line (spec/ui.md 3): 4.4:1 on the light card, 4.9:1 on the dark. */
+  --chart-1: light-dark(#2a78d6, #3987e5);
 
   /* Status: the strong colour, text on it, and a tinted background. */
   --info: light-dark(oklch(0.546 0.245 262.881), oklch(0.707 0.165 254.624));

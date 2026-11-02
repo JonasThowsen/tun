@@ -8,6 +8,9 @@
   (:use #:cl #:tun.html)
   ;; A component's own copy is written with TR (spec/i18n.md 3.1).
   (:import-from #:tun.core #:tr #:current-language #:number-text)
+  ;; A chart writes its times and hands its points to its script.
+  (:import-from #:tun.core #:date-text #:day-text #:instant-text #:local-date-of
+                #:local-time-of #:jarr #:to-json-string)
   (:export
    ;; defining components
    #:define-component #:component #:find-component #:all-components #:component-name

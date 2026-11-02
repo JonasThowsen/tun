@@ -23,7 +23,7 @@
    #:label #:label-p #:humanize-value
    ;; currencies and formats (spec/i18n.md 5, 6.2)
    #:+currencies+ #:currency-p #:current-currency #:currency-minor-digits #:+most-amount+
-   #:money-text #:number-text #:date-text #:instant-text #:timestamp-text #:yes-no-text
+   #:money-text #:number-text #:date-text #:day-text #:instant-text #:timestamp-text #:yes-no-text
    #:read-money-text #:read-decimal-text #:money-type #:money #:money-name-p #:check-money-name
    #:*written-amounts*
    ;; time zones (spec/i18n.md 6.1)

@@ -229,7 +229,10 @@ A client's own pages are built from the design system's components in
 the menu, and calls operations with `web-call`, as the logged-in person,
 so the operations' policies, record policies and audit apply. It returns
 its status, title and components, or `(values 303 PATH)` after a post.
-`/ui` shows every component with its options.
+`/ui` shows every component with its options. A value over time, such as a
+share's price, is `(ui:line-chart (:label "EQNR.OL" :points points :digits
+2))`, with POINTS conses of a universal time and a real; `ui:sparkline`
+takes the same for a table cell.
 
 ```lisp
 (define-page notes-page ("notater" :title "Notater" :icon :file-text)

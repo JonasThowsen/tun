@@ -10,6 +10,7 @@
   :components ((:file "package")
                (:file "cards")
                (:file "pages")
+               (:file "prices")
                (:file "notifications")
                (:file "mail")
                (:file "application")

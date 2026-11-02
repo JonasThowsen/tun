@@ -41,7 +41,9 @@
     ;; A form that sends files, a link that downloads one, an image decoded aside.
     "enctype" "download" "decoding"
     "viewbox" "xmlns" "fill" "stroke" "stroke-width" "stroke-linecap" "stroke-linejoin" "d" "cx"
-    "cy" "r" "rx" "ry" "x" "y" "x1" "y1" "x2" "y2" "points" "focusable"))
+    "cy" "r" "rx" "ry" "x" "y" "x1" "y1" "x2" "y2" "points" "focusable"
+    ;; How a drawing fits its box, so a chart's line can stretch to it.
+    "preserveaspectratio"))
 
 (defparameter +htmx-attributes+
   '("hx-get" "hx-post" "hx-target" "hx-swap" "hx-trigger" "hx-select" "hx-select-oob"

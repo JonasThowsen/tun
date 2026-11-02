@@ -32,6 +32,15 @@
    "Endre")
   ("Pagination"
    "Sidenavigering")
+  ;; Charts
+  ("No data"
+   "Ingen data")
+  ("Show as a table"
+   "Vis som tabell")
+  ("Time"
+   "Tidspunkt")
+  ("~a: ~a to ~a"
+   "~a: ~a til ~a")
   ("Previous page"
    "Forrige side")
   ("Previous"

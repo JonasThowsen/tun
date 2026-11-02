@@ -79,9 +79,22 @@ writes it: €12,450.00, NOK 12,450.00, 12 450,00 kr (spec/i18n.md 5.4)."
               (format nil "~:[~;-~]~:[~a~c~;~a~*~]~a" (minusp amount)
                       english-symbol (or english-symbol code) #\No-break_space number)))))))
 
-(defun number-text (value)
-  "VALUE, a real, with the current language's decimal mark: 12.5, or 12,5."
-  (let ((text (if (integerp value) (princ-to-string value) (format-quantity value 3))))
+(defun fixed-decimals-text (value digits)
+  "VALUE, a real, with exactly DIGITS decimals, rounded half away from zero,
+and a point as its decimal mark: 281.40 for 281.4 and 2."
+  (let ((scaled (floor (+ (* (abs (rational value)) (expt 10 digits)) 1/2))))
+    (multiple-value-bind (whole fraction) (floor scaled (expt 10 digits))
+      (format nil "~:[~;-~]~d~:[~2*~;.~v,'0d~]" (and (minusp value) (plusp scaled))
+              whole (plusp digits) digits fraction))))
+
+(defun number-text (value &key digits)
+  "VALUE, a real, with the current language's decimal mark: 12.5, or 12,5.
+With DIGITS, from 0 to 6, it has that many decimals, rounded half away from
+zero: 12.50, or 12,50; without, as many as it has, up to three."
+  (check-type digits (or null (integer 0 6)))
+  (let ((text (cond (digits (fixed-decimals-text value digits))
+                    ((integerp value) (princ-to-string value))
+                    (t (format-quantity value 3)))))
     (if (equal (writing-language) "nb") (substitute #\, #\. text) text)))
 
 (defun month-abbreviation (month)
@@ -103,6 +116,16 @@ writes it: €12,450.00, NOK 12,450.00, 12 450,00 kr (spec/i18n.md 5.4)."
             (format nil "~a.~a.~a" day month year)
             (format nil "~d ~a ~a" (parse-integer day) (month-abbreviation (parse-integer month))
                     year)))
+      (princ-to-string date)))
+
+(defun day-text (date)
+  "DATE, YYYY-MM-DD, without its year as the current language writes it: 21
+Oct, or 21.10.; anything else as it is."
+  (if (and (stringp date) (valid-date-string-p date))
+      (let ((month (subseq date 5 7)) (day (subseq date 8 10)))
+        (if (equal (writing-language) "nb")
+            (format nil "~a.~a." day month)
+            (format nil "~d ~a" (parse-integer day) (month-abbreviation (parse-integer month)))))
       (princ-to-string date)))
 
 (defun instant-text (ut)

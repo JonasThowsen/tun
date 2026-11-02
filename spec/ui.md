@@ -7,7 +7,9 @@ Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
 `push-switch` (`push.md`), 2026-10-26, core 1.19.0; `file-input` and
 `attachments` (`files.md`), 2026-10-26, core 1.20.0; pages in the
 person's language, amounts and dates by its formats (`i18n.md`),
-2026-10-27, core 2.0.0. How every Tun
+2026-10-27, core 2.0.0; `line-chart` and `sparkline` (§6), the chart
+token (§3) and `preserveAspectRatio` in extension output (§5),
+2026-11-02, core 2.6.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -75,6 +77,10 @@ colours, sizes and motion.
   `--STATUS` (icons, borders, text on the soft background),
   `--STATUS-foreground` (text on `--STATUS`) and `--STATUS-soft` (a tinted
   background).
+- **Charts:** `--chart-1`, the colour of a chart's line, blue:
+  `#2a78d6` on the light card (4.4:1 against white) and `#3987e5` on the
+  dark one (4.9:1 against `oklch(0.205 0 0)`), above the 3:1 WCAG asks of
+  a graphic. It is shadcn's token name, so a shadcn theme sets it too.
 - **Type:** `--font-sans`, `--font-mono`; `--text-xs`, `--text-sm`,
   `--text-base`, `--text-lg`, `--text-xl`, `--text-2xl`, `--text-3xl`,
   each with `--text-SIZE--line-height`; `--font-weight-normal`,
@@ -280,7 +286,10 @@ A component is defined with `define-component` in the package `TUN.UI`:
   checks this at definition.
 - **Safe markup.** A component produces only elements and attributes the
   renderer allows in extension output (`tun.html`), so a client's
-  screen can use any component. That output may carry these htmx
+  screen can use any component. Its SVG is shapes only (`svg`, `g`,
+  `path`, `circle`, `ellipse`, `line`, `polyline`, `polygon`, `rect`) with
+  their geometry and paint, and `preserveAspectRatio`, which only says how
+  a drawing fits its box; nothing in it loads or runs. That output may carry these htmx
   attributes, with or without `data-` and with the modifiers `:inherited`
   and `:append`: `hx-get`, `hx-post` (a same-site path or an http(s) URL,
   as `href`), `hx-target`, `hx-swap`, `hx-trigger`, `hx-select`,
@@ -313,7 +322,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
 | Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
-| Data (`data`, `board`, `files`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments` |
+| Data (`data`, `board`, `files`, `charts`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
@@ -376,6 +385,77 @@ row of links above the cards. A column given `:narrow nil` is left out
 of the cards, and kept in the table on a wide screen: a page says which
 columns a phone can do without. `confirm-panel` is the form a `:confirm` operation
 shows before it runs. `flash` is a message carried over a redirect.
+
+`line-chart` draws a value over time, such as a share's price:
+`(line-chart (:label L :points POINTS :digits D))`. POINTS is a list of
+conses of a universal time and a real, in any order (the chart sorts
+them by time), at most 2000; more, or a point that is not such a cons,
+is an error in the caller's code. L, a text, names the chart: it is its
+caption and the `aria-label` of the plot, which has `role="img"`. D,
+from 0 to 6, is how many decimals the last value, the table and the
+tooltip are written with, through `number-text` (`i18n.md` §6.2); without
+it, as `number-text` writes them. The tick labels have their own decimals
+(below).
+Its look is shadcn/ui's charts (a card's surface, quiet gridlines, a
+small tooltip), drawn as plain SVG by Tun.
+
+- **The line** is drawn in an SVG that stretches to the chart's width at
+  a fixed height (`preserveAspectRatio="none"`, the stroke kept 2px wide
+  at every width by `vector-effect: non-scaling-stroke`), in
+  `--chart-1`, over a wash of the same colour at 10%. A chart of one
+  point has no line or wash.
+- **The last point** has a dot of radius 4 with a 2px ring in `--card`,
+  drawn in a second SVG over the first that is not stretched and places
+  it by percentage, so it stays round.
+- **The y axis** has three to five ticks, evenly spaced by a step of 1,
+  2, 2.5 or 5 times a power of ten, each a multiple of the step, the
+  lowest at or below the least value and the highest at or above the
+  greatest; the axis runs from the lowest tick to the highest and need
+  not start at zero. When every value is the same, V, the ticks are V
+  and one step either side, the step the least of those steps at or
+  above a tenth of V's absolute value (1 when V is 0). Each tick is a 1px
+  solid gridline in `--border` and a label written with `number-text`
+  with as many decimals as the step has (none for 10, one for 2.5). The
+  labels are HTML items of no height spread from the top of the plot to
+  its bottom (`justify-content: space-between`), so they stand at their
+  evenly spaced lines without a `style` attribute (§4).
+- **The x axis** has two to four labels at evenly spaced times from the
+  first point's to the last's, items of no width spread the same way
+  across the plot: the most of four, three and two that read
+  differently, else the first alone, so no two read the same and none
+  overlap at 320px. A label is the day without the year (`day-text`,
+  `i18n.md` §6.2); the full date (`date-text`), two at most since it is
+  wider, when the first and the last point fall in different calendar
+  years; the time of day when every point falls on one day; all in the
+  tenant's time zone. A chart of one point has that point's label alone.
+- **Text** never takes the line's colour. The caption, the last value,
+  the axis labels and the tooltip are `--text-xs` at every width, in
+  `--muted-foreground` but for the last value, which is in
+  `--foreground`; caption and last value stand above the plot. The table
+  is a `table` (above), with its own text.
+- **The table**: under the plot, a `<details>` closed by default holds a
+  `table` of every point's time and value, so every value is there
+  without the drawing. With JavaScript off the line, the dot, the ticks
+  and the labels are drawn and the `<details>` opens.
+- **The crosshair**: the script makes the plot focusable. A pointer over
+  it, or the arrow keys when it has focus (Home and End for the first
+  and last point), moves a vertical hairline to the nearest point and
+  shows a tooltip there with the value first, then the date (with the
+  time of day when the x labels show times); the tooltip is a polite
+  live region, so a screen reader says it as the keys move it. Escape
+  hides both; leaving the plot or moving focus away does too.
+- With no points, «No data» stands in place of the plot, and there is no
+  table.
+
+`sparkline` is a value over time in a line of text: `(sparkline (:points
+POINTS :label L :digits D))`, POINTS and D as `line-chart` takes them,
+no axes and no text, 6rem wide and as high as a line of the text around
+it (`1lh`), such as in a table cell or a table's card on a phone, its
+line 1.5px in `--chart-1`. It has `role="img"` and an `aria-label` of L
+followed by its first and last value, joined by a catalogued word: en
+«EQNR.OL: 412.30 to 430.00», nb «EQNR.OL: 412,30 til 430,00». With one
+point it is a dot; with none it draws nothing and its label is L and
+«No data».
 
 ### 6.1 The board
 
@@ -647,7 +727,9 @@ form of `field`s with an `error-summary`, a confirmation is a
 
 - A client's theme (`define-theme`) beyond overriding tokens in the
   `client` layer.
-- Charts, a date picker beyond the browser's own, a combobox whose
+- Charts other than one line over time: several series in one chart
+  (comparing shares, a moving average), bars, areas, stacks, scatter, and
+  a chart's own time range control; a date picker beyond the browser's own, a combobox whose
   values differ from the texts it shows, or that asks the server for its
   options.
 - htmx's own extensions (server-sent events, the head merge,
@@ -672,6 +754,21 @@ form of `field`s with an `error-summary`, a confirmation is a
   board's `before`, its «Rekkefølge» items and what each posts, its
   status region, and a board without `:ordered` posting as before.
 - `tests/rank-tests.lisp`: `rank-between` (`core.md` §2.6).
+- `tests/chart-tests.lisp`: the y axis's ticks (multiples of a round
+  step, three to five, their decimals, equal values), the x axis's labels
+  (days, full dates across a new year, times of day, distinct, one
+  point), the values written with `:digits`, no points, one point and
+  points out of order, the bounds refused, the sparkline's label in
+  Norwegian, and `preserveAspectRatio` in extension output while `style`
+  and `<text>` stay out; `tests/i18n-tests.lisp`: `day-text` and
+  `number-text` with `:digits`.
+- `checks/showcase/checks/price-chart.py` (`/prices`): at 320px, 390px and
+  on a desktop, light and dark, the line fills the plot at 2px in
+  `--chart-1`, the dot is round, the x labels do not overlap, the labels
+  are `--text-xs`, the page does not scroll sideways and a sparkline is
+  6rem wide with its label; a pointer and the keys show the tooltip and
+  the live region, Escape hides it; without the script the chart is
+  drawn, the plot is not focusable and the table opens.
 - `checks/showcase/checks/`: dragging a card to another column with a
   mouse and on a phone (`board-drag-*`), a board filling a phone
   (`board-fills-a-phone`), and ordering within a column with a mouse, by

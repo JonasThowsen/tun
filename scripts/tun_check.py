@@ -172,15 +172,17 @@ class Run:
         self.page = wrapped
         return wrapped
 
-    def phone(self, width=390, height=844, permissions=None, user_agent=None, javascript=True):
+    def phone(self, width=390, height=844, permissions=None, user_agent=None, javascript=True,
+              scheme="light"):
         return self._new_page(True, permissions, viewport={"width": width, "height": height},
                               has_touch=True, is_mobile=True, device_scale_factor=2,
-                              java_script_enabled=javascript,
+                              java_script_enabled=javascript, color_scheme=scheme,
                               **({"user_agent": user_agent} if user_agent else {}))
 
-    def desktop(self, width=1280, height=800, permissions=None, user_agent=None, javascript=True):
+    def desktop(self, width=1280, height=800, permissions=None, user_agent=None, javascript=True,
+                scheme="light"):
         return self._new_page(False, permissions, viewport={"width": width, "height": height},
-                              java_script_enabled=javascript,
+                              java_script_enabled=javascript, color_scheme=scheme,
                               **({"user_agent": user_agent} if user_agent else {}))
 
     def check(self, condition, text):
