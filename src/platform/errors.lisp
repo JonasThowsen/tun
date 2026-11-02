@@ -18,7 +18,7 @@
            #:error-occurrence #:error-occurrence-group-id #:error-occurrence-message
            #:error-occurrence-actor
            #:fault-p #:fault-fingerprint #:record-fault #:error-mail-recipients #:check-error-mail
-           #:log-line
+           #:log-line #:+protocol-error-codes+ #:protocol-error-p
            #:errors-list #:errors-get #:errors-set-status))
 
 (in-package #:tun.errors)
@@ -243,8 +243,27 @@ subject ids or personal data, in the erasing write."
 ;;; ------------------------------------------------------------------
 ;;; Log lines (spec/errors.md 6)
 
+(defparameter +protocol-error-codes+
+  '(:parse-error :invalid-request :method-not-found :invalid-params :invalid-actor)
+  "The codes of an /mcp request rejected for a JSON-RPC error the client
+made: JSON-RPC 2.0's for a body, a request, a method or params that are
+wrong, and Tun's for a missing or malformed actor (core.md §8.4).  The
+adapter rejects a request answered with one of them; a refusal of what the
+client asked for (unauthenticated, forbidden) has another code.")
+
+(defun protocol-error-p (record)
+  "True when the request RECORD is an /mcp request rejected for a protocol
+error the client made.  Such an error is part of talking MCP, as the
+discovery call a client sends before «initialize» to learn which revision
+the server speaks, so its line is a plain one, not a warning."
+  (and (eq (request-kind record) :mcp)
+       (equal (request-outcome record) "rejected")
+       (member (request-error-code record) +protocol-error-codes+)
+       t))
+
 (defun log-level (record)
   (cond ((fault-p record) "error")
+        ((protocol-error-p record) "info")
         ((member (request-outcome record) '("error" "rejected") :test #'equal) "warn")
         (t "info")))
 

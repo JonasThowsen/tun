@@ -123,10 +123,14 @@ request when it ends, for `nixploy logs`, the journal or a log store:
 ```
 
 `level` is `error` for a fault, `warn` for any other error or a refusal,
-and `info` otherwise. `message` and `error_id` appear only on faults: a
-refusal's message often repeats what someone typed. The
-input and the trace are not logged. `--log none` turns the lines off. Tests
-and the REPL write none.
+and `info` otherwise. One refusal is `info` too: an `/mcp` request rejected
+for a JSON-RPC error the client caused (`core.md` §8.4), since such an error
+is part of talking MCP, as MCP 2026-07-28's `server/discover`, which a client
+sends before `initialize` and which Tun answers `method_not_found`. A refusal
+of what the client asked for (`unauthenticated`, `forbidden`) stays `warn`.
+`message` and `error_id` appear only on faults: a refusal's message often
+repeats what someone typed. The input and the trace are not logged. `--log
+none` turns the lines off. Tests and the REPL write none.
 
 ## 7. Tools
 
