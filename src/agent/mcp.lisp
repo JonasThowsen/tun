@@ -10,7 +10,7 @@
   (:use #:cl #:tun.core)
   (:export #:handle-mcp #:+protocol-version+ #:*server-info* #:+missing-actor-message+
            #:+too-many-values+
-           #:*progress-token* #:progress-notification))
+           #:*progress-token* #:progress-notification #:*stream-answer*))
 
 (in-package #:tun.mcp)
 
@@ -152,6 +152,12 @@ an error and the response is a -32603 error instead."
                                          "Internal error: the answer cannot be written as JSON")))
         (values failure (to-json-string failure))))))
 
+(defvar *stream-answer* nil
+  "Bound by a transport that may have begun an SSE stream while the call
+waited: a function of the response's text that writes it as the stream's
+last event and returns true, or returns NIL when no stream was begun and
+the response is the transport's to send (spec/waiting.md 2).")
+
 (defun handle-mcp (application actor body &key credential (parsed nil parsed-p))
   "Handle one POST /mcp, BODY its octets or text, as ACTOR, which the transport
 established (an ACTOR, or NIL when a claimed X-Tun-Actor was missing or
@@ -160,8 +166,10 @@ already parsed, which is never parsed again
 (spec/auth.md 7).  Returns (values http-status response-json-or-nil
 session-id-or-nil response-text-or-nil).  Every /mcp request is retained
 (core.md §8.1, §8.4): a record is opened here, and the operation a tools/call
-runs takes it over; the response is encoded inside it, so a response that
-cannot be is that request's error."
+runs takes it over; the response is encoded, and written to a stream the
+call began, inside it, so a response that cannot be is that request's
+error.  A client that hung up while it was answered (CLIENT-GONE) ends the
+request as disconnected, and nothing is returned to write."
   (check-type actor (or null actor))
   (let ((*request-id* (or *request-id* (new-id "req")))
         (*credential* credential))
@@ -170,17 +178,25 @@ cannot be is that request's error."
                           :actor (and actor (actor-string actor)) :credential credential
                           :tool "mcp" :input (jobj))
       (let ((record *request-record*))
-        (multiple-value-bind (status json session)
-            (%handle-mcp application actor body parsed parsed-p)
-          ;; A JSON-RPC error no operation recorded: unknown tool or method, bad JSON, no actor.
-          (let ((err (and json (jget json "error"))))
-            (when (and err (not (request-outcome record)))
-              (set-request-outcome record "error" :code (rpc-code-name (jget err "code"))
-                                                  :message (jget err "message"))))
-          (if json
-              (multiple-value-bind (json text) (encoded-response json record)
-                (values status json session text))
-              (values status nil session nil)))))))
+        (handler-case
+            (multiple-value-bind (status json session)
+                (%handle-mcp application actor body parsed parsed-p)
+              ;; A JSON-RPC error no operation recorded: unknown tool or method, bad JSON, no actor.
+              (let ((err (and json (jget json "error"))))
+                (when (and err (not (request-outcome record)))
+                  (set-request-outcome record "error" :code (rpc-code-name (jget err "code"))
+                                                      :message (jget err "message"))))
+              (if json
+                  (multiple-value-bind (json text) (encoded-response json record)
+                    (if (and *stream-answer* (funcall *stream-answer* text))
+                        (values nil nil nil nil)
+                        (values status json session text)))
+                  (values status nil session nil)))
+          (client-gone (e)
+            (unless (request-outcome record)
+              (set-request-outcome record "error" :code :disconnected
+                                                  :message (princ-to-string e)))
+            (values nil nil nil nil)))))))
 
 (defparameter +too-many-values+
   (format nil "The request has too many JSON values (at most ~:d)."
@@ -226,6 +242,8 @@ With PARSED-P, PARSED is the body's JSON, whatever its kind."
                          (and (string= method "initialize") (new-id "mcp"))))
              (rpc-error (e) (values 200 (rpc-error-response id (rpc-error-code e) (rpc-error-message e)) nil))
              (actor-error (e) (values 200 (rpc-error-response id -32000 (actor-error-message e)) nil))
+             ;; Nobody is left to answer: HANDLE-MCP ends the request.
+             (client-gone (e) (error e))
              ;; SERIOUS-CONDITION, not just ERROR: a stack or heap
              ;; exhaustion fails this request alone (core.md §7.4).
              (serious-condition (e)

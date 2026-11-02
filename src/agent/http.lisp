@@ -361,6 +361,23 @@ never holds its thread."
              (give-back-count counts address)))
           (t (refuse-connection socket)))))
 
+(defun client-hang-up-p (thing)
+  "True when THING, an argument of a message Hunchentoot logs, is the
+connection failing under it: the system refusing a read or write on the
+socket, or the end of its input."
+  (typep thing '(or sb-int:simple-stream-error end-of-file
+                 usocket:connection-aborted-error usocket:connection-reset-error)))
+
+(defmethod hunchentoot:acceptor-log-message ((acceptor tun-acceptor) log-level format-string
+                                             &rest format-arguments)
+  ;; Tun's handlers catch their own errors, so Hunchentoot logs a failing
+  ;; connection only when the client hung up while it was answered.  The
+  ;; request has its outcome by then and nobody is left to tell
+  ;; (spec/waiting.md 2), so that message is not logged.
+  (declare (ignore log-level format-string))
+  (unless (some #'client-hang-up-p format-arguments)
+    (call-next-method)))
+
 (defun octets (string) (sb-ext:string-to-octets string :external-format :utf-8))
 
 (defun request-body-octets ()
@@ -641,17 +658,20 @@ a connection silent for 100 seconds, as Cloudflare does, must not cut it
     (and accept (search "text/event-stream" accept) t)))
 
 (defun write-event (stream text)
-  "Write TEXT, the lines of one server-sent event, to STREAM, and send it now."
-  (write-sequence (octets text) stream)
-  (force-output stream))
+  "Write TEXT, the lines of one server-sent event, to STREAM, and send it now.
+Signals CLIENT-GONE when the client has hung up."
+  (handler-case (progn (write-sequence (octets text) stream)
+                       (force-output stream))
+    (stream-error (e) (error 'client-gone :reason e))))
 
 (defun call-streaming (function)
   "Call FUNCTION, which handles one /mcp request and returns its HTTP status,
 JSON, session and the JSON's text, with *AWAIT-HEARTBEAT* set: when a tool call waits long
 enough for it to beat, the answer becomes an SSE stream, carrying progress
 (or, without a progressToken, a comment) at each beat and the JSON-RPC
-response as its last event (spec/waiting.md 2).  Values what FUNCTION
-returned, or NIL when the stream already holds the answer."
+response as its last event, written through tun.mcp:*stream-answer* inside
+the request (spec/waiting.md 2).  Values what FUNCTION returned, which is
+NIL when the stream already holds the answer or the client hung up."
   (let ((stream nil))
     (flet ((beat (seconds)
              (unless stream
@@ -664,12 +684,13 @@ returned, or NIL when the stream already holds the answer."
                                              (to-json-string
                                               (tun.mcp:progress-notification seconds)))
                                      (format nil ": waiting ~d s~%~%" seconds)))))
-      (multiple-value-bind (status json session text)
-          (let ((*await-heartbeat* #'beat)) (funcall function))
-        (cond ((null stream) (values status json session text))
-              (t (when text
-                   (write-event stream (format nil "event: message~%data: ~a~%~%" text)))
-                 nil))))))
+      (let ((*await-heartbeat* #'beat)
+            (tun.mcp:*stream-answer*
+              (lambda (text)
+                (when stream
+                  (write-event stream (format nil "event: message~%data: ~a~%~%" text))
+                  t))))
+        (funcall function)))))
 
 ;;; A body that may carry files (spec/files.md 4.3), from a caller who may
 ;;; send them: it is parsed with the long strings a file's data needs, and

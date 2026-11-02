@@ -40,7 +40,7 @@
    #:error-code #:operation-error #:operation-error-code #:operation-error-message
    #:operation-error-text
    #:operation-error-fields #:operation-error-details #:fail #:fail-with-details #:fail-fields
-   #:operation-error-json #:error-status #:actor-error #:actor-error-message #:extension-error
+   #:operation-error-json #:error-status #:actor-error #:actor-error-message #:client-gone #:extension-error
    ;; rank keys
    #:rank-between #:rank-key #:rank-key-p #:rank-order-error #:rank-order-error-low
    #:rank-order-error-high

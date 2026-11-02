@@ -69,6 +69,12 @@ returns when the question is answered, or when its time is up.
   idle timeout (Claude Code's is 5 minutes) nor a proxy that drops a
   silent connection (Cloudflare's is 100 seconds) cuts the call.
 - A client that accepts only JSON waits at most 90 seconds per call.
+- A client that hangs up while its stream is open ends the call at the
+  first write that fails, a beat or the response: the wait stops, nothing
+  more is written, and the request ends as `error` with the code
+  `disconnected`, which is not a fault (`errors.md` §2) and is logged at
+  `warn`. A client that hangs up before a plain answer is written leaves
+  the request's outcome as it was, and no line at `error`.
 
 ## 3. Over the HTTP API
 

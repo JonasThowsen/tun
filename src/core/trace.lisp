@@ -356,14 +356,16 @@ when the request ends (CHOOSE-REQUEST-BACKTRACE)."
             (cons entry (subseq (request-conditions record) 0 (min 7 (length (request-conditions record)))))))))
 
 (defmacro with-backtrace-capture ((record) &body body)
-  "Note the backtrace of every fault signalled in BODY for RECORD.  Must sit
-inside the handlers that catch it: a HANDLER-CASE between the signal and
-this form would unwind before it is consulted."
+  "Note the backtrace of every fault signalled in BODY for RECORD (a client
+that hung up is none).  Must sit inside the handlers that catch it: a
+HANDLER-CASE between the signal and this form would unwind before it is
+consulted."
   (let ((r (gensym "RECORD")))
     `(let ((,r ,record))
        (if (null ,r)
            (progn ,@body)
-           (handler-bind ((error (lambda (c) (unless (typep c 'rejection-signal) (note-request-error ,r c))))
+           (handler-bind ((error (lambda (c) (unless (typep c '(or rejection-signal client-gone))
+                                                   (note-request-error ,r c))))
                           (storage-condition (lambda (c) (note-request-error ,r c))))
              ,@body)))))
 

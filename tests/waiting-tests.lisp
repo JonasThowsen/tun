@@ -218,6 +218,112 @@ text and the headers."
           (is (null (jget (car (last events)) "error")) "and the answer, not an error")
           (is (search "\"aktiv\"" (to-json-string (jget (car (last events)) "result")))))))))
 
+;;; A client that hangs up (spec/waiting.md 2)
+
+(defun open-mcp-wait (port id seconds &key (accept "application/json, text/event-stream"))
+  "Send a tools/call of widgets_await_archived on a socket of its own; the
+socket, for the test to read from and hang up."
+  (let* ((body (to-json-string (jobj "jsonrpc" "2.0" "id" 7 "method" "tools/call"
+                                     "params" (jobj "name" "widgets_await_archived"
+                                                    "arguments" (jobj "id" id "seconds" seconds)))))
+         (octets (sb-ext:string-to-octets body :external-format :utf-8))
+         (socket (usocket:socket-connect "127.0.0.1" port :element-type '(unsigned-byte 8)))
+         (stream (usocket:socket-stream socket)))
+    (write-sequence (sb-ext:string-to-octets
+                     (crlf "POST /mcp HTTP/1.1" "Host: x" "Content-Type: application/json"
+                           (format nil "Accept: ~a" accept) "X-Tun-Actor: employee:anna"
+                           (format nil "Content-Length: ~d" (length octets)) "")
+                     :external-format :latin-1)
+                    stream)
+    (write-sequence octets stream)
+    (finish-output stream)
+    socket))
+
+(defun read-until (stream text)
+  "Read STREAM until TEXT has been read; what was read."
+  (let ((seen (make-array 0 :element-type 'character :adjustable t :fill-pointer 0)))
+    (loop for byte = (read-byte stream nil nil)
+          while byte
+          do (vector-push-extend (code-char byte) seen)
+          until (search text seen))
+    seen))
+
+(defun reset-connection (socket)
+  "Close SOCKET as a client that is killed does, with a reset instead of an
+orderly close (SO_LINGER on, 0 seconds; Linux's SOL_SOCKET 1, SO_LINGER 13)."
+  (let ((fd (sb-bsd-sockets:socket-file-descriptor (usocket:socket socket))))
+    (sb-alien:with-alien ((linger (array sb-alien:int 2)))
+      (setf (sb-alien:deref linger 0) 1
+            (sb-alien:deref linger 1) 0)
+      (sb-alien:alien-funcall
+       (sb-alien:extern-alien "setsockopt" (function sb-alien:int sb-alien:int sb-alien:int
+                                                     sb-alien:int (* t) sb-alien:unsigned))
+       fd 1 13 (sb-alien:cast linger (* t)) 8)))
+  (usocket:socket-close socket))
+
+(defun finished-request (tool before)
+  "The newest finished request of TOOL not among BEFORE, the requests that
+had finished earlier, waiting up to ten seconds for it."
+  (loop repeat 100
+        for record = (find-if (lambda (record)
+                                (and (equal tool (request-tool record))
+                                     (not (member record before))))
+                              (finished-requests))
+        when record return record
+        do (sleep 0.1)))
+
+(defmacro with-server-log ((log) &body body)
+  "Run BODY with LOG bound to a function that answers what the server's
+connections logged so far: Hunchentoot's message log, which is taken from
+*ERROR-OUTPUT* when the server starts."
+  (let ((out (gensym "OUT")))
+    `(let* ((,out (make-string-output-stream))
+            (*error-output* ,out)
+            (written (make-array 0 :element-type 'character :adjustable t :fill-pointer 0)))
+       (flet ((,log ()
+                (let ((more (get-output-stream-string ,out)))
+                  (loop for c across more do (vector-push-extend c written))
+                  (copy-seq written))))
+         ,@body))))
+
+(test a-client-that-hangs-up-during-a-wait-is-disconnected-not-a-fault
+  ;; A beat comes only when the wait looks again, so both are made short.
+  (with-global (tun.core::+await-heartbeat-seconds+ 1)
+    (with-global (tun.core::+await-recheck-seconds+ 1)
+      (with-server-log (server-log)
+        (with-test-server (port)
+          (let* ((id (new-widget))
+                 (before (finished-requests))
+                 (socket (open-mcp-wait port id 20)))
+            (read-until (usocket:socket-stream socket) ": waiting")
+            (usocket:socket-close socket)
+            (let ((record (finished-request "widgets_await_archived" before)))
+              (is (not (null record)) "the request ends long before its 20 seconds")
+              (when record
+                (is (equal "error" (request-outcome record)))
+                (is (eq :disconnected (request-error-code record)))
+                (is (equal "warn" (jget (tun.errors:log-line record nil) "level")))))
+            (is (zerop (length (call-ok-items "errors_list" "status" "open")))
+                "and is no error")
+            (sleep 0.5)
+            (is (not (search "rror" (server-log))) "the connection ends without a line")))))))
+
+(test a-client-gone-before-a-plain-answer-leaves-no-error-line
+  (with-global (tun.http::+plain-wait-seconds+ 1)
+    (with-server-log (server-log)
+      (with-test-server (port)
+        (let* ((id (new-widget))
+               (before (finished-requests))
+               (socket (open-mcp-wait port id 30 :accept "application/json")))
+          (sleep 0.3)
+          (reset-connection socket)
+          (let ((record (finished-request "widgets_await_archived" before)))
+            (is (not (null record)))
+            (when record
+              (is (equal "ok" (request-outcome record)) "the answer was made; it keeps its outcome")))
+          (sleep 0.5)
+          (is (not (search "rror" (server-log))) "and no line from Hunchentoot"))))))
+
 (test a-wait-over-the-api-is-a-long-poll
   (with-global (tun.http::+plain-wait-seconds+ 1)
     (with-test-server (port)

@@ -132,6 +132,14 @@ on the HTTP API (spec/api.md 3)."
   ((message :initarg :message :reader actor-error-message))
   (:report (lambda (c s) (write-string (actor-error-message c) s))))
 
+;;; Raised by a transport when writing to a client that has hung up: not a
+;;; fault, the request ends as disconnected (spec/waiting.md 2).  It passes
+;;; through an operation unchanged, so a wait that writes as it waits stops.
+(define-condition client-gone (error)
+  ((reason :initarg :reason :reader client-gone-reason
+           :documentation "The stream error that showed the client gone."))
+  (:report (lambda (c s) (format s "The client hung up: ~a" (client-gone-reason c)))))
+
 ;;; Raised when a client extension breaks a core invariant at load/start time.
 (define-condition extension-error (error)
   ((message :initarg :message :reader extension-error-message))

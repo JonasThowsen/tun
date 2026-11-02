@@ -43,8 +43,10 @@ A request is a fault when its outcome is `error` with one of these codes:
 
 An answer the code meant is not a fault: `fail` with `invalid_input`,
 `not_found`, `conflict` or `invalid_transition`, a refusal (`forbidden`,
-`unauthenticated`), a JSON-RPC error for an unknown tool, or a job that
-cancels or fails itself with `cancel-job` or `fail-job`. A web page that
+`unauthenticated`), a JSON-RPC error for an unknown tool, a job that
+cancels or fails itself with `cancel-job` or `fail-job`, or a request whose
+client hung up before its answer was written (`disconnected`,
+`waiting.md` §2). A web page that
 fails records the condition's own text, not «Forespørselen ble avbrutt».
 
 ## 3. Grouping
