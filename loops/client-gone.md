@@ -2,7 +2,7 @@
 
 - loop: client-gone
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: f30a03cda461376b0b873aaff52a9693354ec3cc
 - after: mcp-add-scope
 - item: sak_n6yvgdknycbb3b5n
@@ -76,3 +76,7 @@ in ferdig that regard tun».
 - 2026-11-02 10:14  shown (/ui)
 - 2026-11-02 10:14  gate B asked of the person
 - 2026-11-02 10:16  gate B: approve (jonas): «Approve and push (Recommended)»
+- 2026-11-02 10:16  gate C asked of the person
+- 2026-11-02 10:16  gate C: approve (jonas): «Approve both (Recommended)»: Tun 2.4.5 to ferdig (production via nixploy-dashboard) and nixploy-dashboard (Jonas deploys netcup)
+- 2026-11-02 10:20  Tun 2abaad6 (core 2.4.5) in ferdig 244a7db, deployed to production through nixploy-dashboard (dpl_yz58yczr2d4vq70j, succeeded in 68 s); in nixploy-dashboard 8013eb7, ~/nixos f903da8, for Jonas to deploy to netcup
+- 2026-11-02 10:20  finished at tun 2abaad6

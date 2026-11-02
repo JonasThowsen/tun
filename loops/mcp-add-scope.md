@@ -2,7 +2,7 @@
 
 - loop: mcp-add-scope
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 43b7afb67987d976b79cc0a655c0488a710686f8
 - after: database-wait
 - item: sak_basvzt1hqb8g5yab
@@ -59,3 +59,7 @@ tun».
 - 2026-11-02 09:59  shown (/access, /ui/code-block)
 - 2026-11-02 09:59  gate B asked of the person
 - 2026-11-02 09:59  gate B: approve (jonas): «Approve and push (Recommended)»; under the token's command «Nothing (Recommended)», after «You do not need to mention in the UI to run it in a separate terminal»
+- 2026-11-02 10:17  gate C asked of the person
+- 2026-11-02 10:17  gate C: approve (jonas): «Approve both (Recommended)»: Tun 2.4.5 (with this change) to ferdig (production via nixploy-dashboard) and nixploy-dashboard (Jonas deploys netcup)
+- 2026-11-02 10:20  Tun 2abaad6 (core 2.4.5) in ferdig 244a7db, deployed to production through nixploy-dashboard (dpl_yz58yczr2d4vq70j, succeeded in 68 s); in nixploy-dashboard 8013eb7, ~/nixos f903da8, for Jonas to deploy to netcup
+- 2026-11-02 10:21  finished at tun f30a03c
