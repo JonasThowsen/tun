@@ -1644,14 +1644,17 @@ URL with a plain host: a value that could carry more into a header."
 string, and style sheets only Tun's.  A style attribute runs nothing and is
 allowed, for an email shown in a frame.  A sign-in form posts here and is
 sent on to its provider, and browsers hold that redirect to form-action, so
-the providers' origins are in it."
+the providers' origins are in it, and the sites the client names in
+(:form-sites ...)."
   (format nil "default-src 'self'; script-src 'self'; style-src 'self'; ~
 style-src-attr 'unsafe-inline'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; ~
 frame-ancestors 'none'; form-action 'self'~{ ~a~}"
           (remove-duplicates
-           (loop for strategy in (tun.auth:identity-providers)
-                 for origin = (url-origin (tun.auth:strategy-authorization-endpoint strategy))
-                 when origin collect origin)
+           (append (loop for strategy in (tun.auth:identity-providers)
+                         for origin = (url-origin (tun.auth:strategy-authorization-endpoint
+                                                   strategy))
+                         when origin collect origin)
+                   (application-form-sites *web-app*))
            :test #'string= :from-end t)))
 
 (defun cross-origin-post-p ()

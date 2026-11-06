@@ -133,11 +133,18 @@ component has a dark-mode selector.
   frame. A `style` attribute is allowed: it runs nothing, and an email,
   whose styles are all attributes, is shown in a frame that inherits the
   policy (the showcase's `/mail`). Tun's own markup still has none, and a
-  client's output cannot carry one (§5). ORIGINS are the origins of the identity providers' authorization
+  client's output cannot carry one (§5).
+- ORIGINS are the origins of the identity providers' authorization
   endpoints (`auth.md` §3.5), such as `https://accounts.google.com`: a
   sign-in form posts to the server, which sends the browser on to the
-  provider, and browsers hold that redirect to `form-action` too. A file
-  keeps its own, stricter policy (`files.md` §5.3), and `/ui`, the
+  provider, and browsers hold that redirect to `form-action` too. They
+  also hold the sites the client names in `define-application` for a
+  form that sends the browser on to another system, such as a sign-in at
+  a broker: `(:form-sites "https://sim.logonvalidation.net")`. Each is an
+  `https://` origin with a lower-case host and no path (`http://` only
+  for `127.0.0.1` and `localhost`); anything else is refused when the
+  client is compiled.
+- A file keeps its own, stricter policy (`files.md` §5.3), and `/ui`, the
   specimen, has the same as a page.
 - An image from another site is not shown: a component that takes an
   image's address, such as the avatar's `:src`, takes one on the server.

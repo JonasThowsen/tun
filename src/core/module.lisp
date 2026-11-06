@@ -17,7 +17,7 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +core-version+ "2.8.0"
+(defparameter +core-version+ "2.8.1"
   "The kernel's version.  Modules declare the range they build against; the
 client build (flake.nix, lib.buildClient) and DEFINE-MODULE both refuse a
 module whose range does not contain it.  The first versioned core was 0.1.0.")
@@ -336,6 +336,10 @@ them in (:error-mail address...) (spec/errors.md 5).  TUN.ERRORS reads it.")
   "Application class name -> what the client tells agents about working with
 it, as it wrote it in (:instructions text...) (spec/waiting.md 4).")
 
+(defvar *application-form-sites* (make-hash-table :test 'eq)
+  "Application class name -> the origins its forms may lead to, as the client
+wrote them in (:form-sites origin...) (spec/ui.md 4).  TUN.WEB reads them.")
+
 (defvar *application-programs* (make-hash-table :test 'eq)
   "Application class name -> the programs it may run, as the client wrote them
 in (:programs name...) (spec/outbound.md 6).  TUN.OUTBOUND reads them.")
@@ -512,6 +516,9 @@ icons are read when the form is compiled.  (:locale :languages ... :currency
 tenant's language, currency and time zone, as spec/i18n.md 2.2 describes.
 (:programs name...) names the programs the application may run, each a file
 name looked up on the server's PATH, as spec/outbound.md 6 describes.
+(:form-sites origin...) names the sites a form may lead to after its post,
+such as \"https://sim.logonvalidation.net\" for a sign-in at another system,
+as spec/ui.md 4 describes.
 Other OPTIONS are DEFCLASS options."
   (let* ((modules (mapcar (lambda (m) (string-downcase (string m)))
                           (rest (assoc :modules options))))
@@ -524,10 +531,12 @@ Other OPTIONS are DEFCLASS options."
          (web-app (assoc :web-app options))
          (locale (assoc :locale options))
          (programs (rest (assoc :programs options)))
+         (form-sites (rest (assoc :form-sites options)))
          (class-options (remove-if (lambda (o) (member (first o) '(:modules :on-open :sign-in :mail
                                                                    :queues :error-mail
                                                                    :instructions :web-app
-                                                                   :locale :programs)))
+                                                                   :locale :programs
+                                                                   :form-sites)))
                                    options)))
     (dolist (strategy (rest sign-in))
       (unless (and (consp strategy) (keywordp (first strategy)))
@@ -549,6 +558,10 @@ Other OPTIONS are DEFCLASS options."
       (unless (program-name-p program)
         (error "define-application ~s: a program is a file name such as \"nixploy\", ~
                 without a directory, not ~s" name program)))
+    (dolist (site form-sites)
+      (unless (form-site-p site)
+        (error "define-application ~s: a form site is an origin, such as ~
+                \"https://sim.logonvalidation.net\", without a path, not ~s" name site)))
     (dolist (address error-mail)
       (unless (or (stringp address)
                   (and (consp address) (eq (first address) :env) (stringp (second address))))
@@ -569,7 +582,10 @@ Other OPTIONS are DEFCLASS options."
              (gethash ',name *application-instructions*) ',instructions
              (gethash ',name *application-programs*) ',(remove-duplicates programs
                                                                           :test #'string=
-                                                                          :from-end t))
+                                                                          :from-end t)
+             (gethash ',name *application-form-sites*) ',(remove-duplicates form-sites
+                                                                            :test #'string=
+                                                                            :from-end t))
        ,(if web-app
             (multiple-value-bind (web-app-options icons) (web-app-options name (rest web-app))
               `(setf (gethash ',name *application-web-app*)
@@ -623,6 +639,20 @@ kernel's default for QUEUE, else 1."
   "What APPLICATION's class (or the nearest declaring superclass) tells
 agents about working with it: a list of paragraphs (spec/waiting.md 4)."
   (values (declared-option *application-instructions* application)))
+
+(defun form-site-p (site)
+  "True when SITE can be named in (:form-sites ...): an https origin with a
+lower-case host, or http on this machine, which tests use; nothing that
+could carry more into the page's policy."
+  (and (stringp site)
+       (cl-ppcre:scan "^(https://[a-z0-9.-]+|http://(127\\.0\\.0\\.1|localhost))(:[0-9]{1,5})?$"
+                      site)
+       t))
+
+(defun application-form-sites (application)
+  "The origins APPLICATION's class (or the nearest declaring superclass) lets
+its forms lead to (spec/ui.md 4)."
+  (values (declared-option *application-form-sites* application)))
 
 (defun program-name-p (name)
   "True when NAME can name a program in (:programs ...): a file name, with no

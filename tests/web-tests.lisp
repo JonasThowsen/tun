@@ -594,3 +594,24 @@
   (dolist (junk '("https://evil.example; script-src *" "javascript:alert(1)" "//host/x"
                   "https://user@host/x" "ftp://host/x" ""))
     (is (null (tun.web::url-origin junk)) "~s gives no origin" junk)))
+
+(test a-client-names-the-sites-its-forms-lead-to
+  (dolist (site '("https://sim.logonvalidation.net/authorize" "https://Saxo.example"
+                  "http://sim.logonvalidation.net" "https://a.example; script-src *"
+                  "https://a.example/" "//a.example" "a.example"))
+    (signals error (macroexpand-1 `(define-application broken-sites () (:form-sites ,site)))
+      "~s is refused" site))
+  (finishes (macroexpand-1 '(define-application fine-sites ()
+                             (:form-sites "https://sim.logonvalidation.net"
+                                          "http://127.0.0.1:4100"))))
+  (with-test-server (port)
+    (let ((name (class-name (class-of *app*))))
+      (unwind-protect
+           (progn
+             (setf (gethash name tun.core::*application-form-sites*)
+                   '("https://sim.logonvalidation.net" "https://other.example:8443"))
+             (is (equal (concatenate 'string +page-policy+
+                                     " https://sim.logonvalidation.net https://other.example:8443")
+                        (page-policy port "/login"))))
+        (remhash name tun.core::*application-form-sites*)))
+    (is (equal +page-policy+ (page-policy port "/login")) "without them, as before")))

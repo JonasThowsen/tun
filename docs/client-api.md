@@ -662,6 +662,13 @@ and values:
   (invoke 'items-check :title "Knappen virker ikke"))
 ```
 
+A form that sends the browser on to another system, such as a button
+that starts a sign-in at a broker and answers 303 to its authorize page,
+needs that site named in `define-application`:
+`(:form-sites "https://sim.logonvalidation.net")`. The page's policy lets
+forms lead only to the server, its sign-in providers and these sites
+(`spec/ui.md` §4); without it the browser stops at the redirect.
+
 A program on the server, such as `nixploy` or `git`, is run the same
 way: declared in `define-application` with `(:programs "nixploy")`, then
 `(run-program "nixploy" (list "status" "--target" target "--json")
