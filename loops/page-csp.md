@@ -72,3 +72,4 @@ he answered: «Yes, do it.»
 - 2026-11-06 21:59  verify 2: passed build, test, check
 - 2026-11-06 21:59  shown (/mail, /items)
 - 2026-11-06 21:59  gate B asked of the person
+- 2026-11-06 22:14  clients updated and tested on bc4ea87: ferdig 60e0ad0 and nixploy-dashboard 9facc52 pushed; kurs held: its «Connect Saxo» form redirects to Saxo's sign-in, which form-action would block. Jonas chose «Client declares the sites»: loop form-sites. Not deployed here; form-sites deploys all three
