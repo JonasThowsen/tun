@@ -2,7 +2,7 @@
 
 - loop: page-csp
 - mode: hands-on
-- stage: gate-b
+- stage: done
 - base: d6989d8d3492621cd0db58347f9aa9b1319c148e
 - verified: 41abfdad74797fd9bcddb597d6e6ae8e25b43a73
 - shown: 41abfdad74797fd9bcddb597d6e6ae8e25b43a73
@@ -73,3 +73,5 @@ he answered: «Yes, do it.»
 - 2026-11-06 21:59  shown (/mail, /items)
 - 2026-11-06 21:59  gate B asked of the person
 - 2026-11-06 22:14  clients updated and tested on bc4ea87: ferdig 60e0ad0 and nixploy-dashboard 9facc52 pushed; kurs held: its «Connect Saxo» form redirects to Saxo's sign-in, which form-action would block. Jonas chose «Client declares the sites»: loop form-sites. Not deployed here; form-sites deploys all three
+- 2026-11-06 22:15  gate B: approve (jonas): «Approve and push»
+- 2026-11-06 22:15  finished at tun 7930c27
