@@ -2,7 +2,7 @@
 
 - loop: http-form-post
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 26b2bbf7082279b157253e111dd3e69e0e8c9e0e
 - client: /home/jonas/coding/kurs
 - client-base: 942638344c23102952d766576ab70811eb08384b
@@ -105,3 +105,4 @@ call through its public interface.
 - 2026-11-06 20:56  shown (/ui)
 - 2026-11-06 20:56  gate B asked of a reviewer
 - 2026-11-06 21:00  gate B: approve (reviewer): Fresh reviewer, as Jonas allowed («a fresh reviewer can make calls»): the NIL fix holds over 21 shapes, the rebase added nothing, criteria 1-8 met
+- 2026-11-06 21:00  finished at tun c3cc49a, kurs 2172c92
