@@ -560,3 +560,37 @@
         (is (equal "/test-notater" (logged-in-to "/test-notater"))
             "already logged in: straight to the page")
         (is (equal "/orders" (logged-in-to "//example.com")))))))
+
+;;; ------------------------------------------------------------------
+;;; The page's Content-Security-Policy (spec/ui.md 4)
+
+(defparameter +page-policy+
+  "default-src 'self'; script-src 'self'; style-src 'self'; style-src-attr 'unsafe-inline'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; frame-ancestors 'none'; form-action 'self'")
+
+(defun page-policy (port path &rest options)
+  "The Content-Security-Policy of the answer to PATH."
+  (cdr (assoc :content-security-policy (nth-value 2 (apply #'web-request port path options)))))
+
+(test every-answer-to-the-browser-has-the-policy
+  (with-test-server (port)
+    (let ((jar (web-login port "employee:anna")))
+      (dolist (path '("/login" "/orders" "/ui" "/ui/card" "/login-info" "/finnes-ikke"))
+        (is (equal +page-policy+ (page-policy port path)) "~a, not logged in" path))
+      (dolist (path '("/orders" "/test-notater/a" "/test-notater/endret" "/access"))
+        (is (equal +page-policy+ (page-policy port path :jar jar)) "~a, logged in" path))
+      (is (equal +page-policy+
+                 (page-policy port "/test-tavle" :jar jar
+                              :headers '(("HX-Request" . "true") ("HX-Request-Type" . "partial"))))
+          "a part of a page")
+      (is (equal +page-policy+ (page-policy port "/test-notater" :method :post :jar jar
+                                            :parameters '(("text" . "Ring Kari"))))
+          "a redirect after a post"))))
+
+(test the-policy-names-only-an-origin
+  (is (equal "https://accounts.google.com"
+             (tun.web::url-origin "https://accounts.google.com/o/oauth2/v2/auth")))
+  (is (equal "http://127.0.0.1:4100" (tun.web::url-origin "http://127.0.0.1:4100")))
+  (is (equal "https://acme.authkit.app" (tun.web::url-origin "https://acme.authkit.app?x=1")))
+  (dolist (junk '("https://evil.example; script-src *" "javascript:alert(1)" "//host/x"
+                  "https://user@host/x" "ftp://host/x" ""))
+    (is (null (tun.web::url-origin junk)) "~s gives no origin" junk)))

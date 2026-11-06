@@ -350,3 +350,16 @@
         (is (equal "/orders?q=1" (sign-in-from "/orders?q=1")))
         (is (equal (home-location port) (sign-in-from nil)) "from plain /login: home")
         (is (equal (home-location port) (sign-in-from "//example.com/orders")) "never another site")))))
+
+(test the-policy-lets-a-sign-in-on-to-its-provider
+  (with-test-server (port :identity :authenticated)
+    (with-provider (provider)
+      (flet ((policy () (cdr (assoc :content-security-policy
+                                    (nth-value 2 (web-request port "/login"))))))
+        (let ((tail (format nil "; form-action 'self' ~a" (provider-url provider))))
+          (is (eql (- (length (policy)) (length tail)) (search tail (policy) :from-end t))
+              "the sign-in form may go on to the provider: ~a" (policy)))
+        (setf (tun.auth:sign-in-strategies *app*)
+              (list (provider-strategy provider) (provider-strategy provider)))
+        (is (= 1 (count-matches (cl-ppcre:quote-meta-chars (provider-url provider)) (policy)))
+            "two strategies at one provider name it once")))))

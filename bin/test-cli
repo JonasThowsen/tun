@@ -77,16 +77,20 @@ in_client bin/test || fail "bin/test"
 
 step "a macro, a query and a record policy in the client: bin/test runs them, and refuses them broken"
 cp "$client/application.lisp" "$work/application.lisp"
+cp "$client/nb.lisp" "$work/nb.lisp"
+sed -i 's/^(define-translations "nb")$/(define-translations "nb"\
+  ("Memo" "Notat") ("Text" "Tekst") ("Author" "Forfatter") ("New memo" "Nytt notat"))/' \
+  "$client/nb.lisp"
 cat >>"$client/application.lisp" <<'LISP'
 
 (define-query customers-named ((name :required t))
     (:returns customer)
   "SELECT c.* FROM {customer} c WHERE c.name = :name ORDER BY c.seq")
 
-(define-entity memo (:id-prefix "mem" :label "Notat" :table "memos"
+(define-entity memo (:id-prefix "mem" :label "Memo" :table "memos"
                      :record-policy ((:admin t) (:employee "author = :actor_name")))
-  ((text :type (string :min 1 :max 200) :required t :label "Tekst")
-   (author :type (string :max 64) :input nil :label "Forfatter")))
+  ((text :type (string :min 1 :max 200) :required t :label "Text")
+   (author :type (string :max 64) :input nil :label "Author")))
 
 (defmacro by-the-caller ((memo) &body body)
   "Run BODY with MEMO written by the caller."
@@ -94,7 +98,7 @@ cat >>"$client/application.lisp" <<'LISP'
           ,@body))
 
 (define-operation memos-create ((:draft memo))
-    (:entity memo :kind :create :policy :employee :title "Nytt notat")
+    (:entity memo :kind :create :policy :employee :title "New memo")
   (by-the-caller (memo)
     (insert memo)))
 LISP
@@ -114,6 +118,7 @@ grep -q "customers-named.*nickname" "$work/query.log" \
 # copy, and bin/serve, which does not force a compile, would load that.
 sleep 1
 cp "$work/application.lisp" "$client/application.lisp"
+cp "$work/nb.lisp" "$client/nb.lisp"
 
 free_port() {
   python3 -c 'import socket; s = socket.socket(); s.bind(("127.0.0.1", 0))
@@ -272,6 +277,30 @@ done
 curl -sf "http://127.0.0.1:$port/health" >/dev/null \
   || { cat "$work/serve.log" >&2; fail "/health"; }
 grep -q "postgresql://dev@/dev" "$work/serve.log" || fail "bin/serve did not use its Postgres"
+# In Chromium, which holds the redirect after a form's post to the page's
+# form-action (spec/ui.md 4): setup's «Fortsett» goes on to the fake WorkOS,
+# another origin, and back signed in.
+code="$(sed -n 's|.*no administrator yet; create one at /setup/\([0-9a-f]*\).*|\1|p' \
+  "$work/serve.log" | tail -1)"
+[ -n "$code" ] || { cat "$work/serve.log" >&2; fail "bin/serve logged no setup line"; }
+cat >"$work/sign-in.py" <<'PY'
+import sys
+from playwright.sync_api import sync_playwright
+base, code = sys.argv[1], sys.argv[2]
+with sync_playwright() as playwright:
+    browser = playwright.chromium.launch()
+    page = browser.new_page()
+    refused = []
+    page.on("console", lambda m: refused.append(m.text) if "Content Security Policy" in m.text else None)
+    page.goto(f"{base}/setup/{code}")
+    page.fill("input[name=name]", "admin")
+    page.locator("button[name=provider]").first.click()
+    page.wait_for_url(f"{base}/access", timeout=15000)
+    browser.close()
+    sys.exit(f"the policy refused: {refused}" if refused else 0)
+PY
+tun-check-python "$work/sign-in.py" "http://127.0.0.1:$port" "$code" \
+  || fail "in Chromium, setup did not sign in through the fake WorkOS"
 kill -TERM -- "-$server"; wait "$server" 2>/dev/null || true
 [ -d "$client/.data/postgres/cluster" ] || fail "no Postgres cluster under .data/postgres"
 curl -sf "http://127.0.0.1:$port/health" >/dev/null && fail "the server still answers"

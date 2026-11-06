@@ -119,6 +119,28 @@ component has a dark-mode selector.
   load takes the new CSS.
 - Pages carry no `style` attributes and no inline scripts. A script may
   set an element's style while it runs (placing a menu, a dragged card).
+- **The browser holds pages to that.** Every answer to the browser, a
+  page, a part of one, a redirect or an error, carries
+  `Content-Security-Policy:`
+  `default-src 'self'; script-src 'self'; style-src 'self';`
+  `style-src-attr 'unsafe-inline'; img-src 'self' blob:;`
+  `object-src 'none'; base-uri 'none';`
+  `frame-ancestors 'none'; form-action 'self' ORIGINS`.
+  The browser then runs only Tun's own script files, never code written
+  in the page or in a string (`eval`, `Function`), takes style sheets only
+  from Tun's, shows images only from the server and from a file
+  chosen for upload (`blob:`), and lets no other site show a page in a
+  frame. A `style` attribute is allowed: it runs nothing, and an email,
+  whose styles are all attributes, is shown in a frame that inherits the
+  policy (the showcase's `/mail`). Tun's own markup still has none, and a
+  client's output cannot carry one (§5). ORIGINS are the origins of the identity providers' authorization
+  endpoints (`auth.md` §3.5), such as `https://accounts.google.com`: a
+  sign-in form posts to the server, which sends the browser on to the
+  provider, and browsers hold that redirect to `form-action` too. A file
+  keeps its own, stricter policy (`files.md` §5.3), and `/ui`, the
+  specimen, has the same as a page.
+- An image from another site is not shown: a component that takes an
+  image's address, such as the avatar's `:src`, takes one on the server.
 - Every page has `<meta name="viewport" content="width=device-width,
   initial-scale=1">`.
 - The components' script holds no copy: a text it shows is in the markup

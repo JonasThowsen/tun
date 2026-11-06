@@ -913,6 +913,9 @@ from one rendering to the next."
         (is (equal "inline; filename=\"skjermbilde.png\"; filename*=UTF-8''skjermbilde.png"
                    (response-header :content-disposition headers)))
         (is (equal "nosniff" (response-header :x-content-type-options headers)))
+        (is (equal tun.web::+file-security-policy+
+                   (response-header :content-security-policy headers))
+            "a file keeps its own policy, not the page's")
         (is (equal "default-src 'none'; style-src 'unsafe-inline'; sandbox; frame-ancestors 'none'"
                    (response-header :content-security-policy headers)))
         (is (equal "same-origin" (response-header :cross-origin-resource-policy headers)))

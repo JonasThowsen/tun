@@ -39,7 +39,7 @@ def run(t):
     _push.stand_in(page)
     page.sign_in("employee:anna")
     page.goto("/notifications")
-    page.wait_for_function("navigator.serviceWorker.controller !== null")
+    page.wait_for_function("() => navigator.serviceWorker.controller !== null")
     worker = next(w for w in page.context.service_workers if w.url.endswith("/sw.js"))
 
     shown = push(worker, '{"title":"A new item for you","body":"The export fails",'

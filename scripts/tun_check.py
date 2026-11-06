@@ -27,6 +27,9 @@ What a check gets:
     t.check(condition, text)   record one check; carry on when it fails
 
 Anything else on a page is Playwright's (page.evaluate, page.locator, ...).
+page.wait_for_function takes a function, "() => ...": a bare expression is
+evaluated as a string in the page, and the page's policy refuses that
+(spec/ui.md 4).
 """
 
 import importlib.util

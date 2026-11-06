@@ -1631,6 +1631,29 @@ of them, /access for someone logged in and /login for anyone else."
           (*actor* "/access")
           (t "/login"))))
 
+(defun url-origin (url)
+  "The origin of URL, scheme://host[:port], or NIL when URL is not an http(s)
+URL with a plain host: a value that could carry more into a header."
+  (multiple-value-bind (match parts)
+      (cl-ppcre:scan-to-strings "^(https?://[A-Za-z0-9.-]+(?::[0-9]{1,5})?)(?:[/?#]|$)" url)
+    (and match (aref parts 0))))
+
+(defun page-security-policy ()
+  "The Content-Security-Policy of every answer to the browser (spec/ui.md
+4): scripts only from Tun's own files, never code in the page or in a
+string, and style sheets only Tun's.  A style attribute runs nothing and is
+allowed, for an email shown in a frame.  A sign-in form posts here and is
+sent on to its provider, and browsers hold that redirect to form-action, so
+the providers' origins are in it."
+  (format nil "default-src 'self'; script-src 'self'; style-src 'self'; ~
+style-src-attr 'unsafe-inline'; img-src 'self' blob:; object-src 'none'; base-uri 'none'; ~
+frame-ancestors 'none'; form-action 'self'~{ ~a~}"
+          (remove-duplicates
+           (loop for strategy in (tun.auth:identity-providers)
+                 for origin = (url-origin (tun.auth:strategy-authorization-endpoint strategy))
+                 when origin collect origin)
+           :test #'string= :from-end t)))
+
 (defun cross-origin-post-p ()
   "True for a POST a browser sent from another origin (spec/auth.md 3.3).
 A browser that sends Sec-Fetch-Site is judged by it alone: on a page with
@@ -1676,6 +1699,7 @@ uncached, so a page rendered before a deploy still gets styles."
   (let ((*web-app* (tun.http:acceptor-application acceptor))
         (*reference-labels* nil))
     (with-application (*web-app*)
+      (setf (hunchentoot:header-out "Content-Security-Policy") (page-security-policy))
       (multiple-value-bind (actor credential) (web-actor)
         (let ((*actor* actor)
               (*credential* credential)

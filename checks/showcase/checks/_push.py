@@ -67,7 +67,7 @@ def stand_in(page):
 
 def state(page):
     """The switch's state once its script has decided: on, off, missing, blocked..."""
-    page.wait_for_function("document.querySelector('[data-tun-push]')?.dataset.state")
+    page.wait_for_function("() => document.querySelector('[data-tun-push]')?.dataset.state")
     return page.evaluate("document.querySelector('[data-tun-push]').dataset.state")
 
 
