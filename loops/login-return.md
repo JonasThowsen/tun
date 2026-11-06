@@ -2,7 +2,7 @@
 
 - loop: login-return
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: 0a0bec3600fbd77c07f056250ebb474752eb2630
 - verified: 78fe807bf354b125619a26c55c5345756e05f318
 - shown: 78fe807bf354b125619a26c55c5345756e05f318
@@ -76,3 +76,8 @@ and when you are finished, bump the clients of Tun to that version».
 - 2026-11-06 20:19  shown (/items)
 - 2026-11-06 20:19  gate B asked of the person
 - 2026-11-06 20:20  gate B: approve (jonas): «Approve and push»
+- 2026-11-06 20:23  clients updated to 5124342 and tested: ferdig a1832c5 (750 checks), kurs 2172c92 (96), nixploy-dashboard 5b34de5 (1138); tun-demo left, it pins tun-archive
+- 2026-11-06 20:24  gate C asked of the person
+- 2026-11-06 20:24  gate C: approve (jonas): «Deploy all»
+- 2026-11-06 20:26  deployed ferdig a1832c5 (dpl_48wtv66tsvchgrdc) and kurs 2172c92 (dpl_18vkzxwypxd6svdn); nixploy-dashboard 5b34de5 pinned in nixos a1d9200 for Jonas's netcup deploy; live: kurs / and /login-info go to /login, ferdig /saker to /login?next=%2Fsaker
+- 2026-11-06 20:26  finished at tun 5124342
