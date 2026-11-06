@@ -1,7 +1,8 @@
 # Calling other systems
 
 Status: v1, 2026-10-21; §6 2026-10-30; §1 (the URL as sent), §1.2,
-§1.3, §2 and §4 for a GET, 2026-11-02. How a client's code calls another
+§1.3, §2 and §4 for a GET, 2026-11-02; §1.3, §1.4, §2 and §4 for a form,
+2026-11-06. How a client's code calls another
 system's JSON API, such as asking TypeSafe's Jev to judge an item before it
 is filed, with a key read from the environment, or runs a program on the
 server, such as nixploy (§6); and how its tests answer for them.
@@ -88,7 +89,7 @@ does with the accounting port (`core.md` §7.3).
   URL ends in `?` or `&` already. `^GSPC` is sent as `%5EGSPC`. Without
   QUERY, or with an empty one, URL is sent as it is.
   A name or a value that is not a string is an error in the caller's
-  code, as a header that is not is.
+  code, as a header that is not is, and shows no value, as §1.3 says.
 - A `#fragment` of URL is not sent; QUERY goes before it.
 - The URL of a `remote-failure` (`remote-failure-url`) is the URL as
   sent, with QUERY appended and without a fragment.
@@ -96,10 +97,40 @@ does with the accounting port (`core.md` §7.3).
 ### 1.3 Headers
 
 - A header in HEADERS named `User-Agent`, in any case, is the one sent,
-  in place of the HTTP library's own, for `http-json-get` and
-  `http-json-post`; of two, the first. Some systems ask a client to
-  name itself there, with a way to reach its owner, such as SEC EDGAR
-  and OpenStreetMap's Nominatim.
+  in place of the HTTP library's own, for `http-json-get`,
+  `http-json-post` and `http-form-post`; of two, the first. Some systems
+  ask a client to name itself there, with a way to reach its owner, such as
+  SEC EDGAR and OpenStreetMap's Nominatim.
+- A header that is not a pair of strings is an error in the caller's code.
+  The error shows no header's value, as a value may hold a key and a
+  fault's message is kept (`errors.md`).
+
+### 1.4 A form POST
+
+```lisp
+(http-form-post "https://sim.logonvalidation.net/token"
+                `(("grant_type" . "refresh_token")
+                  ("refresh_token" . ,token)
+                  ("redirect_uri" . ,callback)
+                  ("client_id" . ,key)
+                  ("client_secret" . ,secret)))
+```
+
+- `(http-form-post URL FORM &key headers (timeout 10))`, in the TUN
+  package, sends a POST to URL with `Content-Type` as
+  `application/x-www-form-urlencoded`, `Accept` as `application/json`, then
+  HEADERS, and FORM as its body. Its answer, its failures and its limits
+  are `http-json-post`'s (§1): the JSON and the status for a status from 200
+  to 299, and `remote-failure` otherwise. Such an endpoint, an OAuth 2
+  token endpoint among them, takes a form and answers JSON.
+- FORM is an alist of names and values, both strings. Each is
+  percent-encoded as a query is (§1.2), and the pairs are joined with `&`
+  in FORM's order. An empty FORM is an empty body.
+- A FORM that is not an alist, or a name or a value that is not a string,
+  is an error in the caller's code that names `http-form-post`. It says
+  which name is at fault at most and shows no value of FORM: a value may be
+  a credential, an unset setting (§3) is the likely cause, and a fault's
+  message is kept (`errors.md`).
 
 ## 2. In the trace
 
@@ -109,9 +140,10 @@ does with the accounting port (`core.md` §7.3).
   which may hold a key, such as
   `POST https://api.typesafe.ai/v1/systemone` or
   `GET https://api.prices.example/v1/daily`. Its detail is the status,
-  or what came instead of an answer, and it has the call's duration.
-- Headers and bodies are not recorded, as they may hold a key or a
-  person's text.
+  or what came instead of an answer, and it has the call's duration. A
+  form's call is named `POST` and the URL.
+- Headers and bodies, a form's among them, are not recorded, as they may
+  hold a key or a person's text.
 - A `remote-failure` that ends the operation shows in its log line with
   code `unavailable` (`errors.md` §6).
 
@@ -142,10 +174,13 @@ does with the accounting port (`core.md` §7.3).
   `(URL BODY HEADERS)` that answers in place of the network. It is
   called with the body as the other system would receive it, parsed
   again from the text that would be sent. For `http-json-get` the URL
-  has its query appended and the body is NIL. It returns the status and the
+  has its query appended and the body is NIL. For `http-form-post` the
+  body is a JSON object of FORM's names and values; of a name given twice,
+  it holds the last. It returns the status and the
   answer, a JSON value or a text, as two values; a status of NIL is no
   answer at all. `http-json-post` treats the answer as it treats a real
-  one (§1), and records the step (§2); so does `http-json-get`.
+  one (§1), and records the step (§2); so do `http-json-get` and
+  `http-form-post`.
 - A test binds it with `let` around calls made in its own thread. A call
   that runs in a server's thread sees its global value, so a test over
   HTTP sets that and restores it.

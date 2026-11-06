@@ -635,11 +635,25 @@ library's own, for a system that asks its clients to name themselves:
                :headers '(("User-Agent" . "kurs/1.0 (jonas@example.no)")))
 ```
 
+An endpoint that takes a form and answers JSON, such as an OAuth 2 token
+endpoint, is called with `(http-form-post url form :headers ... :timeout
+...)`. It answers and fails as `http-json-post` does. FORM is an alist whose
+names and values it percent-encodes:
+
+```lisp
+(http-form-post "https://auth.example/token"
+                `(("grant_type" . "authorization_code")
+                  ("code" . ,code)
+                  ("client_id" . ,key)
+                  ("client_secret" . ,secret)))
+```
+
 Each call is a step in the request's trace, with the URL but not its query,
 headers or body. A test answers for the other system by binding
 `*http-json-handler*` to a function of the URL, the body and the headers
 that returns a status and an answer. For a GET it is given the URL with
-its query, and NIL for the body:
+its query, and NIL for the body; for a form, an object of the form's names
+and values:
 
 ```lisp
 (let ((*http-json-handler* (lambda (url body headers)

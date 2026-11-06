@@ -15,22 +15,24 @@
 Then 200 with {\"ok\":true}.")
    (requests :initform nil :accessor remote-requests
              :documentation "Each request as a plist (:method :path :query :authorization
-:user-agent :content-type :accept :body), newest first."))
+:user-agent :content-type :accept :text :body), newest first: :text is the
+body as sent, and :body that parsed when it is JSON."))
   (:default-initargs :address "127.0.0.1" :access-log-destination nil
                      :message-log-destination nil))
 
 (defmethod hunchentoot:acceptor-dispatch-request ((remote fake-remote) request)
-  (push (list :method (hunchentoot:request-method request)
-              :path (hunchentoot:script-name request)
-              :query (hunchentoot:query-string request)
-              :authorization (hunchentoot:header-in* :authorization)
-              :user-agent (hunchentoot:header-in* :user-agent)
-              :content-type (hunchentoot:header-in* :content-type)
-              :accept (hunchentoot:header-in* :accept)
-              :body (let ((text (hunchentoot:raw-post-data :force-text t
-                                                           :external-format :utf-8)))
-                      (and text (plusp (length text)) (parse-json text))))
-        (remote-requests remote))
+  (let ((text (hunchentoot:raw-post-data :force-text t :external-format :utf-8)))
+    (push (list :method (hunchentoot:request-method request)
+                :path (hunchentoot:script-name request)
+                :query (hunchentoot:query-string request)
+                :authorization (hunchentoot:header-in* :authorization)
+                :user-agent (hunchentoot:header-in* :user-agent)
+                :content-type (hunchentoot:header-in* :content-type)
+                :accept (hunchentoot:header-in* :accept)
+                :text text
+                :body (and text (plusp (length text))
+                           (ignore-errors (parse-json text))))
+          (remote-requests remote)))
   (destructuring-bind (status text &optional headers)
       (or (pop (remote-answers remote)) (list 200 "{\"ok\":true}"))
     (setf (hunchentoot:return-code*) status
@@ -271,6 +273,120 @@ free port, and URL bound to its /v1/check."
       (is (search "Drakma" (agent-sent (lambda () (http-json-get url))))
           "without one, the library's own"))))
 
+;;; ------------------------------------------------------------------
+;;; A form (spec/outbound.md 1.4)
+
+(defun error-text (function)
+  "The text of the error FUNCTION signals, or NIL."
+  (handler-case (progn (funcall function) nil)
+    (error (e) (princ-to-string e))))
+
+(test a-form-is-sent-encoded-and-its-json-returned
+  (with-fake-remote (remote url)
+    (setf (remote-answers remote)
+          (list (list 201 "{\"access_token\":\"t1\",\"expires_in\":1200}")))
+    (multiple-value-bind (json status)
+        (http-form-post url '(("grant_type" . "refresh_token") ("note" . "a b&c=d")
+                              ("city" . "Bodø") ("a b" . "c"))
+                        :headers '(("Authorization" . "Basic abc")))
+      (is (= 201 status))
+      (is (equal "t1" (jget json "access_token")))
+      (is (= 1200 (jget json "expires_in"))))
+    (let ((request (first (remote-requests remote))))
+      (is (eq :post (getf request :method)))
+      (is (equal "/v1/check" (getf request :path)))
+      (is (equal "application/x-www-form-urlencoded" (getf request :content-type)))
+      (is (equal "application/json" (getf request :accept)))
+      (is (equal "Basic abc" (getf request :authorization)))
+      (is (equal "grant_type=refresh_token&note=a%20b%26c%3Dd&city=Bod%C3%B8&a%20b=c"
+                 (getf request :text))
+          "names and values encoded, in the form's order, and a value keeps its & and ="))
+    (is (eq (find-symbol "HTTP-FORM-POST" "TUN") 'tun.outbound:http-form-post)
+        "a client reaches it through TUN")))
+
+(test a-form-may-be-empty-and-an-empty-answer-is-null
+  (with-fake-remote (remote url)
+    (setf (remote-answers remote) (list (list 204 "")))
+    (is (json-null-p (http-form-post url '())))
+    (is (member (getf (first (remote-requests remote)) :text) '(nil "") :test #'equal))))
+
+(test a-form-fails-as-a-post-does
+  (with-fake-remote (remote url)
+    (setf (remote-answers remote)
+          (list (list 400 "{\"error\":\"invalid_grant\"}")
+                (list 200 "<html>")
+                (list 302 "" '((:location . "https://elsewhere.example/")))))
+    (let ((c (failure-of (lambda () (http-form-post url '(("a" . "b")))))))
+      (is (eq :unavailable (operation-error-code c)))
+      (is (= 400 (remote-failure-status c)))
+      (is (equal "invalid_grant" (jget (remote-failure-body c) "error")))
+      (is (equal url (remote-failure-url c)))
+      (is (equal (format nil "~a svarte 400" (host-of url)) (operation-error-message c))))
+    (is (search "ikke med JSON"
+                (operation-error-message (failure-of (lambda () (http-form-post url '()))))))
+    (is (= 302 (remote-failure-status (failure-of (lambda () (http-form-post url '())))))
+        "a redirect is not followed")
+    (with-silent-remote (silent)
+      (let ((c (failure-of (lambda () (http-form-post silent '(("a" . "b")) :timeout 1)))))
+        (is (null (remote-failure-status c)) "no answer in time")
+        (is (search "svarte ikke innen 1 sekund" (operation-error-message c)))))))
+
+(test a-form-names-its-user-agent-once
+  (with-fake-remote (remote url)
+    (http-form-post url '() :headers '(("user-agent" . "kurs/1.0")))
+    (is (equal "kurs/1.0" (getf (first (remote-requests remote)) :user-agent)))))
+
+(test a-mistake-in-a-form-or-a-header-shows-no-value
+  (with-fake-remote (remote url)
+    (flet ((refused (form)
+             (let ((text (error-text (lambda () (http-form-post url form)))))
+               (is (search "http-form-post" text) "~a" text)
+               (is (not (search "SECRET" text)) "shown: ~a" text)
+               text)))
+      (is (search "client_secret" (refused '(("client_id" . "SECRET") ("client_secret" . nil))))
+          "it says which name is at fault")
+      (refused "grant_type=SECRET")
+      (refused '("SECRET"))
+      (refused '(("a" . "SECRET") . "SECRET"))
+      (refused '(("a" "SECRET")))
+      (refused '((:name . "SECRET")))
+      (refused '(("a" . "SECRET") nil)))
+    (dolist (headers '((("Authorization" . "SECRET") ("X-Key" . 42))
+                       (("Authorization" . "SECRET") . "SECRET")
+                       (("Authorization" . "SECRET") nil)
+                       ("SECRET")))
+      (dolist (call (list (lambda () (http-form-post url '() :headers headers))
+                          (lambda () (http-json-post url (jobj) :headers headers))
+                          (lambda () (http-json-get url :headers headers))))
+        (let ((text (error-text call)))
+          (is (search "the headers" text) "~a" text)
+          (is (not (search "SECRET" text)) "shown: ~a" text))))
+    (dolist (query '((("key" . "SECRET") ("n" . 1))
+                     (("key" . "SECRET") nil)))
+      (let ((text (error-text (lambda () (http-json-get url :query query)))))
+        (is (search "http-json-get" text) "~a" text)
+        (is (not (search "SECRET" text)) "shown: ~a" text)))
+    (is (null (remote-requests remote)) "none of them was sent")))
+
+(test a-handler-answers-for-a-form
+  (with-test-app ()
+    (with-application (*app*)
+      (let* ((seen nil)
+             (*http-json-handler* (lambda (url body headers)
+                                    (setf seen (list url body headers))
+                                    (values 200 (jobj "ok" t)))))
+        (is (eq t (jget (http-form-post "https://auth.example/token"
+                                        '(("a" . "first") ("b" . "ø") ("a" . "last"))
+                                        :headers '(("X-Key" . "1")))
+                        "ok")))
+        (is (equal "https://auth.example/token" (first seen)))
+        (is (equal "last" (jget (second seen) "a")) "of a name given twice, the last")
+        (is (equal "ø" (jget (second seen) "b")) "as the other system would read it")
+        (is (equal '(("X-Key" . "1")) (third seen)))
+        (http-form-post "https://auth.example/token" '())
+        (is (hash-table-p (second seen)) "an empty form is an empty object")
+        (is (zerop (hash-table-count (second seen))))))))
+
 ;;; In an operation, in the trace, and answered by a test (spec/outbound.md 2, 4)
 
 (defvar *remote-url* nil "Where WIDGETS-ASK-REMOTE asks.")
@@ -316,6 +432,25 @@ free port, and URL bound to its /v1/check."
                         :key (lambda (s) (jget s "kind")) :test #'equal)))
         (is (equal "POST https://api.example.no/v1/check" (jget step "name"))
             "nor its user and password")))))
+
+(define-operation widgets-post-form ((key :type (string :max 200) :required t :secret t))
+    (:entity widget :kind :read :title "Post a form")
+  (http-form-post *remote-url* `(("client_secret" . ,key))
+                  :headers `(("Authorization" . ,key))))
+
+(test the-trace-shows-a-form-s-call-and-not-its-values
+  (with-test-app ()
+    (let ((*remote-url* "https://auth.example/token?x=1")
+          (*request-id* (new-id "req"))
+          (*http-json-handler* (lambda (url body headers)
+                                 (declare (ignore url body headers))
+                                 (values 200 (jobj "ok" t)))))
+      (call-ok "widgets_post_form" "employee:anna" "key" "SECRET")
+      (let* ((steps (trace-steps *request-id*))
+             (step (find "external" steps :key (lambda (s) (jget s "kind")) :test #'equal)))
+        (is (equal "POST https://auth.example/token" (jget step "name")))
+        (is (equal "200" (jget step "detail")))
+        (is (not (search "SECRET" (to-json-string (jarr steps)))))))))
 
 (test the-trace-shows-a-get-without-its-query
   (with-test-app ()

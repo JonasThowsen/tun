@@ -128,7 +128,7 @@ the listed symbols (the same symbol objects, not copies)."
   ;; Calling other systems' JSON APIs and running the programs an
   ;; application declares, and answering for both in tests
   ;; (spec/outbound.md)
-  (#:tun.outbound #:http-json-post #:http-json-get #:*http-json-handler*
+  (#:tun.outbound #:http-json-post #:http-json-get #:http-form-post #:*http-json-handler*
    #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url
    #:run-program #:*program-handler*
    #:program-failure #:program-failure-name #:program-failure-output
