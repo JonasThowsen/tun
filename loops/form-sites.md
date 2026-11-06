@@ -2,7 +2,7 @@
 
 - loop: form-sites
 - mode: hands-on
-- stage: ship
+- stage: done
 - base: b543dd5c46c6aa1915c6d102acfb89acf9897170
 - after: page-csp
 - verified: 927e46dcfd65984699634693a35cf9f70b4fd4d6
@@ -49,3 +49,7 @@ over dropping `form-action` or making the button a link.
 - 2026-11-06 22:46  shown (/login)
 - 2026-11-06 22:46  gate B asked of the person
 - 2026-11-06 22:50  gate B: approve (jonas): «Approve and push»
+- 2026-11-06 22:56  clients on f487a26, tested and checked: ferdig 2e49bf8 (750, 12 checks), kurs 424ff2a (296, with saxo-leaves-for-saxo), nixploy-dashboard c57b706 (1138, 12 checks)
+- 2026-11-06 22:56  gate C asked of the person
+- 2026-11-06 22:57  gate C: approve (jonas): «Deploy all»
+- 2026-11-06 22:59  finished at tun f487a26
