@@ -937,7 +937,11 @@ from one rendering to the next."
         (is (= 200 status))
         (is (zerop (length body)))
         (is (equal "image/png" (response-header :content-type headers))))
-      (is (= 401 (fetch-file port png-url)) "no caller")
+      (multiple-value-bind (status body headers) (fetch-file port png-url)
+        (declare (ignore body))
+        (is (= 303 status) "no caller: to the login, and back to the file")
+        (is (equal (format nil "/login?next=~a" (hunchentoot:url-encode png-url :utf-8))
+                   (location headers))))
       (let ((unknown (fetch-file port "/files/fil_finnes_ikke" :actor "viewer:vera")))
         (is (= 404 unknown)))
       (with-application (*app*)
@@ -957,7 +961,7 @@ from one rendering to the next."
                                               "a.png" (fixture "skjermbilde.png")))
                       "url"))
            (token (make-token (make-account "files-agent" "agent" "employee"))))
-      (is (= 401 (fetch-file port url)))
+      (is (= 303 (fetch-file port url)) "no token: to the login")
       (is (= 200 (fetch-file port url
                              :headers `(("Authorization" . ,(format nil "Bearer ~a" token)))))))))
 

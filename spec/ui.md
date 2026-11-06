@@ -660,8 +660,9 @@ form of `field`s with an `error-summary`, a confirmation is a
   `:width :wide` gives it the whole width.
 
   1. It serves `/PREFIX` and every path under it to a logged-in person
-     the policy admits (`:employee` when omitted); anyone else gets the
-     403 page. TITLE and ICON are its menu entry; `:navigation nil` keeps
+     the policy admits (`:employee` when omitted). Someone not logged in
+     goes to the login and back (`auth.md` §3.4); a person the policy
+     does not admit gets the 403 page. TITLE and ICON are its menu entry; `:navigation nil` keeps
      it out of the menu.
   2. NAME is a function of the request. METHOD is `:get` or `:post`, PATH
      the parts after the prefix (`/saker/sak_1` gives `("sak_1")`), FORM

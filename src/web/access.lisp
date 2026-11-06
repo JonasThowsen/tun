@@ -43,43 +43,77 @@ ASIDE that explains it."
            :description description :guest t :home "/login" :width :narrow))
 
 ;;; ------------------------------------------------------------------
+;;; The page to return to after logging in (spec/auth.md 3.4)
+
+(defun login-step-p (path)
+  "True when PATH, without its query, is a step of logging in or out: a
+login that returned there would loop or start again."
+  (let ((bare (subseq path 0 (position-if (lambda (c) (member c '(#\? #\#))) path))))
+    (or (member bare '("/login" "/login-info" "/logout") :test #'string=)
+        (string-prefix-p "/auth/" bare)
+        (string-prefix-p "/setup/" bare))))
+
+(defun return-path (raw)
+  "RAW when it is a page on this server to return to after logging in, else
+NIL.  It must begin with a single /: to a browser //host and /\\host are
+another site, and a login must never send a person to one."
+  (and (stringp raw)
+       (<= 1 (length raw) 2000)
+       (char= (char raw 0) #\/)
+       (not (and (> (length raw) 1) (char= (char raw 1) #\/)))
+       (notany (lambda (c) (or (char= c #\\) (< (char-code c) 32) (= (char-code c) 127)))
+               raw)
+       (not (login-step-p raw))
+       raw))
+
+(defun login-address (next)
+  "/login, asked to return to NEXT, a page from RETURN-PATH, when there is one."
+  (if next
+      (format nil "/login?next=~a" (hunchentoot:url-encode next :utf-8))
+      "/login"))
+
+;;; ------------------------------------------------------------------
 ;;; Logging in and out
 
-(defun provider-form (strategy)
-  "A button that signs in with STRATEGY's provider (spec/auth.md 3.5)."
+(defun provider-form (strategy next)
+  "A button that signs in with STRATEGY's provider (spec/auth.md 3.5), and
+returns to NEXT."
   `(:form (:@ :method "post" :action ,(format nil "/auth/~a" (tun.auth:strategy-name strategy)))
+          ,@(when next `((:input (:@ :type "hidden" :name "next" :value ,next))))
           ,(ui:form-actions ()
              (ui:button (:type "submit" :icon :log-in)
                (let ((provider (tun.auth:strategy-button-label strategy)))
                  (if provider (tr "Sign in with ~a" provider) (tr "Sign in")))))))
 
-(defun login-card (error)
+(defun login-card (error next)
   "The card with a button per identity provider, with ERROR after a refused
-sign-in (spec/auth.md 3.4)."
+sign-in (spec/auth.md 3.4); each returns to NEXT."
   (ui:card ()
     (apply #'ui:stack* (list :gap :lg)
            (when error
              (ui:alert (:variant :destructive :title (tr "You were not signed in")) error))
-           (or (mapcar #'provider-form (tun.auth:identity-providers))
+           (or (mapcar (lambda (strategy) (provider-form strategy next))
+                       (tun.auth:identity-providers))
                (list `(:p ,(tr "This Tun has no way to sign in yet.")))))))
 
 (defun no-account-yet ()
   (ui:card (:title (tr "No account yet?") :heading-level 2)
     `(:p ,(tr "An administrator gives you access with your email address. Sign in with it afterwards."))))
 
-(defun login-page (status &key error)
+(defun login-page (status &key error next)
   (guest-page status (tr "Sign in")
-              (login-card error)
-              (or (claimed-login-hint) (no-account-yet))
+              (login-card error next)
+              (or (claimed-login-hint next) (no-account-yet))
               :description (tr "Sign in to ~a." (application-title *web-app*))))
 
-(defun claimed-login (raw)
-  "GET /login?actor=role:name on a server with claimed identity."
+(defun claimed-login (raw next)
+  "GET /login?actor=role:name on a server with claimed identity, returning
+to NEXT."
   (cond ((parse-actor raw)
          ;; SameSite=Strict: a cross-site form post never carries the claim.
          (hunchentoot:set-cookie +actor-cookie+ :value (hunchentoot:url-encode raw :utf-8)
                                  :path "/" :http-only t :same-site "Strict")
-         (see-other (home-path)))
+         (see-other (or next (home-path))))
         (t (respond 400 (tr "Sign in")
                     (list (ui:alert (:variant :destructive :title (tr "Invalid actor"))
                             (format nil "~a " (tr "Use"))
@@ -88,11 +122,12 @@ sign-in (spec/auth.md 3.4)."
                     :guest t :home "/login"))))
 
 (defun handle-login (method)
-  (let ((claim (hunchentoot:get-parameter "actor")))
+  (let ((claim (hunchentoot:get-parameter "actor"))
+        (next (return-path (hunchentoot:get-parameter "next"))))
     (cond ((not (eq method :get)) nil)
-          ((and claim (claimed-identity-p *web-app*)) (claimed-login claim))
-          (*actor* (see-other (home-path)))
-          (t (login-page 200)))))
+          ((and claim (claimed-identity-p *web-app*)) (claimed-login claim next))
+          (*actor* (see-other (or next (home-path))))
+          (t (login-page 200 :next next)))))
 
 (defun handle-logout (method)
   (cond ((eq method :post)
@@ -121,11 +156,13 @@ have registered."
                           :value value :path "/auth/" :http-only t :same-site "Lax"
                           :secure (tun.http:https-request-p) :max-age max-age))
 
-(defun start-provider-sign-in (strategy &key setup-code name display-name)
-  "Send the browser to STRATEGY's provider, with a new attempt."
+(defun start-provider-sign-in (strategy &key setup-code name display-name return-path)
+  "Send the browser to STRATEGY's provider, with a new attempt that returns
+to RETURN-PATH."
   (multiple-value-bind (state url)
       (tun.auth:start-sign-in strategy (callback-url strategy)
-                              :setup-code setup-code :name name :display-name display-name)
+                              :setup-code setup-code :name name :display-name display-name
+                              :return-path return-path)
     (set-sign-in-cookie state tun.auth:+attempt-lifetime+)
     (see-other url)))
 
@@ -135,7 +172,7 @@ have registered."
   (let ((cookie (hunchentoot:cookie-in tun.auth:+sign-in-cookie+)))
     (set-sign-in-cookie "" 0)
     (handler-case
-        (multiple-value-bind (session account purpose)
+        (multiple-value-bind (session account purpose next)
             (tun.auth:finish-sign-in strategy
                                      :state (hunchentoot:get-parameter "state")
                                      :code (hunchentoot:get-parameter "code")
@@ -143,7 +180,9 @@ have registered."
                                      :cookie cookie :redirect-uri (callback-url strategy))
           (declare (ignore account))
           (set-session-cookie session)
-          (see-other (if (eq purpose :setup) "/access" (home-path))))
+          (see-other (cond ((eq purpose :setup) "/access")
+                           ((return-path next))
+                           (t (home-path)))))
       (tun.auth:sign-in-refused (refusal)
         (let ((detail (or (tun.auth:sign-in-refused-detail refusal)
                           ;; The server's log is for developers: source text.
@@ -161,7 +200,9 @@ have registered."
   "/auth/NAME and /auth/NAME/callback: NIL (404) for anything else."
   (let ((strategy (tun.auth:find-identity-provider name)))
     (cond ((null strategy) nil)
-          ((and (null step) (eq method :post)) (start-provider-sign-in strategy))
+          ((and (null step) (eq method :post))
+           (start-provider-sign-in strategy :return-path (return-path
+                                                          (hunchentoot:post-parameter "next"))))
           ((and (equal step "callback") (eq method :get)) (finish-provider-sign-in strategy))
           (t nil))))
 

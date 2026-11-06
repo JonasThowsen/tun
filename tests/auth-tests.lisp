@@ -79,9 +79,10 @@ parsed body (NIL when empty) and the headers."
                                  (string-prefix-p (format nil "~a=" name) (cdr header))))
            headers))
 
-(defun logged-in-status (port jar)
-  "303 when JAR holds a live session (/login-info sends the person home), else 401."
-  (web-request port "/login-info" :jar jar))
+(defun logged-in-p (port jar)
+  "True when JAR holds a live session: /access opens rather than sending the
+browser to the login."
+  (= 200 (web-request port "/access" :jar jar)))
 
 ;;; ------------------------------------------------------------------
 ;;; MCP and access tokens
@@ -295,27 +296,30 @@ parsed body (NIL when empty) and the headers."
     (with-provider (provider)
       (make-account "per" "person" "employee" "per@example.no")
       (is (= 200 (web-request port "/login")))
-      (is (= 401 (web-request port "/orders")) "no session, no pages")
+      (multiple-value-bind (status body headers) (web-request port "/orders")
+        (declare (ignore body))
+        (is (= 303 status) "no session, no pages")
+        (is (equal "/login?next=%2Forders" (location headers))))
       (is (= 403 (sign-in-as port provider "ingen@example.no")) "no account, no session")
       (multiple-value-bind (status jar) (sign-in-as port provider "PER@example.no")
         (is (= 303 status))
-        (is (= 303 (logged-in-status port jar)) "logged in")
+        (is (logged-in-p port jar) "logged in")
         (is (= 303 (web-request port "/logout" :method :post :jar jar)))
-        (is (= 401 (logged-in-status port jar)) "logged out")))))
+        (is (not (logged-in-p port jar)) "logged out")))))
 
 (test sessions-end
   (with-test-server (port :identity :authenticated)
     (with-provider (provider)
       (let ((eva (make-account "eva" "person" "employee" "eva@example.no")))
         (let ((jar (nth-value 1 (sign-in-as port provider "eva@example.no"))))
-          (is (= 303 (logged-in-status port jar)))
+          (is (logged-in-p port jar))
           (advance-clock (* 8 86400))
-          (is (= 401 (logged-in-status port jar)) "idle for more than 7 days"))
+          (is (not (logged-in-p port jar)) "idle for more than 7 days"))
         (let ((jar (nth-value 1 (sign-in-as port provider "eva@example.no"))))
           (advance-clock (* 6 86400))
-          (is (= 303 (logged-in-status port jar)) "in use within the week")
+          (is (logged-in-p port jar) "in use within the week")
           (update-account eva "status" "disabled")
-          (is (= 401 (logged-in-status port jar)) "the account was disabled"))))))
+          (is (not (logged-in-p port jar)) "the account was disabled"))))))
 
 (test the-last-admin-person-stays
   (with-test-app ()

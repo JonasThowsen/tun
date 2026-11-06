@@ -8,7 +8,7 @@
 
 (test login-and-access
   (with-test-server (port)
-    (is (= 401 (web-request port "/customers")) "not logged in")
+    (is (= 303 (web-request port "/customers")) "not logged in: to the login")
     (is (= 400 (web-request port "/login" :parameters '(("actor" . "boss:x")))))
     (let ((jar (make-instance 'drakma:cookie-jar)))
       (multiple-value-bind (status body headers)
@@ -185,10 +185,10 @@
   (let ((tun.web::*resources* '())
         (*actor* (parse-actor "employee:anna")))
     (is (equal (getf (first (tun.web::navigation-items)) :href) (tun.web::home-path)))
-    (is (string/= "/login-info" (tun.web::home-path))))
+    (is (string/= "/login" (tun.web::home-path))))
   (let ((tun.web::*resources* '())
         (*actor* nil))
-    (is (string= "/login-info" (tun.web::home-path)) "before anyone is logged in")))
+    (is (string= "/login" (tun.web::home-path)) "before anyone is logged in")))
 
 ;;; ------------------------------------------------------------------
 ;;; The menu: the business's work first, the system's pages last (spec/ui.md 8)
@@ -498,3 +498,65 @@
           (is (< (reduce #'max (mapcar #'length (record-strings record)) :initial-value 0)
                  +mib+)
               "nothing of the file"))))))
+
+;;; ------------------------------------------------------------------
+;;; One login page, and back to the page (spec/auth.md 3.4)
+
+(defun login-location (port path &key headers)
+  "Where GET PATH sends a browser without a session."
+  (location (nth-value 2 (web-request port path :headers headers))))
+
+(test a-page-sends-someone-not-logged-in-to-the-login
+  (with-test-server (port)
+    (is (equal "/login?next=%2Forders" (login-location port "/orders")) "a resource")
+    (is (equal "/login?next=%2Forders%2Ford_1" (login-location port "/orders/ord_1"))
+        "a record's page")
+    (is (equal "/login?next=%2Ftest-notater%2Fa%3Fq%3Dlim" (login-location port "/test-notater/a?q=lim"))
+        "a client's page, with its query, where it answered 403")
+    (is (equal "/login" (login-location port "/login-info")) "the old page goes to the login")
+    (is (= 401 (web-request port "/test-notater" :method :post
+                            :parameters '(("text" . "Ring Kari"))))
+        "a post cannot come back: 401")
+    (is (= 403 (web-request port "/test-notater" :jar (web-login port "viewer:vera")))
+        "logged in, a role the page does not admit: still 403")))
+
+(test htmx-sends-the-whole-page-to-the-login
+  (with-test-server (port)
+    (flet ((hx-redirect (path type current)
+             (multiple-value-bind (status body headers)
+                 (web-request port path
+                              :headers `(("HX-Request" . "true") ("HX-Request-Type" . ,type)
+                                         ("HX-Current-URL" . ,current)))
+               (declare (ignore body))
+               (and (= 200 status) (cdr (assoc :hx-redirect headers))))))
+      (is (equal "/login?next=%2Forders%2Ford_1%3Ftab%3D2"
+                 (hx-redirect "/test-tavle?part=board" "partial"
+                              (format nil "http://127.0.0.1:~d/orders/ord_1?tab=2" port)))
+          "a part of a page: back to the page the browser shows")
+      (is (equal "/login?next=%2Fcustomers"
+                 (hx-redirect "/customers" "full" (format nil "http://127.0.0.1:~d/orders" port)))
+          "a boosted link: back to where it led"))))
+
+(test a-login-returns-to-the-page
+  (with-test-server (port)
+    (multiple-value-bind (status body) (web-request port "/login"
+                                                    :parameters '(("next" . "/test-notater?q=lim")))
+      (is (= 200 status))
+      (is (search "next=%2Ftest-notater%3Fq%3Dlim" body) "the test sign-in links keep the page"))
+    (flet ((claimed-to (next)
+             (location (nth-value 2 (web-request port "/login"
+                                                 :parameters `(("actor" . "employee:anna")
+                                                               ("next" . ,next)))))))
+      (is (equal "/test-notater?q=lim" (claimed-to "/test-notater?q=lim")))
+      (dolist (elsewhere (list "https://example.com/" "//example.com" "/\\example.com"
+                               "/login" "/login?next=%2Forders" "/logout" "/auth/test/callback"
+                               "/setup/abc" (format nil "/orders~cx" #\Newline)
+                               (format nil "/~a" (make-string 2000 :initial-element #\a))))
+        (is (equal "/orders" (claimed-to elsewhere)) "~s goes home" elsewhere)))
+    (let ((jar (web-login port "employee:anna")))
+      (flet ((logged-in-to (next)
+               (location (nth-value 2 (web-request port "/login" :jar jar
+                                                   :parameters `(("next" . ,next)))))))
+        (is (equal "/test-notater" (logged-in-to "/test-notater"))
+            "already logged in: straight to the page")
+        (is (equal "/orders" (logged-in-to "//example.com")))))))

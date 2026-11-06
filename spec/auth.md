@@ -133,6 +133,24 @@ offers the providers is §3.4.
 - `GET /login` shows a button per identity provider (§3.5), in the order
   the application lists them, and says that an administrator gives
   people access by their email. After a refused sign-in it shows why.
+- **A page that needs a login.** A GET or HEAD of a page that needs a
+  login, from someone not logged in, answers 303 to `/login?next=PATH`,
+  PATH being the page's path and query: a client's pages (`ui.md` §6),
+  the resource lists and records, and files (`files.md` §5.2). An htmx
+  request gets `HX-Redirect` to the same address instead, PATH then being
+  the page the browser shows (`HX-Current-URL`), so the whole page goes
+  to the login. Any other method answers 401 with a page saying to log
+  in, as it did. `/` with no home page for them goes to `/login`.
+- **Back to the page.** After a login started from `/login?next=PATH`
+  the answer is 303 to PATH (§3.5 step 6); so is `GET /login?next=PATH`
+  from someone already logged in, and `/login?actor=role:name&next=PATH`
+  in claimed mode. PATH is kept only when it is a path on this server:
+  it begins with one `/`, holds no `\` and no control character, is at
+  most 2000 characters, and is not `/login`, `/logout`, or under
+  `/auth/` or `/setup/`. Any other `next` is ignored, and the person goes
+  to the home page. The provider never sees PATH: the attempt stores it.
+- `/login-info`, the old page that only said to log in, answers 303 to
+  `/login`.
 - An application lists at least one provider. An authenticated server
   whose application lists none refuses to start, with exit status 2 and
   a line saying to add one, such as `(:workos ...)`; so does one that
@@ -190,7 +208,8 @@ settings, at least one (§3.4).
    posts to `/auth/NAME`.
 2. The server starts an attempt: a `state` of 256 random bits, a `nonce`
    and a PKCE verifier. It stores the state's SHA-256, the nonce, the
-   verifier and what the attempt is for (a login, or setup: §4), for 10
+   verifier, what the attempt is for (a login, or setup: §4) and the
+   page to return to (§3.4), for 10
    minutes, and sets the cookie `tun_sign_in` to the state (`HttpOnly`,
    `SameSite=Lax`, `Path=/auth/`, `Secure` as in §3.3, 10 minutes). It
    answers 303 to the provider's authorization endpoint with
@@ -216,8 +235,8 @@ settings, at least one (§3.4).
    to it now, audited as `identity_linked`. Nobody else signs in: there
    is no account to sign up for.
 6. A session starts (§3.3), audited as `login`
-   with the session as the credential, and the answer is 303 to the home
-   page.
+   with the session as the credential, and the answer is 303 to the page
+   the login started from (§3.4), else to the home page.
 
 Refusals answer the login page with a message (LABEL is the strategy's
 label), are not audited, and are retained as rejected requests

@@ -194,9 +194,10 @@ after it keeps it (spec/ui.md 4.1)."
     (when (and page (page-available-p page))
       (unless (and *actor* (actor-permits-p *actor* (staff-page-policy page)))
         (return-from dispatch-staff-page
-          (respond 403 (tr "No access")
-                   (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
-                                   (tr "The page needs a role other than yours."))))))
+          (or (require-login)
+              (respond 403 (tr "No access")
+                       (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
+                               (tr "The page needs a role other than yours.")))))))
       (let ((form (jobj)) (query (jobj)))
         (when (eq method :post)
           (dolist (pair (hunchentoot:post-parameters*))
@@ -1447,11 +1448,15 @@ record comes last, apart and marked."
 ;;; ------------------------------------------------------------------
 ;;; Handlers
 
-(defun claimed-login-hint ()
-  "On a server with claimed identity: how to log in as anyone, and links that do."
+(defun claimed-login-hint (&optional next)
+  "On a server with claimed identity: how to log in as anyone, and links that
+do, returning to NEXT."
   (when (claimed-identity-p *web-app*)
     (flet ((as (actor label)
-             (ui:button (:href (format nil "/login?actor=~a" actor) :variant :outline) label)))
+             (ui:button (:href (format nil "/login?actor=~a~@[&next=~a~]" actor
+                                       (and next (hunchentoot:url-encode next :utf-8)))
+                               :variant :outline)
+               label)))
       (ui:card (:title (tr "Test sign-in") :heading-level 2
                        :description (tr "This server lets you choose who you are: /login?actor=role:name, with the role admin, employee or viewer."))
                (ui:cluster ()
@@ -1459,14 +1464,36 @@ record comes last, apart and marked."
                            (as "employee:demo" (tr "As an employee"))
                            (as "viewer:demo" (tr "With read access")))))))
 
+(defun shown-page-path ()
+  "The page to return to after logging in: for htmx asking for part of a
+page, the page the browser shows (HX-Current-URL); else this request's."
+  (return-path
+   (if (htmx-request-p)
+       (let* ((url (or (hunchentoot:header-in* :hx-current-url) ""))
+              (host (search "://" url)))
+         (and host (subseq url (or (position #\/ url :start (+ host 3)) (length url)))))
+       (hunchentoot:request-uri*))))
+
 (defun require-login ()
-  "A 401 page when no one is logged in, else NIL."
-  (unless *actor*
-    (respond 401 (tr "Sign in")
-             (list (ui:alert (:variant :info :title (tr "You are not signed in"))
-                             (tr "Sign in to see this page."))
-                   (ui:cluster () (ui:button (:href "/login" :icon :log-in) (tr "Sign in")))
-                   (claimed-login-hint)))))
+  "NIL when someone is logged in.  Else a GET or HEAD goes to the login,
+which returns to this page (spec/auth.md 3.4), and any other request gets a
+401 page."
+  (cond (*actor* nil)
+        ((not (member (hunchentoot:request-method*) '(:get :head)))
+         (login-required-page))
+        ((hunchentoot:header-in* :hx-request)
+         ;; Following a 303, htmx would put the login page into this one.
+         (setf (hunchentoot:header-out "HX-Redirect") (login-address (shown-page-path)))
+         "")
+        (t (see-other (login-address (shown-page-path))))))
+
+(defun login-required-page ()
+  "The 401 page for a request that cannot return after logging in: a post."
+  (respond 401 (tr "Sign in")
+           (list (ui:alert (:variant :info :title (tr "You are not signed in"))
+                   (tr "Sign in to see this page."))
+                 (ui:cluster () (ui:button (:href "/login" :icon :log-in) (tr "Sign in")))
+                 (claimed-login-hint))))
 
 (defun resource-page (resource &key error-json values (status 200))
   "The list of RESOURCE and, unless the actor only views, its create form;
@@ -1596,11 +1623,13 @@ that posts the confirmation token back."
 
 (defun home-path ()
   "Where / and a login lead: the first resource with detail pages (the work
-list), else the first resource, else the first page in the menu."
+list), else the first resource, else the first page in the menu; with none
+of them, /access for someone logged in and /login for anyone else."
   (let ((home (or (find-if #'resource-detail-screen *resources*) (first *resources*))))
     (cond (home (resource-path home))
           ((and *actor* (navigation-items)) (getf (first (navigation-items)) :href))
-          (t "/login-info"))))
+          (*actor* "/access")
+          (t "/login"))))
 
 (defun cross-origin-post-p ()
   "True for a POST a browser sent from another origin (spec/auth.md 3.3).
@@ -1681,7 +1710,7 @@ uncached, so a page rendered before a deploy still gets styles."
                  (handle-setup method (second parts)))
                 ((and (<= 2 (length parts) 3) (string= (first parts) "auth"))
                  (handle-sign-in method (second parts) (third parts)))
-                ((string= path "/login-info") (or (require-login) (see-other (home-path))))
+                ((string= path "/login-info") (see-other "/login"))
                 (resource (handle-resource resource method))
                 ((and detail (= 2 (length parts)) (eq method :get))
                  (or (require-login) (detail-page detail (second parts))))

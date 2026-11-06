@@ -220,6 +220,7 @@ all (spec/auth.md 3.4).  NIL when every one can be made."
    (setup-hash :type (string :max 64) :input nil :secret t)
    (account-name :type (string :max 64) :input nil)
    (display-name :type (string :max 120) :input nil)
+   (return-path :type (string :max 2000) :input nil)
    (expires-at :type timestamp :input nil)))
 
 (defparameter +attempt-lifetime+ 600 "Seconds a sign-in attempt waits for the provider.")
@@ -288,11 +289,12 @@ browser to a provider."
     (when problems
       (fail-fields (nreverse problems)))))
 
-(defun start-sign-in (strategy redirect-uri &key setup-code name display-name)
+(defun start-sign-in (strategy redirect-uri &key setup-code name display-name return-path)
   "Begin signing in with STRATEGY, an OIDC strategy, whose callback is
 REDIRECT-URI.  With SETUP-CODE the attempt creates the first admin, NAME,
-when it comes back.  Values the state, for the tun_sign_in cookie, and the
-URL to send the browser to."
+when it comes back.  RETURN-PATH, the page the login started from, waits in
+the attempt, so the provider never sees it.  Values the state, for the
+tun_sign_in cookie, and the URL to send the browser to."
   (check-type strategy oidc-strategy)
   (check-type redirect-uri string)
   (let ((state (new-secret-token))
@@ -307,6 +309,7 @@ URL to send the browser to."
                              :purpose (if setup-code "setup" "login")
                              :setup-hash (and setup-code (sha256-hex setup-code))
                              :account-name name :display-name display-name
+                             :return-path return-path
                              :expires-at (+ (now) +attempt-lifetime+))))
     (values state
             (authorization-url (strategy-authorization-endpoint strategy)
@@ -439,8 +442,9 @@ in the caller's write transaction, when setup is still open in this process."
 (defun finish-sign-in (strategy &key state cookie code error redirect-uri)
   "Finish signing in with STRATEGY: the browser came back with STATE, and
 CODE or the provider's ERROR, carrying COOKIE.  Values the new session's
-cookie value, the account, and :SETUP or :LOGIN for what the attempt was;
-signals SIGN-IN-REFUSED when nobody is logged in."
+cookie value, the account, :SETUP or :LOGIN for what the attempt was, and
+the path the login started from or NIL; signals SIGN-IN-REFUSED when nobody
+is logged in."
   (check-type strategy oidc-strategy)
   (let ((attempt (take-attempt strategy state cookie)))
     (when (or error (not (stringp code)))
@@ -456,4 +460,4 @@ signals SIGN-IN-REFUSED when nobody is logged in."
           (multiple-value-bind (cookie account)
               (with-transaction (:write)
                 (log-in-session (identity-account strategy claims) "login"))
-            (values cookie account :login))))))
+            (values cookie account :login (sign-in-attempt-return-path attempt)))))))

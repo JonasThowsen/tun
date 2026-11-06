@@ -440,7 +440,7 @@ the address alone:
   anyone, admins included: the code that decided who may see it is gone.
 - A file whose record the caller may not see, a file that does not exist,
   a file whose record was deleted and an id that is not one all get the
-  same 404. Without a caller, the answer is the 401 page a staff page gives («Du er ikke innlogget»).
+  same 404. Without a caller, a GET goes to the login and back to the file (`auth.md` §3.4).
 - `/files/` is Tun's path, as `/login` is: no page takes the prefix
   `files`.
 
@@ -674,7 +674,7 @@ files as any other.
     refused;
   - `GET /files/ID`: the bytes and every header of §5.3, 304, 404 alike
     for another's record, an unknown id, a deleted record and an entity no
-    longer defined or taking files, 401 without a caller, an access
+    longer defined or taking files, the login and back without a caller, an access
     token;
   - deleting a record deletes its files, and a rollback keeps them; the
     sweep deletes files whose record is gone and leaves an unknown
