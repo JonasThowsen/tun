@@ -2,8 +2,10 @@
 
 - loop: rebase-named-base
 - mode: reviewed
-- stage: build
+- stage: shown
 - base: a47f7486e9f01b9a67e3f9261aecf69ca6be1da9
+- verified: 5e48df9235a95c90417ae06930aec20a890294b0
+- shown: 5e48df9235a95c90417ae06930aec20a890294b0
 
 ## Brief
 
@@ -40,3 +42,6 @@ loop cannot be rebased at all.
 - 2026-11-07 11:59  started, reviewed
 - 2026-11-07 12:00  gate A asked of a reviewer
 - 2026-11-07 12:03  gate A: approve (reviewer): Criteria cover the brief, each decidable; the new assertion fails on the old code; spec agrees. Notes: --onto case and a docs half-sentence added at build.
+- 2026-11-07 12:11  verify 1: failed test
+- 2026-11-07 12:17  verify 2: passed build, test, check
+- 2026-11-07 12:17  shown (/)
