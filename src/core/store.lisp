@@ -35,6 +35,11 @@ AWAIT to see that something changed (spec/waiting.md 1).  Guarded by COMMIT-LOCK
 (the eval module wraps SB-THREAD:MAKE-THREAD to pass it on): no write
 transaction opens there (core.md §8.3).")
 
+(defvar *writes-refused* nil
+  "NIL, or why no write transaction opens here: bound in the body of a
+:WAIT operation, which reads and never writes (spec/waiting.md 1).  Core's
+audit binds it to NIL around the entry it writes for a refusal.")
+
 (defgeneric store-open (store) (:documentation "Open connections; idempotent."))
 (defgeneric store-close (store))
 (defgeneric store-migrate (store classes)
@@ -238,6 +243,8 @@ needs is visible, such as waking the worker of a job just enqueued."
          (error 'read-only-violation :message "Cannot open a write transaction inside a read transaction"))
         ((and *under-eval* (eq mode :write))
          (error 'read-only-violation :message "Cannot open a write transaction in a thread started by eval"))
+        ((and *writes-refused* (eq mode :write) (null *transaction-mode*))
+         (error 'read-only-violation :message *writes-refused*))
         ((and (null *transaction-mode*) (eq mode :write))
          (let ((after-commit '()))
            (multiple-value-prog1

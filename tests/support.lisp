@@ -32,7 +32,14 @@
            #:fuzz-failure-shrunk #:fuzz-failure-alone #:fuzz-call-actor #:fuzz-call-input
            #:fuzz-call-purpose #:outcome-kind #:outcome-code #:outcome-seconds #:failure-text
            #:shown-input #:record-ref-id #:take-connection-attempts
-           #:fuzz-summary #:check-every-tool-withstands-fuzzing #:with-connections-refused))
+           #:fuzz-summary #:check-every-tool-withstands-fuzzing #:with-connections-refused
+           ;; record policies in every tool (spec/testing.md 3)
+           #:check-record-policies-in-tools #:check-every-tool-keeps-to-the-record-policies
+           #:policy-report #:policy-report-seed #:policy-report-tools #:policy-report-calls
+           #:policy-report-compared #:policy-report-past-validation #:policy-report-skipped
+           #:policy-report-not-made #:policy-report-gets #:policy-report-seconds
+           #:policy-report-failures #:policy-failure-tool #:policy-failure-actor
+           #:policy-failure-problem #:policy-failure-text #:policy-summary))
 
 (in-package #:tun.test-support)
 

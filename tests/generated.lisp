@@ -65,6 +65,16 @@ or on Postgres when the client needs it."
                                                      :postgres
                                                      :memory)))
 
+(defun check-every-tool-of-the-client-keeps-to-the-record-policies (class system package packages
+                                                                    variables)
+  "Check that every tool of the client SYSTEM defines in PACKAGE on CLASS
+keeps to the record policies (spec/testing.md 3), from the default scenario
+of PACKAGES when there is one, with VARIABLES, the client's own, unset."
+  (check-every-tool-keeps-to-the-record-policies (client-operations package) system
+                                                 :class class
+                                                 :scenario (default-scenario packages)
+                                                 :variables variables))
+
 (defun check-every-scenario-makes-its-records (class system packages variables)
   "Run each scenario defined in PACKAGES, package names, on a fresh Postgres
 database of its own, with VARIABLES unset around it."
@@ -97,9 +107,9 @@ whose system is NAME, a string, and whose package is PACKAGE, a string
 *APPLICATION-CLASS* in PACKAGE. Each test is named for what it checks,
 prefixed GENERATED-, in the current package. The scenario test runs the
 scenarios defined in PACKAGE and in the current package, and the fuzzing
-test starts each tool from the one of them named default. Around each test,
-and around each scenario that test runs, *ISOLATED-VARIABLES* and the
-variables ISOLATE names are bound to NIL."
+and record-policy tests start each tool from the one of them named
+default.  Around each test, and around each scenario that test runs,
+*ISOLATED-VARIABLES* and the variables ISOLATE names are bound to NIL."
   (check-type name string)
   (check-type package string)
   (let ((class (application-class-variable package))
@@ -124,4 +134,7 @@ variables ISOLATE names are bound to NIL."
                             ,class ,name ',scenario-packages ',variables))
          ,(generated-test "EVERY-TOOL-WITHSTANDS-FUZZING"
                           `(check-every-tool-of-the-client-withstands-fuzzing
+                            ,class ,name ,package ',scenario-packages ',isolate))
+         ,(generated-test "EVERY-TOOL-KEEPS-TO-THE-RECORD-POLICIES"
+                          `(check-every-tool-of-the-client-keeps-to-the-record-policies
                             ,class ,name ,package ',scenario-packages ',isolate))))))

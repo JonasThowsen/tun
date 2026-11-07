@@ -282,6 +282,13 @@ messaging module is enabled; otherwise do nothing.  Returns the message or NIL."
     (if entity (entity-json-name (find-entity-class entity)) :null)))
 
 (defun describe-operation (op)
+  (let ((json (describe-operation-fields op))
+        (beyond (operation-beyond-record-policy op)))
+    (when beyond
+      (setf (jget json "beyond_record_policy") beyond))
+    json))
+
+(defun describe-operation-fields (op)
   (jobj "name" (operation-tool op)
         "title" (operation-title op)
         "entity" (operation-entity-name op)

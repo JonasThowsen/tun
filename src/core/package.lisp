@@ -92,7 +92,7 @@
    #:deadline-remaining-ms #:sleep-with-deadline #:without-deadline-interrupts #:*interruptible* #:with-deadline
    #:call-with-deadline #:start-deadline-watchdog
    ;; store port
-   #:store #:*store* #:*transaction-mode* #:*under-eval* #:*now-function*
+   #:store #:*store* #:*transaction-mode* #:*under-eval* #:*writes-refused* #:*now-function*
    #:store-open #:store-close #:store-migrate #:store-call-in-transaction #:store-insert
    #:store-update #:store-delete #:store-find #:store-select #:store-lock-row #:store-description
    #:store-claim-presence #:store-present-p #:store-presences
@@ -140,6 +140,7 @@
    ;; operations
    #:operation #:define-operation #:operation-name #:operation-tool #:operation-entity
    #:operation-kind #:operation-title #:operation-description #:operation-policy
+   #:operation-beyond-record-policy
    #:operation-confirm-p #:operation-destructive-p #:operation-test-only-p #:operation-debug-only-p
    #:operation-visible-p #:operation-parameters
    #:operation-draft-p #:operation-source #:operation-mutating-p #:operation-idempotent-p

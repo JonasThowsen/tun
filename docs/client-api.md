@@ -89,6 +89,12 @@ does not admit, such as an item authored by someone else, is `forbidden`.
 
 Code that must reach records the caller cannot, such as a notice for an
 admin, runs as the system: `(with-actor ((system-actor "items")) ...)`.
+A tool that shows the caller such records on purpose, such as a system
+reading the items its person reported, says why:
+`:beyond-record-policy "WHY"` in its options. The generated tests check
+every other tool for each role: a record the caller's policy hides is
+answered as one that does not exist, and is never shown
+(`spec/testing.md` §3).
 
 ## Operations, rules, computed fields and hooks
 
@@ -135,8 +141,8 @@ rolls back the whole transaction, including all hook effects.
 
 An agent's call can wait for what a person does in the UI, such as
 answering its question, and get it in the same call (`spec/waiting.md`).
-The operation is `:kind :wait`; its body runs outside a transaction, and
-`await` looks again after every commit until the value is what it waits
+The operation is `:kind :wait`; its body runs outside a transaction and
+may not write, and `await` looks again after every commit until the value is what it waits
 for, or the time is up (at most 600 seconds). It returns the last value
 and whether it came.
 

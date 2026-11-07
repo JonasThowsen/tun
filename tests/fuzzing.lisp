@@ -189,28 +189,38 @@ input; and :CONFIRM, with the token it gave for this input."
 were not JSON a request may carry, which MCP refuses before any tool runs."
   kind code result condition seconds)
 
-(defstruct (call-state (:constructor make-call-state (fingerprint commits rejections)))
+(defstruct (call-state (:constructor make-call-state
+                           (fingerprint known-ids commits rejections
+                            &aux (rejections-commits commits))))
   "What the calls of one tool on one database share: the records as they
-were after the last call, as RECORDS-FINGERPRINT gives them, the store's
-commit count then, the rejected audit entries of each tool as
+were after the last call, as RECORDS-FINGERPRINT gives them, with the ids of
+the records of each entity with a record policy then (KNOWN-IDS), the
+store's commit count then, the rejected audit entries of each tool as
 REJECTION-COUNTS gives them with the commit count they were counted at, and
 the confirmation token each actor was given last."
   fingerprint
+  known-ids
   commits
   rejections
-  (rejections-commits commits)
+  rejections-commits
   (tokens (make-hash-table :test 'equal)))
 
 (defun stored-entity-classes ()
-  "The entities whose records an erring call must leave as they were: those
-stored in a table of their own and not internal (spec/testing.md 2), settings
-among them; on a store that cannot apply record policies, those without
+  "The entities whose records an erring call, or a viewer's, must leave as
+they were (spec/testing.md 2): every one stored in a table of its own,
+internal ones and settings among them, but the audit's entries, which a
+refusal writes; on a store that cannot apply record policies, those without
 one, which no tool there can reach."
   (let ((store (application-store *app*)))
     (remove-if (lambda (class)
-                 (or (entity-internal-p class) (entity-embedded-p class)
+                 (or (eq (class-name class) 'audit-entry) (entity-embedded-p class)
                      (and (entity-record-policy class) (not (store-runs-queries-p store)))))
                (all-entity-classes))))
+
+(defun policy-entity-classes ()
+  "The entities of *APP* with a record policy, when its store applies them."
+  (and (store-runs-queries-p (application-store *app*))
+       (remove-if-not #'entity-record-policy (stored-entity-classes))))
 
 (defmacro reading-every-record (() &body body)
   "Run BODY in a read transaction of *APP* as a system actor, whom no record
@@ -219,19 +229,64 @@ policy holds back."
      (with-actor ((system-actor "fuzz"))
        (with-transaction (:read) ,@body))))
 
+(defun records-text (class)
+  "Each record of CLASS in *APP*, its id and stored values, in insertion
+order, as one text."
+  (with-output-to-string (out)
+    (dolist (record (select (class-name class) :order-by '(("seq" :asc))))
+      (prin1 (entity-id record) out)
+      (dolist (field (entity-fields class))
+        (prin1 (type->db (field-type field) (field-value record field)) out)))))
+
+(defun table-digests (classes)
+  "A hash table from the json name of each of CLASSES to a digest of its
+table's rows in insertion order, which the Postgres server computes, all
+in one query."
+  (let ((digests (make-hash-table :test 'equal)))
+    (when classes
+      (loop for (name digest)
+              in (store-query (application-store *app*)
+                              (format nil "~{~a~^ UNION ALL ~}"
+                                      (mapcar (lambda (class)
+                                                (format nil "SELECT '~a', (SELECT md5(coalesce(~
+                                                             string_agg(t::text, ',' ORDER BY t.seq), '')) ~
+                                                             FROM \"~a\" t)"
+                                                        (entity-json-name class) (entity-table class)))
+                                              classes))
+                              '())
+            do (setf (gethash name digests) digest)))
+    digests))
+
+(defun policy-record-ids (classes)
+  "The ids of every record of those of CLASSES with a record policy, read
+in one query from their Postgres tables."
+  (let ((tables (loop for class in classes
+                      when (entity-record-policy class)
+                        collect (format nil "SELECT id FROM \"~a\"" (entity-table class)))))
+    (and tables
+         (mapcar #'first (store-query (application-store *app*)
+                                      (format nil "~{~a~^ UNION ALL ~}" tables) '())))))
+
 (defun records-fingerprint ()
   "Every record of each of STORED-ENTITY-CLASSES in *APP*, as a list of
-(entity-name . text), the text each record's id and stored values in
-insertion order."
-  (reading-every-record ()
-      (loop for class in (stored-entity-classes)
-            collect (cons (entity-json-name class)
-                          (with-output-to-string (out)
-                            (dolist (record (select (class-name class) :order-by '(("seq" :asc))))
-                              (prin1 (entity-id record) out)
-                              (dolist (field (entity-fields class))
-                                (prin1 (type->db (field-type field) (field-value record field))
-                                       out))))))))
+(entity-name . text): on Postgres the digest of its table, else the text
+RECORDS-TEXT gives.  Its second value is a hash table holding the id of
+each record of an entity with a record policy."
+  (let ((ids (make-hash-table :test 'equal))
+        (classes (stored-entity-classes))
+        (postgres (store-runs-queries-p (application-store *app*))))
+    (values
+     (reading-every-record ()
+       ;; Records with a policy are only on Postgres (store.md 6 item 7).
+       (dolist (id (and postgres (policy-record-ids classes)))
+         (setf (gethash id ids) t))
+       (let ((digests (and postgres (table-digests classes))))
+         (loop for class in classes
+               collect (cons (entity-json-name class)
+                             (if postgres
+                                 (gethash (entity-json-name class) digests)
+                                 (records-text class))))))
+     ids)))
 
 (defun rejection-counts ()
   "How many audit entries with outcome rejected each tool has in *APP*: a
@@ -259,22 +314,99 @@ a nested call's entry for the same tool cannot be told from the outer's."
 
 (defun fresh-call-state ()
   "A CALL-STATE for the calls about to be made on *APP*."
-  (make-call-state (records-fingerprint) (store-commits (application-store *app*))
-                   (rejection-counts)))
+  (multiple-value-bind (fingerprint ids) (records-fingerprint)
+    (make-call-state fingerprint ids (store-commits (application-store *app*))
+                     (rejection-counts))))
 
 (defun changed-entities (state)
   "The entities whose records changed since STATE's fingerprint, which is
 then taken again: only when the store has committed since."
   (let ((commits (store-commits (application-store *app*))))
     (unless (eql commits (call-state-commits state))
-      (let ((before (call-state-fingerprint state))
-            (now (records-fingerprint)))
-        (setf (call-state-fingerprint state) now
-              (call-state-commits state) commits)
-        (loop for (name . text) in now
-              for old = (cdr (assoc name before :test #'string=))
-              unless (equal text old)
-                collect name)))))
+      (let ((before (call-state-fingerprint state)))
+        (multiple-value-bind (now ids) (records-fingerprint)
+          (setf (call-state-fingerprint state) now
+                (call-state-known-ids state) ids
+                (call-state-commits state) commits)
+          (loop for (name . text) in now
+                for old = (cdr (assoc name before :test #'string=))
+                unless (equal text old)
+                  collect name))))))
+
+;;; What an actor reaches (spec/store.md 6): what the store reads as that
+;;; actor, against what it reads as the system actor.
+
+(defun record-ids (class-name &optional actor)
+  "The ids of the records of CLASS-NAME in *APP* that ACTOR, a string, or
+the system actor without one, reaches, in insertion order."
+  (with-application (*app*)
+    (with-actor ((if actor (parse-actor actor) (system-actor "fuzz")))
+      (with-transaction (:read)
+        (mapcar #'entity-id (select class-name :order-by '(("seq" :asc))))))))
+
+(defun reaches-p (class-name id actor)
+  "True when ACTOR, a string, reaches the record ID of CLASS-NAME in *APP*:
+at once when the clause of the actor's role is T, or there is none; else
+as the store reads it as the actor."
+  (let* ((actor (parse-actor actor))
+         (clause (assoc (actor-role actor) (entity-record-policy (find-entity-class class-name)))))
+    (cond ((null clause) nil)
+          ((eq t (second clause)) t)
+          (t (with-application (*app*)
+               (with-actor (actor)
+                 (with-transaction (:read)
+                   (and (fetch class-name id) t))))))))
+
+(defun exists-p (class-name id)
+  (reading-every-record () (and (fetch class-name id) t)))
+
+(defun shown-records (result classes)
+  "The (class . id) of each object in RESULT, a tool's result as JSON, whose
+id has the prefix of one of CLASSES, entity classes."
+  (let ((shown '()))
+    (labels ((walk (value)
+               (cond ((hash-table-p value)
+                      (let* ((id (gethash "id" value))
+                             (class (and (stringp id)
+                                         (find-if (lambda (class)
+                                                    (let ((prefix (entity-id-prefix class)))
+                                                      (and (> (length id) (length prefix))
+                                                           (string= prefix id :end2 (length prefix))
+                                                           (char= #\_ (char id (length prefix))))))
+                                                  classes))))
+                        (when class
+                          (pushnew (cons class id) shown :test #'equal)))
+                      (maphash (lambda (key item) (declare (ignore key)) (walk item)) value))
+                     ((and (vectorp value) (not (stringp value))) (map nil #'walk value))
+                     ((consp value) (mapc #'walk value)))))
+      (walk result))
+    (nreverse shown)))
+
+(defun hidden-records-shown (operation call outcome state)
+  "The records of an entity with a record policy that OUTCOME's result
+shows and CALL's actor does not reach, as (entity-name . id), judged now;
+leaving out those the call itself inserted, which STATE's known ids, taken
+before it, lack, and every one for a tool declared :BEYOND-RECORD-POLICY
+(spec/testing.md 2, sixth point).  Called before STATE's fingerprint is
+taken again."
+  (let ((classes (and (eq (outcome-kind outcome) :result)
+                      (not (operation-beyond-record-policy operation))
+                      (policy-entity-classes))))
+    (when classes
+      (loop for (class . id) in (shown-records (outcome-result outcome) classes)
+            when (and (gethash id (call-state-known-ids state))
+                      (not (reaches-p (class-name class) id (fuzz-call-actor call)))
+                      (exists-p (class-name class) id))
+              collect (cons (entity-json-name class) id)))))
+
+(defun viewer-mutation-p (operation)
+  "True for a tool a viewer may call to change records: a mutating one whose
+policy is viewer, which :VIEWER-MUTATION allows."
+  (and (operation-mutating-p operation) (eq (operation-policy operation) :viewer)))
+
+(defun viewer-call-p (call)
+  (let ((actor (parse-actor (fuzz-call-actor call))))
+    (and actor (eq (actor-role actor) :viewer))))
 
 (defun record-ref-id (ref)
   "The id REF names in *APP*: of the record of its entity inserted at its
@@ -414,11 +546,12 @@ one a confirmation used."
 a sentence for the report and a keyword for its kind, or NIL when nothing.
 Takes the fingerprint and the connection attempts anew, so it is called
 after every call."
-  (let ((attempts (take-connection-attempts))
-        (changed (changed-entities state))
-        (rejections (new-rejections (operation-tool operation) state))
-        (kind (outcome-kind outcome))
-        (code (outcome-code outcome)))
+  (let* ((attempts (take-connection-attempts))
+         (hidden (hidden-records-shown operation call outcome state))
+         (changed (changed-entities state))
+         (rejections (new-rejections (operation-tool operation) state))
+         (kind (outcome-kind outcome))
+         (code (outcome-code outcome)))
     (cond (attempts
            (values (format nil "it tried to reach another system: ~{~a~^; ~}" attempts)
                    :connection))
@@ -448,6 +581,16 @@ after every call."
            (values (format nil "it refused with ~a but left no rejected audit entry (core.md §3.8)"
                            (json-name-of code))
                    :unaudited))
+          (hidden
+           (values (format nil "it showed ~{~a~^, ~}, which ~a's record policy hides (store.md §6); ~
+                                a tool that does so on purpose says why with :beyond-record-policy"
+                           (mapcar (lambda (record) (format nil "the ~a ~a" (car record) (cdr record)))
+                                   hidden)
+                           (fuzz-call-actor call))
+                   :hidden-record))
+          ((and changed (viewer-call-p call) (not (viewer-mutation-p operation)))
+           (values (format nil "a viewer's call changed records of ~{~a~^, ~}" changed)
+                   :viewer-wrote))
           ((and (eq (operation-kind operation) :wait) (> (outcome-seconds outcome) 1))
            (values (format nil "it waited ~,1f seconds" (outcome-seconds outcome)) :waited)))))
 

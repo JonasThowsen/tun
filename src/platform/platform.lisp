@@ -29,17 +29,49 @@
         "reason" (or (audit-entry-reason entry) :null)
         "credential" (or (audit-entry-credential entry) :null)))
 
+(defun audit-entry-shown-p (entry)
+  "True when the caller, *ACTOR*, may see ENTRY (core.md 3.8): unless it
+names a record of an entity with a record policy, which the caller's
+policy must reach; or, the record gone, the clause of the caller's role
+be T.  The system actor sees every entry, and so does every caller on a
+store that cannot hold records with a policy (store.md 6 item 7)."
+  (let* ((type (audit-entry-entity-type entry))
+         (id (audit-entry-entity-id entry))
+         (class (and type id (find-entity-by-json-name type)))
+         (policy (and class (entity-record-policy class))))
+    (or (null policy)
+        (not (store-runs-queries-p *store*))
+        (eq (actor-role *actor*) :system)
+        (fetch (class-name class) id)
+        (and (eq t (second (assoc (actor-role *actor*) policy)))
+             (null (with-actor ((system-actor "audit")) (fetch (class-name class) id)))))))
+
+(defun shown-audit-entries (where limit)
+  "The newest LIMIT audit entries matching WHERE, a condition or NIL, that
+the caller may see, newest first: read a page at a time, past those it
+may not."
+  (let ((shown '())
+        (page (max 50 limit)))
+    (loop for offset from 0 by page
+          for entries = (select 'audit-entry :where where :order-by '(("seq" :desc))
+                                             :limit page :offset offset)
+          do (dolist (entry entries)
+               (when (audit-entry-shown-p entry)
+                 (push entry shown)
+                 (when (= (length shown) limit)
+                   (return-from shown-audit-entries (nreverse shown)))))
+          while (= (length entries) page))
+    (nreverse shown)))
+
 (define-operation audit-list ((entity-type :type (string :max 100) :label "Entity type")
                               (entity-id :type (string :max 100) :label "Entity ID")
                               (limit :type (integer :min 1 :max 100) :default 20 :label "Limit"))
     (:kind :read :title "List the audit log"
-     :description "The audit log, newest first. It never holds tokens or secrets.")
+     :description "The audit log, newest first. It never holds tokens or secrets, and an entry about a record the caller's record policy hides is left out.")
   (let ((where (remove nil (list (and entity-type `(:= "entity_type" ,entity-type))
                                  (and entity-id `(:= "entity_id" ,entity-id))))))
     (jobj "items" (jarr (mapcar #'audit-entry->json
-                                (select 'audit-entry :where (and where `(:and ,@where))
-                                                     :order-by '(("seq" :desc))
-                                                     :limit limit))))))
+                                (shown-audit-entries (and where `(:and ,@where)) limit))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The virtual clock (test mode only: hidden from tools/list otherwise)

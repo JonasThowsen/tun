@@ -203,5 +203,6 @@
                              (:file "preview-tests")
                              (:file "generated-tests")
                              (:file "fuzz-tests")
+                             (:file "policy-tests")
                              (:file "loop-tests")
                              (:file "run")))))

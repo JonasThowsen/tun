@@ -165,7 +165,8 @@ the entry could not hold is left out, so the entry is always written (core.md
 
 (defun flush-deferred-audits (thunks)
   (when thunks
-    (handler-case (with-transaction (:write) (mapc #'funcall (reverse thunks)))
+    (handler-case (let ((*writes-refused* nil))
+                    (with-transaction (:write) (mapc #'funcall (reverse thunks))))
       (error (e) (format *error-output* "~&;; tun: could not write deferred audit entries: ~a~%" e)))))
 
 (defmacro with-audit-scope (&body body)
@@ -185,7 +186,8 @@ rejection inside a call that is later rolled back still leaves its entry."
 outermost transaction ends; inside a read operation it cannot be written in place."
   (if (listp *deferred-audits*)
       (push thunk *deferred-audits*)
-      (with-transaction (:write) (funcall thunk))))
+      (let ((*writes-refused* nil))
+        (with-transaction (:write) (funcall thunk)))))
 
 (defun audited-refusal-code-p (code)
   "True for the codes whose refusal of a call is always audited (core.md 3.8)."
@@ -196,7 +198,10 @@ outermost transaction ends; inside a read operation it cannot be written in plac
   (let ((thunk (lambda () (let ((*audit-actor* as)) (write-audit op input actor "rejected" :error-code code)))))
     (if (and *transaction-mode* (listp *deferred-audits*))
         (push thunk *deferred-audits*)
-        (handler-case (with-transaction (:write) (funcall thunk))
+        ;; A wait's body refuses writes, but not the entry of a refusal
+        ;; it ends in (spec/waiting.md 1).
+        (handler-case (let ((*writes-refused* nil))
+                        (with-transaction (:write) (funcall thunk)))
           (error (e)
             (format *error-output* "~&;; tun: could not audit rejection of ~a: ~a~%" (operation-tool op) e))))))
 
@@ -515,7 +520,9 @@ code inside one (a workflow, a client method) is a step of that request."
           ;; A wait's body opens its own read transactions (AWAIT), so it
           ;; holds none while it waits (spec/waiting.md 1).
           ((eq (operation-kind op) :wait)
-           (let ((result (let ((*input* input) (*inside-operation* t)) (funcall body))))
+           (let ((result (let ((*input* input) (*inside-operation* t)
+                               (*writes-refused* "A waiting operation reads and never writes (spec/waiting.md 1)"))
+                           (funcall body))))
              (with-transaction (:read) (result->json result))))
           (t (with-transaction (:read)
                (let ((*input* input) (*inside-operation* t))
