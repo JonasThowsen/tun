@@ -2,7 +2,8 @@
 
 Status: v1, 2026-10-21; §6 2026-10-30; §1 (the URL as sent), §1.2,
 §1.3, §2 and §4 for a GET, 2026-11-02; §1.3, §1.4, §2 and §4 for a form,
-2026-11-06. How a client's code calls another
+2026-11-06; §1.3, §1.5, §2 and §4 for PUT, PATCH and DELETE, 2026-11-07.
+How a client's code calls another
 system's JSON API, such as asking TypeSafe's Jev to judge an item before it
 is filed, with a key read from the environment, or runs a program on the
 server, such as nixploy (§6); and how its tests answer for them.
@@ -97,8 +98,8 @@ does with the accounting port (`core.md` §7.3).
 ### 1.3 Headers
 
 - A header in HEADERS named `User-Agent`, in any case, is the one sent,
-  in place of the HTTP library's own, for `http-json-get`,
-  `http-json-post` and `http-form-post`; of two, the first. Some systems
+  in place of the HTTP library's own, for every call of §1 to §1.5; of
+  two, the first. Some systems
   ask a client to name itself there, with a way to reach its owner, such as
   SEC EDGAR and OpenStreetMap's Nominatim.
 - A header that is not a pair of strings is an error in the caller's code.
@@ -132,14 +133,40 @@ does with the accounting port (`core.md` §7.3).
   a credential, an unset setting (§3) is the likely cause, and a fault's
   message is kept (`errors.md`).
 
+### 1.5 PUT, PATCH and DELETE
+
+```lisp
+(http-json-put (format nil "https://api.cloudflare.com/client/v4/zones/~a/dns_records/~a"
+                       zone record)
+               (jobj "type" "A" "name" domain "content" address "proxied" nil)
+               :headers `(("Authorization" . ,(format nil "Bearer ~a" token))))
+
+(http-json-delete (format nil "https://api.hetzner.cloud/v1/servers/~d" server)
+                  :headers `(("Authorization" . ,(format nil "Bearer ~a" token))))
+```
+
+- `(http-json-put URL BODY &key headers (timeout 10))` and
+  `(http-json-patch URL BODY &key headers (timeout 10))`, in the TUN
+  package, send BODY as `http-json-post` does (§1), with the method PUT
+  or PATCH. `Content-Type` is `application/json` for both.
+- `(http-json-delete URL &key query headers (timeout 10))`, in the TUN
+  package, sends a DELETE to URL with QUERY appended as `http-json-get`
+  does (§1.2), `Accept` as `application/json`, then HEADERS, and no body.
+- Their answers, failures and limits are `http-json-post`'s (§1): the
+  JSON and the status for a status from 200 to 299, and `remote-failure`
+  otherwise. An answer with no body, such as a DELETE's 204, is `:null`.
+  None of them is sent again after a failure: whether a PUT or a DELETE
+  may be repeated is the caller's to decide.
+
 ## 2. In the trace
 
 - Each call is a step of kind `external` in the request's trace
   (`introspect_request`, `core.md` §8.1). Its name is the
   method and the URL without its query or a user and password, any of
   which may hold a key, such as
-  `POST https://api.typesafe.ai/v1/systemone` or
-  `GET https://api.prices.example/v1/daily`. Its detail is the status,
+  `POST https://api.typesafe.ai/v1/systemone`,
+  `GET https://api.prices.example/v1/daily` or
+  `DELETE https://api.hetzner.cloud/v1/servers/42`. Its detail is the status,
   or what came instead of an answer, and it has the call's duration. A
   form's call is named `POST` and the URL.
 - Headers and bodies, a form's among them, are not recorded, as they may
@@ -176,11 +203,17 @@ does with the accounting port (`core.md` §7.3).
   again from the text that would be sent. For `http-json-get` the URL
   has its query appended and the body is NIL. For `http-form-post` the
   body is a JSON object of FORM's names and values; of a name given twice,
-  it holds the last. It returns the status and the
+  it holds the last. For `http-json-put` and `http-json-patch` the body is
+  as for `http-json-post`, and for `http-json-delete` as for
+  `http-json-get`: the URL with its query, and NIL. It returns the status and the
   answer, a JSON value or a text, as two values; a status of NIL is no
   answer at all. `http-json-post` treats the answer as it treats a real
-  one (§1), and records the step (§2); so do `http-json-get` and
-  `http-form-post`.
+  one (§1), and records the step (§2); so does every call of §1.2 to
+  §1.5.
+- While the handler runs, `*http-json-method*`, in the TUN package, is
+  the call's method: `:get`, `:post`, `:put`, `:patch` or `:delete`. A
+  fake of an API whose paths take several methods, such as a server that
+  is read with GET and removed with DELETE, tells them apart by it.
 - A test binds it with `let` around calls made in its own thread. A call
   that runs in a server's thread sees its global value, so a test over
   HTTP sets that and restores it.

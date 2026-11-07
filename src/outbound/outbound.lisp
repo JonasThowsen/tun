@@ -5,11 +5,15 @@
 ;;;; signals REMOTE-FAILURE, an operation error with code unavailable, so a
 ;;;; client either handles it or lets the operation fail.  HTTP-JSON-GET is
 ;;;; the same call as a GET, with a query and no body, and HTTP-FORM-POST as
-;;;; a POST of a form, as an OAuth 2 token endpoint takes.  The call runs in
+;;;; a POST of a form, as an OAuth 2 token endpoint takes.  HTTP-JSON-PUT and
+;;;; HTTP-JSON-PATCH send a body as a POST does, and HTTP-JSON-DELETE none, as
+;;;; a GET does, for an API that changes and removes what it keeps, such as
+;;;; Hetzner's servers and Cloudflare's DNS records.  The call runs in
 ;;;; a bounded thread of its own (CALL-WITH-TIME-LIMIT, as mail delivery
 ;;;; does), held to the operation's deadline, and is one :external step in
 ;;;; the request's trace.  A test answers for the other system by binding
-;;;; *HTTP-JSON-HANDLER*.
+;;;; *HTTP-JSON-HANDLER*, which reads the call's method from
+;;;; *HTTP-JSON-METHOD*.
 ;;;;
 ;;;; HTTP-POST is the same call for Tun's own ports whose body is not JSON,
 ;;;; such as a push notification (spec/outbound.md 5): it answers any
@@ -20,7 +24,9 @@
 
 (defpackage #:tun.outbound
   (:use #:cl #:tun.core)
-  (:export #:http-json-post #:http-json-get #:http-form-post #:*http-json-handler* #:http-post
+  (:export #:http-json-post #:http-json-get #:http-form-post
+           #:http-json-put #:http-json-patch #:http-json-delete
+           #:*http-json-handler* #:*http-json-method* #:http-post
            #:query-string
            #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url
            #:run-program #:*program-handler* #:missing-programs
@@ -35,6 +41,12 @@
   "NIL, or a function of the URL, the body and the headers that answers in
 place of the network, with the status (NIL for no answer) and the body as a
 JSON value or a text (spec/outbound.md 4).")
+
+(defvar *http-json-method* nil
+  "The method of the call *HTTP-JSON-HANDLER* answers, while it does: :GET,
+:POST, :PUT, :PATCH or :DELETE.  A variable rather than a fourth argument, so
+that a handler of the URL, the body and the headers alone goes on working
+(spec/outbound.md 4).")
 
 (defparameter +connect-seconds+ 3
   "How long a call has to connect.  A system that is up connects in well under
@@ -170,10 +182,11 @@ be sent as / and lose its query."
   (string-equal "User-Agent" (car header)))
 
 (defun request-over-network (method url content content-type accept headers seconds)
-  "Send a request with METHOD, :GET or :POST, to URL, with CONTENT, a text or
-octets, as CONTENT-TYPE, or with neither for a GET, asking for ACCEPT.  The
-first User-Agent in HEADERS takes the place of drakma's own, which drakma
-would otherwise send beside it (spec/outbound.md 1.3).
+  "Send a request with METHOD, such as :GET or :POST, to URL, with CONTENT, a
+text or octets, as CONTENT-TYPE, or with neither for a GET or a DELETE,
+asking for ACCEPT.  The first User-Agent in HEADERS takes the place of
+drakma's own, which drakma would otherwise send beside it (spec/outbound.md
+1.3).
 Values the status and the body's text.  Runs in the bounded thread: SBCL's
 deadline ends a read that drakma, which has no read timeout on SBCL, would
 wait on for ever, so an abandoned call ends too.  SBCL signals
@@ -271,17 +284,18 @@ call is the :external step NAME in the trace."
                                                    headers seconds))))))
 
 (defun json-call (method url content content-type handler-body headers timeout)
-  "Send CONTENT, a text as CONTENT-TYPE, or NIL for a GET, to URL with METHOD
-and HEADERS, and value the answer's JSON and its status, or signal
+  "Send CONTENT, a text as CONTENT-TYPE, or NIL for a GET or a DELETE, to URL
+with METHOD and HEADERS, and value the answer's JSON and its status, or signal
 REMOTE-FAILURE (spec/outbound.md 1).  HANDLER-BODY is what *HTTP-JSON-HANDLER*
-is given as the body."
+is given as the body, while *HTTP-JSON-METHOD* is METHOD."
   (let ((seconds (seconds-allowed timeout))
         (handler *http-json-handler*))
     (multiple-value-bind (status answer)
         (recorded-call (format nil "~a ~a" method (shown-url url))
                        (lambda ()
                          (cond ((< seconds 1) (values nil +no-time-message+ "no time"))
-                               (handler (answer-from-handler handler url handler-body headers))
+                               (handler (let ((*http-json-method* method))
+                                          (answer-from-handler handler url handler-body headers)))
                                (t (answer-from-network method url content content-type
                                                        "application/json" headers seconds)))))
       (when (null status)
@@ -293,15 +307,30 @@ is given as the body."
                (remote-failure url status answer "svarte ~d, men ikke med JSON" status))
               (t (values json status)))))))
 
+(defun json-body-call (caller method url body headers timeout)
+  "Send BODY, a JSON value, to URL with METHOD on behalf of CALLER, which a
+mistake in the call names, as HTTP-JSON-POST does."
+  (check-call caller url headers timeout)
+  (let ((text (to-json-string body)))
+    (json-call method url text "application/json"
+               (and *http-json-handler* (parse-json text)) headers timeout)))
+
 (defun http-json-post (url body &key headers (timeout 10))
   "POST BODY, a JSON value, to URL with HEADERS (an alist of strings).
 Values the answer's JSON and its status.  Signals REMOTE-FAILURE without an
 answer within TIMEOUT seconds (and the operation's deadline), or for a
 status outside 200 to 299 or a body that is not JSON (spec/outbound.md 1)."
-  (check-call 'http-json-post url headers timeout)
-  (let ((text (to-json-string body)))
-    (json-call :post url text "application/json"
-               (and *http-json-handler* (parse-json text)) headers timeout)))
+  (json-body-call 'http-json-post :post url body headers timeout))
+
+(defun http-json-put (url body &key headers (timeout 10))
+  "PUT BODY, a JSON value, to URL, as HTTP-JSON-POST posts it (spec/outbound.md
+1.5)."
+  (json-body-call 'http-json-put :put url body headers timeout))
+
+(defun http-json-patch (url body &key headers (timeout 10))
+  "PATCH URL with BODY, a JSON value, as HTTP-JSON-POST posts it
+(spec/outbound.md 1.5)."
+  (json-body-call 'http-json-patch :patch url body headers timeout))
 
 (defun http-json-get (url &key query headers (timeout 10))
   "GET URL with QUERY appended, an alist of names and values that are
@@ -311,6 +340,13 @@ one sent, as HTTP-JSON-POST does (spec/outbound.md 1.2)."
   (check-call 'http-json-get url headers timeout)
   (check-pairs 'http-json-get "the query" query)
   (json-call :get (url-with-query url query) nil nil nil headers timeout))
+
+(defun http-json-delete (url &key query headers (timeout 10))
+  "DELETE URL with QUERY appended, as HTTP-JSON-GET gets it.  An answer with no
+body, such as a 204, values :NULL (spec/outbound.md 1.5)."
+  (check-call 'http-json-delete url headers timeout)
+  (check-pairs 'http-json-delete "the query" query)
+  (json-call :delete (url-with-query url query) nil nil nil headers timeout))
 
 (defun form-object (form)
   "FORM, an alist of strings, as a JSON object: of a name given twice, its last."

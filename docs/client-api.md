@@ -654,12 +654,27 @@ names and values it percent-encodes:
                   ("client_secret" . ,secret)))
 ```
 
-Each call is a step in the request's trace, with the URL but not its query,
-headers or body. A test answers for the other system by binding
-`*http-json-handler*` to a function of the URL, the body and the headers
-that returns a status and an answer. For a GET it is given the URL with
-its query, and NIL for the body; for a form, an object of the form's names
-and values:
+An API that changes and removes what it keeps, such as a cloud provider's
+servers or a DNS provider's records, is called with `(http-json-put url
+body ...)` and `(http-json-patch url body ...)`, which send a JSON body as
+`http-json-post` does, and `(http-json-delete url :query ... :headers ...)`,
+which sends none, as `http-json-get` does. They answer and fail as
+`http-json-post` does; an answer with no body, such as a DELETE's 204, is
+`:null`:
+
+```lisp
+(http-json-delete (format nil "https://api.hetzner.cloud/v1/servers/~d" server)
+                  :headers `(("Authorization" . ,(format nil "Bearer ~a" token))))
+```
+
+Each call is a step in the request's trace, with its method and the URL
+but not its query, headers or body. A test answers for the other system by
+binding `*http-json-handler*` to a function of the URL, the body and the
+headers that returns a status and an answer. For a GET or a DELETE it is
+given the URL with its query, and NIL for the body; for a form, an object
+of the form's names and values. While it runs, `*http-json-method*` is the
+call's method, `:get`, `:post`, `:put`, `:patch` or `:delete`, so a fake can
+tell a read of `/servers/42` from its removal:
 
 ```lisp
 (let ((*http-json-handler* (lambda (url body headers)
