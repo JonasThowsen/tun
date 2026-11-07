@@ -2,7 +2,7 @@
 
 - loop: audit-nul
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 184cfda4c7cc4fc3ec727068ff9edba282f60d33
 - after: fuzz
 - verified: 9fe2ef8c9a819de73a8aeba1bc1f37dcc9883a26
@@ -136,3 +136,8 @@ mode: a reviewer at A and B, Jonas at C.
 - 2026-11-07 15:13  gate B asked of a reviewer
 - 2026-11-07 15:18  gate B: approve (reviewer): Caller named, end-to-end planted defect, limit documented; once per call, nested, eval, bounds and spec hold; check 5 cheap. Minor follow-ups: ok-entry 65-100 id untested; audited-refusal-code-p repeats +rejection-codes+; recordable-text-p and storable-text overlap; call-state initform reads the constructor argument
 - 2026-11-07 15:18  follow-ups from gate B round 2, not done here: one list for audited codes and +rejection-codes+; one helper for recordable-text-p/storable-text; &aux for rejections-commits; a test of an ok entry's long text id
+- 2026-11-07 15:21  clients on Tun afa9fba, bin/test green: kurs 348 checks, fuzz 7.8s; ferdig 754, 12.2s; nixploy-dashboard 1139, 23.6s; no 'could not audit' line
+- 2026-11-07 15:21  gate C asked of the person
+- 2026-11-07 15:26  gate C: approve (jonas): Push all three clients; deploy ferdig and kurs through nixploy; pin the dashboard in ~/nixos for the netcup deploy
+- 2026-11-07 15:30  pushed ferdig b3a3345, kurs b86272a, nixploy-dashboard aaa36f5; deployed ferdig (dpl_bas74hkqswtbfkww) and kurs (dpl_w63pxtgv6r3v70r4), both succeeded and verified; dashboard pinned in nixos c81b30b for Jonas's netcup deploy
+- 2026-11-07 15:30  finished at tun afa9fba
