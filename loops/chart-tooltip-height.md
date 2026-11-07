@@ -2,10 +2,11 @@
 
 - loop: chart-tooltip-height
 - mode: reviewed
-- stage: build
+- stage: verified
 - base: a47f7486e9f01b9a67e3f9261aecf69ca6be1da9
 - client: /home/jonas/coding/kurs
 - client-base: aac2713237cb7a3fed43af47396a14bbaf62c292
+- verified: c33eb128981a171d0eb216aa92b80626b85bc6e1 485343a6cdb67b8b6dede314aad205c1407b3964
 
 ## Brief
 
@@ -50,3 +51,4 @@ some and 192 px, pinned top and bottom, at others.
 - 2026-11-07 11:31  started, reviewed
 - 2026-11-07 11:33  gate A asked of a reviewer
 - 2026-11-07 11:36  gate A: approve (reviewer): Diagnosis matches the code, criteria cover the brief and are decidable, spec agrees. Notes acted on: the check now holds the side per point; the first Decision's reason corrected.
+- 2026-11-07 11:43  verify 1: passed build, test, check, client-check
