@@ -349,7 +349,7 @@ All of these run inside `nix develop .`.
 
 ```
 bin/build                      compile everything; any warning fails
-bin/test                       kernel and module suite, then the test client's and each client's suite
+bin/test                       kernel and module suites, the test client's and each client's, in parallel
 bin/serve --client NAME --port N --db PATH|URL [--test-clock] [--debug-tools] [--allow-eval]
           [--claimed-identity]
 bin/repl [--port N] [SYSTEM]   an image for Emacs and SLY, Slynk on 127.0.0.1:4010

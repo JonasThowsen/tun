@@ -9,6 +9,11 @@
 (def-suite hostile :in core)
 (in-suite hostile)
 
+;;; The tests that measure in a server of the default heap
+;;; (WITH-DEFAULT-HEAP-SERVER) are a suite of their own, which bin/test runs
+;;; beside this one.
+(def-suite default-heap-hostile :in core)
+
 ;;; ------------------------------------------------------------------
 ;;; The budget's lines (core.md §7.5): what one request may allocate, all
 ;;; of it, while it is answered alone.  What is live at once is less.
@@ -175,7 +180,7 @@ body, as (KIND NAME STATUSES FUNCTION)."
           (list :multipart "multipart, employee, files and long text" '(422)
                 (lambda () (post-form port "/heap" multipart))))))
 
-(test each-kind-of-request-costs-at-most-its-line-of-the-budget
+(test (each-kind-of-request-costs-at-most-its-line-of-the-budget :suite default-heap-hostile)
   (multiple-value-bind (costs alive)
       (with-default-heap-server (port)
         (flet ((worst (function)
@@ -209,7 +214,7 @@ connection ended before an answer came."
 addresses apart, each under its own bound of connections (core.md 7.5)."
   (format nil "127.0.0.~d" (+ 2 (mod i count))))
 
-(test hostile-callers-at-every-limit-at-once-keep-the-server-up
+(test (hostile-callers-at-every-limit-at-once-keep-the-server-up :suite default-heap-hostile)
   (multiple-value-bind (results alive)
       (with-default-heap-server (port)
         (let* ((small (small-requests port))
@@ -320,7 +325,7 @@ fits, ASCII and astral, and a long error message."
     (list (lambda () (post-octets port "/api/heap_fault" ascii :headers +viewer+))
           (lambda () (post-octets port "/api/heap_fault" astral :headers +viewer+)))))
 
-(test hostile-text-in-every-record-field-is-kept-clipped
+(test (hostile-text-in-every-record-field-is-kept-clipped :suite default-heap-hostile)
   ;; A thousand records at the cap, then a hundred with hostile text in
   ;; every field: the history holds as much as it ever may.
   (multiple-value-bind (results alive)
@@ -352,7 +357,7 @@ fits, ASCII and astral, and a long error message."
           "an unknown method's name is cut in its error"))
     (is-true alive "the server is still up")))
 
-(test a-thousand-connections-in-their-headers-fit-the-budget
+(test (a-thousand-connections-in-their-headers-fit-the-budget :suite default-heap-hostile)
   ;; Each sends a request line and headers just under the 32 KiB budget and
   ;; never ends them, fifty from each of twenty addresses: past what one
   ;; address may hold (core.md 7.5).
@@ -615,8 +620,8 @@ back within SECONDS and whether the connection ended."
     (setf tun.http:*small-body-seconds* 1)
     (unwind-protect
          (with-test-app (:identity :claimed)
-           (let* ((port (free-port))
-                  (acceptor (tun.http:start-server *app* :port port :max-inflight 2)))
+           (let* ((acceptor (tun.http:start-server *app* :port 0 :max-inflight 2))
+                  (port (tun.http:server-port acceptor)))
              (unwind-protect
                   (let* ((head (list "POST /api/registry_describe HTTP/1.1" "Host: x"
                                      "X-Tun-Actor: viewer:vera"))
@@ -634,12 +639,14 @@ back within SECONDS and whether the connection ended."
                                                      (> (- (get-internal-real-time) start)
                                                         (* 5 internal-time-units-per-second)))
                                            do (sleep 0.1)))
+                           ;; Before the senders are joined: their connections
+                           ;; end only once the rest of their bodies is drained.
+                           (answered (- (get-internal-real-time) start))
                            (answers (mapcar #'sb-thread:join-thread senders)))
                       (is (eql 503 (first statuses)) "while both trickle, the call is told to wait")
                       (is (eql 200 (car (last statuses))) "and is answered once a place frees: ~s"
                           statuses)
-                      (is (< (- (get-internal-real-time) start)
-                             (* 3 internal-time-units-per-second)))
+                      (is (< answered (* 3 internal-time-units-per-second)))
                       (loop for (text ended) in answers
                             do (is (search " 408" text) "the trickling sender gets 408: ~s" text)
                                (is-true ended "and its connection ends"))))
@@ -755,8 +762,8 @@ back within SECONDS and whether the connection ended."
 TRUSTED-PROXY.  BODY closes the connections it holds, so the server stops
 without waiting for them."
   `(with-test-app (:identity :claimed)
-     (let* ((,port (free-port))
-            (,acceptor (tun.http:start-server *app* :port ,port :trusted-proxy ,trusted-proxy)))
+     (let* ((,acceptor (tun.http:start-server *app* :port 0 :trusted-proxy ,trusted-proxy))
+            (,port (tun.http:server-port ,acceptor)))
        (unwind-protect (progn ,@body)
          (tun.http:stop-server ,acceptor)))))
 

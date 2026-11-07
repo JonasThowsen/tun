@@ -146,7 +146,7 @@ issuer, audience, times and nonce, then the test's overrides."
 
 (defmacro with-provider ((provider) &body body)
   "Run BODY with PROVIDER serving and *APP* signing in through it."
-  `(let ((,provider (make-instance 'fake-provider :port (free-port) :app *app*)))
+  `(let ((,provider (make-instance 'fake-provider :port 0 :app *app*)))
      (hunchentoot:start ,provider)
      (unwind-protect
           (progn

@@ -18,22 +18,39 @@ expect_exit() {
   fi
 }
 
-port="$(python3 -c '
+free_port() {
+  python3 -c '
 import socket
 s = socket.socket()
 s.bind(("127.0.0.1", 0))
-print(s.getsockname()[1])')"
+print(s.getsockname()[1])'
+}
 
-# The smallest system keeps the check fast; without a terminal bin/repl
-# stays up until it is stopped.
-"$here/bin/repl" --port "$port" tun/core </dev/null >"$work/repl.log" 2>&1 &
-repl=$!
-for _ in $(seq 1 300); do
-  grep -q 'bin/repl: tun/core loaded' "$work/repl.log" && break
-  kill -0 "$repl" 2>/dev/null || { cat "$work/repl.log" >&2; echo "bin/repl exited" >&2; exit 1; }
-  sleep 0.5
+# Start bin/repl on a port that was free and wait until it has loaded; 1
+# when another process took the port first.  The smallest system keeps the
+# check fast; without a terminal bin/repl stays up until it is stopped.
+start_repl() {
+  port="$(free_port)"
+  "$here/bin/repl" --port "$port" tun/core </dev/null >"$work/repl.log" 2>&1 &
+  repl=$!
+  for _ in $(seq 1 300); do
+    grep -q 'bin/repl: tun/core loaded' "$work/repl.log" && return 0
+    if ! kill -0 "$repl" 2>/dev/null; then
+      repl=""
+      grep -q 'cannot listen on 127.0.0.1' "$work/repl.log" && return 1
+      cat "$work/repl.log" >&2
+      echo "bin/repl exited" >&2
+      exit 1
+    fi
+    sleep 0.5
+  done
+  cat "$work/repl.log" >&2
+  exit 1
+}
+for _ in 1 2 3 4 5; do
+  start_repl && break
 done
-grep -q 'bin/repl: tun/core loaded' "$work/repl.log" || { cat "$work/repl.log" >&2; exit 1; }
+[ -n "$repl" ] || { cat "$work/repl.log" >&2; exit 1; }
 
 # The first request SLY sends on connecting, in Slynk's wire format: six hex
 # digits of length, then the message.

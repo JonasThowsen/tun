@@ -611,27 +611,37 @@ return the whole response as text: what is answered before the body is read."
 
 ;;; The memory a large request takes, in a server whose heap is the image's
 ;;; default (spec/files.md 4.3, 5.4): a process of its own, so this suite's
-;;; larger heap does not hide a request that needs more.
+;;; larger heap does not hide a request that needs more.  The tests that
+;;; measure it, here and in the sections below, are suites of their own,
+;;; which bin/test runs beside this one: those of files, and those of
+;;; bodies and request records.
+
+(def-suite default-heap-files :in core)
+(def-suite default-heap-bodies :in core)
+
+(defun ready-port (process)
+  "The port the heap server PROCESS listens on, from its line \"ready PORT\";
+NIL when it ended first."
+  (loop for line = (read-line (uiop:process-info-output process) nil nil)
+        while line
+        when (eql 0 (search "ready " line))
+        return (parse-integer line :start (length "ready "))))
 
 (defmacro with-default-heap-server ((port) &body body)
   "Run BODY with PORT a server of tests/fixtures/files-heap-server.lisp in a
 process started with --dynamic-space-size 2048; BODY's value and whether the
 process was still running after it."
-  (let ((process (gensym "PROCESS")) (line (gensym "LINE")))
-    `(let* ((,port (free-port))
-            (,process (uiop:launch-program
-                       (list "sbcl" "--dynamic-space-size" "2048" "--noinform" "--non-interactive"
-                             "--no-userinit" "--no-sysinit" "--load"
-                             (namestring (asdf:system-relative-pathname
-                                          "tun" "tests/fixtures/files-heap-server.lisp"))
-                             "--port" (princ-to-string ,port))
-                       ;; Its standard input closes when this process ends,
-                       ;; and the server ends with it.
-                       :input :stream :output :stream :error-output nil)))
+  (let ((process (gensym "PROCESS")))
+    `(let ((,process (uiop:launch-program
+                      (list "sbcl" "--dynamic-space-size" "2048" "--noinform" "--non-interactive"
+                            "--no-userinit" "--no-sysinit" "--load"
+                            (namestring (asdf:system-relative-pathname
+                                         "tun" "tests/fixtures/files-heap-server.lisp")))
+                      ;; Its standard input closes when this process ends,
+                      ;; and the server ends with it.
+                      :input :stream :output :stream :error-output nil)))
        (unwind-protect
-            (progn
-              (loop for ,line = (read-line (uiop:process-info-output ,process) nil nil)
-                    until (or (null ,line) (search "ready" ,line)))
+            (let ((,port (ready-port ,process)))
               (values (progn ,@body) (uiop:process-alive-p ,process)))
          (uiop:terminate-process ,process :urgent t)
          (uiop:wait-process ,process)))))
@@ -671,7 +681,7 @@ IDAT chunk, which Tun keeps as it is and never inflates."
                                               :headers headers)))
         "id"))
 
-(test four-requests-at-the-largest-bounds-fit-the-default-heap
+(test (four-requests-at-the-largest-bounds-fit-the-default-heap :suite default-heap-files)
   (multiple-value-bind (statuses alive)
       (with-default-heap-server (port)
         (let* ((headers '(("X-Tun-Actor" . "employee:anna")))
@@ -706,7 +716,7 @@ IDAT chunk, which Tun keeps as it is and never inflates."
         "every large request answered: ~s" statuses)
     (is-true alive "the server is still up")))
 
-(test thirty-two-fetches-of-a-large-file-fit-the-default-heap
+(test (thirty-two-fetches-of-a-large-file-fit-the-default-heap :suite default-heap-files)
   (multiple-value-bind (lengths alive)
       (with-default-heap-server (port)
         (let* ((headers '(("X-Tun-Actor" . "employee:anna")))
@@ -937,7 +947,7 @@ connection, and whether it ended within SECONDS."
   (list (list "mange.jpg" (many-piece-jpeg 99000)) (list "mange.png" (many-piece-png 99000))
         (list "mange.gif" (many-piece-gif 99000)) (list "mange.webp" (many-piece-webp 99000))))
 
-(test many-piece-files-at-the-bounds-fit-the-default-heap
+(test (many-piece-files-at-the-bounds-fit-the-default-heap :suite default-heap-files)
   (multiple-value-bind (statuses alive)
       (with-default-heap-server (port)
         (let* ((headers '(("X-Tun-Actor" . "employee:anna")))
@@ -969,7 +979,7 @@ connection, and whether it ended within SECONDS."
         "every request answered and its files stored: ~s" statuses)
     (is-true alive "the server is still up")))
 
-(test a-burst-of-calls-with-many-piece-files-fits-the-default-heap
+(test (a-burst-of-calls-with-many-piece-files-fits-the-default-heap :suite default-heap-files)
   (multiple-value-bind (statuses alive)
       (with-default-heap-server (port)
         (let* ((headers '(("X-Tun-Actor" . "employee:anna")))
@@ -1075,7 +1085,7 @@ two files of 5.85 MiB, about 15.6 MiB of base64 together."
 (defun json-object-octets (members-text)
   (sb-ext:string-to-octets (format nil "{~a}" members-text) :external-format :utf-8))
 
-(test structure-heavy-bodies-at-the-limit-fit-the-default-heap
+(test (structure-heavy-bodies-at-the-limit-fit-the-default-heap :suite default-heap-bodies)
   ;; Each body holds two files of 5.85 MiB.  The padded ones also give the
   ;; declared record_id as an array of 4 970 empty objects, at the value
   ;; limit: refused for it, 422, but only after both files are decoded and
@@ -1119,7 +1129,7 @@ two files of 5.85 MiB, about 15.6 MiB of base64 together."
           "the live heap stays flat: ~a → ~a" before after))
     (is-true alive "the server is still up")))
 
-(test a-burst-of-small-structure-heavy-bodies-fits-the-default-heap
+(test (a-burst-of-small-structure-heavy-bodies-fits-the-default-heap :suite default-heap-bodies)
   (multiple-value-bind (statuses alive)
       (with-default-heap-server (port)
         (let* ((headers '(("X-Tun-Actor" . "viewer:vera")))
@@ -1144,7 +1154,7 @@ two files of 5.85 MiB, about 15.6 MiB of base64 together."
 ;;; ------------------------------------------------------------------
 ;;; Request records cost what their text does (core.md §7.5)
 
-(test more-records-than-the-history-holds-fit-the-default-heap
+(test (more-records-than-the-history-holds-fit-the-default-heap :suite default-heap-bodies)
   (multiple-value-bind (results alive)
       (with-default-heap-server (port)
         (let* ((viewer '(("X-Tun-Actor" . "viewer:vera")))

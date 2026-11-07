@@ -7,7 +7,8 @@
   (:use #:cl #:tun.core)
   (:export #:*app* #:call #:call-ok #:error-code-of #:with-test-app #:scratch-path #:find-by
            #:postgres-available-p #:scratch-postgres #:scratch-databases #:raw-sql #:table-columns
-           #:run-concurrently #:free-port #:http-post #:with-test-server #:http-tool-call
+           #:run-concurrently #:free-port #:with-refused-port
+           #:http-post #:with-test-server #:http-tool-call
            #:web-request #:web-login #:location
            #:enqueued-jobs #:perform-job #:drain-jobs
            #:public-interface-violations #:client-source-files #:client-files-under
@@ -163,9 +164,28 @@ the vector of results (an error is returned as the condition object)."
 
 ;;; Over real HTTP
 
+;;; bin/test runs the suites at once, each binding ports, so a test holds
+;;; every port it uses until it is done: a server of the test's binds port 0
+;;; and reads the port it got.
+
 (defun free-port ()
+  "A port on 127.0.0.1 that was free a moment ago, for a child process to
+bind.  Another process may take it first, so the test retries with another
+when the child could not listen."
   (let ((socket (usocket:socket-listen "127.0.0.1" 0 :reuse-address t)))
     (prog1 (usocket:get-local-port socket) (usocket:socket-close socket))))
+
+(defmacro with-refused-port ((port) &body body)
+  "Run BODY with PORT a port on 127.0.0.1 that refuses connections: a socket
+bound to it, which does not listen, holds it until BODY is done."
+  (let ((socket (gensym "SOCKET")))
+    `(let ((,socket (make-instance 'sb-bsd-sockets:inet-socket :type :stream :protocol :tcp)))
+       (unwind-protect
+            (progn
+              (sb-bsd-sockets:socket-bind ,socket #(127 0 0 1) 0)
+              (let ((,port (nth-value 1 (sb-bsd-sockets:socket-name ,socket))))
+                ,@body))
+         (sb-bsd-sockets:socket-close ,socket)))))
 
 (defun http-post (port path body &key actor)
   "POST BODY; returns (values status body-string headers)."
@@ -183,8 +203,8 @@ identity (X-Tun-Actor, spec/auth.md 1) unless APP-ARGS give :IDENTITY."
   (let ((acceptor (gensym))
         (app-args (if (getf app-args :identity) app-args (list* :identity :claimed app-args))))
     `(with-test-app (,@app-args)
-       (let* ((,port (free-port))
-              (,acceptor (tun.http:start-server *app* :port ,port)))
+       (let* ((,acceptor (tun.http:start-server *app* :port 0))
+              (,port (tun.http:server-port ,acceptor)))
          (unwind-protect (progn ,@body)
            (tun.http:stop-server ,acceptor))))))
 

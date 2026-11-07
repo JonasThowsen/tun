@@ -1,0 +1,115 @@
+#!/usr/bin/env bash
+# scripts/run-suites JOB...  -- the second half of bin/test (spec/tooling.md,
+# "Running the tests"), once everything is compiled.  A JOB is core:SUITE, a
+# child suite of core; client:SYSTEM, a client's suite; or check:NAME, the
+# tooling check scripts/NAME.sh.  Each runs in a process of its own, at most
+# TUN_TEST_JOBS at once (default: the processor count), the longest first by
+# the times in .build/test/times and one with no time yet before them all.
+# Each writes .build/test/NAME.log and prints one line as it ends; every one
+# runs, whatever another's result.  At the end the log of each that failed
+# is printed in full, and the exit status is 1 when one failed.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+[ "$#" -gt 0 ] || { echo "usage: scripts/run-suites JOB..." >&2; exit 2; }
+dir=.build/test
+times="$dir/times"
+limit="${TUN_TEST_JOBS:-$(nproc)}"
+mkdir -p "$dir"
+
+# Seconds of the last run, by name: "NAME SECONDS" per line.
+declare -A seconds_of=()
+if [ -f "$times" ]; then
+  while read -r name seconds; do
+    seconds_of[$name]="$seconds"
+  done <"$times"
+fi
+
+# The JOBs, the longest first; a sort that is stable keeps the given order
+# among those with no time.
+mapfile -t queue < <(
+  for job in "$@"; do
+    printf '%s %s\n' "${seconds_of[${job#*:}]:-inf}" "$job"
+  done | sort -s -g -r -k1,1 | cut -d' ' -f2)
+
+run_job() {
+  local kind="${1%%:*}" name="${1#*:}"
+  local sbcl=(sbcl --noinform --non-interactive --no-userinit --no-sysinit --load scripts/test.lisp)
+  case "$kind" in
+    core) TUN_TEST_POSTGRES="${DATABASE_URL:-}" exec "${sbcl[@]}" run core "$name" ;;
+    client) exec "${sbcl[@]}" run "$name" ;;
+    check) exec bash "scripts/$name.sh" ;;
+    *) echo "scripts/run-suites: no kind of job $kind" >&2; exit 2 ;;
+  esac
+}
+
+# Seconds since the epoch, with a decimal point whatever the locale.
+now() { date +%s.%N; }
+
+# Running jobs by process id: their name and when they started.
+declare -A name_of=() started=()
+failed=()
+slowest="" slowest_seconds=0
+
+finish() {
+  local pid="$1" status="$2"
+  local name="${name_of[$pid]}"
+  local took
+  took="$(awk -v a="${started[$pid]}" -v b="$(now)" 'BEGIN { printf "%.1f", b - a }')"
+  unset "name_of[$pid]" "started[$pid]"
+  seconds_of[$name]="$took"
+  if awk -v a="$took" -v b="$slowest_seconds" 'BEGIN { exit !(a > b) }'; then
+    slowest="$name" slowest_seconds="$took"
+  fi
+  if [ "$status" -eq 0 ]; then
+    printf 'ok    %-28s %6ss\n' "$name" "$took"
+  else
+    printf 'FAIL  %-28s %6ss\n' "$name" "$took"
+    failed+=("$name")
+  fi
+}
+
+# Each job runs in a process group of its own (job control), so stopping
+# bin/test stops what the suites started too, such as a check's REPL.
+set -m
+stop() {
+  local pid
+  for pid in "${!name_of[@]}"; do kill -TERM -- "-$pid" 2>/dev/null || true; done
+  exit "$1"
+}
+trap 'stop 130' INT
+trap 'stop 143' TERM
+
+for job in "${queue[@]}"; do
+  while [ "${#name_of[@]}" -ge "$limit" ]; do
+    status=0
+    wait -n -p pid "${!name_of[@]}" || status=$?
+    finish "$pid" "$status"
+  done
+  name="${job#*:}"
+  (run_job "$job") </dev/null >"$dir/$name.log" 2>&1 &
+  name_of[$!]="$name"
+  started[$!]="$(now)"
+done
+while [ "${#name_of[@]}" -gt 0 ]; do
+  status=0
+  wait -n -p pid "${!name_of[@]}" || status=$?
+  finish "$pid" "$status"
+done
+
+# The times of this run replace those of the same names; the others are kept.
+for name in "${!seconds_of[@]}"; do
+  printf '%s %s\n' "$name" "${seconds_of[$name]}"
+done | sort >"$times.new"
+mv "$times.new" "$times"
+
+echo "== slowest: $slowest ${slowest_seconds}s"
+for name in "${failed[@]}"; do
+  echo
+  echo "== FAIL $name, from $dir/$name.log:"
+  cat "$dir/$name.log"
+done
+if [ "${#failed[@]}" -gt 0 ]; then
+  echo
+  echo "== ${#failed[@]} failed: ${failed[*]}"
+  exit 1
+fi

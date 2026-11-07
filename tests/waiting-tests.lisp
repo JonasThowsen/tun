@@ -119,13 +119,17 @@
 
 (test a-wait-outlasts-two-rechecks-in-real-time
   (with-test-app ()
+    ;; START is taken before the archiving thread starts, so the change is
+    ;; at least 11 s after it however the threads are scheduled.
     (let* ((id (new-widget))
-           (thread (archive-later id 11))
            (start (get-internal-real-time))
+           (thread (archive-later id 11))
            (json (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 30)))
       (sb-thread:join-thread thread)
       (is (string= "arkivert" (jget json "status")) "after looks at 5 and 10 seconds")
-      (is (<= 11 (elapsed-since start) 14)))))
+      (let ((elapsed (elapsed-since start)))
+        (is (<= 11 elapsed 14) "woken by the change at 11 s, not a later look: ~,2f s"
+            (float elapsed))))))
 
 (test waiting-calls-are-capped
   (with-test-app ()

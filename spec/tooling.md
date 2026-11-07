@@ -116,3 +116,32 @@ through `bin/lint --baseline`; this writes the baseline report and
 `bin/lint --baseline REPORT FILE...`; REPORT is relative to the caller.
 Successful report generation exits 0 even when lint reports findings.
 Do not suppress existing findings globally just to get an empty report.
+
+## Running the tests
+
+`bin/test` is the gate every change passes (`AGENTS.md`). It is fast enough
+to run after every change:
+
+- It checks the shell scripts' syntax, then compiles Tun, its tests and
+  every client system of the run once, strictly: a warning fails the run,
+  as before.
+- Then it runs, at once in separate processes, every child suite of `core`,
+  each client's suite (`scripts/client-systems`) and the tooling checks
+  (indentation, lint, the editor REPL, `lisp`). A suite's process loads
+  what was compiled; it compiles nothing. The tooling checks compile only
+  into directories of their own. At most `TUN_TEST_JOBS` run at once, by
+  default the machine's processor count.
+- The longest go first, by the times of the last run, kept in
+  `.build/test/times`; a suite with no time yet goes first.
+- Every test of `core` is in a child suite, so each runs in exactly one
+  process; the run fails, naming the test, when one is not.
+- Each prints one line as it ends: `ok` or `FAIL`, its name and its time.
+  Every one runs, whatever another's result. At the end, each failed one's
+  output is printed in full, and the run exits 1; otherwise 0. The
+  outputs are kept in `.build/test/NAME.log`.
+- The core suites share one throwaway Postgres server, which takes 300
+  connections; each test makes its own databases on it. A test holds every
+  port it uses until it is done, and none relies on a port staying unused.
+- `TUN_TEST_SUITES="core test-client"` limits the run as before, and
+  `bin/test --only SUITE` runs one core suite in this process.
+- On a machine of 12 processors the whole run takes under 2.5 minutes.

@@ -1,5 +1,10 @@
+;;;; tests/settings-tests.lisp -- declared settings: policy, secrets, types and
+;;;; persistence.
+
 (in-package #:tun.tests)
-(in-suite core)
+
+(def-suite settings :in core)
+(in-suite settings)
 
 (defmacro with-url-setting (&body body)
   "Run BODY with the declarations of core and the modules and a url setting,

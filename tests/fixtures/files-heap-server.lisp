@@ -1,7 +1,7 @@
 ;;;; tests/fixtures/files-heap-server.lisp -- a server for the memory tests
 ;;;; of spec/files.md 4.3 and 5.4, in a process of its own so its heap is
-;;;; the image's default: sbcl --dynamic-space-size 2048 --load this --port N.
-;;;; It prints "ready" once it listens.
+;;;; the image's default: sbcl --dynamic-space-size 2048 --load this.  It
+;;;; listens on a port the system picks and prints "ready PORT" once it does.
 
 (load (merge-pathnames "../../scripts/setup.lisp" *load-truename*))
 (in-package #:tun-build)
@@ -89,9 +89,8 @@
                          (sb-ext:exit :abort t))
                        :name "parent watch")
 
-(let* ((port (parse-integer (second (member "--port" sb-ext:*posix-argv* :test #'string=))))
-       (application (tun.runtime:open-application 'application :identity :claimed :test-clock t)))
-  (tun.http:start-server application :port port)
-  (format t "~&ready~%")
+(let* ((application (tun.runtime:open-application 'application :identity :claimed :test-clock t))
+       (acceptor (tun.http:start-server application :port 0)))
+  (format t "~&ready ~d~%" (tun.http:server-port acceptor))
   (finish-output)
   (loop (sleep 60)))

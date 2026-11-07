@@ -43,9 +43,11 @@
                      (and dir (eql 0 (search (namestring *root*) (namestring dir))))))
                  (asdf:registered-systems)))
 
-(defun compile-strictly (systems &key force)
+(defun compile-strictly (systems &key force except)
   "Load our SYSTEMS, collecting every compiler warning and style warning.
-Returns the list of warning strings (empty = clean)."
+With FORCE, every system of ours compiles again, but for those named in
+EXCEPT, which were compiled as strictly just before.  Returns the list of
+warning strings (empty = clean)."
   (let ((warnings '())
         ;; A compile error (e.g. a macro rejecting its arguments) fails the
         ;; build too, instead of turning into an error at run time.
@@ -61,7 +63,9 @@ Returns the list of warning strings (empty = clean)."
           (asdf:find-system s))
         ;; One operate call over the last system (which depends on the others),
         ;; so forced systems compile exactly once.
-        (asdf:load-system (car (last systems)) :force (and force (our-systems)))))
+        (asdf:load-system (car (last systems))
+                          :force (and force (set-difference (our-systems) except
+                                                            :test #'string=)))))
     (nreverse warnings)))
 
 (defun client-application-class (client)

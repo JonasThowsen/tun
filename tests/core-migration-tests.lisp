@@ -82,36 +82,47 @@ migrating it, with STORE bound."
   (with-raw-store (store db :read)
     (store-rows store sql)))
 
+;;; A schema is what STORE-DESCRIBE-SCHEMA answers.  Each function below
+;;; reads it once: on Postgres it takes many queries of the catalogue.
+
+(defun schema-table-names (schema)
+  (loop for table across schema
+        for name = (jget table "name")
+        unless (string-prefix-p "sqlite_" name) collect name))
+
+(defun schema-columns (schema table)
+  (loop for entry across schema
+        when (string= (jget entry "name") table)
+          return (loop for column across (jget entry "columns")
+                       collect (jget column "name"))))
+
 (defun table-names (db)
   (with-raw-store (store db :read)
-    (loop for table across (store-describe-schema store)
-          for name = (jget table "name")
-          unless (string-prefix-p "sqlite_" name) collect name)))
+    (schema-table-names (store-describe-schema store))))
 
-(defun table-columns-of (db table)
+(defun contents (db &key tables columns)
+  "DB's tables, TABLES or all, as an alist of (TABLE . ROWS): each row the
+values of its columns (COLUMNS, an alist of table to column names, or all),
+leaving out seq and the identity counters, written as text; the rows
+sorted.  Read in one transaction."
   (with-raw-store (store db :read)
-    (loop for entry across (store-describe-schema store)
-          when (string= (jget entry "name") table)
-            return (loop for column across (jget entry "columns")
-                         collect (jget column "name")))))
-
-(defun contents (db &key (tables (table-names db)) columns)
-  "DB's tables as an alist of (TABLE . ROWS): each row the values of its
-columns (COLUMNS, an alist of table to column names, or all), leaving out
-seq and the identity counters, written as text; the rows sorted."
-  (loop for table in tables
-        for names = (remove "seq" (or (cdr (assoc table columns :test #'string=))
-                                      (table-columns-of db table))
-                            :test #'string=)
-        collect (cons table
-                      (sort (mapcar (lambda (row) (format nil "~{~s~^|~}" row))
-                                    (db-rows db (format nil "SELECT ~{\"~a\"~^, ~} FROM \"~a\""
-                                                        names table)))
-                            #'string<))))
+    (let ((schema (store-describe-schema store)))
+      (loop for table in (or tables (schema-table-names schema))
+            for names = (remove "seq" (or (cdr (assoc table columns :test #'string=))
+                                          (schema-columns schema table))
+                                :test #'string=)
+            for sql = (format nil "SELECT ~{\"~a\"~^, ~} FROM \"~a\"" names table)
+            collect (cons table
+                          (sort (mapcar (lambda (row) (format nil "~{~s~^|~}" row))
+                                        (store-rows store sql))
+                                #'string<))))))
 
 (defun dump-columns (db)
   "Each table of DB with its column names: what a later comparison reads."
-  (loop for table in (table-names db) collect (cons table (table-columns-of db table))))
+  (with-raw-store (store db :read)
+    (let ((schema (store-describe-schema store)))
+      (loop for table in (schema-table-names schema)
+            collect (cons table (schema-columns schema table))))))
 
 (defun setting-values (db)
   "The stored settings of DB as an alist of key to value."

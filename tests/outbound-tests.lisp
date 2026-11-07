@@ -43,15 +43,14 @@ body as sent, and :body that parsed when it is JSON."))
 
 (defmacro with-fake-remote ((remote url) &body body)
   "Run BODY in a fresh application with REMOTE, another system serving on a
-free port, and URL bound to its /v1/check."
-  (let ((port (gensym "PORT")))
-    `(let* ((,port (free-port))
-            (,remote (make-instance 'fake-remote :port ,port))
-            (,url (format nil "http://127.0.0.1:~d/v1/check" ,port)))
-       (hunchentoot:start ,remote)
-       (unwind-protect
-            (with-test-app () (with-application (*app*) ,@body))
-         (hunchentoot:stop ,remote)))))
+port of its own, and URL bound to its /v1/check."
+  `(let ((,remote (make-instance 'fake-remote :port 0)))
+     (hunchentoot:start ,remote)
+     (unwind-protect
+          (let ((,url (format nil "http://127.0.0.1:~d/v1/check"
+                              (hunchentoot:acceptor-port ,remote))))
+            (with-test-app () (with-application (*app*) ,@body)))
+       (hunchentoot:stop ,remote))))
 
 (defmacro with-silent-remote ((url) &body body)
   "Run BODY with URL at a server that takes connections and never answers."
@@ -139,12 +138,14 @@ free port, and URL bound to its /v1/check."
 (test a-remote-that-cannot-be-reached
   (with-test-app ()
     (with-application (*app*)
-      (let* ((url (format nil "http://127.0.0.1:~d/" (free-port)))
-             (start (get-internal-real-time))
-             (c (failure-of (lambda () (http-json-post url (jobj))))))
-        (is (null (remote-failure-status c)))
-        (is (equal (format nil "~a kunne ikke nås" (host-of url)) (operation-error-message c)))
-        (is (< (elapsed-since start) 4) "within the time to connect, not the call's ten seconds")))))
+      (with-refused-port (port)
+        (let* ((url (format nil "http://127.0.0.1:~d/" port))
+               (start (get-internal-real-time))
+               (c (failure-of (lambda () (http-json-post url (jobj))))))
+          (is (null (remote-failure-status c)))
+          (is (equal (format nil "~a kunne ikke nås" (host-of url)) (operation-error-message c)))
+          (is (< (elapsed-since start) 4)
+              "within the time to connect, not the call's ten seconds"))))))
 
 (test a-call-leaves-the-operation-time-to-answer
   (with-test-app ()

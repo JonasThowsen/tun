@@ -87,27 +87,41 @@ run, with it current."
     (is (null code))
     (is (equal "" (get-output-stream-string said)))))
 
-(test a-server-without-a-declared-program-does-not-start
-  (let* ((process (uiop:launch-program
-                   (list "sbcl" "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit"
-                         "--load" (namestring (asdf:system-relative-pathname
-                                               "tun" "tests/fixtures/programs-server.lisp"))
-                         "--port" (princ-to-string (free-port))
-                         "--db" (namestring (scratch-path "programs-server.db")))
-                   :input nil :output nil :error-output :stream))
-         (errors (make-string-output-stream)))
+(defun programs-server-on (port)
+  "Start tests/fixtures/programs-server.lisp on PORT and give it a minute to
+stop.  Values its exit code, NIL when it still ran, and its standard error."
+  (let ((process (uiop:launch-program
+                  (list "sbcl" "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit"
+                        "--load" (namestring (asdf:system-relative-pathname
+                                              "tun" "tests/fixtures/programs-server.lisp"))
+                        "--port" (princ-to-string port)
+                        "--db" (namestring (scratch-path "programs-server.db")))
+                  :input nil :output nil :error-output :stream))
+        (end (+ (get-internal-real-time) (* 60 internal-time-units-per-second))))
     (unwind-protect
-         (let ((end (+ (get-internal-real-time) (* 60 internal-time-units-per-second))))
+         (progn
            (loop while (and (uiop:process-alive-p process) (< (get-internal-real-time) end))
                  do (sleep 0.1))
-           (is (not (uiop:process-alive-p process)) "it stopped at start")
-           (uiop:copy-stream-to-stream (uiop:process-info-error-output process) errors)
-           (is (eql 2 (uiop:wait-process process)))
-           (is (search "programs-server: the program tun-test-no-such-program is not on PATH"
-                       (get-output-stream-string errors))))
+           (if (uiop:process-alive-p process)
+               (values nil "")
+               (values (uiop:wait-process process)
+                       (uiop:slurp-stream-string (uiop:process-info-error-output process)))))
       (when (uiop:process-alive-p process)
         (uiop:terminate-process process :urgent t)
         (uiop:wait-process process)))))
+
+(defun programs-server-exit ()
+  "Values the exit code and standard error of the programs server, on a port
+that was free; again on another while another process took it first."
+  (loop repeat 5
+        do (multiple-value-bind (code errors) (programs-server-on (free-port))
+             (unless (and (eql 1 code) (search "cannot listen" errors))
+               (return (values code errors))))))
+
+(test a-server-without-a-declared-program-does-not-start
+  (multiple-value-bind (code errors) (programs-server-exit)
+    (is (eql 2 code) "it stopped at start, a server would not start")
+    (is (search "programs-server: the program tun-test-no-such-program is not on PATH" errors))))
 
 ;;; ------------------------------------------------------------------
 ;;; Arguments, directory, input and the answer (criterion 2)

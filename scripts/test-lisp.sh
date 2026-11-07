@@ -8,8 +8,10 @@ set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
 work="$(mktemp -d "${TMPDIR:-/tmp}/tun-lisp.XXXXXX")"
 export SLYNK_CLI_STATE="$work/state"
-# A system of the test's own under the root, to see the policy it compiles with.
-probe="$here/.build/lisp-policy-probe"
+# A system of the test's own under the root, to see the policy it compiles
+# with; a directory of this run's, as bin/test may run another beside it.
+mkdir -p "$here/.build"
+probe="$(mktemp -d "$here/.build/lisp-policy-probe.XXXXXX")"
 trap 'lisp stop >/dev/null 2>&1 || true; rm -rf "$work" "$probe"' EXIT
 cd "$here"
 
@@ -38,7 +40,6 @@ run start tun/core
 expect 0 'tun/core loaded'
 run eval "(namestring (asdf:apply-output-translations \"$here/src/core/util.lisp\"))"
 expect 0 "$SLYNK_CLI_STATE/fasl/src/core/util"
-mkdir -p "$probe"
 echo '(defsystem "lisp-policy-probe" :components ((:file "probe")))' >"$probe/lisp-policy-probe.asd"
 echo '(eval-when (:compile-toplevel) (defparameter cl-user::*probe-policy* (sb-ext:restrict-compiler-policy)))' \
   >"$probe/probe.lisp"

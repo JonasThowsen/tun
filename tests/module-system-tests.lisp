@@ -125,7 +125,8 @@ developer's dashboard (modules/dashboard/README.md).")
 (test application-inherits-the-modules-most-dependent-first
   ;; So :before and :after methods run in dependency order (least specific
   ;; first), and a client's features, more specific still, run last.
-  (let* ((cpl (closer-mop:class-precedence-list (find-class 'application)))
+  (let* ((cpl (closer-mop:class-precedence-list
+                (closer-mop:ensure-finalized (find-class 'application))))
          (positions (mapcar (lambda (m) (position (find-class (module-mixin m)) cpl)) (all-modules))))
     (is (every #'integerp positions))
     (dolist (module (all-modules))

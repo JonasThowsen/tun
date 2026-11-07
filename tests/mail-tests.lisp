@@ -356,21 +356,22 @@ with a fresh id.")
 (defun resend-error (status name message)
   (list status (jobj "statusCode" status "name" name "message" message)))
 
+(defun resend-endpoint (resend)
+  "The URL of RESEND's /emails, where Resend's adapter posts mail."
+  (format nil "http://127.0.0.1:~d/emails" (hunchentoot:acceptor-port resend)))
+
 (defmacro with-fake-resend ((resend) &body body)
   "Run BODY in a fresh application that sends through Resend's adapter to
-RESEND, a fake Resend serving on a free port."
-  (let ((port (gensym "PORT")))
-    `(let* ((,port (free-port))
-            (,resend (make-instance 'fake-resend :port ,port)))
-       (hunchentoot:start ,resend)
-       (unwind-protect
-            (with-test-app (:mail (make-instance 'tun.mail:resend-mail
-                                                 :api-key "re_test_key"
-                                                 :from "Saker <varsel@example.no>"
-                                                 :endpoint (format nil "http://127.0.0.1:~d/emails"
-                                                                   ,port)))
-              ,@body)
-         (hunchentoot:stop ,resend)))))
+RESEND, a fake Resend serving on a port of its own."
+  `(let ((,resend (make-instance 'fake-resend :port 0)))
+     (hunchentoot:start ,resend)
+     (unwind-protect
+          (with-test-app (:mail (make-instance 'tun.mail:resend-mail
+                                               :api-key "re_test_key"
+                                               :from "Saker <varsel@example.no>"
+                                               :endpoint (resend-endpoint ,resend)))
+            ,@body)
+       (hunchentoot:stop ,resend))))
 
 (test resend-receives-the-mail-with-its-key
   (with-fake-resend (resend)
@@ -435,11 +436,11 @@ RESEND, a fake Resend serving on a free port."
                                      (tun.mail::resend-outcome 502 "<html>Bad gateway</html>")))))
 
 (test an-unreachable-resend-is-temporary
-  (with-test-app (:mail (make-instance 'tun.mail:resend-mail
-                                       :api-key "re_test_key" :from "varsel@example.no"
-                                       :endpoint (format nil "http://127.0.0.1:~d/emails"
-                                                         (free-port))))
-    (let ((id (queue-mail)))
-      (deliver)
-      (is (equal "queued" (mail-field id "status")))
-      (is (not (search "re_test_key" (mail-field id "last_error")))))))
+  (with-refused-port (port)
+    (with-test-app (:mail (make-instance 'tun.mail:resend-mail
+                                         :api-key "re_test_key" :from "varsel@example.no"
+                                         :endpoint (format nil "http://127.0.0.1:~d/emails" port)))
+      (let ((id (queue-mail)))
+        (deliver)
+        (is (equal "queued" (mail-field id "status")))
+        (is (not (search "re_test_key" (mail-field id "last_error"))))))))

@@ -96,8 +96,8 @@
 
 (test p-backpressure-sheds-at-once
   (let ((*app* (debug-app :db (scratch-path "shed") :identity :claimed)))
-    (let* ((port (free-port))
-           (acceptor (tun.http:start-server *app* :port port :max-inflight 2)))
+    (let* ((acceptor (tun.http:start-server *app* :port 0 :max-inflight 2))
+           (port (tun.http:server-port acceptor)))
       (unwind-protect
            (let* ((sleepy (to-json-string (jobj "jsonrpc" "2.0" "id" 1 "method" "tools/call"
                                                 "params" (jobj "name" "debug_sleep" "arguments" (jobj "ms" 1500)))))

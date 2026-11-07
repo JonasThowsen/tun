@@ -21,9 +21,12 @@ trap cleanup EXIT
 initdb -D "$dir/data" -U tun --auth=trust --encoding=UTF8 --no-locale >"$dir/initdb.log" 2>&1 \
   || { cat "$dir/initdb.log" >&2; exit 2; }
 # No fsync: the server is thrown away, so surviving a power loss is not
-# what anything run here can test, and the runs are much faster.
+# what anything run here can test, and the runs are much faster.  bin/test
+# runs the core suites at once, each with connections of its own: 300 is
+# room for all of them, where the default is 100.
 pg_ctl -D "$dir/data" -l "$dir/server.log" -w \
-       -o "-c listen_addresses= -k $dir -c fsync=off -c full_page_writes=off" start >/dev/null \
+       -o "-c listen_addresses= -k $dir -c fsync=off -c full_page_writes=off -c max_connections=300" \
+       start >/dev/null \
   || { cat "$dir/server.log" >&2; exit 2; }
 createdb -h "$dir" -U tun tun
 
