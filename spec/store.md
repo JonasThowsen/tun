@@ -288,6 +288,13 @@ per role:
    or write an entity with a record policy.
 8. **Introspection.** `registry_describe` lists an entity's policy as
    `record_policy`: `[{role, condition}]`, condition `true` or the text.
+9. **Beyond the policy, declared.** A tool that shows a caller records
+   its record policy hides, on purpose, reading them as the system actor
+   (a system at a customer reading the items its person reported), says
+   why in its definition: `:beyond-record-policy "WHY"`, a non-empty
+   text, which `registry_describe` lists as `beyond_record_policy`. The
+   generated tests let such a tool show those records (`testing.md` §2,
+   sixth point) and check it otherwise as any tool.
 
 Not yet: a client adding a policy to a module's entity; a write condition
 apart from the read condition; fields only some roles see.

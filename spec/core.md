@@ -353,6 +353,14 @@ and is left out otherwise. Other refusals may or may not be audited. Work a work
 or job does is audited with its system actor. Entries never hold tokens or
 secrets, and record the credential the call used (`auth.md`).
 
+`audit_list` keeps to the record policies (`store.md` §6): an entry whose
+`entity_type` has a record policy is listed only to a caller whose policy
+reaches its record, and, when the record no longer exists, only to a
+caller whose role's clause is `t`. An entry that names no record, such as
+a refused create's, is listed as any other. `entity_id` naming a record
+the caller does not reach lists what one naming nothing lists, and
+`limit` counts the entries listed.
+
 ### 3.9 registry_describe
 
 A read for `viewer` and up, computed from the live definitions:
@@ -361,7 +369,8 @@ A read for `viewer` and up, computed from the live definitions:
   `source`, `module`, `computed` for a computed field) and its `rules`;
 - `operations`: `name`, `entity` (or null), `kind` (`read`, `create`,
   `update`, `transition`, `workflow`), `confirm`, `idempotent`, `policy`,
-  `source`, `module`;
+  `source`, `module`, and `beyond_record_policy`, the reason, for a tool
+  declared to show records beyond the record policy (`store.md` §6);
 - `workflows`, `message_templates`, `settings` (without values), `modules`
   and `extension_points`;
 - `locale`: the tenant's `language`, the application's `languages`, its

@@ -27,7 +27,8 @@ and a check added to Tun reaches every client with `tun update`.
      tests' package, where `tun new` puts them. Tun's and other systems'
      scenarios loaded in the same image are not the client's, and two
      packages may each define a scenario of the same name.
-  6. every tool of the client withstands fuzzing (§2).
+  6. every tool of the client withstands fuzzing (§2);
+  7. every tool of the client keeps to its record policies (§3).
 - Each generated test is named for what it checks, prefixed
   `generated-`, so a failure says which check found it.
 - **Isolation.** A scenario may install handlers that answer for other
@@ -102,9 +103,10 @@ must hold whatever a caller sends.
      §3's; never a fault, an error Tun did not expect, which `errors.md`
      records, and never `deadline_exceeded`: no input may make a tool run
      past its deadline;
-  2. a call answered with an error changes no record of any entity that
-     is not internal (`:internal`, such as the audit's entries); settings
-     count;
+  2. a call answered with an error changes no record of any entity,
+     internal ones (`:internal`) and settings included, but the audit's
+     entries, which a refusal writes (`core.md` §3.8): no job, mail or
+     reservation is left behind;
   3. nothing leaves the process: during the run Tun answers every call
      to another system through `*http-json-handler*` or
      `*program-handler*` as that system being unreachable, no job runs,
@@ -114,7 +116,17 @@ must hold whatever a caller sends.
   4. a waiting tool (`waiting.md`) waits no time;
   5. a call refused as `forbidden`, `confirmation_invalid` or
      `idempotency_conflict` leaves its audit entry, `outcome: "rejected"`
-     (`core.md` §3.8), whatever its input holds.
+     (`core.md` §3.8), whatever its input holds;
+  6. no object in a result has an `id` naming a record that the calling
+     actor's record policy hides (`store.md` §6), judged after the call:
+     one the system actor reads and the actor does not. An id is matched
+     to its entity by its prefix. A record the call itself inserted does
+     not count, nor does any record a tool declared
+     `:beyond-record-policy` (`store.md` §6 item 9) shows;
+  7. a call as an actor of role `viewer` changes no record of any
+     entity, internal ones included, but the audit's entries, whatever
+     it answers, unless its tool is a viewer mutation (a mutating tool
+     whose policy is `viewer`, which `:viewer-mutation` allows).
 - **Reproducible.** The calls follow from a seed. `bin/test` uses the
   same seed every run, so a run fails only when the code changed what it
   meets. `TUN_FUZZ_SEED=N` sets another, and `TUN_FUZZ_SEED=random` takes
@@ -132,7 +144,62 @@ must hold whatever a caller sends.
 - The generators are Tun's, in `tun.test-support`, so a client's own test
   can use them: one for an input schema, and those it is made of.
 
-## 3. Not yet
+## 3. Record policies in every tool
 
-Policy properties, sequences of operations and every page for every role
-come in later loops, each a section here.
+The seventh generated test,
+`generated-every-tool-keeps-to-the-record-policies`, checks that each
+tool of the client answers as the record policies (`store.md` §6) say,
+for each role: a record an actor's policy hides is not there for that
+actor, through any tool.
+
+- **Which tools.** Every tool of the client with an input property that
+  takes ids of an entity with a record policy: a parameter of the tool,
+  or a field of a create's draft. A client without such an entity passes
+  at once, and the test says so.
+- **Where and who.** As for fuzzing (§2): the database the `default`
+  scenario filled, on the test Postgres server, nothing leaving the
+  process, the same actors. One copy serves the test's calls, made again
+  before a pair (below) when a call since the last copy changed a record
+  other than the audit's entries; never between a confirmation's ask
+  and its confirming call.
+  What an actor reaches is what the store reads as that actor, against
+  what it reads as the system actor, judged at each call. An actor the
+  tool's own policy (`core.md` §3.3) refuses is skipped.
+- **A hidden record is a missing one.** For each actor and each such
+  property, the tool is called with a valid input (§2) holding an id
+  that names nothing, then with the same input holding the id of the
+  first record, by insertion order, that the actor's policy hides. The
+  input's other ids name records the actor reaches. Both calls end
+  alike: with a result each, or with the same error code, so the caller
+  cannot tell a hidden record from one that does not exist (`forbidden`
+  for one and `not_found` for the other tells it). A tool that asks for
+  confirmation is confirmed as in §2, and the confirming calls are
+  compared. When the first call is refused as `invalid_input`, which
+  says nothing about the id, up to three other valid inputs are tried,
+  and the last pair is compared all the same. The test says how many
+  pairs it compared, how many of those past input validation, how many
+  it skipped for the tool's policy and how many it could not make.
+- **A get agrees.** A read tool (`:kind :read`) whose only required
+  property takes ids of its own entity, which has a record policy, is
+  called with only that property: first with an id that names nothing,
+  then with each of the first three records, by insertion order, the
+  actor's policy admits. Unless the first is refused as `forbidden`, no
+  admitted record is answered `not_found`.
+- **What else must hold.** Every call of this test is checked as a
+  fuzzed call is (§2): an erring call changes nothing, and no answer
+  shows a hidden record, among the rest.
+- **Reproducible and fast** as §2: the inputs follow from the same seed,
+  a failure names the tool, the actor, the seed, the input and the record
+  by insertion order, and the test counts in §1's 30 seconds.
+
+## 4. Not yet
+
+Sequences of operations and every page for every role come in later
+loops, each a section here. Not checked by §2 and §3: that a list shows
+every record the actor reaches (lists have their own filters and
+limits); ids a result mentions as references to other records, such as
+an item's `project_id`, which a record the actor reaches may hold for one
+it does not; ids inside an input's arrays and nested objects; and Tun's
+own tools in a client's run. Of those, `attachments_…` read the record
+as the caller (`files.md` §4.2) and `audit_list` keeps to the policies
+(`core.md` §3.8), each checked by tests of its own in Tun's suite.

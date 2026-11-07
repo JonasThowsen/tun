@@ -23,8 +23,10 @@ returns when the question is answered, or when its time is up.
 - An operation of `:kind :wait` reads and never writes. Policy and input
   are checked as for any operation; then its body runs outside a
   transaction, so it holds no database connection and no write lock
-  while it waits. Its result, an entity or a JSON object, is shown as a
-  read's is.
+  while it waits. A write its body tries is refused, as a write in a
+  read transaction is (`read-only-violation`, a fault); a refusal it
+  ends in is still audited (`core.md` §3.8). Its result, an entity or a
+  JSON object, is shown as a read's is.
 - `(await (:seconds S [:until PREDICATE]) FORM...)` evaluates FORM in a
   read transaction of its own, again and again, until PREDICATE holds for
   its value (the value itself being true, without `:until`) or S seconds
