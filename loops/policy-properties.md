@@ -2,7 +2,7 @@
 
 - loop: policy-properties
 - mode: reviewed
-- stage: shown
+- stage: ship
 - base: ff369f47d2bdfa55e9c964f0b122f4af9ed9b7a8
 - after: audit-nul
 - verified: d651d71866423f7162f6c46f25ce077836e338fd
@@ -206,3 +206,5 @@ What holds today, and what does not:
 - 2026-11-07 21:13  verify 1: passed build, test, check
 - 2026-11-07 21:14  Jonas, between gate A rounds 1 and 2: fix audit_list in this loop (it listed every entry to viewers, whatever record policies hide); a tool that shows records beyond the policy on purpose declares it on the tool (:beyond-record-policy), rather than the check being narrowed
 - 2026-11-07 21:14  shown (/items)
+- 2026-11-07 21:14  gate B asked of a reviewer
+- 2026-11-07 21:20  gate B: approve (reviewer): Criteria 1-10 met: planted defects each found and passing without; Postgres policy suite green (60/60); spec matches code. Follow-ups: core 2.11.0 at rebase (main has 2.10.0), audit_list per-entry fetch cost, nixploy total generated time
