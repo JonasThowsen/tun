@@ -2,7 +2,7 @@
 
 - loop: client-checks
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 9627863ac7e751208c77fa9c2704fdf1153eeed8
 - after: fast-tests
 - verified: d610b9f1a5070c94dbf46c4b418139bae11144ec
@@ -77,3 +77,8 @@ Jonas gate C.
 - 2026-11-07 11:07  shown (/items)
 - 2026-11-07 11:07  gate B asked of a reviewer
 - 2026-11-07 11:11  gate B: approve (reviewer): Criteria met: isolation proved by values, scenarios keyed by package with default coexisting, clients keep their own tests, template matches; verify green. Notes: clients' server build changes store path without a behaviour change; --only generated needs Postgres
+- 2026-11-07 11:13  clients on a65d785, committed locally and tested: ferdig 753 checks, kurs 296, nixploy-dashboard 1138, all pass
+- 2026-11-07 11:13  gate C asked of the person
+- 2026-11-07 11:14  gate C: approve (jonas): «Push all three»
+- 2026-11-07 11:14  pushed the clients: ferdig 8952173, kurs 8e9d480, nixploy-dashboard 544b309; no deploy (tests only)
+- 2026-11-07 11:14  finished at tun a65d785
