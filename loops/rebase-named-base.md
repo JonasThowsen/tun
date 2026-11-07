@@ -2,7 +2,7 @@
 
 - loop: rebase-named-base
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: a47f7486e9f01b9a67e3f9261aecf69ca6be1da9
 - verified: 5e48df9235a95c90417ae06930aec20a890294b0
 - shown: 5e48df9235a95c90417ae06930aec20a890294b0
@@ -47,3 +47,4 @@ loop cannot be rebased at all.
 - 2026-11-07 12:17  shown (/)
 - 2026-11-07 12:17  gate B asked of a reviewer
 - 2026-11-07 12:19  gate B: approve (reviewer): All three criteria met with tests that fail on the old code; spec and docs agree; verify passed.
+- 2026-11-07 12:19  finished at tun 272e51f
