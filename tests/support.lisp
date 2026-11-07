@@ -1,13 +1,14 @@
 ;;;; tests/support.lisp -- test helpers shared by the core suite and the
 ;;;; client suite: calling tools as an actor, fresh applications, scratch
 ;;;; databases, concurrency, and a real HTTP server.  Scenarios and the
-;;;; preview's server are in tests/scenarios.lisp, the tests Tun generates
-;;;; for every client in tests/generated.lisp.
+;;;; preview's server are in tests/scenarios.lisp, fuzzing every tool in
+;;;; tests/fuzz-inputs.lisp and tests/fuzzing.lisp, and the tests Tun
+;;;; generates for every client in tests/generated.lisp.
 
 (defpackage #:tun.test-support
   (:use #:cl #:tun.core)
   (:export #:*app* #:call #:call-ok #:error-code-of #:with-test-app #:scratch-path #:find-by
-           #:postgres-available-p #:scratch-postgres #:scratch-databases #:raw-sql #:table-columns
+           #:postgres-available-p #:scratch-postgres #:drop-scratch-postgres #:scratch-databases #:raw-sql #:table-columns
            #:run-concurrently #:free-port #:with-refused-port
            #:http-post #:with-test-server #:http-tool-call
            #:web-request #:web-login #:location
@@ -18,7 +19,20 @@
            #:scenario-description #:serve-preview #:define-generated-tests
            #:untranslated-texts #:unused-translations #:known-texts #:definition-texts
            #:page-visible-texts #:unlooked-up-texts #:stored-strings #:data-codes #:json-strings
-           #:pages-missing-translations #:pseudo-page-problems))
+           #:pages-missing-translations #:pseudo-page-problems
+           ;; fuzzing (spec/testing.md 2)
+           #:*fuzz-random-state* #:make-fuzz-random-state #:generate-input #:generate-value
+           #:record-ref #:make-record-ref #:record-ref-p #:record-ref-entity #:record-ref-index
+           #:resolve-input #:shrink-input
+           #:+fuzz-calls+ #:+fuzz-seed+ #:+fuzz-actors+ #:fuzz-seed #:fuzz-calls #:fuzzed-tool-p
+           #:client-operations #:fuzz-tools #:fuzz-report #:fuzz-report-seed
+           #:fuzz-report-calls-per-actor #:fuzz-report-tools #:fuzz-report-calls
+           #:fuzz-report-seconds #:fuzz-report-failures #:fuzz-failure-tool #:fuzz-failure-seed
+           #:fuzz-failure-index #:fuzz-failure-problem #:fuzz-failure-kind #:fuzz-failure-call
+           #:fuzz-failure-shrunk #:fuzz-failure-alone #:fuzz-call-actor #:fuzz-call-input
+           #:fuzz-call-purpose #:outcome-kind #:outcome-code #:outcome-seconds #:failure-text
+           #:shown-input #:record-ref-id #:take-connection-attempts
+           #:fuzz-summary #:check-every-tool-withstands-fuzzing #:with-connections-refused))
 
 (in-package #:tun.test-support)
 
@@ -113,14 +127,28 @@ including those the jobs enqueue.  Returns how many attempts it made."
 databases on (bin/test runs the core suite under bin/with-postgres)."
   (plusp (length (uiop:getenv "TUN_TEST_POSTGRES"))))
 
-(defun scratch-postgres (name)
-  "The URL of a fresh, empty database on the test Postgres server."
+(defun test-postgres ()
+  "The URL of the test Postgres server's own database (TUN_TEST_POSTGRES)."
   (unless (postgres-available-p)
     (error "No test Postgres: TUN_TEST_POSTGRES is not set (bin/test sets it)"))
+  (uiop:getenv "TUN_TEST_POSTGRES"))
+
+(defun url-database (url)
+  "The name of the database the Postgres URL names."
+  (getf (tun.store.postgres:parse-postgres-url url) :database))
+
+(defun scratch-postgres (name &key template)
+  "The URL of a fresh database on the test Postgres server: empty, or a copy
+of TEMPLATE, the URL of a database there no one is connected to."
   (tun.store.postgres:postgres-create-database
-   (uiop:getenv "TUN_TEST_POSTGRES")
+   (test-postgres)
    (substitute-if #\_ (lambda (c) (not (or (lower-case-p c) (digit-char-p c))))
-                  (string-downcase (format nil "~a_~a" name (new-id "t"))))))
+                  (string-downcase (format nil "~a_~a" name (new-id "t"))))
+   :template (and template (url-database template))))
+
+(defun drop-scratch-postgres (url)
+  "Drop the database on the test Postgres server that URL names."
+  (tun.store.postgres:postgres-drop-database (test-postgres) (url-database url)))
 
 (defun scratch-databases (name)
   "A fresh database on every durable adapter available, as (label . db)

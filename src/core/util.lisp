@@ -171,25 +171,38 @@ Fractional seconds are truncated."
     (declare (ignore s m h))
     (coerce (format nil "~4,'0d-~2,'0d-~2,'0d" y mo d) 'simple-string)))
 
+(defun kept-date (ut)
+  "The date of UT, refused as invalid input when it is outside the dates
+PARSE-DATE takes, 1900-01-01 to 9999-12-31 (REFUSE-DATE-OUTSIDE-RANGE): past
+them a date has a fifth digit of year, and compares wrongly as text."
+  (if (<= (parse-date "1900-01-01") ut (+ (parse-date "9999-12-31") 86399))
+      (format-date ut)
+      (refuse-date-outside-range)))
+
 (declaim (ftype (function (string integer) (values simple-string &optional)) date-add-days))
 (defun date-add-days (date days)
-  "DATE (YYYY-MM-DD) shifted by DAYS calendar days."
+  "DATE (YYYY-MM-DD) shifted by DAYS calendar days.  Refused as invalid input
+when that is outside the dates Tun keeps, 1900-01-01 to 9999-12-31."
   (let ((ut (or (parse-date date) (error "invalid date ~s" date))))
-    (format-date (+ ut (* days 86400)))))
+    (kept-date (+ ut (* days 86400)))))
 
 (defun date-at (date hour)
   "Universal time of HOUR:00:00Z on DATE."
   (+ (or (parse-date date) (error "invalid date ~s" date)) (* hour 3600)))
 
 (defun date-add-months (date months)
-  "Shift calendar months, clamping the day to the destination month's end."
+  "Shift calendar months, clamping the day to the destination month's end.
+Refused as invalid input outside the dates Tun keeps, as DATE-ADD-DAYS is."
   (multiple-value-bind (s m h day month year) (decode-universal-time (parse-date date) 0)
     (declare (ignore s m h))
     (multiple-value-bind (years zero-month) (floor (+ (* year 12) (1- month) months) 12)
+      ;; Refused before encoding: ENCODE-UNIVERSAL-TIME takes no year before 1900.
+      (unless (<= 1900 years 9999)
+        (refuse-date-outside-range))
       (let* ((next (+ zero-month 2))
              (last-day (nth-value 3 (decode-universal-time (- (encode-universal-time 0 0 0 1
                                                    (if (= next 13) 1 next) (if (= next 13) (1+ years) years) 0) 86400) 0))))
-        (format-date (encode-universal-time 0 0 0 (min day last-day) (1+ zero-month) years 0))))))
+        (kept-date (encode-universal-time 0 0 0 (min day last-day) (1+ zero-month) years 0))))))
 
 (defun date-of (ut)
   "The UTC calendar date of universal time UT."

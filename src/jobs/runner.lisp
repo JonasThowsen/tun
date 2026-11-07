@@ -39,6 +39,9 @@
    (waking :initform nil :accessor jobs-state-waking-p
            :documentation "True in a server, whose scheduler runs: a job due now starts when
 its write commits.  An application a test opens runs its jobs when told.")
+   (held :initform nil :accessor jobs-state-held-p
+         :documentation "True while a test holds every job where it is: none is claimed,
+so each waits in its queue (spec/testing.md 2).")
    (lock :initform (sb-thread:make-mutex :name "job workers") :reader jobs-state-lock))
   (:documentation "What a process knows about its own part in running jobs."))
 
@@ -131,14 +134,27 @@ many jobs it recovered."
   (incf (job-attempts job))
   (save job))
 
+(defun jobs-held-p (&optional (application *application*))
+  "True while APPLICATION's jobs are held: none is claimed (HOLD-JOBS)."
+  (let ((state (application-jobs-state application)))
+    (and state (jobs-state-held-p state))))
+
+(defun hold-jobs (application &optional (held t))
+  "Hold every job of APPLICATION where it is, or with HELD NIL let them run
+again.  While held no job is claimed, by a worker, RUN-DUE-JOBS or
+RUN-JOB-NOW, so a test can call tools knowing that nothing a job would do,
+such as sending mail, happens (spec/testing.md 2)."
+  (setf (jobs-state-held-p (application-jobs-state application)) (and held t)))
+
 (defun claim-job (&optional queue except)
   "The next due job, of QUEUE (a queue name) when given and of no queue named
-in EXCEPT, claimed by this process; NIL when none is due.  Lowest priority
-number first, then the earliest due, then the oldest."
-  (with-transaction (:write)
-    (let ((job (select-one 'job :where (due-job-condition queue except)
-                                :order-by '(("priority" :asc) ("due_at" :asc) ("seq" :asc)))))
-      (when job (claim job)))))
+in EXCEPT, claimed by this process; NIL when none is due or jobs are held.
+Lowest priority number first, then the earliest due, then the oldest."
+  (unless (jobs-held-p)
+    (with-transaction (:write)
+      (let ((job (select-one 'job :where (due-job-condition queue except)
+                                  :order-by '(("priority" :asc) ("due_at" :asc) ("seq" :asc)))))
+        (when job (claim job))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Retrying (spec/jobs.md 2)
@@ -310,12 +326,14 @@ or :yielded for a snooze of 0 seconds, which ends this pass of its queue."
 
 (defun run-job-now (job)
   "Claim JOB, queued or retrying, whether or not it is due, and run one
-attempt of it.  Returns the outcome, or NIL when JOB is not waiting."
-  (let ((claimed (with-transaction (:write)
-                   (let ((current (fetch 'job (entity-id job))))
-                     (when (and current (member (job-state current) '("queued" "retrying")
-                                                :test #'string=))
-                       (claim current))))))
+attempt of it.  Returns the outcome, or NIL when JOB is not waiting or jobs
+are held."
+  (let ((claimed (and (not (jobs-held-p))
+                      (with-transaction (:write)
+                        (let ((current (fetch 'job (entity-id job))))
+                          (when (and current (member (job-state current) '("queued" "retrying")
+                                                     :test #'string=))
+                            (claim current)))))))
     (and claimed (run-job claimed))))
 
 (defun run-due-jobs (&key (limit 10000) queue)

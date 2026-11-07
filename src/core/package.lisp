@@ -105,7 +105,7 @@
    #:*core-migration-fault*
    #:with-transaction #:call-in-transaction #:assert-writable #:insert #:save #:delete-entity #:fetch #:fetch!
    #:select #:select-one #:lock-row #:where-field #:where-value->db #:read-only-violation
-   #:store-describe-schema #:store-write-queue-depth #:store-runs-queries-p #:store-query
+   #:store-describe-schema #:store-commits #:store-write-queue-depth #:store-runs-queries-p #:store-query
    #:store-write-content #:store-read-content #:store-delete-content
    ;; queries (spec/store.md 5)
    #:define-query #:query-name #:query-parameters #:query-returns #:query-description

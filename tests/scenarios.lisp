@@ -1,6 +1,7 @@
 ;;;; tests/scenarios.lisp -- scenarios (spec/preview.md 3): the named data a
 ;;;; preview, a browser check or a test starts from, made through the
-;;;; client's operations; and the server `tun preview` starts.
+;;;; client's operations; keeping what one installs from the next; and the
+;;;; server `tun preview` starts.
 
 (in-package #:tun.test-support)
 
@@ -81,6 +82,21 @@ finds it with PACKAGE."
       (error "run-scenario ~a needs *APP*, as with-test-app binds it" (scenario-name scenario)))
     (funcall (scenario-function scenario))
     scenario))
+
+;;; ------------------------------------------------------------------
+;;; Isolation (spec/testing.md 1)
+
+(defparameter *isolated-variables* '(tun:*program-handler* tun:*http-json-handler*)
+  "Tun's variables through which a scenario or a test installs what answers
+for another system for every thread. Each generated test, and each scenario
+the scenario test runs, sees them NIL, and what it sets reaches neither the
+next scenario nor the next test (spec/testing.md 1, Isolation).")
+
+(defun call-with-variables-unset (variables function)
+  "Call FUNCTION with each of VARIABLES, special variables, bound to NIL, so
+what FUNCTION sets them to ends with it."
+  (progv variables (make-list (length variables))
+    (funcall function)))
 
 ;;; ------------------------------------------------------------------
 ;;; The preview's server

@@ -23,7 +23,7 @@
            #:job-definition-transaction-p #:job-definition-after-crash #:backoff-seconds
            #:check-job-definitions
            #:job-process #:job-process-lock-key #:process-id #:open-job-process #:close-job-process #:tend-jobs #:run-due-jobs
-           #:rescue-orphaned-jobs #:run-job-now #:start-waking
+           #:rescue-orphaned-jobs #:run-job-now #:start-waking #:hold-jobs #:jobs-held-p
            #:jobs-list #:jobs-get #:jobs-retry #:jobs-cancel
            ;; schedules
            #:define-schedule #:remove-schedule #:schedule #:schedules #:find-schedule #:tend-schedules

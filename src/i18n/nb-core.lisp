@@ -101,6 +101,10 @@
    "må være et tall")
   ("must be one of: ~{~a~^, ~}"
    "må være en av: ~{~a~^, ~}")
+  ("The date is outside the dates Tun keeps, 1900-01-01 to 9999-12-31"
+   "Datoen er utenfor datoene Tun tar, 1900-01-01 til 9999-12-31")
+  ("cannot hold the character NUL"
+   "kan ikke inneholde tegnet NUL")
   ("must be a valid date in the form YYYY-MM-DD"
    "må være en gyldig dato på formen ÅÅÅÅ-MM-DD")
   ("must be a time in RFC 3339 format, such as 2026-03-01T09:00:00Z"

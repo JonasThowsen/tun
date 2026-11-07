@@ -46,7 +46,7 @@ echo '(eval-when (:compile-toplevel) (defparameter cl-user::*probe-policy* (sb-e
 run eval "(progn (asdf:load-asd \"$probe/lisp-policy-probe.asd\") (asdf:load-system \"lisp-policy-probe\") cl-user::*probe-policy*)"
 expect 0 '\(\(DEBUG \. 3\)\)'
 run eval '(tun.core::date-add-days "no date" 1)'
-expect 1 'is paused in the debugger' 'invalid date "no date"' '^ +0  \(TUN.CORE:+DATE-ADD-DAYS "no date" 1\)  src/core/util.lisp:17[0-9]$'
+expect 1 'is paused in the debugger' 'invalid date "no date"' '^ +0  \(TUN.CORE:+DATE-ADD-DAYS "no date" 1\)  src/core/util.lisp:18[0-9]$'
 id="$(grep -oE 'evaluation [0-9]+' "$out" | head -1 | grep -oE '[0-9]+')"
 run frame "$id" 0
 expect 0 'days  #@[0-9]+ = 1' 'restartable: yes'

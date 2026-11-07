@@ -269,7 +269,7 @@ Signals invalid_input listing every problem."
         ;; Meta arguments.
         (multiple-value-bind (key present) (jget args "request_key")
           (when (and present (not (json-null-p key)) (member "request_key" meta :test #'string=))
-            (if (and (stringp key) (< 0 (length key) 65))
+            (if (and (stringp key) (< 0 (length key) 65) (not (nul-text-p key)))
                 (setf (input-request-key input) key)
                 (input-error "request_key" "must be text of 1–64 characters"))))
         (multiple-value-bind (token present) (jget args "confirmation_token")
@@ -297,9 +297,15 @@ Signals invalid_input listing every problem."
                        (setf (getf (input-values input) (parameter-keyword p)) (parameter-default p))))
                   (t (let* ((before (length *input-errors*))
                             (coerced (coerce-input (parameter-type p) value (parameter-json-name p))))
-                       (when (= before (length *input-errors*))
-                         (push (parameter-keyword p) (input-provided input))
-                         (setf (getf (input-values input) (parameter-keyword p)) coerced)))))))))
+                       (cond ((/= before (length *input-errors*)))
+                             ;; Blank text is no value, so a required one is
+                             ;; missing, as an entity's required field is.
+                             ((and (null coerced) (parameter-required-p p)
+                                   (typep (parameter-type p) 'string-type))
+                              (input-error (parameter-json-name p) "must be filled in"))
+                             (t (push (parameter-keyword p) (input-provided input))
+                                (setf (getf (input-values input) (parameter-keyword p))
+                                      coerced))))))))))
     (setf (input-parsed-p input) t))
   input)
 

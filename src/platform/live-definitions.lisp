@@ -27,6 +27,25 @@
            (sha256-hex (uiop:read-file-string path)))
           (t :null))))
 
+(defvar *source-files* (make-hash-table :test 'equal :synchronized t)
+  "Path -> ((write-date . length) shown-path hash) of each source file a
+snapshot has read.")
+
+(defun source-file-entry (path)
+  "What a snapshot lists of the source file at PATH: its path as shown and
+its SHA-256.  The file is read and its system looked up again only when its
+write date or length is not what it was when it was last read: every
+application opened in one image, such as each test's, would otherwise read
+every source file."
+  (let ((stamp (cons (file-write-date path)
+                     (with-open-file (stream path :element-type '(unsigned-byte 8))
+                       (file-length stream))))
+        (known (gethash path *source-files*)))
+    (unless (and known (equal stamp (first known)))
+      (setf known (list stamp (display-source-path path) (sha256-hex (uiop:read-file-string path)))
+            (gethash path *source-files*) known))
+    (jobj "path" (second known) "source_hash" (third known))))
+
 (defun snapshot-live-definitions (app)
   (let ((entries (mapcan #'package-definitions (application-definition-packages app)))
         (paths (make-hash-table :test 'equal)))
@@ -34,10 +53,8 @@
       (dolist (object (definition-objects entry))
         (let* ((source (definition-object-source object))
                (path (and source (sb-introspect:definition-source-pathname source))))
-          (when (and path (probe-file path) (not (gethash path paths)))
-            (setf (gethash path paths)
-                  (jobj "path" (display-source-path path)
-                        "source_hash" (sha256-hex (uiop:read-file-string path))))))))
+          (when (and path (not (gethash path paths)) (probe-file path))
+            (setf (gethash path paths) (source-file-entry path))))))
     (setf (application-live-definitions app) entries
           (application-definition-sources app)
           (sort (loop for item being the hash-values of paths collect item)

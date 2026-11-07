@@ -118,11 +118,16 @@ moment can still meet.
   exclusive lock on `ports/lock` (`flock`), which it holds for that
   only; a `tun` that dies holding it releases it with its process. The
   port is the first from 4200 that no preview's file names, that no claim
-  holds but a stale one, and that nothing listens on. A stale claim is
+  holds but a stale one, that nothing listens on, and whose socket
+  directory (`$XDG_RUNTIME_DIR/tun-preview-PORT/`) no running Postgres
+  server holds: a preview started under another state directory, such as
+  a test's, holds one without a claim this one sees. A stale claim is
   taken over.
 - With `--port N`, N is claimed the same way: a claim of N held by a
   running process, or one that cannot be read, refuses it (exit 1),
-  naming the process or the file.
+  naming the process or the file. So does a socket directory of N that a
+  running Postgres server holds, naming the directory; a second start of
+  a running preview checks this after stopping it.
 - A second start of a running preview («Again», above) takes its claim over from
   the server it replaces, before stopping that server, so it keeps its
   port and no other start can take the port in between.

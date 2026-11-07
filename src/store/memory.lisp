@@ -7,7 +7,7 @@
 
 (defpackage #:tun.store.memory
   (:use #:cl #:tun.core)
-  (:export #:memory-store))
+  (:export #:memory-store #:copy-memory-store))
 
 (in-package #:tun.store.memory)
 
@@ -60,6 +60,26 @@
                 do (funcall (pop (memory-undo store)))))
         (when (and ok (null mark))
           (setf (memory-undo store) '())))))))
+
+(defun copy-memory-store (store)
+  "A new memory store holding what STORE holds, its rows in their order and
+its files' content, sharing nothing it could change: for a test to start from
+the same records again and again."
+  (let ((copy (make-instance 'memory-store)))
+    (flet ((copy-table (table)
+             (let ((new (make-hash-table :test (hash-table-test table))))
+               (maphash (lambda (key value) (setf (gethash key new) value)) table)
+               new)))
+      (sb-thread:with-recursive-lock ((memory-lock store))
+        (maphash (lambda (class-name rows)
+                   (setf (gethash class-name (memory-tables copy))
+                         (mapcar (lambda (entry) (cons (car entry) (copy-table (cdr entry))))
+                                 rows)))
+                 (memory-tables store))
+        (maphash (lambda (id octets) (setf (gethash id (memory-contents copy)) (copy-seq octets)))
+                 (memory-contents store))
+        (setf (memory-seq copy) (memory-seq store))))
+    copy))
 
 (defun log-undo (store thunk)
   (push thunk (memory-undo store)))

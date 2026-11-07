@@ -29,7 +29,8 @@
 
 (defpackage #:tun.store.postgres
   (:use #:cl #:tun.core)
-  (:export #:postgres-store #:postgres-url-p #:parse-postgres-url #:postgres-create-database))
+  (:export #:postgres-store #:postgres-url-p #:parse-postgres-url #:postgres-create-database
+           #:postgres-drop-database))
 
 (in-package #:tun.store.postgres)
 
@@ -810,12 +811,29 @@ holds no ? inside a string."
 ;;; ------------------------------------------------------------------
 ;;; Tooling
 
-(defun postgres-create-database (url name)
-  "Create the empty database NAME on the server URL names, and return a URL
-for it.  For tests and tooling; NAME is an identifier, never user input."
+(defun call-on-server (url statement)
+  "Run STATEMENT, which no transaction may hold, on a connection of its own
+to the database URL names."
+  (let ((*connection* (open-connection (make-instance 'postgres-store :url url))))
+    (unwind-protect (exec statement)
+      (close-connection *connection*))))
+
+(defun postgres-create-database (url name &key template)
+  "Create the database NAME on the server URL names, empty or, with
+TEMPLATE, a copy of the database of that name, which no one may be connected
+to; return a URL for it.  For tests and tooling; NAME and TEMPLATE are
+identifiers, never user input."
   (check-type url string)
   (check-type name string)
-  (let ((*connection* (open-connection (make-instance 'postgres-store :url url))))
-    (unwind-protect (exec (format nil "CREATE DATABASE ~a" (quote-ident name)))
-      (close-connection *connection*)))
+  (check-type template (or null string))
+  (call-on-server url (format nil "CREATE DATABASE ~a~@[ TEMPLATE ~a~]"
+                              (quote-ident name) (and template (quote-ident template))))
   (cl-ppcre:regex-replace "^(postgres(?:ql)?://[^/]*/)[^?]+" url (format nil "\\1~a" name)))
+
+(defun postgres-drop-database (url name)
+  "Drop the database NAME on the server URL names, when it is there,
+closing the connections to it.  URL names another database on that server.
+For tests and tooling; NAME is an identifier, never user input."
+  (check-type url string)
+  (check-type name string)
+  (call-on-server url (format nil "DROP DATABASE IF EXISTS ~a WITH (FORCE)" (quote-ident name))))

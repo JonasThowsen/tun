@@ -1,6 +1,7 @@
 ;;;; tun-test-support.asd -- the test helpers of the core suite and of every
-;;;; client's suite (tests/support.lisp), and the tests Tun generates for
-;;;; every client (tests/generated.lisp).
+;;;; client's suite (tests/support.lisp), the tests Tun generates for every
+;;;; client (tests/generated.lisp), and the fuzzing one of them runs
+;;;; (tests/fuzz-inputs.lisp, tests/fuzzing.lisp).
 ;;;;
 ;;;; A system of its own rather than a secondary system of tun.asd, so Nix
 ;;;; can build it as a package beside the kernel: a client outside this
@@ -14,4 +15,6 @@
                 :components ((:file "support")
                              (:file "i18n-support")
                              (:file "scenarios")
+                             (:file "fuzz-inputs")
+                             (:file "fuzzing")
                              (:file "generated")))))

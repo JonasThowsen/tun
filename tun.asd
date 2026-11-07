@@ -202,5 +202,6 @@
                              (:file "cli-tests")
                              (:file "preview-tests")
                              (:file "generated-tests")
+                             (:file "fuzz-tests")
                              (:file "loop-tests")
                              (:file "run")))))

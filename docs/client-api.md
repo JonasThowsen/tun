@@ -788,14 +788,26 @@ A test starts from one with `(run-scenario "default")` inside
 
 The client's `tests/tests.lisp` holds the tests Tun generates for every
 client (`spec/testing.md`): the public-interface check, the application
-opening on Postgres, translations, and each scenario making its records.
-A new Tun brings new ones. Name in `:isolate` the client's own variables
-through which a scenario installs what answers for another system:
+opening on Postgres, translations, each scenario making its records, and
+every tool of the client fuzzed. A new Tun brings new ones. Name in
+`:isolate` the client's own variables through which a scenario installs
+what answers for another system:
 
 ```lisp
 (define-generated-tests "notes-client" :package "NOTES-CLIENT"
   :isolate (notes-client:*mailbox-settings*))
 ```
+
+The fuzzing test calls each tool with valid, edge and hostile inputs made
+from its schema, from the `default` scenario's records, as `admin:fuzz`,
+`employee:fuzz`, `viewer:fuzz` and the scenario's actors, with every other
+system unreachable. A tool fails it with a fault, a refusal that changed
+records, or a call that left the process; the failure names the tool, the
+actor, the seed and the smallest input that still fails. `bin/test` uses
+the same seed every run; `TUN_FUZZ_SEED=N` replays a failure's seed,
+`TUN_FUZZ_SEED=random` looks further, and `TUN_FUZZ_CALLS=N` makes more
+calls per tool and actor. A client's own test can make inputs with
+`generate-input` and `generate-value` from a tool's input schema.
 
 A browser check is `checks/NAME.py`, with `run(t)`;
 `tun check` runs each against a fresh preview of its scenario

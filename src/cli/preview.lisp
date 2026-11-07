@@ -161,13 +161,27 @@ renamed onto the claim, so no one ever reads half of one."
     (write-text new (princ-to-string pid))
     (sb-posix:rename (namestring new) (namestring file))))
 
+(defun socket-directory-held-p (port)
+  "True when a running Postgres server has its socket in PORT's socket
+directory: one a preview started under another state directory, such as a
+test's, whose claim this one cannot see.  Its server listens on no TCP port,
+so PORT-FREE-P does not see it either."
+  (let* ((lock (merge-pathnames ".s.PGSQL.5432.lock" (socket-directory port)))
+         (pid (and (probe-file lock)
+                   (ignore-errors
+                    (parse-integer (with-open-file (stream lock) (read-line stream nil ""))
+                                   :junk-allowed t)))))
+    (and pid (process-alive-p pid))))
+
 (defun choose-port (taken)
   "The first port from +FIRST-PORT+ that no preview in TAKEN has, whose
-claim is not taken and that nothing listens on.  Called under the lock."
+claim is not taken, that nothing listens on and whose socket directory no
+running database holds.  Called under the lock."
   (loop for port from +first-port+ below (+ +first-port+ 100)
         when (and (not (member port taken))
                   (not (claim-taken-p (claim-holder port)))
-                  (port-free-p port))
+                  (port-free-p port)
+                  (not (socket-directory-held-p port)))
           return port
         finally (fail-step "no free port from ~d to ~d" +first-port+ (+ +first-port+ 99))))
 
@@ -452,6 +466,9 @@ its own."
                (stop-preview running))
              (unless (port-free-p port)
                (fail-step "something already listens on port ~d" port))
+             (when (socket-directory-held-p port)
+               (fail-step "another preview's database uses ~a"
+                          (namestring (socket-directory port))))
              (uiop:delete-directory-tree data :validate #'preview-data-p
                                               :if-does-not-exist :ignore)
              (let* ((database (start-database data (socket-directory port)))

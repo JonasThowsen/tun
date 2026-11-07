@@ -245,6 +245,31 @@ tun or a broken file would leave it."
         (is (every (lambda (port) (equal (own-pid) (claim-text port))) ports)
             "each claimed by this process")))))
 
+(test a-port-whose-socket-directory-a-running-database-holds-is-skipped
+  ;; A preview started under another state directory, such as a test's,
+  ;; holds the socket directory of its port with no claim this one sees,
+  ;; and its database listens on no TCP port.
+  (with-state-home
+    (lambda ()
+      (let ((runtime (cli-scratch-directory))
+            (before (uiop:getenv "XDG_RUNTIME_DIR"))
+            (port (first (free-preview-ports 1))))
+        (ensure-directories-exist runtime)
+        (unwind-protect
+             (progn
+               (sb-posix:setenv "XDG_RUNTIME_DIR" (namestring runtime) 1)
+               (let ((lock (merge-pathnames (format nil "tun-preview-~d/.s.PGSQL.5432.lock" port)
+                                            runtime)))
+                 (ensure-directories-exist lock)
+                 (with-open-file (out lock :direction :output)
+                   (format out "~d~%/somewhere/cluster~%" (own-pid))))
+               (let ((claimed (tun.cli:claim-port :taken '())))
+                 (is (/= port claimed) "port ~d, whose socket directory is held, skipped" port)))
+          (if before
+              (sb-posix:setenv "XDG_RUNTIME_DIR" before 1)
+              (sb-posix:unsetenv "XDG_RUNTIME_DIR"))
+          (uiop:delete-directory-tree runtime :validate t :if-does-not-exist :ignore))))))
+
 (test a-stale-claim-is-taken-over-and-a-held-one-skipped
   (with-state-home
     (lambda ()

@@ -81,10 +81,15 @@ the modules, then the client's, last.
 - **Money** is an integer count of the minor units of the tenant's
   currency, in a `money` field whose name ends `_minor` (`i18n.md` §5).
   Never a float.
-- **Dates** are `YYYY-MM-DD`. **Local times** are `HH:MM`, 24 hours,
-  wall-clock time in the tenant's time zone (§2.2), never converted unless
-  a contract says so. **Instants** are RFC 3339 UTC. "Today" is the
-  clock's instant as a local date in the tenant's time zone.
+- **Dates** are `YYYY-MM-DD`, from 1900-01-01 to 9999-12-31. A tool whose
+  arithmetic on a date would leave them, such as the day after
+  9999-12-31, refuses with `invalid_input`. **Local times** are `HH:MM`,
+  24 hours, wall-clock time in the tenant's time zone (§2.2), never
+  converted unless a contract says so. **Instants** are RFC 3339 UTC.
+  "Today" is the clock's instant as a local date in the tenant's time
+  zone.
+- **Text** never holds the character NUL, which Postgres cannot store:
+  input holding it is `invalid_input`.
 - **Identifiers** are opaque strings with a per-entity prefix, `cus_…`.
 - **Revisions** are integers starting at 1; every accepted update of a
   record increments its revision. A tool that takes `revision` refuses a
@@ -273,7 +278,10 @@ registry: `name`, a `title` in source text, untranslated, `description`, `inputS
 Schema with `required`) and `annotations` with `readOnlyHint` and
 `destructiveHint`. Mutating tools list `request_key` in their properties and
 have `readOnlyHint: false`; confirm tools also list `confirmation_token`.
-Platform tools have `"entity": null`.
+Platform tools have `"entity": null`. Trimmed text (the default) with no
+minimum length that trims to nothing is no value: a required one sent so
+is refused as missing, `invalid_input`, as a required field of an entity
+is. Text declared `:trim nil` keeps its spaces and is taken as sent.
 
 ### 3.5 Results and error codes
 

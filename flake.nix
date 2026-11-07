@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.8.2";
+      coreVersion = "2.9.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -111,7 +111,8 @@
         src = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.unions [ ./tun-test-support.asd ./tests/support.lisp ./tests/i18n-support.lisp
-                                         ./tests/scenarios.lisp ./tests/generated.lisp ];
+                                         ./tests/scenarios.lisp ./tests/fuzz-inputs.lisp
+                                         ./tests/fuzzing.lisp ./tests/generated.lisp ];
         };
         systems = [ "tun-test-support" ];
         lispLibs = [ tun ] ++ (with sbcl.pkgs; [ drakma usocket fiveam ]);

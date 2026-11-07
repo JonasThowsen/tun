@@ -118,8 +118,14 @@ definer's source language: translated where it is shown.")
     (when (string-pattern type) (setf (gethash "pattern" schema) (string-pattern type)))
     schema))
 
+(defun nul-text-p (value)
+  "True when VALUE is text holding the character NUL, which Postgres cannot
+store in text (core.md §2.1)."
+  (and (stringp value) (find (code-char 0) value) t))
+
 (defmethod coerce-input ((type string-type) value path)
   (cond ((not (stringp value)) (input-error path "must be text"))
+        ((nul-text-p value) (input-error path "cannot hold the character NUL"))
         (t (let ((s (if (string-trim-p type) (trim value) value)))
              (cond ((and (zerop (length s)) (zerop (string-min type)) (string-trim-p type))
                     nil)                ; an empty (trimmed) optional string means "no value"
@@ -347,6 +353,11 @@ decimals (the encoder prints the shortest form, e.g. 0.3)."
 ;;; ------------------------------------------------------------------
 ;;; Dates and timestamps
 
+(defun refuse-date-outside-range ()
+  "Refuse, as invalid input, a date that arithmetic on a date made outside the
+dates Tun keeps (PARSE-DATE)."
+  (fail :invalid-input "The date is outside the dates Tun keeps, 1900-01-01 to 9999-12-31"))
+
 (defclass date-type (field-type) ())
 (defmethod type-name ((type date-type)) "date")
 (defmethod type-lisp-type ((type date-type)) '(or null string))
@@ -380,7 +391,7 @@ decimals (the encoder prints the shortest form, e.g. 0.3)."
 (defmethod type-lisp-type ((type id-type)) '(or null string))
 (defmethod type-json-schema ((type id-type)) (jobj "type" "string" "minLength" 1 "maxLength" 64))
 (defmethod coerce-input ((type id-type) value path)
-  (if (and (stringp value) (< 0 (length value) 65))
+  (if (and (stringp value) (< 0 (length value) 65) (not (nul-text-p value)))
       (coerce value 'simple-string)
       (input-error path "must be a valid identifier")))
 
