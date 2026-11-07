@@ -2,7 +2,7 @@
 
 - loop: policy-properties
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: ff369f47d2bdfa55e9c964f0b122f4af9ed9b7a8
 - after: audit-nul
 - verified: d651d71866423f7162f6c46f25ce077836e338fd
@@ -208,3 +208,8 @@ What holds today, and what does not:
 - 2026-11-07 21:14  shown (/items)
 - 2026-11-07 21:14  gate B asked of a reviewer
 - 2026-11-07 21:20  gate B: approve (reviewer): Criteria 1-10 met: planted defects each found and passing without; Postgres policy suite green (60/60); spec matches code. Follow-ups: core 2.11.0 at rebase (main has 2.10.0), audit_list per-entry fetch cost, nixploy total generated time
+- 2026-11-07 21:24  pushed tun fd8ed5a (reviewer gate B). Clients on it, committed locally, not pushed: ferdig 2c02f7e 755 checks, fuzz 11.7s, policies 1.3s; kurs fd6c134 349, fuzz 8.1s; nixploy-dashboard a882419 1140, generated tests 25.5s in all (fuzz 23.0s, policies 0.9s). Follow-ups from gate B: audit_list one fetch per entry (early return for a role without a clause, one select per page); a test comparing a result with an error code; shrinking on checks 6 and 7 untested; small readability fixes (policy-problem's parameter name, a stale comment, string-trim of spaces only, *writes-refused* exported)
+- 2026-11-07 21:25  gate C asked of the person
+- 2026-11-07 22:02  gate C: approve (jonas): Push all, deploy ferdig + kurs
+- 2026-11-07 22:05  deployed ferdig 2c02f7e (dpl_9znaqr8sq4jx38s3) and kurs fd6c134 (dpl_02py10xfzhsccezz), both succeeded and independently verified; clients pushed (nixploy-dashboard a882419); dashboard pinned in nixos 1fcb963 for Jonas's netcup deploy
+- 2026-11-07 22:05  finished at tun fd8ed5a
