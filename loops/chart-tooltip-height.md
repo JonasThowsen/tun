@@ -2,12 +2,12 @@
 
 - loop: chart-tooltip-height
 - mode: reviewed
-- stage: ship
+- stage: shown
 - base: d101e5832f8742f8bd76afb7bbd250c46cddf99c
 - client: /home/jonas/coding/kurs
-- client-base: f9f15dad4a40794fd0cec2a6367f7cdb76cb74df
-- verified: 6f1c98175fb417cc5557365fb6ef27043dcb93f5 b845e8827acad8ddf46f778202d6894811c40039
-- shown: 6f1c98175fb417cc5557365fb6ef27043dcb93f5 b845e8827acad8ddf46f778202d6894811c40039
+- client-base: e95e10419d03b8267d0750aa7496022b62b08ec8
+- verified: 6f1c98175fb417cc5557365fb6ef27043dcb93f5 61037d83a04b7d7c9204335df3f21142fcc2d0df
+- shown: 6f1c98175fb417cc5557365fb6ef27043dcb93f5 61037d83a04b7d7c9204335df3f21142fcc2d0df
 
 ## Brief
 
@@ -64,3 +64,6 @@ some and 192 px, pinned top and bottom, at others.
 - 2026-11-07 13:05  shown (/shares/AAPL:xnas)
 - 2026-11-07 13:05  gate B asked of a reviewer
 - 2026-11-07 13:09  gate B: approve (reviewer): Client tree holds only this loop's work; criterion 1 met by a walk that fails without the fix; criterion 2 by the existing checks; spec and version agree.
+- 2026-11-07 13:10  rebased: tun d101e58 → d101e58, kurs f9f15da → e95e104
+- 2026-11-07 13:18  verify 6: passed build, test, check, client-check
+- 2026-11-07 13:18  shown (/shares/AAPL:xnas)
