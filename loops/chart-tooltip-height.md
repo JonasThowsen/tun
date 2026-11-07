@@ -2,7 +2,7 @@
 
 - loop: chart-tooltip-height
 - mode: reviewed
-- stage: shown
+- stage: ship
 - base: d101e5832f8742f8bd76afb7bbd250c46cddf99c
 - client: /home/jonas/coding/kurs
 - client-base: e95e10419d03b8267d0750aa7496022b62b08ec8
@@ -67,3 +67,5 @@ some and 192 px, pinned top and bottom, at others.
 - 2026-11-07 13:10  rebased: tun d101e58 → d101e58, kurs f9f15da → e95e104
 - 2026-11-07 13:18  verify 6: passed build, test, check, client-check
 - 2026-11-07 13:18  shown (/shares/AAPL:xnas)
+- 2026-11-07 13:18  gate B asked of a reviewer
+- 2026-11-07 13:19  gate B: approve (reviewer): Tun diff byte-identical to the approved one; client diff empty on e95e104; verify round 6 passed.
