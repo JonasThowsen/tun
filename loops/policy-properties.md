@@ -2,9 +2,11 @@
 
 - loop: policy-properties
 - mode: reviewed
-- stage: build
+- stage: shown
 - base: ff369f47d2bdfa55e9c964f0b122f4af9ed9b7a8
 - after: audit-nul
+- verified: d651d71866423f7162f6c46f25ce077836e338fd
+- shown: d651d71866423f7162f6c46f25ce077836e338fd
 
 ## Brief
 
@@ -201,3 +203,6 @@ What holds today, and what does not:
 - 2026-11-07 21:07  build: generated-every-tool-keeps-to-the-record-policies (tests/policy-checks.lisp): hidden-vs-missing pairs, gets, one database copy remade only after a change; fuzz checks 6 (no hidden record shown, judged after the call, inserted records and :beyond-record-policy tools left out) and 7 (a viewer never writes); check 2 counts internal records but the audit's; :beyond-record-policy in define-operation and registry_describe; a wait's body refuses writes (*writes-refused*), its refusal still audited; audit_list keeps to the record policies, paging past what it leaves out. Planted defects in tests/policy-tests.lisp on Postgres, each found, each passing without it
 - 2026-11-07 21:07  shown once: without the wait's write refusal, the fuzzer fails a viewer's fuzz_memos_watch that writes a note (check 2: refused with not_found but changed records of fuzz_note); without the audit's exemption inside a wait, check 5 fails the refusal (left no rejected audit entry). A wait writing a memo was already refused for viewers by the record policy, so the probe writes a note
 - 2026-11-07 21:07  clients against this tree: kurs 349 checks, fuzz 8.0s, nothing to check (no record policy); ferdig 755, fuzz 12.2s, policies 1.3s (22 tools, 43 pairs, 42 past validation, 9 gets); nixploy-dashboard 1140, fuzz 23.0-23.9s against 21.8s on Tun afa9fba at the same load, policies 0.8s (0 pairs: only viewers have hidden records and its tools refuse viewers; 28 gets). ferdig declares :beyond-record-policy on items_get and items_list (ferdig.md 5.2); no fuzz actor is a system at a customer, so those paths are not exercised
+- 2026-11-07 21:13  verify 1: passed build, test, check
+- 2026-11-07 21:14  Jonas, between gate A rounds 1 and 2: fix audit_list in this loop (it listed every entry to viewers, whatever record policies hide); a tool that shows records beyond the policy on purpose declares it on the tool (:beyond-record-policy), rather than the check being narrowed
+- 2026-11-07 21:14  shown (/items)
