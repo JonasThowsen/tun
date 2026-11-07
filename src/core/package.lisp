@@ -168,7 +168,7 @@
    #:*max-waiting-per-client* #:waiting-count #:client-waiting-count
    ;; counts by key (core.md 7.5)
    #:key-counts #:make-key-counts #:take-count #:give-back-count #:key-count
-   #:write-audit #:defer-audit #:audit-entry-request-id
+   #:write-audit #:defer-audit #:audit-entry-request-id #:audited-refusal-code-p
    ;; registry
    #:define-workflow #:workflow-kind #:workflow-kind-name #:workflow-kind-label #:workflow-kind-function
    #:workflow-kind-source #:workflow-kind-location #:workflow-kind-debug-p #:workflow-kind-own-transactions-p #:workflow-kind-templates #:find-workflow-kind #:*workflow-kinds*

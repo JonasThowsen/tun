@@ -102,3 +102,92 @@
                                       #\Return #\Newline #\Return #\Newline #\Return #\Newline #\Return #\Newline))))
       (is (search " 200" (raw (format nil "GET /health HTTP/1.1~c~cHost: x~c~c~c~c"
                                       #\Return #\Newline #\Return #\Newline #\Return #\Newline)))))))
+
+;;; Every refusal core.md 3.8 names is audited, however it was refused and
+;;; whatever the input holds (loops/audit-nul.md).
+
+(define-operation audit-test-close ((id :type (id widget) :required t))
+    (:entity widget :kind :transition :policy :employee :title "Close (audit test)")
+  (fail :forbidden "Not for you"))
+
+(define-operation audit-test-peek ((id :type (id widget) :required t))
+    (:entity widget :kind :read :policy :viewer :title "Peek (audit test)")
+  (fail :forbidden "Not for you"))
+
+;; Refuses inside the system's actor, as a body that does its work as the
+;; system may (client-api.md).
+(define-operation audit-test-close-as-system ((id :type (id widget) :required t))
+    (:entity widget :kind :transition :policy :employee :title "Close as the system (audit test)")
+  (with-actor ((system-actor "audit-test"))
+    (fail :forbidden "Not for you")))
+
+(defun no-value-p (value)
+  "True when VALUE, read from a result, is absent or JSON null."
+  (or (null value) (json-null-p value)))
+
+(defun rejected-entries (tool)
+  "The audit entries with outcome rejected of TOOL, newest first."
+  (remove-if-not (lambda (entry)
+                   (and (string= tool (jget entry "tool")) (string= "rejected" (jget entry "outcome"))))
+                 (coerce (jget (call-ok "audit_list" "admin:ada" "limit" 100) "items") 'list)))
+
+(test a-refusal-a-body-signals-is-audited-once
+  (with-test-app ()
+    (let ((id (jget (call-ok "widgets_create" "employee:anna" "name" "Lukket") "id")))
+      (is (string= "forbidden" (nth-value 1 (call "audit_test_close" "employee:anna" "id" id))))
+      (is (string= "forbidden" (nth-value 1 (call "audit_test_peek" "viewer:vera" "id" id))))
+      (dolist (tool '("audit_test_close" "audit_test_peek"))
+        (let ((entries (rejected-entries tool)))
+          (is (= 1 (length entries)) "~a: ~d entries" tool (length entries))
+          (is (equal (list "forbidden" "widget" id)
+                     (list (jget (first entries) "error_code") (jget (first entries) "entity_type")
+                           (jget (first entries) "entity_id")))))))))
+
+(test a-refusal-inside-another-actor-is-audited-as-the-caller
+  (with-test-app ()
+    (let ((id (jget (call-ok "widgets_create" "employee:anna" "name" "Systemet") "id")))
+      (is (string= "forbidden" (nth-value 1 (call "audit_test_close_as_system" "employee:anna" "id" id))))
+      (let ((entries (rejected-entries "audit_test_close_as_system")))
+        (is (= 1 (length entries)))
+        (is (equal "employee:anna" (jget (first entries) "actor")) "~s" (jget (first entries) "actor"))))))
+
+(test a-policy-refusal-is-audited-once
+  (with-test-app ()
+    (is (string= "forbidden" (nth-value 1 (call "widgets_create" "viewer:vera" "name" "Nei"))))
+    (is (= 1 (length (rejected-entries "widgets_create"))))))
+
+(test a-nested-refusal-is-audited-for-each-call-it-ends
+  (with-test-app ()
+    (let ((id (jget (call-ok "widgets_create" "employee:anna" "name" "Inni") "id")))
+      (is (string= "confirmation_invalid" (nth-value 1 (call "widgets_archive_now" "employee:anna" "id" id))))
+      (is (= 1 (length (rejected-entries "widgets_archive"))) "the inner call")
+      (is (= 1 (length (rejected-entries "widgets_archive_now"))) "the outer call it ended"))))
+
+(test eval-refused-is-audited-once
+  (with-test-app (:allow-eval t)
+    (is (string= "forbidden" (nth-value 1 (call "eval" "admin:ada" "code" "(tun.core:fail :forbidden \"Nei\")"))))
+    (is (= 1 (length (rejected-entries "eval"))))))
+
+(test a-refused-call-is-audited-whatever-its-input-holds
+  ;; On Postgres, which cannot store NUL: the entry is written, and a value
+  ;; taken from the raw input that no call could use is left out.
+  (with-test-app (:db (scratch-postgres "audit_input"))
+    (let* ((nul (format nil "a~cb" (code-char 0)))
+           (long (make-string 80 :initial-element #\w))
+           (widget (jget (call-ok "widgets_create" "employee:anna" "name" "Kari") "id")))
+      (flet ((refused-entry (tool &rest arguments)
+               (is (string= "forbidden" (nth-value 1 (apply #'call tool "viewer:vera" arguments))))
+               (let ((entries (rejected-entries tool)))
+                 (is (= 1 (length entries)) "~a: ~d entries" tool (length entries))
+                 (first entries))))
+        (let ((entry (refused-entry "widgets_create" "name" "Nei" "request_key" nul)))
+          (is (no-value-p (jget entry "request_key")) "a key holding NUL is left out"))
+        (let ((entry (refused-entry "audit_test_close" "id" nul)))
+          (is (no-value-p (jget entry "entity_id")) "an id holding NUL is left out"))
+        (let ((entry (refused-entry "orders_create" "customer_id" nul)))
+          (is (no-value-p (jget entry "entity_id")) "another id parameter holding NUL is left out"))
+        (let ((entry (refused-entry "widgets_archive" "id" long)))
+          (is (no-value-p (jget entry "entity_id")) "an id longer than 64 characters is left out"))
+        (let ((entry (refused-entry "widgets_purge" "id" widget "request_key" "key-1")))
+          (is (equal (list "key-1" widget) (list (jget entry "request_key") (jget entry "entity_id")))
+              "a key and an id a call could use are kept"))))))

@@ -620,7 +620,11 @@ one in any thread the code starts) and under its deadline.  Output and printed v
         (fail-with-details :read-only (list "output" (get-output-stream-string (capped-buffer output)))
                            "eval runs in a read-only transaction; writing is not allowed: ~a"
                            (princ-to-string e)))
-      (operation-error (e) (audit-eval "rejected" (json-name-of (operation-error-code e))) (error e))
+      (operation-error (e)
+        ;; A refusal core audits for every call (RUN-GUARDED) is not audited twice.
+        (unless (audited-refusal-code-p (operation-error-code e))
+          (audit-eval "rejected" (json-name-of (operation-error-code e))))
+        (error e))
       (error (e)
         (let ((text (princ-to-string e)))
           (audit-eval "rejected" (if (search "readonly" (string-downcase text)) "read_only" "invalid_input"))

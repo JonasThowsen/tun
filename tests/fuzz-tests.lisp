@@ -120,7 +120,8 @@ fuzz-records."
   "The defects the probe tools below have while a test binds this: :FAULT,
 an error Tun did not expect for most input; :WRITE-THEN-REFUSE, a refusal
 after the record is written; :DIRECT-CONNECTION, a call to another host past
-Tun's handlers.  None elsewhere, so the probes behave in every other test.")
+Tun's handlers; :UNAUDITED, a refusal whose audit entry the body drops.
+None elsewhere, so the probes behave in every other test.")
 
 (define-entity fuzz-note (:label "Fuzz note" :id-prefix "fzn" :table "fuzz_notes")
   ((title :type (string :min 1 :max 200) :required t :label "Title")
@@ -158,6 +159,15 @@ Tun's handlers.  None elsewhere, so the probes behave in every other test.")
      :title "Archive a note (fuzz probe)")
   (delete-entity (fetch! 'fuzz-note id))
   (jobj "archived" id))
+
+(define-operation fuzz-notes-lock ((id :type (id fuzz-note) :required t :label "Note"))
+    (:entity fuzz-note :kind :transition :policy :employee :title "Lock a note (fuzz probe)")
+  ;; Always refused; with the defect, inside a binding of core's deferred
+  ;; audits that the body then drops, so its entry is never written.
+  (if (member :unaudited *planted-defects*)
+      (let ((tun.core::*deferred-audits* '()))
+        (fail :forbidden "Notes cannot be locked"))
+      (fail :forbidden "Notes cannot be locked")))
 
 (defun probe-operations (&rest tools)
   (mapcar #'find-operation-by-tool tools))
@@ -221,6 +231,34 @@ the other OPTIONS FUZZ-TOOLS takes, on the scenario fuzz-notes."
   (remhash name tun.core::*operations*)
   (setf tun.core::*operation-order* (remove name tun.core::*operation-order*))
   (fmakunbound name))
+
+(test fuzzing-finds-a-refusal-left-unaudited
+  (let ((report (let ((*planted-defects* '(:unaudited)))
+                  (fuzz-probes '("fuzz_notes_lock") :seed 7))))
+    (let* ((failure (only-failure report))
+           (text (failure-text failure 4)))
+      (is (eq :unaudited (fuzz-failure-kind failure)))
+      (is (search "it refused with forbidden but left no rejected audit entry" text) "~a" text)
+      (is (search "fuzz_notes_lock, as " text) "~a" text)
+      (is (search "(seed 7)" text) "~a" text)
+      (is (search (fuzz-call-actor (fuzz-failure-call failure)) text))))
+  (is (null (fuzz-report-failures (fuzz-probes '("fuzz_notes_lock") :seed 7)))
+      "the same refusals, each with its entry, pass"))
+
+(test a-refusal-without-its-audit-entry-fails-the-run
+  ;; The check on the call it judges, once with no entry written and once
+  ;; with the entry the refusal leaves.
+  (with-test-app ()
+    (let ((operation (find-operation-by-tool "fuzz_notes_archive"))
+          (call (tun.test-support::make-fuzz-call "viewer:fuzz" (jobj "id" "fzn_none") :call))
+          (refused (tun.test-support::make-outcome :error :code :forbidden)))
+      (let ((state (tun.test-support::fresh-call-state)))
+        (is (eq :unaudited (nth-value 1 (tun.test-support::call-problem operation call refused state)))
+            "a refusal with no entry"))
+      (let ((state (tun.test-support::fresh-call-state)))
+        (is (string= "forbidden" (nth-value 1 (call "fuzz_notes_archive" "viewer:vera" "id" "fzn_none"))))
+        (is (null (tun.test-support::call-problem operation call refused state))
+            "the same refusal with the entry it left")))))
 
 (test the-generated-fuzzing-test-fuzzes-the-client-s-tools
   (with-probe-client ()

@@ -189,12 +189,16 @@ input; and :CONFIRM, with the token it gave for this input."
 were not JSON a request may carry, which MCP refuses before any tool runs."
   kind code result condition seconds)
 
-(defstruct (call-state (:constructor make-call-state (fingerprint commits)))
+(defstruct (call-state (:constructor make-call-state (fingerprint commits rejections)))
   "What the calls of one tool on one database share: the records as they
 were after the last call, as RECORDS-FINGERPRINT gives them, the store's
-commit count then, and the confirmation token each actor was given last."
+commit count then, the rejected audit entries of each tool as
+REJECTION-COUNTS gives them with the commit count they were counted at, and
+the confirmation token each actor was given last."
   fingerprint
   commits
+  rejections
+  (rejections-commits commits)
   (tokens (make-hash-table :test 'equal)))
 
 (defun stored-entity-classes ()
@@ -229,9 +233,34 @@ insertion order."
                                 (prin1 (type->db (field-type field) (field-value record field))
                                        out))))))))
 
+(defun rejection-counts ()
+  "How many audit entries with outcome rejected each tool has in *APP*: a
+hash table from the tool's name."
+  (let ((counts (make-hash-table :test 'equal)))
+    (reading-every-record ()
+      (dolist (entry (select 'audit-entry :where '(:= "outcome" "rejected")))
+        (incf (gethash (audit-entry-tool entry) counts 0))))
+    counts))
+
+(defun new-rejections (tool state)
+  "How many rejected audit entries TOOL has gained since STATE last counted
+them, which are then counted again: only when the store has committed since,
+as an entry is written in a transaction of its own or of its call.  The check
+asks for at least one: a tool that calls itself has one entry per call, and
+a nested call's entry for the same tool cannot be told from the outer's."
+  (let ((commits (store-commits (application-store *app*))))
+    (if (eql commits (call-state-rejections-commits state))
+        0
+        (let ((before (gethash tool (call-state-rejections state) 0))
+              (now (rejection-counts)))
+          (setf (call-state-rejections state) now
+                (call-state-rejections-commits state) commits)
+          (- (gethash tool now 0) before)))))
+
 (defun fresh-call-state ()
   "A CALL-STATE for the calls about to be made on *APP*."
-  (make-call-state (records-fingerprint) (store-commits (application-store *app*))))
+  (make-call-state (records-fingerprint) (store-commits (application-store *app*))
+                   (rejection-counts)))
 
 (defun changed-entities (state)
   "The entities whose records changed since STATE's fingerprint, which is
@@ -387,6 +416,7 @@ Takes the fingerprint and the connection attempts anew, so it is called
 after every call."
   (let ((attempts (take-connection-attempts))
         (changed (changed-entities state))
+        (rejections (new-rejections (operation-tool operation) state))
         (kind (outcome-kind outcome))
         (code (outcome-code outcome)))
     (cond (attempts
@@ -414,6 +444,10 @@ after every call."
            (values (format nil "it refused with ~a but changed records of ~{~a~^, ~}"
                            (json-name-of code) changed)
                    :changed-records))
+          ((and (eq kind :error) (audited-refusal-code-p code) (< rejections 1))
+           (values (format nil "it refused with ~a but left no rejected audit entry (core.md §3.8)"
+                           (json-name-of code))
+                   :unaudited))
           ((and (eq (operation-kind operation) :wait) (> (outcome-seconds outcome) 1))
            (values (format nil "it waited ~,1f seconds" (outcome-seconds outcome)) :waited)))))
 

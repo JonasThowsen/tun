@@ -78,7 +78,7 @@ idempotency_conflict): the call is audited as rejected, like a policy denial."
 operation's own entity; another id parameter (order_id, product_id, ...)
 names the entity its type references."
   (let ((args (input-arguments input)))
-    (flet ((usable (v) (and (stringp v) (<= 1 (length v) 100) v)))
+    (flet ((usable (v) (and (recordable-text-p v) v)))
       (let ((id (usable (jget args "id"))))
         (when (and id (operation-entity op))
           (return-from input-target
@@ -112,9 +112,16 @@ else the target its input names."
          (values (entity-json-name (class-of result)) (entity-id result)))
         (t (input-target op input))))
 
+(defun recordable-text-p (value)
+  "True when VALUE, taken raw from a call's input, may go into an audit
+entry: text of 1-64 characters without NUL, the bounds of an id and of a
+request_key (core.md 3.8).  Anything else would name no record or key, and
+NUL cannot be stored on Postgres."
+  (and (stringp value) (<= 1 (length value) 64) (not (nul-text-p value))))
+
 (defun raw-request-key (input)
   (let ((key (jget (input-arguments input) "request_key")))
-    (and (stringp key) (<= (length key) 64) (plusp (length key)) key)))
+    (and (recordable-text-p key) key)))
 
 (defvar *audit-actor* nil
   "Set by an operation's body (AUDIT-AS) to audit the call as someone other
@@ -128,17 +135,26 @@ than the caller: a customer answering a quote by its access code.")
   (when actor (setf *audit-actor* actor))
   (when reason (setf *audit-reason* (subseq reason 0 (min 500 (length reason))))))
 
+(defun storable-text (value max)
+  "VALUE when it is text of 1 to MAX characters without NUL, which an audit
+entry's field can hold on every store, else NIL."
+  (and (stringp value) (<= 1 (length value) max) (not (nul-text-p value)) value))
+
 (defun write-audit (op input actor outcome &key result error-code)
+  "Write OP's audit entry.  What a body named (AUDIT-AS, AUDIT-TARGET) goes
+through the same bounds as what the input names (RECORDABLE-TEXT-P): a value
+the entry could not hold is left out, so the entry is always written (core.md
+3.8)."
   (multiple-value-bind (entity-type entity-id) (audit-subject op input result)
     (with-step (:audit :name outcome :source :core :detail (operation-tool op))
      (insert (make-instance 'audit-entry
                            :at (now)
-                           :actor (or *audit-actor* (actor-string actor))
-                           :reason (and (string= outcome "ok") *audit-reason*)
+                           :actor (or (storable-text *audit-actor* 200) (actor-string actor))
+                           :reason (and (string= outcome "ok") (storable-text *audit-reason* 500))
                            :tool (operation-tool op)
                            :outcome outcome
-                           :entity-type entity-type
-                           :entity-id entity-id
+                           :entity-type (storable-text entity-type 100)
+                           :entity-id (and (recordable-text-p entity-id) entity-id)
                            :request-key (raw-request-key input)
                            :error-code (and error-code (json-name-of error-code))
                            :request-id *request-id*
@@ -170,6 +186,10 @@ outermost transaction ends; inside a read operation it cannot be written in plac
   (if (listp *deferred-audits*)
       (push thunk *deferred-audits*)
       (with-transaction (:write) (funcall thunk))))
+
+(defun audited-refusal-code-p (code)
+  "True for the codes whose refusal of a call is always audited (core.md 3.8)."
+  (member code '(:forbidden :confirmation-invalid :idempotency-conflict)))
 
 (defun record-rejection (op input actor code &key as)
   "Audit a rejected call (as AS, a string, when given). Never masks the rejection itself."
@@ -436,7 +456,24 @@ code inside one (a workflow, a client method) is a step of that request."
 (defun run-guarded (op input body)
   (with-audit-scope
     (flet ((run ()
-             (handler-case (execute-operation op input body)
+             (handler-case
+                 ;; A refusal a body or a hook signals with FAIL, or a nested
+                 ;; call's that it lets through, is audited for this call
+                 ;; too: each call a refusal ends has its entry, however it
+                 ;; was refused.  The handler runs only once nothing inside
+                 ;; the call has handled the error, so a body that catches an
+                 ;; inner refusal and goes on leaves none; it does not unwind,
+                 ;; so the backtrace is still taken where the error was
+                 ;; signalled, and the entry is deferred to after the
+                 ;; transaction.  A rejection is audited by the clause below.
+                 (let ((caller *actor*))
+                   ;; The handler runs where the error was raised, perhaps
+                   ;; inside the body's WITH-ACTOR: the entry names the caller.
+                   (handler-bind ((operation-error
+                                    (lambda (e)
+                                      (when (audited-refusal-code-p (operation-error-code e))
+                                        (record-rejection op input caller (operation-error-code e))))))
+                     (execute-operation op input body)))
                (rejection (r)
                  (record-rejection op input *actor* (rejection-code r) :as (rejection-audit-actor r))
                  ;; The message goes on as its text, written where it is shown.

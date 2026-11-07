@@ -2,9 +2,11 @@
 
 - loop: audit-nul
 - mode: reviewed
-- stage: build
+- stage: ship
 - base: 184cfda4c7cc4fc3ec727068ff9edba282f60d33
 - after: fuzz
+- verified: 9fe2ef8c9a819de73a8aeba1bc1f37dcc9883a26
+- shown: 9fe2ef8c9a819de73a8aeba1bc1f37dcc9883a26
 
 ## Brief
 
@@ -84,6 +86,25 @@ mode: a reviewer at A and B, Jonas at C.
   `run-guarded` for `operation-error`s with these codes), not where it is
   signalled: a body that catches an inner refusal and carries on then
   leaves no false entry for itself.
+- Built with `handler-bind` inside the `rejection` clause, not a
+  `handler-case` clause: a `handler-case` unwound before the backtrace was
+  taken, and the introspection test caught it. The handler still runs
+  only once nothing inside the call handled the error.
+- Changed in build: criterion 3's planted defect is not a wrapped
+  `write-audit`, which Tun will not open an application with
+  (`definition-integrity-violations`, a guard that stays), but a probe,
+  `fuzz_notes_lock`, whose refusal under `:unaudited` binds core's
+  deferred audits and drops them. The run fails naming tool, actor, seed
+  and input; without the defect it passes. A run of kurs against core
+  without the new handler also failed six times ("refused with forbidden
+  but left no rejected audit entry").
+- The handler records the caller, taken before the body runs: it runs
+  where the error was raised, which may be inside the body's
+  `with-actor`.
+- `write-audit` bounds what a body names too (`audit-as`, `audit-target`):
+  an actor, reason, entity type or id the entry could not hold is left
+  out (the caller's actor in place of an unusable one), so no value a
+  body passes can lose the entry either.
 - `eval`'s own `audit-eval` entry for these codes is dropped: core's
   replaces it, as older mechanisms give way to newer ones.
 - Two loops of another session are committed but not pushed:
@@ -102,3 +123,16 @@ mode: a reviewer at A and B, Jonas at C.
 - 2026-11-07 14:23  gate A: changes (reviewer): Planted defect (dropped deferred audits) cannot fail under handler-case recording; eval's audit-eval would audit twice; nested refusal unspecified (each call needs its own entry for check 5); outbound-methods also pending, version set at rebase
 - 2026-11-07 14:23  gate A asked of the person
 - 2026-11-07 14:24  gate A: approve (jonas): Approve and build, after two reviewer rounds whose points the gate-A-3 plan answers
+- 2026-11-07 14:42  build: core audits a refusal raised by fail, a hook or a nested call (handler-bind in run-guarded), each call once; values from raw input and from audit-as/audit-target kept only when an entry can hold them; eval's duplicate dropped; fuzzer check 5 (:unaudited). Tests: review suite (body refusal in mutating and read tool, policy once, nested, eval once, Postgres NUL in request_key/id/customer_id and an 80-char id); each fails on the old execution.lisp. Check 5 against core without the handler: kurs fails 6 times, left no rejected audit entry. bin/test green, 68 suites in 108s
+- 2026-11-07 14:48  verify 1: passed build, test, check
+- 2026-11-07 14:54  verify 2: passed build, test, check
+- 2026-11-07 14:56  clients against this tree (2.9.1): kurs 348 checks, fuzz 8.4s; ferdig 754, 19.3s under load; nixploy-dashboard 1139, 22.1s alone (42s while Tun's verify ran beside it); no 'could not audit' line in any
+- 2026-11-07 14:56  shown (/items)
+- 2026-11-07 14:56  gate B asked of a reviewer
+- 2026-11-07 15:04  gate B: changes (reviewer): handler-bind reads *actor* where the error was raised, so the outer entry names system:... under with-actor; a probe binding *deferred-audits* can plant an end-to-end unaudited defect, so criterion 3 can be met; minor: check 5 is at-least-one, eval test passes on old core, ok-entry bound untested; version at rebase
+- 2026-11-07 15:07  build: gate B round 1 answered: the rejected entry names the caller captured before the body (test a-refusal-inside-another-actor-is-audited-as-the-caller); end-to-end planted defect fuzz_notes_lock :unaudited fails the run, passes without; check 5's at-least-one limit documented. Not tested: the bounds on an ok entry's 65-100 character id, as no tool here takes a text id that long. bin/test green, 68 suites in 110s
+- 2026-11-07 15:12  verify 3: passed build, test, check
+- 2026-11-07 15:12  shown (/items)
+- 2026-11-07 15:13  gate B asked of a reviewer
+- 2026-11-07 15:18  gate B: approve (reviewer): Caller named, end-to-end planted defect, limit documented; once per call, nested, eval, bounds and spec hold; check 5 cheap. Minor follow-ups: ok-entry 65-100 id untested; audited-refusal-code-p repeats +rejection-codes+; recordable-text-p and storable-text overlap; call-state initform reads the constructor argument
+- 2026-11-07 15:18  follow-ups from gate B round 2, not done here: one list for audited codes and +rejection-codes+; one helper for recordable-text-p/storable-text; &aux for rejections-commits; a test of an ok entry's long text id
