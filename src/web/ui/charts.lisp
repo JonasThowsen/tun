@@ -397,8 +397,10 @@ const showCrosshair = (plot, index) => {
   const onTheLeft = x > 0.5;
   tooltip.style.left = onTheLeft ? '' : `calc(${x * 100}% + 0.75rem)`;
   tooltip.style.right = onTheLeft ? `calc(${(1 - x) * 100}% + 0.75rem)` : '';
-  tooltip.style.top = y > 0.5 ? '0' : '';
-  tooltip.style.bottom = y > 0.5 ? '' : '0';
+  // 'auto', not '': clearing an inline top brings back the stylesheet's
+  // top: 0, and pinned to both edges the tooltip stretches down the plot.
+  tooltip.style.top = y > 0.5 ? '0' : 'auto';
+  tooltip.style.bottom = y > 0.5 ? 'auto' : '0';
   const live = plot.closest('.tun-line-chart').querySelector('.tun-line-chart-live');
   if (live) live.textContent = `${value}, ${time}`;
 };

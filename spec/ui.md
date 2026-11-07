@@ -472,7 +472,10 @@ small tooltip), drawn as plain SVG by Tun.
   it, or the arrow keys when it has focus (Home and End for the first
   and last point), moves a vertical hairline to the nearest point and
   shows a tooltip there with the value first, then the date (with the
-  time of day when the x labels show times). The same value and date go
+  time of day when the x labels show times). The tooltip sits beside the
+  hairline, on the side with room: at the top of the plot for a point in
+  its lower half and at the bottom for one in its upper half, and only as
+  tall as its two lines wherever it is. The same value and date go
   to a visually hidden polite live region beside the plot, so a screen
   reader says them as the keys or the pointer move. Escape hides the
   hairline and the tooltip; leaving the plot or moving focus away does

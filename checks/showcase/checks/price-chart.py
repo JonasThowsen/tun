@@ -131,6 +131,33 @@ def run(t):
     page.keyboard.press("Tab")
     t.check(not tooltip(page).is_visible(), "moving focus away hides it")
 
+    # At every point, high in the plot or low, the tooltip is only as tall as
+    # its two lines: a stretched one was a dark panel down the plot.
+    # A point's y is its fraction of the plot's height from the top: the
+    # tooltip goes to the top for a point low in the plot (y > 0.5).
+    points = page.evaluate(f"JSON.parse(document.querySelector('{CHART} "
+                           f".tun-line-chart-plot').dataset.tunChartPoints)")
+    plot.focus()
+    page.keyboard.press("Home")
+    heights, places, misplaced = [], set(), []
+    for index, point in enumerate(points):
+        tip = tooltip(page).bounding_box()
+        line = page.locator(f"{CHART} .tun-line-chart-crosshair").bounding_box()
+        heights.append(tip["height"])
+        at_top = abs(tip["y"] - line["y"]) < 1
+        at_bottom = abs(tip["y"] + tip["height"] - line["y"] - line["height"]) < 1
+        place = "both" if at_top and at_bottom else "top" if at_top else "bottom"
+        places.add(place)
+        if place != ("top" if point[1] > 0.5 else "bottom"):
+            misplaced.append((index, point[1], place))
+        page.keyboard.press("ArrowRight")
+    t.check(places == {"top", "bottom"},
+            f"the walk meets points high and low in the plot: {places}")
+    t.check(misplaced == [],
+            f"the tooltip is at the top for a low point, at the bottom for a high one: {misplaced}")
+    t.check(max(heights) - min(heights) < 1 and max(heights) < 64,
+            f"the tooltip is as tall at every point: {min(heights)} to {max(heights)}px")
+
     off = t.desktop(javascript=False)
     off.sign_in("employee:anna")
     off.goto("/prices")
