@@ -2,7 +2,7 @@
 
 - loop: fuzz
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 14c0124d5d48ae86ee6d38c9b2951cb08788ffb5
 - after: client-checks
 - verified: e9f40d37b9015b15942cba21727ad832006680a6
@@ -115,3 +115,8 @@ gates A and B, Jonas at gate C.
 - 2026-11-07 13:59  shown (/items)
 - 2026-11-07 13:59  gate B asked of a reviewer
 - 2026-11-07 14:00  gate B: approve (jonas): Approve and push, after the reviewer's two change rounds were answered; verify 7 green
+- 2026-11-07 14:03  clients on Tun fd65a0a, bin/test green: kurs 348 checks, fuzz 15 tools 600 calls 7.2s; ferdig 754, 31 tools 1240 calls 11.5s; nixploy-dashboard 1139, 49 tools 1960 calls 22.1s. Seen in ferdig's log: a rejection whose input holds NUL is not audited on Postgres (could not audit rejection of people_invite, 22021); the refusal is right, the audit entry is lost; for a follow-up loop
+- 2026-11-07 14:03  gate C asked of the person
+- 2026-11-07 14:11  gate C: approve (jonas): Push all three clients, no deploy; fix the NUL audit gap in a short loop next, deploy after it
+- 2026-11-07 14:11  pushed ferdig 6807954, kurs 69a5324, nixploy-dashboard f2bcb2b on Tun fd65a0a; not deployed: Jonas chose to deploy after the audit loop
+- 2026-11-07 14:11  finished at tun fd65a0a
