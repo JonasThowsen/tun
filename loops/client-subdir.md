@@ -2,9 +2,11 @@
 
 - loop: client-subdir
 - mode: hands-on
-- stage: build
+- stage: done
 - base: 64947260be8ad3f58c3c4523f43e48634ca3c762
 - item: sak_rzxz10fq0q0ag96p
+- verified: 52992522844654f354b82863ab24ccedd6c35585
+- shown: 52992522844654f354b82863ab24ccedd6c35585
 
 ## Brief
 
@@ -111,3 +113,11 @@ for any uncommitted change anywhere in the repository. `tun update`, `add`,
 - 2026-11-07 13:59  while waiting at gate A: the revision drafted (deployTargets, the launcher keeps a TUN_CLIENT_REVISION given at start, the template, core 2.9.0); bin/build 0 warnings, bin/test-cli passes with the new revision step; uncommitted
 - 2026-11-07 19:54  gate A: approve (jonas): «ja»
 - 2026-11-07 19:54  rebased: tun 14c0124 → 6494726
+- 2026-11-07 20:02  verify 1: failed check
+- 2026-11-07 20:09  verify 2: passed build, test, check
+- 2026-11-07 20:14  bin/test-cli passes on the verified commit (the new revision step included); verify round 1 failed only push-notification-opens-its-page (a 30 s Playwright timeout under load), round 2 passed unchanged
+- 2026-11-07 20:15  shown (/)
+- 2026-11-07 20:15  gate B asked of the person
+- 2026-11-07 20:15  gate B asked of jonas in Ferdig, question kom_t95d8wb8aazqrzkj on sak_rzxz10fq0q0ag96p
+- 2026-11-07 22:18  gate B: approve (jonas): «ja»
+- 2026-11-07 22:18  finished at tun d660ec4
