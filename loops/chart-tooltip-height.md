@@ -2,7 +2,7 @@
 
 - loop: chart-tooltip-height
 - mode: reviewed
-- stage: ship
+- stage: deploy
 - base: d101e5832f8742f8bd76afb7bbd250c46cddf99c
 - client: /home/jonas/coding/kurs
 - client-base: e95e10419d03b8267d0750aa7496022b62b08ec8
@@ -69,3 +69,5 @@ some and 192 px, pinned top and bottom, at others.
 - 2026-11-07 13:18  shown (/shares/AAPL:xnas)
 - 2026-11-07 13:18  gate B asked of a reviewer
 - 2026-11-07 13:19  gate B: approve (reviewer): Tun diff byte-identical to the approved one; client diff empty on e95e104; verify round 6 passed.
+- 2026-11-07 13:19  gate C asked of the person
+- 2026-11-07 13:19  gate C: approve (jonas): Standing approval, 2026-11-06: «I approve of you pushing and deploying, do not ask me for that unless i specifically tell you to.» kurs touches practice money only.
