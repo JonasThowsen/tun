@@ -297,6 +297,7 @@ messaging module is enabled; otherwise do nothing.  Returns the message or NIL."
         "idempotent" (json-bool (operation-idempotent-p op))
         "audit" (json-bool (operation-audited-p op))
         "policy" (string-downcase (symbol-name (operation-policy op)))
+        "session_only" (json-bool (operation-session-only-p op))
         "source" (source-string (operation-source op))
         "module" (operation-module op)))
 
@@ -396,4 +397,7 @@ the client's class), least specific first."
                             "openWorldHint" nil)))
 
 (defun tool-definitions (&optional (application *application*))
-  (mapcar #'tool-definition (visible-operations application)))
+  "The tools tools/list offers: every visible operation but a session-only
+one, which no MCP client may call (spec/core.md 3.4)."
+  (mapcar #'tool-definition
+          (remove-if #'operation-session-only-p (visible-operations application))))

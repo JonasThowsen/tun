@@ -288,7 +288,8 @@ machine, so its messages are source text (spec/i18n.md 7)."
     (unless (and op (operation-visible-p op))
       (fail :not-found "Unknown tool ~a" tool))
     (let* ((actor *actor*)
-           (permitted (actor-permits-p actor (operation-policy op)))
+           (permitted (and (actor-permits-p actor (operation-policy op))
+                           (or (not (operation-session-only-p op)) (signed-in-on-page-p))))
            (input (make-input (if (hash-table-p arguments) arguments (jobj))))
            (input-errors (handler-case (progn (parse-operation-input op input) '())
                            (operation-error (e) (error-fields-json e))))
@@ -304,6 +305,7 @@ machine, so its messages are source text (spec/i18n.md 7)."
         (let ((object
                 (jobj "tool" tool
                       "policy" (jobj "required" (role-string (operation-policy op))
+                                     "session_only" (json-bool (operation-session-only-p op))
                                      "actor_role" (role-string (actor-role actor))
                                      "decision" (if permitted "allow" "deny"))
                       "input_valid" (json-bool (null input-errors))

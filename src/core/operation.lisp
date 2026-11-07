@@ -120,6 +120,9 @@ string written out: a spec is data, so +TEXT+ would not be evaluated."
    (description :initarg :description :reader operation-description)
    (policy :initarg :policy :reader operation-policy :type policy)
    (confirm :initarg :confirm :reader operation-confirm-p)
+   (session-only :initarg :session-only :initform nil :reader operation-session-only-p
+                 :documentation "Only a person signed in on the page may call it (spec/core.md
+3.3): never an access token, an OAuth client or the process's own work.")
    (destructive :initarg :destructive :reader operation-destructive-p)
    (test-only :initarg :test-only :reader operation-test-only-p)
    (debug-only :initarg :debug-only :initform nil :reader operation-debug-only-p)
@@ -442,7 +445,8 @@ runs outside any transaction (doing its own) and returns the final result."
 
 (defmacro define-operation (name (&rest parameters)
                             (&key tool entity (kind :read) title description
-                                  (policy nil policy-p) confirm (destructive nil destructive-p)
+                                  (policy nil policy-p) session-only confirm
+                                  (destructive nil destructive-p)
                                   test-only debug-only eval-only summary viewer-mutation live-view
                                   beyond-record-policy)
                             &body body)
@@ -494,7 +498,8 @@ on the application), the input schema, the MCP tool and the registry entry."
           (make-instance 'operation
                          :name ',name :tool ,tool :entity ',entity :kind ,kind
                          :title ,(or title tool) :description ,doc
-                         :policy ,policy :confirm ,(and confirm t)
+                         :policy ,policy :session-only ,(and session-only t)
+                         :confirm ,(and confirm t)
                          :destructive ,(if destructive-p
                                            (and destructive t)
                                            (and (member kind '(:update :transition)) t))

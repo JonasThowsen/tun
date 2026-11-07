@@ -262,6 +262,104 @@ browser to the login."
     (is (string= "claimed" (jget (call-ok "introspect_runtime" "admin:root") "identity")))))
 
 ;;; ------------------------------------------------------------------
+;;; The caller's credential kind and session-only operations (auth.md 3.7)
+
+(define-operation session-test-approve ()
+    (:kind :update :policy :admin :session-only t :title "Approve (test)")
+  (jobj "credential" (string-downcase (symbol-name (credential-kind)))))
+
+(tun.web:define-page session-test-page ("session-test" :policy :admin :navigation nil)
+    (method path form query)
+  ;; A page's button: the operation runs as the signed-in person.
+  (multiple-value-bind (json code) (tun.web:web-call "session_test_approve" (jobj))
+    (values 200 "session-test"
+            (list (if code (json-name-of code) (jget json "credential"))))))
+
+(defun listed-tools (port token)
+  "The names tools/list gives a caller with TOKEN."
+  (let ((json (nth-value 1 (mcp-request port (to-json-string (jobj "jsonrpc" "2.0" "id" 1
+                                                                   "method" "tools/list"))
+                                        :token token))))
+    (map 'list (lambda (tool) (jget tool "name")) (jget (jget json "result") "tools"))))
+
+(defun rejected-approvals ()
+  "The audit entries of refused session_test_approve calls."
+  (remove-if-not (lambda (entry) (and (equal "session_test_approve" (jget entry "tool"))
+                                      (equal "rejected" (jget entry "outcome"))))
+                 (admin-items "audit_list")))
+
+(test the-credential-kind-names-how-the-caller-signed-in
+  (is (eq :session (credential-kind "ses_abc")))
+  (is (eq :token (credential-kind "tok_abc")))
+  (is (eq :oauth (credential-kind "aid_abc")))
+  (is (eq :claimed (credential-kind "claimed")))
+  (is (null (credential-kind nil)) "the process's own work")
+  (let ((*credential* nil)) (is (null (credential-kind))))
+  (let ((*credential* "ses_x")) (is (eq :session (credential-kind))))
+  (signals error (credential-kind "nonsense")))
+
+(test a-client-may-declare-and-ask-it
+  (is (null (public-interface-violations
+             "(tun:define-operation hosts-approve () (:kind :update :policy :admin :session-only t)
+                (list (tun:credential-kind)))"
+             :package "TUN.TESTS"))))
+
+(test a-session-only-operation-runs-for-a-person-on-the-page
+  (with-test-server (port :identity :authenticated)
+    (with-provider (provider)
+      (let ((jar (admin-session port provider)))
+        (multiple-value-bind (status body)
+            (web-request port "/session-test" :method :post :jar jar)
+          (is (= 200 status))
+          (is (search "session" body) "it ran, in kari's session"))))))
+
+(test a-session-only-operation-refuses-tokens-and-the-process
+  (with-test-server (port :identity :authenticated)
+    (let ((token (make-token (make-account "claude" "agent" "admin"))))
+      (multiple-value-bind (json error-p status)
+          (token-call port token "session_test_approve" (jobj))
+        (is (= 200 status))
+        (is (eq t error-p))
+        (is (string= "forbidden" (error-code-of json)))
+        (is (search "signed in on the page" (jget (jget json "error") "message"))))
+      (multiple-value-bind (status json) (api-call port token "session_test_approve")
+        (is (= 403 status))
+        (is (string= "forbidden" (error-code-of json))))
+      (let ((entries (rejected-approvals)))
+        (is (= 2 (length entries)) "both refusals are audited")
+        (is (every (lambda (entry) (string-prefix-p "tok_" (jget entry "credential"))) entries)))
+      (is (not (member "session_test_approve" (listed-tools port token) :test #'equal))
+          "tools/list does not offer it")
+      (is (member "accounts_whoami" (listed-tools port token) :test #'equal))
+      (let ((explained (token-call port token "explain" (jobj "tool" "session_test_approve"
+                                                              "input" (jobj)))))
+        (is (eq t (jget (jget explained "policy") "session_only")))
+        (is (string= "deny" (jget (jget explained "policy") "decision")))))
+    (is (string= "forbidden" (nth-value 1 (call "session_test_approve" "admin:root")))
+        "nor in-process, as a workflow or job would call it")
+    (let ((*credential* "aid_kari"))
+      (is (string= "forbidden" (nth-value 1 (call "session_test_approve" "admin:root")))
+          "nor through an OAuth connection"))
+    (let ((*credential* "ses_kari"))
+      (is (string= "forbidden" (nth-value 1 (call "session_test_approve" "employee:per")))
+          "a session below the policy is refused by the policy")
+      (is (search "requires the role admin"
+                  (jget (jget (call "session_test_approve" "employee:per") "error") "message"))))))
+
+(test a-session-only-operation-runs-under-claimed-identity
+  (with-test-server (port)
+    (multiple-value-bind (json error-p)
+        (http-tool-call port "admin:ada" "session_test_approve" (jobj))
+      (is (null error-p))
+      (is (string= "claimed" (jget json "credential"))))))
+
+(test the-registry-shows-what-is-session-only
+  (with-test-app ()
+    (let ((operations (coerce (jget (call-ok "registry_describe" "viewer:v") "operations") 'list)))
+      (is (eq t (jget (find-by "name" "session_test_approve" operations) "session_only")))
+      (is (eq nil (jget (find-by "name" "accounts_whoami" operations) "session_only"))))))
+
+;;; ------------------------------------------------------------------
 ;;; Setup and sessions
 
 (test setup-creates-the-first-admin-once

@@ -117,6 +117,7 @@
    ;; actors
    #:actor #:actor-p #:actor-role #:actor-name #:role #:policy #:*actor* #:parse-actor #:make-actor
    #:system-actor #:actor-string #:actor-permits-p #:with-actor #:role-rank #:*credential*
+   #:credential-kind #:signed-in-on-page-p
    ;; application, clock
    #:clock #:clock-now #:system-clock #:test-clock #:test-clock-now #:set-test-clock
    #:+test-clock-start+ #:application #:application-name #:application-store #:application-clock
@@ -141,7 +142,8 @@
    #:operation #:define-operation #:operation-name #:operation-tool #:operation-entity
    #:operation-kind #:operation-title #:operation-description #:operation-policy
    #:operation-beyond-record-policy
-   #:operation-confirm-p #:operation-destructive-p #:operation-test-only-p #:operation-debug-only-p
+   #:operation-confirm-p #:operation-session-only-p #:operation-destructive-p
+   #:operation-test-only-p #:operation-debug-only-p
    #:operation-visible-p #:operation-parameters
    #:operation-draft-p #:operation-source #:operation-mutating-p #:operation-idempotent-p
    #:operation-audited-p #:all-operations #:find-operation #:find-operation-by-tool

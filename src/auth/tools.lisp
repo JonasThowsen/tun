@@ -37,11 +37,8 @@ one) and how it is proven: token, session, oauth or claimed.")
   (let ((account (find-account-by-name (actor-name *actor*))))
     (jobj "actor" (actor-string *actor*)
           "role" (string-downcase (symbol-name (actor-role *actor*)))
-          "credential" (cond ((null *credential*) :null)
-                             ((string-prefix-p "tok_" *credential*) "token")
-                             ((string-prefix-p "ses_" *credential*) "session")
-                             ((string-prefix-p "aid_" *credential*) "oauth")
-                             (t *credential*))
+          "credential" (let ((kind (credential-kind)))
+                         (if kind (string-downcase (symbol-name kind)) :null))
           "account" (if account (account->json account) :null))))
 
 (define-operation accounts-list ((limit :type (integer :min 1 :max 500) :default 100
@@ -207,8 +204,7 @@ not an admin, their own.  NIL means every account's."
            ;; A token that could make its own successor would outlive its
            ;; revocation; a new token for oneself takes a session.  An OAuth
            ;; client's token is held to the same rule.
-           (when (and *credential* (or (string-prefix-p "tok_" *credential*)
-                                       (string-prefix-p "aid_" *credential*)))
+           (when (member (credential-kind) '(:token :oauth))
              (reject :forbidden
                      "An access token cannot make new tokens for its own account; make them in the browser"))
            own))

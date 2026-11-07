@@ -270,10 +270,22 @@ so a direct call, a workflow and the UI are refused alike. It runs before
 any lookup: a refused actor gets `forbidden` even for an unknown id.
 Record policies narrow which records a role reaches (`store.md` §6).
 
+An operation may also be *session-only*: only a person signed in on the
+page may call it, for work such as spending money that no agent should do
+on its own, whatever its role. Its caller's credential (`auth.md` §3.7)
+must be a session, or `claimed` under `--claimed-identity`, which has no
+security of its own and serves tests, previews and local development. An
+access token, an OAuth connection and the process's own work (a workflow,
+a job) are refused with `forbidden`, saying to do it signed in on the
+page. The check runs after the policy, before any lookup, and is audited
+like a policy denial.
+
 ### 3.4 Tools and their schemas
 
-Every tool is an operation and every operation is a tool, under the same
-name, matching `^[a-z][a-z0-9_]*$`. `tools/list` is a projection of the
+Every tool is an operation and every operation but a session-only one
+(§3.3) is a tool, under the same name, matching `^[a-z][a-z0-9_]*$`. A
+session-only operation is not in `tools/list`; a call that names it is
+refused as §3.3 says. `tools/list` is a projection of the
 registry: `name`, a `title` in source text, untranslated, `description`, `inputSchema` (JSON
 Schema with `required`) and `annotations` with `readOnlyHint` and
 `destructiveHint`. Mutating tools list `request_key` in their properties and
@@ -369,8 +381,9 @@ A read for `viewer` and up, computed from the live definitions:
   `source`, `module`, `computed` for a computed field) and its `rules`;
 - `operations`: `name`, `entity` (or null), `kind` (`read`, `create`,
   `update`, `transition`, `workflow`), `confirm`, `idempotent`, `policy`,
-  `source`, `module`, and `beyond_record_policy`, the reason, for a tool
-  declared to show records beyond the record policy (`store.md` §6);
+  `session_only` (§3.3), `source`, `module`, and `beyond_record_policy`,
+  the reason, for a tool declared to show records beyond the record policy
+  (`store.md` §6);
 - `workflows`, `message_templates`, `settings` (without values), `modules`
   and `extension_points`;
 - `locale`: the tenant's `language`, the application's `languages`, its
@@ -869,7 +882,7 @@ such as `push_subscribe`'s `auth`.
 | `introspect_recent` | `{"kind": "errors" \| "slow" \| "rejected" \| "all", "since"?, "limit"?}` | requests, newest first by completion; `slow` is ≥ 1000 ms, else the slowest kept |
 | `introspect_inflight` | `{}` | running requests with `elapsed_ms` and `state` (`running`, `waiting_write_lock`, `external_call`, `waiting_admission`) |
 | `introspect_workflows` | `{"status"?, "due_before"?, "limit"?}` | workflows with `attempts` and `note` (§4.3) |
-| `explain` | `{"tool", "input"}` | a dry run in a read transaction (no mutation, receipt or token): the policy decision, input errors, whether it needs confirmation, the rules, the hooks in execution order, and what it `would` produce (for order writes the amounts, requirements and bookings, `[]` until confirmation; for a confirmation the availability per line) |
+| `explain` | `{"tool", "input"}` | a dry run in a read transaction (no mutation, receipt or token): the policy decision (with `session_only`, which the decision counts, §3.3), input errors, whether it needs confirmation, the rules, the hooks in execution order, and what it `would` produce (for order writes the amounts, requirements and bookings, `[]` until confirmation; for a confirmation the availability per line) |
 | `introspect_schema` | `{}` | tables with columns, and the applied migrations |
 | `introspect_runtime` | `{}` | build revisions (core, client, each module), uptime, memory, workers, in-flight and limits, write queue depth, the deadline, the clock's mode and time, the modules (§1.3), and `live_patches`: functions and methods changed in the image after start |
 | `introspect_extensions` | `{}` | every extension with `kind`, `target`, `name`, `order`, `source`, `module` and `source_location` as `file:line` (a client's as `clients/SYSTEM/FILE:LINE`, a module's as `modules/NAME/FILE:LINE`) |

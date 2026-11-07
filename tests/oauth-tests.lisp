@@ -171,6 +171,15 @@ as WorkOS, whose key set holds the test key as k1."
     (update-account (account-by-name "kari") "status" "disabled")
     (is (= 401 (token-status port (access-token provider port))) "a disabled person")))
 
+(test an-oauth-connection-cannot-run-a-session-only-operation
+  (with-workos (provider port)
+    (make-account "kari" "person" "admin" "kari@example.no")
+    (is (= 303 (link-in-browser port provider "user_kari" "kari@example.no")))
+    (multiple-value-bind (json error-p)
+        (oauth-call port (access-token provider port) "session_test_approve")
+      (is (eq t error-p))
+      (is (string= "forbidden" (error-code-of json)) "even an admin's"))))
+
 (test every-check-on-an-access-token
   (with-workos (provider port)
     (make-account "kari" "person" "employee" "kari@example.no")

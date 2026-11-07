@@ -106,7 +106,7 @@ such as \"iPhone\" or \"Chrome on Mac\", or NIL without one."
 
 (defun caller-session ()
   "The session the current call came in, or NIL."
-  (and (stringp *credential*) (string-prefix-p "ses_" *credential*) *credential*))
+  (and (eq (credential-kind) :session) *credential*))
 
 (defun subscriptions-of (name)
   "NAME's subscriptions, the one stored longest ago first."

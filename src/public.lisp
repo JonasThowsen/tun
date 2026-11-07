@@ -97,6 +97,8 @@ the listed symbols (the same symbol objects, not copies)."
    #:await
    ;; who is asking: record policies (spec/store.md 6) compare with the actor's name
    #:*actor* #:actor-name #:actor-role #:actor-string #:with-actor #:system-actor
+   ;; how the caller signed in (spec/auth.md 3.7)
+   #:credential-kind
    ;; the messaging port: sends through the messaging module when it is enabled
    #:notify
    #:fetch #:fetch! #:select #:select-one #:define-query

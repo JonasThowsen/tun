@@ -145,6 +145,8 @@
    "~a brukte mer enn ~d ms og ble avbrutt; ingenting er lagret")
   ("~a (~a) has no access to ~a; it requires the role ~a"
    "~a (~a) har ikke tilgang til ~a; krever rollen ~a")
+  ("~a can only be done by a person signed in on the page, not with an access token, an MCP connection or by the server itself"
+   "~a kan bare gjøres av en person som er logget inn på siden, ikke med et tilgangstoken, en MCP-tilkobling eller av serveren selv")
   ("~a must be confirmed by a user in a call of its own; it cannot be called from an operation, a workflow or a screen"
    "~a må bekreftes av en bruker i et eget kall; det kan ikke kalles fra en operasjon, arbeidsflyt eller skjerm")
   ("~d calls are already waiting; try again shortly"

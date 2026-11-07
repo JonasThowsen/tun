@@ -96,6 +96,18 @@ every other tool for each role: a record the caller's policy hides is
 answered as one that does not exist, and is never shown
 (`spec/testing.md` §3).
 
+Work only a person signed in on the page may do, such as spending money,
+is `:session-only t`: an access token or an MCP connection is refused
+whatever its role, and the tool is not offered over MCP (`spec/core.md`
+§3.3). `(credential-kind)` says how the caller signed in: `:session`,
+`:token`, `:oauth`, `:claimed`, or NIL for the process's own work.
+
+```lisp
+(define-operation hosts-approve ((id :type (id host) :required t))
+    (:entity host :kind :transition :policy :admin :session-only t :confirm t)
+  ...)
+```
+
 ## Operations, rules, computed fields and hooks
 
 `define-operation name (parameters) (options) body` declares input schemas,

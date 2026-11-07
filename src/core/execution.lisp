@@ -514,6 +514,10 @@ code inside one (a workflow, a client method) is a step of that request."
         (reject :forbidden "~a (~a) has no access to ~a; it requires the role ~a"
                 (actor-name actor) (string-downcase (symbol-name (actor-role actor)))
                 (operation-tool op) (string-downcase (symbol-name (operation-policy op))))))
+    (when (and (operation-session-only-p op) (not (signed-in-on-page-p)))
+      (reject :forbidden
+              "~a can only be done by a person signed in on the page, not with an access token, an MCP connection or by the server itself"
+              (operation-tool op)))
     (with-step (:decode :source :core) (parse-operation-input op input))
     (cond ((operation-mutating-p op)
            (execute-mutation op input actor body))

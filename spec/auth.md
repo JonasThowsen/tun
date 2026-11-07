@@ -310,6 +310,20 @@ refused call mails nobody.
   mails nothing. An agent or a disabled account is `invalid_input` on
   `id`.
 
+### 3.7 The caller's credential kind
+
+- `(credential-kind)`, in the public interface, says how the current
+  call's actor was established: `:session` (a person signed in on the
+  page), `:token` (an access token, §3.2), `:oauth` (an MCP client
+  through WorkOS, §5.1), `:claimed` (`--claimed-identity`), or NIL for
+  work the process does itself, such as a workflow or a job.
+- `accounts_whoami` reports it as `credential`; a token's or an OAuth
+  client's refusal to make tokens for its own account (§3.2) is decided
+  by it.
+- An operation declared `:session-only t` runs only for `:session` and
+  `:claimed` (`core.md` §3.3): an admin's access token cannot approve
+  what a person must approve.
+
 ## 4. The first administrator
 
 - When the server starts in authenticated mode and the tenant has no
@@ -458,7 +472,11 @@ with OAuth (§5.1) as it is, and with a new token followed by `--header
   through the fake provider below, logout, expiry), setup (only without
   an admin, closed after), the login page without passwords, the
   last-admin guard, masking and the credential in audit entries; invites
-  (§3.6), for an agent, and on the `/access` form.
+  (§3.6), for an agent, and on the `/access` form; the credential kind
+  and a session-only operation (§3.7): run from a page in a session and
+  under claimed identity, refused and audited for a token over `/mcp`
+  and `/api`, in-process and below its policy, absent from `tools/list`,
+  shown by `registry_describe` and `explain`.
 - `tests/sign-in-tests.lisp` covers §3.5 and setup with a provider over
   real HTTP, against a fake OpenID Connect provider in the test process
   that checks what it is sent (the client secret, the redirect URI, the
@@ -473,7 +491,8 @@ with OAuth (§5.1) as it is, and with a new token followed by `--header
   the proxied authorization server metadata, the 401's
   `resource_metadata`, a token that calls as its person, each check on
   the signature and the claims, a key fetched when a new one appears, an
-  unlinked identity, a disabled person, and no token for oneself.
+  unlinked identity, a disabled person, no token for oneself, and no
+  session-only operation (§3.7).
 - `bin/test-cli` checks that the client's image starts authenticated:
   `/mcp` without a token is 401, the log has the setup line, and setup
   through a fake WorkOS makes the admin who then makes a token.

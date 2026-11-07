@@ -127,7 +127,10 @@ with claimed identity parses it; returns (values status response-json session)."
            (names (mapcar (lambda (tl) (jget tl "name")) tools))
            (create (find "customers_create" tools :key (lambda (tl) (jget tl "name")) :test #'string=)))
       (is (equal (sort (copy-list names) #'string<)
-                 (sort (mapcar #'operation-tool (visible-operations *app*)) #'string<)))
+                 (sort (mapcar #'operation-tool
+                               (remove-if #'operation-session-only-p (visible-operations *app*)))
+                       #'string<))
+          "every visible operation but a session-only one")
       (is (string= "Create customer" (jget create "title")))
       (is (stringp (jget create "description")))
       (is (member "name" (coerce (jget (jget create "inputSchema") "required") 'list) :test #'string=))

@@ -132,7 +132,7 @@ to NEXT."
 (defun handle-logout (method)
   (cond ((eq method :post)
          ;; The device stops getting the person's notifications (spec/push.md 3).
-         (when (and (stringp *credential*) (string-prefix-p "ses_" *credential*))
+         (when (eq (credential-kind) :session)
            (with-transaction (:write)
              (tun.push:forget-session-subscriptions *credential*)))
          (tun.auth:log-out (hunchentoot:cookie-in tun.auth:+session-cookie+))

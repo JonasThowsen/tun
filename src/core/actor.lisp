@@ -18,6 +18,23 @@
 (tok_...), a session's id (ses_...), the WorkOS identity's id for an OAuth
 client (aid_...), \"claimed\", or NIL for work the process does itself.  Request-scoped, like *ACTOR*.")
 
+(defun credential-kind (&optional (credential *credential*))
+  "How the current call's actor was established (spec/auth.md 3.7): :SESSION
+for a person signed in on the page, :TOKEN for an access token, :OAUTH for
+an MCP client signed in through WorkOS, :CLAIMED under --claimed-identity,
+or NIL for work the process does itself."
+  (cond ((null credential) nil)
+        ((string-prefix-p "ses_" credential) :session)
+        ((string-prefix-p "tok_" credential) :token)
+        ((string-prefix-p "aid_" credential) :oauth)
+        ((string= credential "claimed") :claimed)
+        (t (error "Unknown credential ~s" credential))))
+
+(defun signed-in-on-page-p (&optional (credential *credential*))
+  "Whether the current call may run a session-only operation (spec/core.md
+3.3): a session, or a claimed identity, which has no security to keep."
+  (and (member (credential-kind credential) '(:session :claimed)) t))
+
 (declaim (ftype (function (role) (values (integer 0 3) &optional)) role-rank))
 (defun role-rank (role)
   (ecase role (:viewer 0) (:customer 0) (:employee 1) (:admin 2) (:system 3)))
