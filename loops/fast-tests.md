@@ -2,7 +2,7 @@
 
 - loop: fast-tests
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 35a564ff81010f71f62be82d07e1e0648fc86eb7
 - verified: e9b491bd4dfc7ab301af55473edf2ed3c64eb7fd
 - shown: e9b491bd4dfc7ab301af55473edf2ed3c64eb7fd
@@ -100,3 +100,4 @@ take 25 s, test-client 15 s with its compile, compiling core 15 s.
 - 2026-11-07 10:23  shown (/items)
 - 2026-11-07 10:24  gate B asked of a reviewer
 - 2026-11-07 10:25  gate B: approve (reviewer): Worktree equals verified tree; criteria 6 and 7 shown in the Log (three runs 114-116 s, slowest waiting ~66 s); the earlier waiting failure fixed at its cause; interrupt trap stops process groups; group-commit flake recorded for its own loop
+- 2026-11-07 10:26  finished at tun 5b2d3d1
