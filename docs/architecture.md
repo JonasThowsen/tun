@@ -335,7 +335,9 @@ through git and a build, never through the REPL.
 - **A client deploys with nixploy** (`spec/deploy.md`): `nix build .#docker`
   builds an image whose entrypoint is the server, and the targets in the
   client's `deploy.nix` get Tun's defaults (host network, `PORT` from the
-  slot, `/health`). The database URL is a SOPS secret on the target. The
+  slot, `/health`, and the commit as `TUN_CLIENT_REVISION`). The image
+  holds no commit, so a client in a monorepo gets a new image only when
+  its own files, kernel or modules change. The database URL is a SOPS secret on the target. The
   database is the tenant's data; the host backs it up and restores it
   (`spec/deploy.md` §4).
 - **A rollback of a pin starts with a preflight.** The newer server, run

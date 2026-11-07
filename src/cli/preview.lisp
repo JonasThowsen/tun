@@ -41,11 +41,12 @@ its short revision (a detached head), else NIL."
       (git-line directory "rev-parse" "--short" "HEAD")))
 
 (defun worktree-revision (directory)
-  "The short revision checked out in DIRECTORY, with -dirty when the tree
-has changes, or unknown."
+  "The short revision checked out in DIRECTORY, with -dirty when DIRECTORY
+has changes, or unknown. A change elsewhere in its repository, such as in
+another application of a monorepo, does not make it dirty."
   (let ((revision (git-line directory "rev-parse" "--short" "HEAD")))
     (cond ((null revision) "unknown")
-          ((git-line directory "status" "--porcelain") (format nil "~a-dirty" revision))
+          ((git-line directory "status" "--porcelain" "--" ".") (format nil "~a-dirty" revision))
           (t revision))))
 
 (defun preview-name (client branch)

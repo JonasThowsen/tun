@@ -162,8 +162,11 @@ idp=$!
 workos=(--env WORKOS_DOMAIN="http://127.0.0.1:$idp_port"
         --env WORKOS_CLIENT_ID=demo-client --env WORKOS_CLIENT_SECRET=demo-secret)
 port="$(free_port)"
+# The commit a target gives the server at start (spec/deploy.md 3).
+started_revision=0123456789abcdef0123456789abcdef01234567
 podman run --detach --name "$container" --network host "${workos[@]}" \
   --env PORT="$port" --env DATABASE_URL="postgresql://demo:secret@127.0.0.1:$pg_port/demo" \
+  --env TUN_CLIENT_REVISION="$started_revision" \
   "$image" >/dev/null || fail "podman run"
 await_container "$port"
 
@@ -189,7 +192,7 @@ callback="$(redirect "$authorize")"
 [ -n "$callback" ] || fail "the fake WorkOS sent the browser nowhere"
 [ "$(redirect "$callback")" = "$base/access" ] \
   || { podman logs "$container" >&2; fail "the callback did not make the admin"; }
-curl -sf -o /dev/null -b "$jar" -d name=agent -d kind=agent -d role=viewer "$base/access/accounts" \
+curl -sf -o /dev/null -b "$jar" -d name=agent -d kind=agent -d role=admin "$base/access/accounts" \
   || fail "POST /access/accounts"
 account="$(curl -sf -b "$jar" "$base/access" | grep -o 'value="acc_[0-9a-z]*">agent ' \
   | sed 's/value="\([^"]*\)".*/\1/')" || true
@@ -200,6 +203,13 @@ token="$(curl -sf -b "$jar" -d account_id="$account" -d label=test-cli "$base/ac
 tools="$(curl -sf -H 'Content-Type: application/json' -H "Authorization: Bearer $token" \
   --data "$list" "$base/mcp")" || fail "tools/list with the token"
 case "$tools" in *'"accounts_whoami"'*) ;; *) fail "tools/list with the token: $tools";; esac
+runtime="$(curl -sf -H 'Content-Type: application/json' -H "Authorization: Bearer $token" \
+  --data '{"jsonrpc":"2.0","id":2,"method":"tools/call","params":{"name":"introspect_runtime","arguments":{}}}' \
+  "$base/mcp")" || fail "introspect_runtime with the token"
+case "$runtime" in
+  *client_revision*"$started_revision"*) ;;
+  *) fail "introspect_runtime does not report the revision given at start: $runtime";;
+esac
 
 tables="$(PGPASSWORD=secret psql -h 127.0.0.1 -p "$pg_port" -U demo -d demo -Atc \
   "select count(*) from information_schema.tables where table_schema = 'public'")"
@@ -391,6 +401,33 @@ git -C "$client" add --all
 git -C "$client" -c user.name=test-cli -c user.email=test-cli@localhost commit --quiet -m "Kundene på forsiden"
 loop finish >/dev/null || fail "tun loop finish"
 grep -q "finished at demo" "$client/loops/home-list.md" || fail "the record does not say the loop finished"
+
+step "the image holds no commit, and the targets carry it (spec/deploy.md 2, 3)"
+docker_drv() { (cd "$client" && nix eval --raw .#packages.x86_64-linux.docker.drvPath); }
+target_revision() {
+  (cd "$client" && nix eval --raw .#nixploy.targets.example.run.environment.TUN_CLIENT_REVISION)
+}
+commit_client() { # message
+  git -C "$client" -c user.name=test-cli -c user.email=test-cli@localhost commit --quiet -m "$1"
+}
+# The record that loop finish wrote, so the tree is clean at a commit.
+git -C "$client" add --all
+commit_client "Løkken er ferdig"
+drv_before="$(docker_drv)" || fail "nix eval of the image's derivation"
+cp "$client/deploy.nix" "$work/deploy.nix"
+cat >"$client/deploy.nix" <<'NIX'
+{ example = { ip = "203.0.113.10"; }; }
+NIX
+git -C "$client" add deploy.nix
+[ "$(target_revision)" = "$(git -C "$client" rev-parse HEAD)-dirty" ] \
+  || fail "a target with a changed tree carries $(target_revision)"
+commit_client "Et mål"
+[ "$(target_revision)" = "$(git -C "$client" rev-parse HEAD)" ] \
+  || fail "a target carries $(target_revision), not the commit"
+[ "$(docker_drv)" = "$drv_before" ] || fail "a commit of deploy.nix alone changed the image"
+cp "$work/deploy.nix" "$client/deploy.nix"
+git -C "$client" add deploy.nix
+commit_client "Uten mål"
 in_client env XDG_STATE_HOME="$work/state" tun preview stop demo-home-list >/dev/null \
   || fail "the loop's preview"
 rm -rf "$client/checks" "$client/.build"

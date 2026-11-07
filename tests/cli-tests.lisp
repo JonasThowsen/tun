@@ -245,6 +245,42 @@ revision) of PINS. Returns the text of the flake.lock."
       (is (equal (list (truename kept)) (directory (merge-pathnames "*.*" directory))))
       (uiop:delete-directory-tree directory :validate t))))
 
+(test a-new-client-inside-a-repository-is-added-to-it
+  (let* ((directory (cli-scratch-directory))
+         (client (merge-pathnames "apps/acme/" directory)))
+    (flet ((git (&rest arguments)
+             (uiop:run-program (list* "git" "-C" (namestring directory) arguments)
+                               :output :string :error-output nil))
+           (put (path)
+             (let ((file (merge-pathnames path directory)))
+               (ensure-directories-exist file)
+               (with-open-file (out file :direction :output :if-exists :supersede)
+                 (write-line "x" out)))))
+      (unwind-protect
+           (progn
+             (ensure-directories-exist directory)
+             (git "init" "--quiet")
+             (put "root.txt")
+             (put "apps/acme/flake.nix")
+             (tun.cli:add-to-git client)
+             (is (null (probe-file (merge-pathnames ".git" client))) "no repository of its own")
+             (is (equal (format nil "apps/acme/flake.nix~%") (git "ls-files"))
+                 "its files are the enclosing repository's, and nothing else is added"))
+        (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)))
+    (let ((alone (cli-scratch-directory)))
+      ;; .build/ is in Tun's repository, so a repository of its own is made
+      ;; where git finds none: in a directory git is told is a ceiling.
+      (with-environment-variable ("GIT_CEILING_DIRECTORIES"
+                                  (string-right-trim "/" (namestring (uiop:pathname-parent-directory-pathname alone))))
+        (unwind-protect
+             (progn
+               (ensure-directories-exist alone)
+               (with-open-file (out (merge-pathnames "flake.nix" alone) :direction :output)
+                 (write-line "x" out))
+               (tun.cli:add-to-git alone)
+               (is (probe-file (merge-pathnames ".git/" alone)) "a repository of its own"))
+          (uiop:delete-directory-tree alone :validate t :if-does-not-exist :ignore))))))
+
 (test the-command-line-exits-with-the-status-spec-cli-1-gives
   (flet ((status (&rest arguments)
            (let ((*standard-output* (make-broadcast-stream))

@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.12.0";
+      coreVersion = "2.13.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -241,9 +241,10 @@
         pkgs.writeShellScriptBin "${pname}-server" ''
           # Nothing from the caller's environment may add source trees.
           unset CL_SOURCE_REGISTRY ASDF_OUTPUT_TRANSLATIONS
-          # introspect_runtime's build revisions (core.md §8.2).
+          # introspect_runtime's build revisions (core.md §8.2). The client's
+          # is the one its target gives at start (deploy.md 3), else REVISION.
           export TUN_CORE_REVISION="${self.rev or self.dirtyRev or "unknown"}"
-          export TUN_CLIENT_REVISION="${revision}"
+          export TUN_CLIENT_REVISION="''${TUN_CLIENT_REVISION:-${revision}}"
           ${lib.concatMapStringsSep "\n" (m: "export TUN_MODULE_REVISION_${lib.toUpper m.name}=\"${m.rev}\"") mods.ordered}
           exec ${env}/bin/sbcl --noinform --non-interactive --no-userinit --no-sysinit \
             --load ${launcher} --end-toplevel-options "$@"
@@ -273,6 +274,16 @@
         # Caddy on the host reaches the slot from the loopback (core.md 7.5).
         run.environment.TRUSTED_PROXY = "127.0.0.1";
       })) target;
+
+      # Every target of a client's deploy.nix, with the commit the client's
+      # flake was read from in the environment (spec/deploy.md 3). The
+      # commit reaches the server when it starts rather than being built
+      # into the image, so a commit that changes none of the client's files
+      # builds the same image.
+      deployTargets = { revision, targets }:
+        builtins.mapAttrs (_: target: deployTarget (lib.recursiveUpdate {
+          run.environment.TUN_CLIENT_REVISION = revision;
+        } target)) targets;
 
       # This revision's own modules, as a client's flake pins them
       # (modules/*/flake.nix, tunModule).
@@ -377,7 +388,7 @@
       };
 
       lib.${system} = {
-        inherit buildClient buildModules clientImage clientShell deployTarget sbcl coreVersion;
+        inherit buildClient buildModules clientImage clientShell deployTarget deployTargets sbcl coreVersion;
       };
 
       devShells.${system}.default = pkgs.mkShell {

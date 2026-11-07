@@ -64,6 +64,34 @@
                  "a detached head is its revision"))
         (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)))))
 
+(test a-previews-revision-is-dirty-from-its-own-directory-only
+  (let* ((directory (cli-scratch-directory))
+         (client (merge-pathnames "apps/a/" directory)))
+    (flet ((git (&rest arguments)
+             (uiop:run-program (list* "git" "-C" (namestring directory) "-c" "user.name=t"
+                                      "-c" "user.email=t@localhost" arguments)
+                               :output nil :error-output nil))
+           (put (path)
+             (let ((file (merge-pathnames path directory)))
+               (ensure-directories-exist file)
+               (with-open-file (out file :direction :output :if-exists :supersede)
+                 (write-line "x" out)))))
+      (unwind-protect
+           (progn
+             (ensure-directories-exist client)
+             (git "init" "--quiet")
+             (put "apps/a/pages.lisp")
+             (git "add" "--all")
+             (git "commit" "--quiet" "-m" "x")
+             (is (cl-ppcre:scan "^[0-9a-f]{7,}$" (tun.cli:worktree-revision client)))
+             (put "apps/b/other.lisp")
+             (put "root.txt")
+             (is (not (search "dirty" (tun.cli:worktree-revision client)))
+                 "another directory's change does not count")
+             (put "apps/a/new.lisp")
+             (is (search "-dirty" (tun.cli:worktree-revision client))))
+        (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore)))))
+
 (test a-preview-is-shared-on-the-tailnet-only
   (is (equal '("tailscale" "serve" "--bg" "--https=4201" "http://127.0.0.1:4201")
              (tun.cli:share-command 4201)))

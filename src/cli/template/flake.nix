@@ -24,7 +24,6 @@
         (builtins.filter (input: input ? tunModule) (builtins.attrValues (removeAttrs inputs [ "self" ])));
       server = tunLib.buildClient {
         pname = "{{name}}";
-        revision = self.rev or self.dirtyRev or "unknown";
         inherit modules;
         # The client's own sources: its .asd and Lisp files, not its tests,
         # and the icons of the installed app (:web-app), when it has them.
@@ -46,10 +45,15 @@
         type = "app";
         program = "${server}/bin/{{name}}-server";
       };
-      # `nixploy deploy --target NAME` (spec/deploy.md in $TUN_SOURCE).
+      # `nixploy deploy --target NAME` (spec/deploy.md in $TUN_SOURCE). The
+      # commit goes to the server when it starts, not into the image, so a
+      # commit elsewhere in the repository builds the same image.
       nixploy = nixploy.lib.makeConfig {
         project = "{{name}}";
-        targets = builtins.mapAttrs (_: tunLib.deployTarget) (import ./deploy.nix);
+        targets = tunLib.deployTargets {
+          revision = self.rev or self.dirtyRev or "unknown";
+          targets = import ./deploy.nix;
+        };
       };
       # SBCL with the pinned kernel and modules, Postgres, tun and nixploy.
       devShells.${system}.default = tunLib.clientShell {

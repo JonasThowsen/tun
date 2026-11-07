@@ -1,7 +1,8 @@
 # The feature loop
 
 Status: v1, built 2026-10-24, core 1.13.0: the hands-on and reviewed
-modes; the tracker (§6.1), core 1.17.0. It is built
+modes; the tracker (§6.1), core 1.17.0; a client in a subdirectory of a
+larger repository (§6), 2026-11-04. It is built
 on previews and checks (`preview.md`).
 
 ## 1. What it is
@@ -42,7 +43,8 @@ is with `tun loop status`. A reviewer (§4) is whatever program
 | Module feature | `modules/M` in Tun | a client using M, previewed against the Tun worktree (`bin/tun preview --dir CLIENT`) | a Tun commit, then `tun update` and a deploy in the clients that use M |
 | Core feature | Tun's kernel | the client that asked, previewed against the Tun worktree | a core version, a Tun commit, then `tun update` and a deploy of that client |
 
-A loop's record is in the repository the change is made in. A loop in
+A loop's record is in the repository the change is made in, at the
+loop's top (§6). A loop in
 Tun names the client it is shown in (`--client`). Without one, it is shown
 in the showcase (`checks/showcase/`). The client's own changes, such as a
 scenario or a check, belong to the same loop. The client's preview runs on
@@ -106,7 +108,7 @@ the Tun worktree until Tun is pushed.
 
 ## 5. The record
 
-`loops/NAME.md` in the repository, committed with the change. NAME matches
+`loops/NAME.md` in the loop's top (§6), committed with the change. NAME matches
 `[a-z][a-z0-9-]*`. `tun loop start` writes it:
 
 ```markdown
@@ -172,17 +174,29 @@ tun loop log TEXT [NAME]
 tun loop finish [NAME]
 ```
 
-They work in the repository of the current directory, or `--dir DIR`.
+They work at the **loop's top** for the current directory, or for
+`--dir DIR`: the nearest directory at or above it, within its git
+repository, that holds a client, a `flake.nix` and an `.asd` at its top.
+In Tun's repository, and when no client holds the directory, it is the
+repository's top. So a client in a subdirectory of a larger repository,
+such as `apps/ferdig` in a monorepo, keeps its loops to itself: its
+records are in `apps/ferdig/loops/`, its output in `apps/ferdig/.build/`,
+and another client's open loops in the same repository are not its.
 Without NAME, they act on the loop that is not done, and refuse when there
 are several, naming them. Each prints, last, what comes next and who acts.
 
-**The tree** of a repository is git's tree object for its working tree,
-untracked files included, ignored ones, `loops/`, `.build/` and `.data/`
-left out. It is
+**The tree** of a loop's top is git's tree object for that directory's
+working tree, untracked files included, ignored ones, `loops/`, `.build/`
+and `.data/` left out. It is
 computed with a temporary index, so git's own index is untouched. A
+change elsewhere in the repository, committed or not, does not change it,
+and a diff (a packet's `diff.patch`, the files `show` lists) holds the
+top's files only, with paths from the top. A commit's tree is its tree at
+that directory; a base from before the directory was in its repository is
+the empty tree. A
 verify, a show and a commit are compared by their trees: what was shown is
 exactly what was verified, and what is committed is exactly what was shown.
-With a client, both repositories' trees count.
+With a client, both trees count: Tun's and the client's top's.
 
 **Stages and what moves them:**
 
@@ -206,7 +220,7 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
 - **`start`** writes the record (§5) from the current revision and moves
   to `brief`. The mode is hands-on unless given. `--item` records REF as
   the field `item`; a REF with a line break, or empty, is a usage error.
-- **`verify`** runs, from the top of the repository:
+- **`verify`** runs, from the loop's top:
   - in Tun: `bin/build`, `bin/test` and `bin/check`. When the
     environment variable `TUN_PRESSURE` names a program, a load and
     restart suite for some client, it also runs that when the change
@@ -279,13 +293,13 @@ stays the truth; the tracker is a mirror.
 - **`TUN_TRACKER`** names a command, run as `sh -c` runs it, as
   `TUN_REVIEWER` is. Without it, nothing of this section happens.
 - After each event, once the record is saved, `tun loop` runs it in the
-  repository's top directory as `COMMAND EVENT RECORD`: EVENT is `start`,
+  loop's top as `COMMAND EVENT RECORD`: EVENT is `start`,
   `gate`, `decide`, `verify`, `show`, `log`, `resume`, `rebase` or `finish`, and
   RECORD the record's absolute path.
 - **Its standard input** is one JSON object. Every event has these
   members, all strings except `item`, which is a string or `null`:
   `event`; `loop`, the NAME; `title`; `mode`; `stage`, after the event;
-  `item`; `repository`, the top directory's absolute path; `record`, the
+  `item`; `repository`, the loop's top's absolute path; `record`, the
   record's absolute path; and `time`, ISO 8601 with the zone's offset,
   such as `2026-10-26T14:05:09+01:00`. Each event adds:
 
@@ -336,6 +350,13 @@ stays the truth; the tracker is a mirror.
     the loop goes on;
   - the tree leaves out the record and `.build/`, and git's own index is
     untouched;
+  - in a repository with clients at `apps/a` and `apps/b`, each has its
+    own top, records and open loop; verify runs the client's own
+    `bin/test`; a commit in `apps/b` or at the root changes neither the
+    tree of `apps/a` nor its diff, which holds `apps/a`'s files with paths
+    from `apps/a`; a commit of `apps/a`'s shown tree passes gate C; in
+    Tun's repository a subdirectory such as `checks/showcase/` has Tun's
+    top;
   - a loop runs in a repository of its own from start to finish, with a
     stand-in reviewer: changes at A back to the brief, five failed verify
     rounds to `stuck`, `resume`, gate B on the shown tree, and gate C and

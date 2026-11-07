@@ -285,11 +285,20 @@ revision locked."
     (let ((directory (new-client-directory (or directory name)))
           (revision (or revision (and (commit-revision-p (tun-revision)) (tun-revision)))))
       (write-client-files directory (client-files name modules tun-url))
-      (run-step directory "git" "init" "--quiet")
-      (run-step directory "git" "add" "--all")
+      (add-to-git directory)
       (lock-inputs directory (flake-inputs (read-text (merge-pathnames "flake.nix" directory)))
                    revision)
       (values directory (locked-revision directory "tun")))))
+
+(defun add-to-git (directory)
+  "Put the new client in DIRECTORY under git, since Nix reads only the files
+git knows: a repository of its own, unless DIRECTORY is inside one already,
+such as apps/NAME in a monorepo; then the client is a directory of that
+repository. Its files are added either way, and nothing else is."
+  (unless (git-line directory "rev-parse" "--show-toplevel")
+    (run-step directory "git" "init" "--quiet"))
+  ;; With no path, git add --all would add every change in the repository.
+  (run-step directory "git" "add" "--all" "--" "."))
 
 ;;; ------------------------------------------------------------------
 ;;; tun add

@@ -72,8 +72,11 @@ or must be empty.
   (`deploy.md`) is locked at the head of its repository.
 
 It writes the files of §6, runs `git init` and `git add` (Nix reads only
-files git knows about), and locks the flake. It makes no commit. Afterwards,
-in DIR, `nix build` builds the server and `bin/test` passes.
+files git knows about), and locks the flake. It makes no commit.
+Afterwards, in DIR, `nix build` builds the server and `bin/test` passes.
+When DIR is already inside a git repository, such as `apps/NAME` in a
+monorepo, it runs no `git init`: the client is a directory of that
+repository, and its files are added to it.
 
 ## 4. `tun add MODULE... [--dir DIR]`
 
@@ -181,7 +184,8 @@ NAME/
 `bin/test` runs `tests/cli-tests.lisp` in the core suite: the catalog, name
 checks, the files of a new client, the edits of §4, which inputs `tun
 update` moves and where it reads the head, refusals that change nothing,
-and exit statuses. It also checks the shell syntax of the
+a new client inside a git repository added to it with no `git init` of
+its own, and exit statuses. It also checks the shell syntax of the
 templates' scripts.
 
 `bin/test-cli` runs the whole path, which builds with Nix and takes

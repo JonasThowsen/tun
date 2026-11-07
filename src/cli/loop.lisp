@@ -151,12 +151,35 @@ preview's link names the machine it runs on, and the record is committed."
   (setf (record-text record) (without-links (record-text record)))
   (write-text (record-file record) (record-text record)))
 
-(defun repository-top (directory)
+(defun client-directory-p (directory)
+  "Whether DIRECTORY holds a client at its top: a flake.nix and an .asd."
+  (and (probe-file (merge-pathnames "flake.nix" directory))
+       (directory (merge-pathnames "*.asd" directory))
+       t))
+
+(defun loop-top (directory)
+  "The loop's top for DIRECTORY (spec/loop.md 6): the nearest directory at
+or above it, within its git repository, that holds a client; the
+repository's top in Tun's repository, and when no client holds DIRECTORY.
+A client in a subdirectory of a larger repository, such as apps/ferdig in a
+monorepo, so has its loops to itself."
   (let ((top (git-line directory "rev-parse" "--show-toplevel")))
     (unless top
       (refuse "~a is not in a git repository; a loop's record is committed with its change"
               (namestring directory)))
-    (uiop:ensure-directory-pathname top)))
+    (let ((top (uiop:ensure-directory-pathname top))
+          ;; The path from the top, apps/ferdig/src/, taken from git rather
+          ;; than from DIRECTORY, which may reach the repository by a link.
+          (parts (remove "" (uiop:split-string (or (git-line directory "rev-parse" "--show-prefix") "")
+                                               :separator "/")
+                         :test #'string=)))
+      (if (tun-repository-p top)
+          top
+          (loop for n from (length parts) downto 1
+                for candidate = (merge-pathnames (format nil "~{~a/~}" (subseq parts 0 n)) top)
+                when (client-directory-p candidate)
+                  return candidate
+                finally (return top))))))
 
 (defun record-names (top)
   (sort (mapcar #'pathname-name (directory (merge-pathnames "loops/*.md" top))) #'string<))
@@ -217,12 +240,26 @@ preview's link names the machine it runs on, and the record is committed."
 (defun head-commit (directory)
   (git-line directory "rev-parse" "--verify" "--quiet" "HEAD"))
 
+(defun repository-prefix (directory)
+  "DIRECTORY's path from the top of its repository, such as apps/ferdig/,
+or NIL at the top."
+  (git-line directory "rev-parse" "--show-prefix"))
+
 (defun repository-tree (directory &optional commit)
-  "git's tree for the working tree of the repository DIRECTORY, untracked
-files included, or for COMMIT; either without +OUTSIDE-THE-TREE+. It is
-written through a temporary index, so git's own is untouched."
+  "git's tree for the working tree of DIRECTORY, untracked files included,
+or for COMMIT; either without +OUTSIDE-THE-TREE+. DIRECTORY is a loop's
+top, the top of its repository or a directory in it, and the tree is that
+directory's alone: what changes elsewhere in the repository does not change
+it. A COMMIT from before the directory was in the repository gives the
+empty tree. It is written through a temporary index, so git's own is
+untouched."
   (let ((index (merge-pathnames (format nil "tun-loop-index-~d" (sb-posix:getpid))
-                                (uiop:temporary-directory))))
+                                (uiop:temporary-directory)))
+        (prefix (repository-prefix directory)))
+    (when (and commit prefix
+               (null (git-line directory "rev-parse" "--verify" "--quiet"
+                               (format nil "~a:~a" commit (string-right-trim "/" prefix)))))
+      (return-from repository-tree +empty-tree+))
     (uiop:delete-file-if-exists index)
     (unwind-protect
          (progn
@@ -236,9 +273,12 @@ written through a temporary index, so git's own is untouched."
                      (uiop:copy-file own index)
                      (git-with-index directory index "read-tree" "--empty"))
                  (git-with-index directory index "add" "--all" "--" ".")))
+           ;; Paths here are from DIRECTORY, as git takes them in a subdirectory.
            (apply #'git-with-index directory index "rm" "-r" "--cached" "--quiet"
                   "--ignore-unmatch" "--" +outside-the-tree+)
-           (git-with-index directory index "write-tree"))
+           (if prefix
+               (git-with-index directory index "write-tree" (format nil "--prefix=~a" prefix))
+               (git-with-index directory index "write-tree")))
       (uiop:delete-file-if-exists index))))
 
 (defun loop-repositories (record)
@@ -259,11 +299,12 @@ of the working trees, or COMMITTED of their checked-out commits."
                               (or (head-commit directory)
                                   (fail-step "~a has no commit yet" (namestring directory))))))))
 
-(defun base-tree (base)
-  (if (or (null base) (string= base "none")) +empty-tree+ base))
-
-(defun exclusions ()
-  (mapcar (lambda (path) (format nil ":(exclude)~a" path)) +outside-the-tree+))
+(defun base-tree (directory base)
+  "The tree of DIRECTORY at BASE, a loop's base: a commit, or \"none\" for a
+loop started before the first commit."
+  (if (or (null base) (string= base "none"))
+      +empty-tree+
+      (repository-tree directory base)))
 
 (defun loop-diff (record &key stat)
   "The change of RECORD's loop since its base, in each repository: a patch,
@@ -274,9 +315,12 @@ its name."
           for first = t then nil
           for prefix = (if first "" (format nil "~a/" (client-name directory)))
           do (write-string
-              (apply #'git-output directory "diff" (if stat "--stat" "--patch")
-                     (format nil "--src-prefix=a/~a" prefix) (format nil "--dst-prefix=b/~a" prefix)
-                     (base-tree base) (repository-tree directory) "--" "." (exclusions))
+              ;; Both trees are DIRECTORY's alone and leave out what a loop's
+              ;; tree leaves out, so the diff takes no path: one from a
+              ;; subdirectory would match none of the subtree's paths.
+              (git-output directory "diff" (if stat "--stat" "--patch")
+                          (format nil "--src-prefix=a/~a" prefix) (format nil "--dst-prefix=b/~a" prefix)
+                          (base-tree directory base) (repository-tree directory))
               out)
              (terpri out))))
 
@@ -284,8 +328,8 @@ its name."
   "The files of RECORD's own repository changed since the loop's base."
   (let ((top (record-top record)))
     (remove "" (uiop:split-string
-                (apply #'git-output top "diff" "--name-only" (base-tree (field record "base"))
-                       (repository-tree top) "--" "." (exclusions))
+                (git-output top "diff" "--name-only" (base-tree top (field record "base"))
+                            (repository-tree top))
                 :separator '(#\Newline))
             :test #'string=)))
 
@@ -571,7 +615,7 @@ in a row from a reviewer."
   "Whether the working tree of DIRECTORY differs from BASE, a commit or
 \"none\", outside +OUTSIDE-THE-TREE+. A BASE git no longer has counts as
 changed."
-  (handler-case (string/= (repository-tree directory (base-tree base)) (repository-tree directory))
+  (handler-case (string/= (base-tree directory base) (repository-tree directory))
     (step-failed () t)))
 
 (defun rebase-loop (record &key onto client-onto)
@@ -986,7 +1030,7 @@ input, and record its verdict."
 (defun loop-command (arguments &key dir title mode client after item by why actor scenario path json
                                      onto client-onto)
   "tun loop (spec/loop.md 6)."
-  (let ((top (repository-top (absolute-directory (or dir "."))))
+  (let ((top (loop-top (absolute-directory (or dir "."))))
         (subcommand (first arguments))
         (arguments (rest arguments)))
     (flet ((named-record ()

@@ -87,7 +87,8 @@ that started it, until it is stopped.
    with `sudo tailscale set --operator=$USER`.
 6. **The answer.** The address, a sign-in link for each actor the
    scenario names (`…/login?actor=employee:anna`), the branch, the
-   revision (with `-dirty` when the tree has changes), the Tun it runs on,
+   revision (with `-dirty` when the client's directory has changes; a
+   change elsewhere in the repository does not count), the Tun it runs on,
    the scenario and its description, and the server's log. `--json`
    prints the same as one object, for agents.
 7. **Again.** A second `tun preview` in a worktree that has one running
@@ -266,7 +267,9 @@ with paging and autoscroll, and dragging with a mouse.
   claim taken over, a live or unreadable one skipped, `--port` refused
   while another process holds its claim, the claim handed to a new
   process whole, a restart keeping its port, and no claim left by a
-  start whose server exits before it answers; the checks found and their scenarios;
+  start whose server exits before it answers; a client's revision
+  `-dirty` from its own directory's changes, not another directory's;
+  the checks found and their scenarios;
   and refusals with their exit statuses.
 - `bin/test-cli`: after `tun new`, a scenario with a customer. `tun
   preview` answers `/health`, offers the scenario's sign-in link and has

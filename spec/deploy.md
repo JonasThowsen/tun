@@ -49,7 +49,12 @@ client, tag `latest`. Its entrypoint is the server of `nix build`, so the
 image runs exactly the pinned kernel, modules and client, and any
 arguments are the server's flags. It also holds CA certificates, a
 writable `/tmp` and `HOME=/tmp`, and sets `LANG=C.UTF-8`. It has no shell
-and no other programs. The server it starts is authenticated
+and no other programs. Nothing in it depends on the client's git commit:
+it is built from the client's own files and the pinned kernel and
+modules, so a commit that changes none of them, such as one to another
+application of a monorepo or to the client's `deploy.nix`, builds the
+same image. The commit a target runs is given to the server when it
+starts (§3). The server it starts is authenticated
 (`auth.md` §1): the first start prints where to create the first
 administrator, and `nixploy logs` shows it.
 
@@ -66,10 +71,17 @@ target. Tun fills in, unless the target sets them:
 | `run.environment.PORT` | `"{port}"`, the slot nixploy starts |
 | `run.environment.PUBLIC_URL` | `"https://"` and `web.domain`, when the target has one |
 | `run.environment.TRUSTED_PROXY` | `"127.0.0.1"`, the address Caddy on the host connects from, when the target has `web.domain` |
+| `run.environment.TUN_CLIENT_REVISION` | the commit the client's flake was read from, `-dirty` when its tree had changes, which `introspect_runtime` reports as `client_revision` (`core.md` §8.2) |
 | `web.healthPath` | `"/health"` |
 
 A target names the rest: the host (`ip`, `user`, `identityFile`), the
 domain and two free ports (`web.domain`, `web.slots`), and its secrets.
+The template's flake fills in all of them with `deployTargets`, which
+takes the revision and the attributes of `deploy.nix`. A client made
+before it fills in each target with `deployTarget`, without the
+revision, and passes the commit to `buildClient` as `revision`; that
+still works, with the commit built into its image; moving to
+`deployTargets` is a change of two lines in its `flake.nix`.
 
 **Caddy and callers that hold connections.** nixploy writes the target's
 route into Caddy, a reverse proxy to the slot on `127.0.0.1`, and nothing
@@ -185,14 +197,17 @@ again until an administrator revokes it again at `/access`.
 the local Podman, runs it as nixploy does (host network, `PORT` and
 `DATABASE_URL` in the environment) against a Postgres server on the local
 loopback, checks `/health`, takes it through setup to an access token and
-an MCP call with it (`auth.md` §9), and checks that the account it made
+an MCP call with it (`auth.md` §9), checks that `introspect_runtime`
+reports the `TUN_CLIENT_REVISION` it was started with, and that the account it made
 through the server is in that database. It then dumps the database with
 the options of §4, loads the dump into a new database owned by another
 role that is not a superuser, runs the image on that database, and checks
 that the account is there, that `/health` answers, that the token still
 works and that the log has no setup line. Last, it checks that the
 client's `nixploy` output evaluates with a target from `deploy.nix`, and
-that a target with a domain gets `PUBLIC_URL` and `TRUSTED_PROXY`.
+that a target with a domain gets `PUBLIC_URL`, `TRUSTED_PROXY` and the
+commit as `TUN_CLIENT_REVISION`, and that a commit changing only
+`deploy.nix` leaves the image's derivation as it was.
 `tests/cli-tests.lisp` checks how the server reads `--trusted-proxy` and
 `TRUSTED_PROXY`, and `tests/hostile-tests.lisp` what it counts by
 address (`core.md` §7.5).
