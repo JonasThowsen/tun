@@ -139,8 +139,8 @@ to run after every change:
   Every one runs, whatever another's result. At the end, each failed one's
   output is printed in full, and the run exits 1; otherwise 0. The
   outputs are kept in `.build/test/NAME.log`.
-- The core suites share one throwaway Postgres server, which takes 300
-  connections; each test makes its own databases on it. A test holds every
+- The core suites and the clients' share one throwaway Postgres server,
+  which takes 300 connections; each test makes its own databases on it. A test holds every
   port it uses until it is done, and none relies on a port staying unused.
 - `TUN_TEST_SUITES="core test-client"` limits the run as before, and
   `bin/test --only SUITE` runs one core suite in this process.

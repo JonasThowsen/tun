@@ -22,6 +22,7 @@ behaviour, and run the suites before calling work done.
 | `i18n.md` | Languages, money and time per tenant: copy in English with catalogues per language, English identifiers and core 2.0's migration, currencies and minor units, time zones, formats. |
 | `ui.md` | The design system: tokens, components, generated screens, a client's own pages, installing as an app. |
 | `tooling.md` | Development tooling: indentation, the editor REPL, the agent REPL and lint. |
+| `testing.md` | Generated tests: what Tun checks in every client without the client writing it. |
 | `feedback.md` | Draft, not built: reporting from any page of a client into the supplier's tracker, the first link between Tun systems. |
 | `preview.md` | Previews and checks: `tun preview` (a working tree at a tailnet link, fresh data, anyone's sign-in), scenarios, and browser checks run by `tun check`. |
 | `loop.md` | The feature loop: a request taken to a deploy through fixed stages, with gates a person or a reviewer approves; its record in `loops/`, and `tun loop`. |

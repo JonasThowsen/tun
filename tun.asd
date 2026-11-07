@@ -201,5 +201,6 @@
                              (:file "introspection-tests")
                              (:file "cli-tests")
                              (:file "preview-tests")
+                             (:file "generated-tests")
                              (:file "loop-tests")
                              (:file "run")))))

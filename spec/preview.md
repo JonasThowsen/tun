@@ -166,8 +166,9 @@ makes:
   describes the scenario.
 - A test starts from a scenario with `(run-scenario "NAME")` inside
   `with-test-app`, so a test, a check and a preview see the same data.
-  The tests of a client `tun new` makes run every scenario once
-  (`every-scenario-makes-its-records`), so none stops working unseen.
+  The tests Tun generates for a client run each of its scenarios once,
+  on a fresh database (`generated-every-scenario-makes-its-records`,
+  `testing.md` §1), so none stops working unseen.
 - The roadmap's factories (`docs/roadmap.md`, Testing) will make the
   bodies shorter. A scenario stays the named set of data built from
   them.

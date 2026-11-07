@@ -1,5 +1,6 @@
 ;;;; tun-test-support.asd -- the test helpers of the core suite and of every
-;;;; client's suite (tests/support.lisp).
+;;;; client's suite (tests/support.lisp), and the tests Tun generates for
+;;;; every client (tests/generated.lisp).
 ;;;;
 ;;;; A system of its own rather than a secondary system of tun.asd, so Nix
 ;;;; can build it as a package beside the kernel: a client outside this
@@ -7,5 +8,10 @@
 
 (defsystem "tun-test-support"
   :description "Helpers shared by the core and client test-suites."
-  :depends-on ("tun" "drakma" "usocket")
-  :components ((:module "tests" :components ((:file "support") (:file "i18n-support") (:file "scenarios")))))
+  :depends-on ("tun" "drakma" "usocket" "fiveam")
+  :components ((:module "tests"
+                :serial t
+                :components ((:file "support")
+                             (:file "i18n-support")
+                             (:file "scenarios")
+                             (:file "generated")))))

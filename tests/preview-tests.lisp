@@ -35,7 +35,7 @@
        (with-test-app ()
          (is (equal "Ingenting." (scenario-description (run-scenario "empty")))
              "a scenario may make nothing"))
-    (remhash "empty" tun.test-support::*scenarios*)))
+    (remhash '("TUN.TESTS" . "empty") tun.test-support::*scenarios*)))
 
 (test a-preview-serves-with-claimed-identity-only
   (signals error (serve-preview 'application :argv '("tun" "--port" "1" "--db" "x"))))

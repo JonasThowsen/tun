@@ -24,6 +24,8 @@
   :serial t
   :components ((:module "tests"
                 :components ((:file "package")
+                             (:file "scenarios")
+                             (:file "generated-tests")
                              (:file "interface-tests")
                              (:file "extension-tests")
                              (:file "introspection-tests")

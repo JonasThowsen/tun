@@ -778,7 +778,20 @@ scenario, at a tailnet link a person opens on their phone
 ```
 
 A test starts from one with `(run-scenario "default")` inside
-`with-test-app`. A browser check is `checks/NAME.py`, with `run(t)`;
+`with-test-app`.
+
+The client's `tests/tests.lisp` holds the tests Tun generates for every
+client (`spec/testing.md`): the public-interface check, the application
+opening on Postgres, translations, and each scenario making its records.
+A new Tun brings new ones. Name in `:isolate` the client's own variables
+through which a scenario installs what answers for another system:
+
+```lisp
+(define-generated-tests "notes-client" :package "NOTES-CLIENT"
+  :isolate (notes-client:*mailbox-settings*))
+```
+
+A browser check is `checks/NAME.py`, with `run(t)`;
 `tun check` runs each against a fresh preview of its scenario
 (`SCENARIO = "NAME"`, else `default`) in Chromium:
 

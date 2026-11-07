@@ -52,13 +52,9 @@ compile() {
 # core compiles first and a client after it loads the kernel as it is.
 rm -f "$dir/compiled"
 jobs=(check:test-indent check:test-lint check:test-repl check:test-lisp)
-postgres=false
 if [[ " $suites " == *" core "* ]]; then
   compile core
   mapfile -t -O "${#jobs[@]}" jobs < <(sed 's/^/core:/' "$dir/core-suites")
-  # The store tests run on Postgres too (spec/store.md 5), on a throwaway
-  # server that lives as long as the run.
-  postgres=true
 fi
 for suite in $suites; do
   if [ "$suite" != core ]; then
@@ -67,11 +63,10 @@ for suite in $suites; do
   fi
 done
 
+# The store tests run on Postgres too (spec/store.md 5), and a client's
+# generated tests open it there (spec/testing.md 1), on a throwaway server
+# that lives as long as the run.
 status=0
-if "$postgres"; then
-  bin/with-postgres scripts/run-suites "${jobs[@]}" || status=$?
-else
-  scripts/run-suites "${jobs[@]}" || status=$?
-fi
+bin/with-postgres scripts/run-suites "${jobs[@]}" || status=$?
 echo "== bin/test: ${#jobs[@]} suites in ${SECONDS}s"
 exit "$status"

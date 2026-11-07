@@ -36,7 +36,7 @@ run_job() {
   local sbcl=(sbcl --noinform --non-interactive --no-userinit --no-sysinit --load scripts/test.lisp)
   case "$kind" in
     core) TUN_TEST_POSTGRES="${DATABASE_URL:-}" exec "${sbcl[@]}" run core "$name" ;;
-    client) exec "${sbcl[@]}" run "$name" ;;
+    client) TUN_TEST_POSTGRES="${DATABASE_URL:-}" exec "${sbcl[@]}" run "$name" ;;
     check) exec bash "scripts/$name.sh" ;;
     *) echo "scripts/run-suites: no kind of job $kind" >&2; exit 2 ;;
   esac

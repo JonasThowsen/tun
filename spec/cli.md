@@ -138,10 +138,8 @@ NAME/
   nb.lisp              the client's Norwegian catalogue (i18n.md 3.4), empty
   tests/package.lisp   the suite
   tests/scenarios.lisp the default scenario a preview starts from (preview.md 3)
-  tests/tests.lisp     the public-interface check; the application opens;
-                       every scenario makes its records; every text of the
-                       client has a translation into each language it offers
-                       (i18n.md 3.7)
+  tests/tests.lisp     (define-generated-tests "NAME" ...): the tests Tun
+                       generates for every client (testing.md 1)
   tests/run.lisp       what bin/test runs
   bin/test             compile strictly, run the suite
   bin/serve            serve from the working tree with a local Postgres
@@ -169,12 +167,8 @@ NAME/
   warning (loading a compiled file redefines its macros, which is not
   one), then runs the suite with a throwaway Postgres server
   (`tun-with-postgres`, Tun's `bin/with-postgres`; `TUN_TEST_POSTGRES`
-  names it). The generated suite checks that the client's package uses
-  only `CL` and `TUN`, that its sources use only Tun's public interface,
-  that the application opens on a fresh Postgres database, which runs
-  every record policy and query (`store.md` §6, §5), and enables the
-  modules it names, and that every scenario makes its records
-  (`preview.md` §3).
+  names it). The suite holds the tests Tun generates for every client
+  (`testing.md` §1) and the client's own.
 - `bin/serve [--port N]` serves the working tree on `127.0.0.1:N` (default
   8080) against a Postgres server of the client's own under
   `.data/postgres`, reachable only through a socket in that directory. The

@@ -1,7 +1,8 @@
 ;;;; tests/support.lisp -- test helpers shared by the core suite and the
 ;;;; client suite: calling tools as an actor, fresh applications, scratch
 ;;;; databases, concurrency, and a real HTTP server.  Scenarios and the
-;;;; preview's server are in tests/scenarios.lisp.
+;;;; preview's server are in tests/scenarios.lisp, the tests Tun generates
+;;;; for every client in tests/generated.lisp.
 
 (defpackage #:tun.test-support
   (:use #:cl #:tun.core)
@@ -14,7 +15,7 @@
            #:public-interface-violations #:client-source-files #:client-files-under
            #:client-violations #:module-violations #:asd-violations #:module-asd-files #:+kernel-public-packages+ #:+module-library-packages+ #:file-text
            #:define-scenario #:find-scenario #:run-scenario #:scenario-names #:scenario-name #:scenario-actors
-           #:scenario-description #:serve-preview
+           #:scenario-description #:serve-preview #:define-generated-tests
            #:untranslated-texts #:unused-translations #:known-texts #:definition-texts
            #:page-visible-texts #:unlooked-up-texts #:stored-strings #:data-codes #:json-strings
            #:pages-missing-translations #:pseudo-page-problems))

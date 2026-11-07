@@ -15,6 +15,7 @@
                 (define-application . 2)
                 (extend-entity . 2)
                 (define-setting . 2)
+                (define-generated-tests . 1)
                 (with-actor . 1)
                 (with-application . 1)
                 (with-deadline . 1)

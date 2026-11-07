@@ -113,6 +113,8 @@ sed -i 's/c\.name = :name/c.nickname = :name/' "$client/application.lisp"
 in_client bin/test >"$work/query.log" 2>&1 && fail "bin/test passed a query on a missing column"
 grep -q "customers-named.*nickname" "$work/query.log" \
   || { cat "$work/query.log" >&2; fail "the refusal does not name the query and its column"; }
+grep -q "GENERATED-THE-APPLICATION-OPENS-WITH-THE-MODULES-IT-ENABLES" "$work/query.log" \
+  || { cat "$work/query.log" >&2; fail "the failure does not name the generated test that found it"; }
 # ASDF compares file times to the second: restored in the second bin/test
 # compiled the broken file, the file would look older than its compiled
 # copy, and bin/serve, which does not force a compile, would load that.

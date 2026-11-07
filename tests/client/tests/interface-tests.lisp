@@ -1,19 +1,14 @@
 ;;;; tests/interface-tests.lisp -- a client may use only Tun's public
-;;;; interface: the external symbols of TUN, and TUN.UI for its pages.
+;;;; interface: the external symbols of TUN, and TUN.UI for its pages. The
+;;;; generated tests check the test client with it; these check the check.
 
 (in-package #:test-client.tests)
 
 (def-suite interface :in client)
 (in-suite interface)
 
-(test the-client-package-uses-only-cl-and-tun
-  (is (equal '("COMMON-LISP" "TUN")
-             (sort (mapcar #'package-name (package-use-list "TEST-CLIENT")) #'string<))))
-
-(test the-client-sources-use-only-the-public-interface
-  (is (<= 7 (length (client-source-files "test-client"))) "found the client sources")
-  (let ((violations (client-violations "test-client" "TEST-CLIENT")))
-    (is (null violations) "~{~a~^~%~}" violations)))
+(test the-check-reads-every-client-source
+  (is (<= 7 (length (client-source-files "test-client")))))
 
 (test the-check-catches-internals
   ;; A double-colon reference, an exported symbol that is not public, and a

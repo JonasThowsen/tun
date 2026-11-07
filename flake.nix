@@ -111,10 +111,10 @@
         src = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.unions [ ./tun-test-support.asd ./tests/support.lisp ./tests/i18n-support.lisp
-                                         ./tests/scenarios.lisp ];
+                                         ./tests/scenarios.lisp ./tests/generated.lisp ];
         };
         systems = [ "tun-test-support" ];
-        lispLibs = [ tun ] ++ (with sbcl.pkgs; [ drakma usocket ]);
+        lispLibs = [ tun ] ++ (with sbcl.pkgs; [ drakma usocket fiveam ]);
       };
 
       # Reading material for agents and people (reference/README.md): pinned
