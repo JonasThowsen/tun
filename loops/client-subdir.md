@@ -3,7 +3,7 @@
 - loop: client-subdir
 - mode: hands-on
 - stage: build
-- base: 14c0124d5d48ae86ee6d38c9b2951cb08788ffb5
+- base: 64947260be8ad3f58c3c4523f43e48634ca3c762
 - item: sak_rzxz10fq0q0ag96p
 
 ## Brief
@@ -110,3 +110,4 @@ for any uncommitted change anywhere in the repository. `tun update`, `add`,
 - 2026-11-07 13:25  gate A asked again of jonas in Ferdig, question kom_nt40d6ptds4xy4m7 on sak_rzxz10fq0q0ag96p, with the revision included
 - 2026-11-07 13:59  while waiting at gate A: the revision drafted (deployTargets, the launcher keeps a TUN_CLIENT_REVISION given at start, the template, core 2.9.0); bin/build 0 warnings, bin/test-cli passes with the new revision step; uncommitted
 - 2026-11-07 19:54  gate A: approve (jonas): «ja»
+- 2026-11-07 19:54  rebased: tun 14c0124 → 6494726
