@@ -345,7 +345,11 @@ Every mutating call writes an audit entry in the transaction of its
 mutation. A call refused as `forbidden`, `confirmation_invalid` or
 `idempotency_conflict` writes an entry with `outcome: "rejected"` and
 changes nothing else; it names `entity_type` and `entity_id` when the input
-names its target. Other refusals may or may not be audited. Work a workflow
+names its target. This holds for every call that reaches a tool, whether
+the policy, core, a hook or the tool's own body refused it, and whatever
+the input holds: a `request_key` or a target id an entry takes from the
+input is kept only when it is text of 1–64 characters without NUL (§2.1),
+and is left out otherwise. Other refusals may or may not be audited. Work a workflow
 or job does is audited with its system actor. Entries never hold tokens or
 secrets, and record the credential the call used (`auth.md`).
 

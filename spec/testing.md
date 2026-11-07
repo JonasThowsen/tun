@@ -111,7 +111,10 @@ must hold whatever a caller sends.
      so mail and push wait in their queues, and an attempt to look up or
      connect to another host fails the test (a Unix socket, such as the
      test database's, still connects);
-  4. a waiting tool (`waiting.md`) waits no time.
+  4. a waiting tool (`waiting.md`) waits no time;
+  5. a call refused as `forbidden`, `confirmation_invalid` or
+     `idempotency_conflict` leaves its audit entry, `outcome: "rejected"`
+     (`core.md` §3.8), whatever its input holds.
 - **Reproducible.** The calls follow from a seed. `bin/test` uses the
   same seed every run, so a run fails only when the code changed what it
   meets. `TUN_FUZZ_SEED=N` sets another, and `TUN_FUZZ_SEED=random` takes
