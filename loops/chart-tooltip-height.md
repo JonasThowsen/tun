@@ -2,7 +2,7 @@
 
 - loop: chart-tooltip-height
 - mode: reviewed
-- stage: shown
+- stage: ship
 - base: d101e5832f8742f8bd76afb7bbd250c46cddf99c
 - client: /home/jonas/coding/kurs
 - client-base: f9f15dad4a40794fd0cec2a6367f7cdb76cb74df
@@ -62,3 +62,5 @@ some and 192 px, pinned top and bottom, at others.
 - 2026-11-07 12:36  verify 4: failed test
 - 2026-11-07 13:04  verify 5: passed build, test, check, client-check
 - 2026-11-07 13:05  shown (/shares/AAPL:xnas)
+- 2026-11-07 13:05  gate B asked of a reviewer
+- 2026-11-07 13:09  gate B: approve (reviewer): Client tree holds only this loop's work; criterion 1 met by a walk that fails without the fix; criterion 2 by the existing checks; spec and version agree.
