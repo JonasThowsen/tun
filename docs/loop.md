@@ -87,7 +87,9 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
   the other work as yours. With your work uncommitted, the commit checked
   out is the new base. With any of it committed, name the commit it
   builds on: `--onto origin/main`, and `--client-onto` for a client. A
-  loop past build goes back to it; verify, show and ask gate B again.
+  client the loop does not change, whose newer commits are another loop's,
+  is named too: `--client-onto` its commit. A loop past build goes back to
+  it; verify, show and ask gate B again.
 
 ## 6. Show and gate B
 

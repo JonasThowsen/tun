@@ -592,9 +592,14 @@ its checked-out one (spec/loop.md 6)."
                                          (or (head-commit directory)
                                              (fail-step "~a has no commit yet"
                                                         (namestring directory))))))))
+      ;; Only a base taken from the checked-out commit is guarded: a named one
+      ;; is the person's word that the loop's work builds on it, such as a
+      ;; client whose newer commits are another loop's.
       (loop for (directory old new) in moves
             for option in '("--onto" "--client-onto")
-            when (and (changed-since-p directory old) (not (changed-since-p directory new)))
+            for revision in (list onto client-onto)
+            when (and (null revision)
+                      (changed-since-p directory old) (not (changed-since-p directory new)))
               do (fail-step "~a has no change since ~a, though it had one since the loop's base: ~
                              its work is committed there. Name the commit the work builds on: ~
                              ~a loop rebase ~a REV"

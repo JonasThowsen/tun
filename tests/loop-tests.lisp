@@ -612,5 +612,19 @@
                    (is (equal before (field "client-base")))
                    (is (= 0 (tun "rebase" "--client-onto" "HEAD~1")))
                    (is (equal before (field "client-base")))
-                   (is (equal (head tun-directory) (field "base")))))
+                   (is (equal (head tun-directory) (field "base"))))
+                 ;; The client moves again with nothing uncommitted: unnamed, its
+                 ;; checked-out commit is refused; named, it is taken, as for a client
+                 ;; whose newer commits are another loop's.
+                 (commit client "elsewhere.lisp")
+                 (multiple-value-bind (status output) (tun "rebase")
+                   (is (= 1 status) "the checked-out commit, unnamed, is refused")
+                   (is (search "--client-onto" output)))
+                 (is (= 0 (tun "rebase" "--client-onto" "HEAD")) "named, it is taken")
+                 (is (equal (head client) (field "client-base")))
+                 ;; The same for Tun's own base: its change committed, --onto names it.
+                 (commit tun-directory "kernel.lisp")
+                 (is (= 1 (tun "rebase")) "Tun's checked-out commit, unnamed, is refused")
+                 (is (= 0 (tun "rebase" "--onto" "HEAD")) "named, it is taken")
+                 (is (equal (head tun-directory) (field "base"))))
             (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore)))))))

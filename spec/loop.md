@@ -250,10 +250,12 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   `build`: verify, show and gate B again. At `brief` and `build` the stage
   stays. It runs at those five stages and refuses at any other, exit 1.
   It also refuses, exit 1, when a repository that had a change since its
-  old base would have none since its new one: that is a loop whose work is
-  already committed on the new base, and `--onto` or `--client-onto` then
-  names the commit the work builds on. A REV that is not a commit is a
-  usage error.
+  old base would have none since the commit checked out: that is a loop
+  whose work is already committed there, and `--onto` or `--client-onto`
+  then names the commit the work builds on. A commit named that way is
+  taken as the base even when the repository has no change since it, as
+  for a client whose newer commits are another loop's and that this loop
+  does not change. A REV that is not a commit is a usage error.
 - **`log`** adds a line of the agent's to the log.
 - **`finish`** needs the committed tree to be the shown one, and moves to
   `done`.
@@ -324,7 +326,7 @@ stays the truth; the tracker is a mirror.
   - `rebase` moves `base` and `client-base` to the checked-out commits or
     `--onto` and `--client-onto`, sends a loop past build back to it, tells
     the tracker, and refuses at a gate and when a repository's change
-    would vanish;
+    would vanish onto its checked-out commit, but takes a named one;
   - what `show` records leaves the preview's link out of the record, in
     `.build/loop/NAME/show/link`, where gate B's text, `status` and the
     packet read it; a record of an older `tun loop` loses its link when
