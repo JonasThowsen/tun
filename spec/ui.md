@@ -140,7 +140,9 @@ component has a dark-mode selector.
   provider, and browsers hold that redirect to `form-action` too. They
   also hold the sites the client names in `define-application` for a
   form that sends the browser on to another system, such as a sign-in at
-  a broker: `(:form-sites "https://sim.logonvalidation.net")`. Each is an
+  a broker: `(:form-sites "https://sim.logonvalidation.net"
+  "https://developer.saxobank.com")`. Every site of the form's redirect
+  chain must be named, not just the first. Each is an
   `https://` origin with a lower-case host and no path (`http://` only
   for `127.0.0.1` and `localhost`); anything else is refused when the
   client is compiled.

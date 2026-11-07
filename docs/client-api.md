@@ -665,9 +665,15 @@ and values:
 A form that sends the browser on to another system, such as a button
 that starts a sign-in at a broker and answers 303 to its authorize page,
 needs that site named in `define-application`:
-`(:form-sites "https://sim.logonvalidation.net")`. The page's policy lets
-forms lead only to the server, its sign-in providers and these sites
-(`spec/ui.md` §4); without it the browser stops at the redirect.
+`(:form-sites "https://sim.logonvalidation.net" "https://developer.saxobank.com")`.
+The page's policy lets forms lead only to the server, its sign-in
+providers and these sites (`spec/ui.md` §4), and the browser holds every
+hop of the redirect chain to it, not just the first: Saxo's authorize
+address redirects on to its sign-in page on a second site, so both are
+named. Find the chain by following the real address once, with the real
+application key: a stand-in that answers a made-up key may never redirect.
+Without a site, the browser stays on the page, and its console names only
+the form's own address.
 
 A program on the server, such as `nixploy` or `git`, is run the same
 way: declared in `define-application` with `(:programs "nixploy")`, then
