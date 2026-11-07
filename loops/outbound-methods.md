@@ -2,9 +2,11 @@
 
 - loop: outbound-methods
 - mode: hands-on
-- stage: build
+- stage: done
 - base: 9627863ac7e751208c77fa9c2704fdf1153eeed8
 - item: sak_904293mv3n9tjxw9
+- verified: 8a3deb4a58ae876c2cf508c0e52f6eeda455730c
+- shown: 8a3deb4a58ae876c2cf508c0e52f6eeda455730c
 
 ## Brief
 
@@ -82,3 +84,8 @@ a device with DELETE. Tailscale's OAuth token endpoint takes a form POST
 - 2026-11-07 11:15  started, hands-on
 - 2026-11-07 11:16  gate A asked of the person
 - 2026-11-07 12:17  gate A: approve (jonas): «ja»
+- 2026-11-07 12:24  verify 1: passed build, test, check
+- 2026-11-07 12:25  shown (/ui)
+- 2026-11-07 12:25  gate B asked of the person
+- 2026-11-07 13:20  gate B: approve (jonas): «ja»
+- 2026-11-07 13:20  finished at tun 323bc7e
