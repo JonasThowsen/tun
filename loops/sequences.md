@@ -2,7 +2,7 @@
 
 - loop: sequences
 - mode: reviewed
-- stage: brief
+- stage: build
 - base: fac67a3716221af6f4d8483956b86398e693eb16
 - after: policy-properties
 
@@ -218,3 +218,5 @@ What holds today, and what does not:
 - 2026-11-08 11:08  gate A: changes (reviewer): Replays: show-once secrets are null in receipts and live views (stock_warnings) are added after commit, so 'equal as JSON' fails on specified behaviour; replay must send the original resolved arguments. Inventory ledger invariant is false by design (consumption replacement deletes rows without a movement). docs example uses :not, which the where language lacks (:not-null). ferdig rule is in §3, not §2. testing.md §4: unshrunk report, gets checked as calls, reflow §5.
 - 2026-11-08 11:09  gate A asked of a reviewer
 - 2026-11-08 11:14  gate A: changes (reviewer): Round 1 fixed. Not every tool is guaranteed a call: independent picks from a fixed seed leave ~9 of the dashboard's 49 tools (and ~40 of Tun's 173) never called, every run, silently. Deal each actor's admitted tools from a seeded shuffle; summary names tools never called or never answered with a result; planted check that a run with as many steps as tools calls each. Optional: one wording for when invariants are checked; §4 to mention picking another actor, the forbidden probe once per sequence and actor, English descriptions; completed_orders declared in orders.
+- 2026-11-08 11:15  gate A asked of the person
+- 2026-11-08 11:15  gate A: approve (jonas): Gate A passed to Jonas after two reviewer rounds of changes; he chose «Take the fix, approve»: tools dealt from a seeded shuffled deck so a run with enough steps calls every tool, summary names tools never called or never answered with a result, a planted check for it, and the reviewer's small wording fixes.
