@@ -46,12 +46,15 @@ What holds today, and what does not:
    made as for fuzzing (§2: in memory, or on the test Postgres server for
    a client that needs it; nothing leaves the process; jobs held; the
    test clock), it runs a number of sequences, each on a fresh copy, each
-   a number of steps. A step picks, from the seed: an actor of the fuzz
-   run (§2's), then one of the client's fuzzed tools whose own policy
-   admits that actor (`actor-permits-p`; a step with no such tool picks
-   another actor), and an input of the `:valid` or `:edge` kind (§2), its
-   ids naming records as they are when the step runs, so a record an
-   earlier step made can be named. A mutating tool's input carries a
+   a number of steps. A step's tool is dealt from a deck: the client's
+   fuzzed tools that some actor of the run (§2's) may call, in an order
+   shuffled from the seed, a new shuffle when the deck runs out, one deck
+   across the run's sequences, so a run with at least as many steps (not
+   counting replays) as tools calls every one of them (Jonas, gate A
+   round 2). The step's actor is one, from the seed, whom the tool's own
+   policy admits (`actor-permits-p`); its input is of the `:valid` or
+   `:edge` kind (§2), its ids naming records as they are when the step
+   runs, so a record an earlier step made can be named. A mutating tool's input carries a
    `request_key` of its own, unique in the run. A tool that asks for
    confirmation is asked and then confirmed with the token it gave, two
    calls of one step. Defaults: 4 sequences of 25 steps;
@@ -109,8 +112,9 @@ What holds today, and what does not:
    holds through Tun's own sequence run (criterion 8):
    - orders: at most one `active` and one `proposed` plan per order
      (orders README §9.1);
-   - orders and customers: a customer's `completed_orders` equals the
-     number of its orders currently `completed` (orders README §2.2);
+   - orders, which keeps the count: a customer's `completed_orders`
+     equals the number of its orders currently `completed` (orders
+     README §2.2);
    - inventory: an article's ledger rows have distinct revisions, none
      above its `movement_revision` (inventory README §3.2, which counts
      every row written; a consumption re-sync deletes rows, §6.3, so the
@@ -159,8 +163,11 @@ What holds today, and what does not:
      already breaks, reported before the first step;
    - an invariant whose body signals: reported as the invariant's fault.
    Also: the same seed makes the same sequences, steps and report again;
-   the defaults' summary line names sequences, steps, calls, seconds and
-   the seed.
+   a run with as many steps as tools calls each of them; the summary
+   line names sequences, steps, calls, replays, gets, seconds and the
+   seed, how many of the fuzzed tools were called and how many mutating
+   ones replayed, and names each tool never called and each never
+   answered with a result.
 10. **Fast.** A client's generated tests together stay within 30 s
     (§1). The log records, per client, the new test's time and the
     generated tests' total, measured against the Tun pinned before back
@@ -209,3 +216,5 @@ What holds today, and what does not:
 - 2026-11-08 11:02  started, reviewed
 - 2026-11-08 11:04  gate A asked of a reviewer
 - 2026-11-08 11:08  gate A: changes (reviewer): Replays: show-once secrets are null in receipts and live views (stock_warnings) are added after commit, so 'equal as JSON' fails on specified behaviour; replay must send the original resolved arguments. Inventory ledger invariant is false by design (consumption replacement deletes rows without a movement). docs example uses :not, which the where language lacks (:not-null). ferdig rule is in §3, not §2. testing.md §4: unshrunk report, gets checked as calls, reflow §5.
+- 2026-11-08 11:09  gate A asked of a reviewer
+- 2026-11-08 11:14  gate A: changes (reviewer): Round 1 fixed. Not every tool is guaranteed a call: independent picks from a fixed seed leave ~9 of the dashboard's 49 tools (and ~40 of Tun's 173) never called, every run, silently. Deal each actor's admitted tools from a seeded shuffle; summary names tools never called or never answered with a result; planted check that a run with as many steps as tools calls each. Optional: one wording for when invariants are checked; §4 to mention picking another actor, the forbidden probe once per sequence and actor, English descriptions; completed_orders declared in orders.

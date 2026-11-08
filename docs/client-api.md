@@ -146,8 +146,8 @@ refused when the definition is compiled.
 An invariant states what holds across records, which a rule, one record
 at its write, cannot. Its body reads as the system actor in a read
 transaction and returns the breaches, each a text naming the records, or
-NIL. Tests check every invariant after each call of the generated
-sequence test (`spec/testing.md` §4); a running server does not.
+NIL. Tests check every invariant after each call that committed in the
+generated sequence test (`spec/testing.md` §4); a running server does not.
 
 ```lisp
 (define-invariant items-are-at-their-projects-customer

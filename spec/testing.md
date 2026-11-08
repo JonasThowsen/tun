@@ -206,11 +206,14 @@ what must hold, the application's invariants among it.
   scenario filled, in memory or on the test Postgres server, nothing
   leaving the process, jobs held, the test clock, the same actors. Each
   sequence starts from a fresh copy of it.
-- **Steps.** A run is a number of sequences of a number of steps. A step
-  picks, from the seed, an actor, then one of the client's tools that §2
-  fuzzes whose own policy (`core.md` §3.3) admits that actor, and a
-  *valid* or *edge* input (§2) whose ids name records as they are when the
-  step runs, those earlier steps made among them. A mutating tool's input
+- **Steps.** A run is a number of sequences of a number of steps. Each
+  step's tool is dealt from a deck of the client's tools that §2 fuzzes
+  and some actor may call, shuffled from the seed and shuffled again when
+  it runs out, one deck across the run, so a run with as many steps as
+  tools calls every one. The step's actor is one whom the tool's own
+  policy (`core.md` §3.3) admits, and its input a *valid* or *edge* one
+  (§2) whose ids name records as they are when the step runs, those
+  earlier steps made among them. A mutating tool's input
   carries a `request_key` of its own. A tool that asks for confirmation
   (`core.md` §3.6) is asked and then confirmed with the token it gave: two
   calls, one step.
@@ -233,14 +236,17 @@ what must hold, the application's invariants among it.
      is a read tool of the client whose only required property takes ids
      of its own entity. An actor the get's policy refuses is skipped, as
      is a get that answers `forbidden` for an id that names nothing (a
-     system-only read, as in §3). These gets are checked as calls too;
+     system-only read, as in §3), asked once per sequence and actor. These
+     gets are checked as calls too;
   3. every invariant of the application holds (below).
 - **Invariants.** `define-invariant` (`core.md` §1.1) states what holds
   across records, which a rule, one record at its write, cannot: an
   item's project is at the item's customer. Its body reads the records as
   the system actor, in a read transaction, and returns the breaches, each
-  a text naming the records, or none. Core, the modules the application
-  enables and the client declare them, and `registry_describe` lists them.
+  a text naming the records, or none, and its description says in English
+  what holds: both are for developers, never translated. Core, the modules
+  the application enables and the client declare them, and
+  `registry_describe` lists them.
   The test checks every one on the scenario's records before the first
   step, and again after each call that committed. A breach before the
   first step fails the test, naming the scenario; a body that signals an
@@ -257,8 +263,10 @@ what must hold, the application's invariants among it.
   (`TUN_FUZZ_SEED`, §2), so one seed makes both tests again.
 - **Fast.** 4 sequences of 25 steps, constants in `tun.test-support`, so a
   client's generated tests stay within 30 seconds (§1). `TUN_SEQUENCES=N`
-  and `TUN_SEQUENCE_STEPS=N` set others for a deeper run; the test says
-  how many sequences, steps and calls it made and how long they took.
+  and `TUN_SEQUENCE_STEPS=N` set others for a deeper run. The test says
+  how many sequences, steps and calls it made and how long they took, how
+  many of the tools it called and replayed, and names each tool it never
+  called and each that never answered with a result.
 - **Tun's own tools** are called in sequence in Tun's own suite, the same
   way, from the scenario its fuzz test uses, with core's and the modules'
   invariants, and more steps.
