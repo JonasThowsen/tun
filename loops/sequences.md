@@ -2,7 +2,7 @@
 
 - loop: sequences
 - mode: reviewed
-- stage: shown
+- stage: ship
 - base: 2ceb1296b6e5c94006b68e55c0f5cc1654b3b039
 - after: policy-properties
 - verified: b289e17bbbd5aa7e760c0802b46164ded6c77af0
@@ -242,3 +242,5 @@ What holds today, and what does not:
 - 2026-11-08 12:24  generated tests back to back, this Tun against each client's pin (.build/loop/sequences/clients/): dashboard 22.3 s against 25.8 s (fuzzing 18.1 against 23.1, sequences 1.7); ferdig 15.0 s against 15.3 s (fuzzing 10.4 against 12.8, sequences 2.1); kurs 14.9 s against 10.7 s (fuzzing 7.9 both, sequences 4.2: half a second to open each fresh application). Clients' bin/test on this Tun: ferdig 756, kurs 350, dashboard 1141 checks, none failed; logs in the same folder
 - 2026-11-08 12:33  verify 2: passed build, test, check
 - 2026-11-08 12:33  shown (/ui)
+- 2026-11-08 12:34  gate B asked of a reviewer
+- 2026-11-08 12:40  gate B: approve (reviewer): Round 1's blocking items fixed; criteria 1-12 met with evidence (verify 2, Tun's sequence suites, client logs and back-to-back timings all under 30 s). Not blocking, for later: no test guards fuzzing's copy reuse (fuzz close before get); the replay's null exemption could be limited to secret fields; input shrinking always takes the last step; the clients' runs are as shallow as the modules' (dashboard 37 of 49 tools never answer with a result); no test of the summary's Never called line; breach order follows hash order; the packet's diff lacks the ferdig change.
