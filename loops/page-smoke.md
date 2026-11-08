@@ -2,7 +2,7 @@
 
 - loop: page-smoke
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 932792b188947434b781cacc93930e68949b179c
 - verified: 4f56d8f4634f9f2c011de0751299a12d241892d5
 - shown: 4f56d8f4634f9f2c011de0751299a12d241892d5
@@ -153,3 +153,7 @@ Jonas, 2026-11-08, after loop 5 and the markdown loop: «go ahead».
 - 2026-11-08 17:23  shown (/ui)
 - 2026-11-08 17:23  gate B asked of a reviewer
 - 2026-11-08 17:27  gate B: approve (reviewer): The notes taken are fixed and tested; criteria 1-10 met. Small points: a misleading comment on restoring in reverse, path-segments could use without-query, redirect-only pages always listed in the summary.
+- 2026-11-08 17:32  gate C asked of the person
+- 2026-11-08 17:32  gate C: approve (jonas): «Push all, deploy ferdig + kurs (Recommended)»
+- 2026-11-08 17:35  deployed ferdig 9f784c0 (dpl_ggdyz3dg7f33b9k2) and kurs a82a83d (dpl_ddp67vwbfwvdt37e), both verified; nixploy-dashboard pinned in nixos d8b6204 for Jonas's netcup deploy. Follow-ups: the reverse restore in call-with-global-values and its comment; path-segments could use without-query; redirect-only pages always in the summary; ferdig's search dialog names roles rather than /sok's policy (the facade has no actor-permits-p).
+- 2026-11-08 17:35  finished at tun dbe8b38
