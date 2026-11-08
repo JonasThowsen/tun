@@ -37,6 +37,7 @@ extension kinds and no others (`docs/client-api.md` has the forms):
 |---|---|---|
 | field on an entity | a customer's `kind` (`privat` \| `bedrift`) and `org_number` | input schemas, results, `registry_describe` with `"source": "client"` |
 | rule | `bedrift` needs a nine-digit `org_number` | every insert and update of the entity, as `invalid_input` |
+| invariant | an item's project is at the item's customer | the generated sequence test, after every call (`testing.md` §4); `registry_describe` |
 | computed field | a loyalty tier from the customer's completed orders | read results, marked `computed` |
 | behaviour before or after an operation | plan a reminder after `orders_send_quote` | the operation's result and side effects, in a fixed order (§1.3) |
 | a published seam | the order discount, the booking window | the module's computed values |
@@ -384,6 +385,9 @@ A read for `viewer` and up, computed from the live definitions:
   `session_only` (§3.3), `source`, `module`, and `beyond_record_policy`,
   the reason, for a tool declared to show records beyond the record policy
   (`store.md` §6);
+- `invariants`: each with its `name`, `description`, `source` and
+  `module`: what holds across records, which tests check (`testing.md`
+  §4);
 - `workflows`, `message_templates`, `settings` (without values), `modules`
   and `extension_points`;
 - `locale`: the tenant's `language`, the application's `languages`, its

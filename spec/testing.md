@@ -28,7 +28,9 @@ and a check added to Tun reaches every client with `tun update`.
      scenarios loaded in the same image are not the client's, and two
      packages may each define a scenario of the same name.
   6. every tool of the client withstands fuzzing (§2);
-  7. every tool of the client keeps to its record policies (§3).
+  7. every tool of the client keeps to its record policies (§3);
+  8. the client's tools called in sequence keep what must hold, and
+     every invariant of the application (§4).
 - Each generated test is named for what it checks, prefixed
   `generated-`, so a failure says which check found it.
 - **Isolation.** A scenario may install handlers that answer for other
@@ -192,14 +194,78 @@ actor, through any tool.
   a failure names the tool, the actor, the seed, the input and the record
   by insertion order, and the test counts in §1's 30 seconds.
 
-## 4. Not yet
+## 4. Tools called in sequence
 
-Sequences of operations and every page for every role come in later
-loops, each a section here. Not checked by §2 and §3: that a list shows
-every record the actor reaches (lists have their own filters and
+The eighth generated test,
+`generated-tools-called-in-sequence-keep-the-invariants`, calls the
+client's tools one after another on one database, so each call meets what
+the calls before it made, changed and removed, and checks after each call
+what must hold, the application's invariants among it.
+
+- **Where and who.** As for fuzzing (§2): the database the `default`
+  scenario filled, in memory or on the test Postgres server, nothing
+  leaving the process, jobs held, the test clock, the same actors. Each
+  sequence starts from a fresh copy of it.
+- **Steps.** A run is a number of sequences of a number of steps. A step
+  picks, from the seed, an actor, then one of the client's tools that §2
+  fuzzes whose own policy (`core.md` §3.3) admits that actor, and a
+  *valid* or *edge* input (§2) whose ids name records as they are when the
+  step runs, those earlier steps made among them. A mutating tool's input
+  carries a `request_key` of its own. A tool that asks for confirmation
+  (`core.md` §3.6) is asked and then confirmed with the token it gave: two
+  calls, one step.
+- **Replays.** When an earlier step of the sequence performed a mutation,
+  one step in five instead repeats one such: the same actor, tool, input
+  and `request_key`, without a confirmation token. It answers with a
+  result equal to the first (`core.md` §3.7) and changes no record but the
+  audit's entries. When the receipt was redacted since (a module
+  anonymised the record it holds), the result is not compared.
+- **What must hold after each call:**
+  1. all of §2's checks, judged against the records as they were just
+     before the call;
+  2. a record the call made, which the calling actor reaches (`store.md`
+     §6), is not answered `not_found` by its entity's *get*, asked as that
+     actor; a record the call removed is answered `not_found` by it. A get
+     is a read tool of the client whose only required property takes ids
+     of its own entity. An actor the get's policy refuses is skipped, as
+     is a get that answers `forbidden` for an id that names nothing (a
+     system-only read, as in §3);
+  3. every invariant of the application holds (below).
+- **Invariants.** `define-invariant` (`core.md` §1.1) states what holds
+  across records, which a rule, one record at its write, cannot: an
+  item's project is at the item's customer. Its body reads the records as
+  the system actor, in a read transaction, and returns the breaches, each
+  a text naming the records, or none. Core, the modules the application
+  enables and the client declare them, and `registry_describe` lists them.
+  The test checks every one on the scenario's records before the first
+  step, and again after each call that committed. A breach before the
+  first step fails the test, naming the scenario; a body that signals an
+  error fails it as the invariant's fault.
+- **Shrinking.** A failing sequence is shrunk: steps are dropped while it
+  still fails with the same kind of problem, each candidate replayed from
+  a fresh copy, at most 200 replays. A replay is dropped with the step it
+  repeats. Then the failing step's input is shrunk as in §2. The report
+  lists the steps that remain, each with its actor, tool, input (an id as
+  the record it names by insertion order) and how it ended; what broke;
+  and the variables that make it again.
+- **Reproducible.** The sequences follow from the fuzzing seed
+  (`TUN_FUZZ_SEED`, §2), so one seed makes both tests again.
+- **Fast.** 4 sequences of 25 steps, constants in `tun.test-support`, so a
+  client's generated tests stay within 30 seconds (§1). `TUN_SEQUENCES=N`
+  and `TUN_SEQUENCE_STEPS=N` set others for a deeper run; the test says
+  how many sequences, steps and calls it made and how long they took.
+- **Tun's own tools** are called in sequence in Tun's own suite, the same
+  way, from the scenario its fuzz test uses, with core's and the modules'
+  invariants, and more steps.
+
+## 5. Not yet
+
+Every page for every role comes in a later loop, a section here. A
+running server does not check the invariants (§4); tests do. Not checked
+by §2, §3 and §4: that a list shows every record the actor reaches (lists have their own filters and
 limits); ids a result mentions as references to other records, such as
 an item's `project_id`, which a record the actor reaches may hold for one
 it does not; ids inside an input's arrays and nested objects; and Tun's
-own tools in a client's run. Of those, `attachments_…` read the record
+own tools in a client's run, alone or in sequence. Of those, `attachments_…` read the record
 as the caller (`files.md` §4.2) and `audit_list` keeps to the policies
 (`core.md` §3.8), each checked by tests of its own in Tun's suite.

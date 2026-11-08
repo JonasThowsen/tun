@@ -143,6 +143,23 @@ refused when the definition is compiled.
                           :text "Confirmed"))))
 ```
 
+An invariant states what holds across records, which a rule, one record
+at its write, cannot. Its body reads as the system actor in a read
+transaction and returns the breaches, each a text naming the records, or
+NIL. Tests check every invariant after each call of the generated
+sequence test (`spec/testing.md` §4); a running server does not.
+
+```lisp
+(define-invariant items-are-at-their-projects-customer
+    (:description "An item with a project is at that project's customer")
+  (loop for item in (select 'item :where '(:not (:null "project_id")))
+        for project = (fetch 'project (item-project-id item))
+        unless (and project (equal (project-customer-id project) (item-customer-id item)))
+          collect (format nil "~a is at ~a, its project ~a at ~a"
+                          (entity-id item) (item-customer-id item)
+                          (item-project-id item) (and project (project-customer-id project)))))
+```
+
 Rules return true to accept and false to reject. Computed fields are evaluated
 when reading the entity and declare their result type. The operation result in
 an after hook is a guarded copy: call public operations for module-owned writes.
