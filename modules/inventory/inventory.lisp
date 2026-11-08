@@ -41,7 +41,7 @@
 
 (define-module inventory
   (:depends-on catalog)
-  (:core ">= 2.0.0" "< 3.0")
+  (:core ">= 2.14.0" "< 3.0")
   (:on-open adopt-older-stock)
   (:documentation "Inventory: stock articles, the ledger, reservations, consumption and the forecast."))
 

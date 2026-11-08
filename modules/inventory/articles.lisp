@@ -62,9 +62,9 @@ article_no and order_url, each a string or null; order_url a plain http(s) URL."
 ;;; ------------------------------------------------------------------
 ;;; Operations
 
-(define-operation articles-create ((name :type (string :max 120) :label "Name")
+(define-operation articles-create ((name :type (string :max 120) :required t :label "Name")
                                    (sku :type (string :max 60) :label "SKU")
-                                   (unit :type (string :max 20) :label "Unit")
+                                   (unit :type (string :max 20) :required t :label "Unit")
                                    (package-size :type (decimal :scale 3) :label "Package size"
                                                  :description "The purchase package in the article's unit (> 0).")
                                    (min-level :type (decimal :scale 3) :label "Minimum")
@@ -78,8 +78,6 @@ article_no and order_url, each a string or null; order_url a plain http(s) URL."
                                                     :label "Starting balance"))
     (:entity article :kind :create :policy :admin :title "Create stock article"
      :description "A stock article (the counted commodity) with its unit, package size, levels, supplier and lead time. The starting balance is written as one opening movement in the same transaction (0 too).")
-  (when (or (null name) (null unit))
-    (fail :invalid-input "Name and unit must be filled in"))
   (check-catalog-department department)
   (when (minusp opening-balance)
     (fail :invalid-input "The starting balance cannot be negative"))

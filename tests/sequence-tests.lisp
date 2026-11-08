@@ -15,10 +15,11 @@
 ;;; Tun's own tools, in suites of their own that bin/test runs at once
 
 (defparameter +tun-sequences+ 8
-  "How many sequences Tun's own tools are called in: more than a client's
-default, as Tun's suite has the time.")
+  "How many sequences Tun's own tools are called in, unless TUN_SEQUENCES
+says otherwise: more than a client's default, as Tun's suite has the time.")
 
-(defparameter +tun-sequence-steps+ 40)
+(defparameter +tun-sequence-steps+ 40
+  "How many steps each has, unless TUN_SEQUENCE_STEPS says otherwise.")
 
 (defun check-tun-tools-in-sequence (modulep what)
   "Call Tun's tools whose module MODULEP keeps in sequence, as a client's
@@ -29,7 +30,8 @@ are, from the scenario fuzz-records."
                          (funcall modulep (operation-module operation))))
                   (all-operations))
    what :scenario (find-scenario "fuzz-records" :package "TUN.TESTS")
-        :sequences +tun-sequences+ :steps +tun-sequence-steps+))
+        :sequences (environment-integer "TUN_SEQUENCES" +tun-sequences+)
+        :steps (environment-integer "TUN_SEQUENCE_STEPS" +tun-sequence-steps+)))
 
 (def-suite sequences-core :in core)
 (in-suite sequences-core)
@@ -252,7 +254,8 @@ if the store had lost them."
          (failure (only-sequence-failure report)))
     (when failure
       (is (zerop (sequence-failure-index failure)))
-      (is (search "before the first step" (sequence-failure-text failure report "probes"))))))
+      (is (search "the scenario seq-tasks-broken, before the first step"
+                  (sequence-failure-text failure report "probes"))))))
 
 (test an-invariant-that-signals-is-its-fault
   (let* ((report (let ((*planted-defects* '(:invariant-signals))) (seq-probes)))
@@ -301,3 +304,23 @@ if the store had lost them."
   (let ((names (mapcar #'invariant-name (application-invariants (make-instance 'zz-partial-app)))))
     (is (member 'tun.orders::one-active-and-one-proposed-plan-per-order names))
     (is (member 'tun.inventory::one-consumption-per-order-and-article names))))
+
+(test a-replay-answers-with-what-its-receipt-holds
+  ;; A value shown once is null in the receipt, and so in the replay; a key
+  ;; the receipt lacks is the live view's, not compared.
+  (flet ((differences (first replay kept)
+           (tun.test-support::replay-differences (parse-json first) (parse-json replay)
+                                                 (parse-json kept))))
+    (is (null (differences "{\"id\":\"t1\",\"token\":\"s3cr3t\"}"
+                           "{\"id\":\"t1\",\"token\":null}"
+                           "{\"id\":\"t1\",\"token\":null}")))
+    (is (equal '("token") (differences "{\"id\":\"t1\",\"token\":\"s3cr3t\"}"
+                                       "{\"id\":\"t1\",\"token\":\"s3cr3t\"}"
+                                       "{\"id\":\"t1\",\"token\":null}")))
+    (is (null (differences "{\"id\":\"o1\",\"stock_warnings\":[]}"
+                           "{\"id\":\"o1\",\"stock_warnings\":[\"low\"]}"
+                           "{\"id\":\"o1\"}")))
+    (is (equal '("id") (differences "{\"id\":\"o1\"}" "{\"id\":\"o2\"}" "{\"id\":\"o1\"}")))
+    (is (equal '("title") (differences "{\"id\":\"o1\",\"title\":\"a\"}"
+                                       "{\"id\":\"o1\",\"title\":\"b\"}"
+                                       "{\"id\":\"o1\",\"title\":\"b\"}")))))

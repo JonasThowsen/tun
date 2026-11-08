@@ -5,7 +5,7 @@ ASDF system `tun-inventory`, package `tun.inventory`; pinned by clients through
 
 - **Owns:** stock articles and their ledger (`opening`, `receipt`, `adjustment`, `recount`, `consumption`), reservations and the consumption synchroniser (keyed by opaque order ids), department transfers; `articles_*`, `transfers_list`, the product-keyed `inventory_*` tools (on the product's article, or `article_id`), `inventory_forecast`, `inventory_purchase_suggestions`, `inventory_availability_grid` (§2–§11). At start it adopts an older core's per-product stock levels as articles (§14). A balance above 10¹² is `invalid_input` (§3.3); a recount wins until a newer receipt (§6.4).
 - **Depends on:** `catalog`. It knows no order status (§1).
-- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.14.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** seams `article_demand` (with `from`: orders dated from then on) and `bookings_on` (orders answers them for the forecast and the grid); `purchase-suggestions` for the client's warehouse alert. Its exported symbols are its interface for
@@ -45,7 +45,7 @@ fractional digits (core.md §2.1).
 
 | Field | Rule |
 |---|---|
-| `name`, `unit` | required on create (`invalid_input` `Navn og enhet må fylles ut`); `unit` is free text, never converted |
+| `name`, `unit` | required on create, as the schema says: `invalid_input` on the field when missing or blank; `unit` is free text, never converted |
 | `sku` | optional, unique among all articles, else `conflict` `Varenummeret <sku> er allerede i bruk` |
 | `package_size` | optional decimal > 0: the purchasing package in the article's unit |
 | `min_level`, `max_level` | optional, ≥ 0; `min_level` raises a purchase suggestion (§9) |

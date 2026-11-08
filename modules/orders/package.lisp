@@ -58,7 +58,7 @@
 
 (define-module orders
   (:depends-on customers catalog inventory reviews)
-  (:core ">= 2.0.0" "< 3.0")
+  (:core ">= 2.14.0" "< 3.0")
   (:on-open repair-quote-receipts)
   (:documentation "Orders: quotes, pricing, logistics, statuses, checklists, bookings and reservations."))
 

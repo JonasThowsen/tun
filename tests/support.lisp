@@ -47,7 +47,8 @@
            #:sequence-failure-problem #:sequence-failure-kind #:sequence-failure-shrunk
            #:sequence-failure-index #:sequence-failure-number #:sequence-failure-trace
            #:sequence-failure-text #:sequence-summary #:step-text
-           #:sequence-step-operation #:sequence-step-actor #:sequence-step-input))
+           #:sequence-step-operation #:sequence-step-actor #:sequence-step-input
+           #:environment-integer))
 
 (in-package #:tun.test-support)
 

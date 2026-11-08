@@ -325,23 +325,30 @@ keys in any order."
         ((and (vectorp a) (vectorp b))
          (and (= (length a) (length b)) (every #'json-equal a b)))
         ((and (numberp a) (numberp b)) (= a b))
+        ((and (json-null-p a) (json-null-p b)) t)
         (t (equal a b))))
 
 (defun replay-differences (first replay kept)
-  "The keys of FIRST, a mutation's first result, that REPLAY, its replay's,
-answers otherwise, as spec/testing.md 4 compares them: a key KEPT, what
-the receipt holds, lacks is the live view's and is not compared, nor is a
-value the receipt holds as null that FIRST showed, shown once.  Values T
-when the results are not objects and differ."
+  "The keys in which REPLAY, a mutation's replayed result, differs from
+KEPT, what its receipt holds, or KEPT from FIRST, the first result, as
+spec/testing.md 4 compares them: the replay answers with every key of the
+receipt as the receipt holds it, and the receipt holds the first result
+but for a value shown once, kept as null.  A key the receipt lacks is the
+live view's, which describes the records as they are now, and is not
+compared.  Values T when the results are not objects and differ."
   (if (not (and (hash-table-p first) (hash-table-p replay) (hash-table-p kept)))
       (not (json-equal first replay))
-      (let ((keys (remove-duplicates (append (jkeys first) (jkeys replay)) :test #'string=)))
-        (loop for key in keys
-              for (kept-value present) = (multiple-value-list (gethash key kept))
-              unless (or (not present)
-                         (and (eq kept-value :null) (not (eq (gethash key first :null) :null)))
-                         (json-equal (gethash key first :null) (gethash key replay :null)))
-                collect key))))
+      (remove-duplicates
+       (append (loop for key in (jkeys kept)
+                     unless (json-equal (gethash key kept) (gethash key replay :null))
+                       collect key)
+               (loop for key in (jkeys first)
+                     for (kept-value present) = (multiple-value-list (gethash key kept))
+                     unless (or (not present)
+                                (json-null-p kept-value)
+                                (json-equal kept-value (gethash key first)))
+                       collect key))
+       :test #'string=)))
 
 (defun perform-replay (sequence step state)
   "Repeat STEP's original with the arguments it sent, and fail unless it
@@ -503,13 +510,14 @@ failing step's input shrunk as fuzzing shrinks one, at most
 ;;; ------------------------------------------------------------------
 ;;; A run
 
-(defstruct (sequence-report (:constructor make-sequence-report (seed sequences steps)))
-  "What a sequence run did: the SEED, how many SEQUENCES of how many STEPS,
+(defstruct (sequence-report (:constructor make-sequence-report (seed sequences steps scenario)))
+  "What a sequence run did, from SCENARIO, its name or NIL: the SEED, how
+many SEQUENCES of how many STEPS,
 the CALLS, REPLAYS and GETS it made, the INVARIANTS it checked, the SECONDS
 it took and its FAILURES; the TOOLS it could call and the MUTATING ones
 among them, by name, and those it CALLED, those that ANSWERED with a
 result and those it REPLAYED, hash tables by tool."
-  seed sequences steps (calls 0) (replays 0) (gets 0) (invariants 0) (seconds 0)
+  seed sequences steps scenario (calls 0) (replays 0) (gets 0) (invariants 0) (seconds 0)
   (failures '()) (tools '()) (mutating '())
   (called (make-hash-table :test 'equal))
   (answered (make-hash-table :test 'equal))
@@ -537,7 +545,7 @@ SEQUENCE-REPORT."
          (callable (remove-if-not (lambda (operation) (admitting-actors operation actors))
                                   operations))
          (gets (get-tools operations))
-         (report (make-sequence-report seed sequences steps))
+         (report (make-sequence-report seed sequences steps (and scenario (scenario-name scenario))))
          (start (get-internal-real-time))
          (run (make-fuzz-run class scenario actors seed 0
                              (append *isolated-variables* variables) database observe)))
@@ -549,30 +557,29 @@ SEQUENCE-REPORT."
       (unwind-protect
            (progn
              (make-template run)
-             (progn
-               (loop for made in (make-sequences callable actors seed sequences steps)
-                     for number from 1
-                     do (multiple-value-bind (index problem sequence)
-                              (run-sequence run made :gets gets)
-                            (setf (sequence-report-invariants report)
-                                  (length (sequence-run-invariants sequence)))
-                            (incf (sequence-report-calls report) (sequence-run-calls sequence))
-                            (incf (sequence-report-replays report) (sequence-run-replays sequence))
-                            (incf (sequence-report-gets report) (sequence-run-gets-asked sequence))
-                            (merge-tools (sequence-report-called report) (sequence-run-called sequence))
-                            (merge-tools (sequence-report-answered report)
-                                         (sequence-run-answered sequence))
-                            (merge-tools (sequence-report-replayed report)
-                                         (sequence-run-replayed sequence))
-                            (when problem
-                              (let ((failure (make-sequence-failure
-                                              number made index (sequence-problem-text problem)
-                                              (sequence-problem-kind problem))))
-                                (push (if (zerop index)
-                                          failure
-                                          (shrink-sequence run failure gets))
-                                      (sequence-report-failures report)))
-                              (return))))))
+             (loop for made in (make-sequences callable actors seed sequences steps)
+                   for number from 1
+                   do (multiple-value-bind (index problem sequence)
+                            (run-sequence run made :gets gets)
+                          (setf (sequence-report-invariants report)
+                                (length (sequence-run-invariants sequence)))
+                          (incf (sequence-report-calls report) (sequence-run-calls sequence))
+                          (incf (sequence-report-replays report) (sequence-run-replays sequence))
+                          (incf (sequence-report-gets report) (sequence-run-gets-asked sequence))
+                          (merge-tools (sequence-report-called report) (sequence-run-called sequence))
+                          (merge-tools (sequence-report-answered report)
+                                       (sequence-run-answered sequence))
+                          (merge-tools (sequence-report-replayed report)
+                                       (sequence-run-replayed sequence))
+                          (when problem
+                            (let ((failure (make-sequence-failure
+                                            number made index (sequence-problem-text problem)
+                                            (sequence-problem-kind problem))))
+                              (push (if (zerop index)
+                                        failure
+                                        (shrink-sequence run failure gets))
+                                    (sequence-report-failures report)))
+                            (return)))))
         (drop-template run)))
     (setf (sequence-report-seconds report)
           (/ (- (get-internal-real-time) start) internal-time-units-per-second))
@@ -594,7 +601,9 @@ SEQUENCE-REPORT."
     (format out "Sequence ~d of ~a (seed ~d):~%  ~a~%" (sequence-failure-number failure) what
             (sequence-report-seed report) (sequence-failure-problem failure))
     (cond ((zerop (sequence-failure-index failure))
-           (format out "  It broke on the scenario's records, before the first step.~%"))
+           (format out "  It broke on the records of the scenario ~:[(none)~;~:*~a~], before the ~
+                        first step.~%"
+                   (sequence-report-scenario report)))
           ((null (sequence-failure-shrunk failure))
            (format out "  It did not fail again when replayed. It failed at step ~d of:~%"
                    (sequence-failure-index failure))

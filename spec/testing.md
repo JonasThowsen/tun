@@ -63,18 +63,22 @@ must hold whatever a caller sends.
   because they exist only to test or to debug: the test clock's
   `clock_get` and `clock_set`, the `debug_…` tools and `eval` (`core.md`
   §3.10, §7.6, §8.3).
-- **Where.** For each tool a fresh database in memory, filled by the
-  client's `default` scenario when it has one, so an id can name a record
-  that exists. The scenario runs once, and each tool's database is a copy
-  of the one it filled, with the values it left the variables of
-  Isolation (§1) with. A client that defines a query or an entity with a
-  record policy, which only Postgres runs (`store.md` §5, §6), gets its
-  copies on the test Postgres server instead. The tool's calls run one
-  after another on its copy. Each call goes the way `tools/call` does
-  (`core.md` §3): its input written and parsed as a request's JSON,
-  decoded against the tool's schema, the policy, the transaction, the
-  audit, and its result written as JSON. No HTTP. (That the application
-  opens on Postgres is §1's third test.)
+- **Where.** Each tool's calls start from the records the client's
+  `default` scenario makes, when it has one, so an id can name a record
+  that exists. The scenario runs once, and a tool's database is
+  a copy of the one it filled, with the values it left the variables of
+  Isolation (§1) with: a fresh copy, or the copy the tool before it used
+  when that tool's calls left every record as they found it but the
+  audit's entries, which holds the same records (most calls are refused
+  and change nothing; a copy costs a database and an application). A
+  client that defines a query or an entity with a record policy, which
+  only Postgres runs (`store.md` §5, §6), gets its copies on the test
+  Postgres server instead. The tool's calls run one after another on its
+  copy. Each call goes the way `tools/call` does (`core.md` §3): its input
+  written and parsed as a request's JSON, decoded against the tool's
+  schema, the policy, the transaction, the audit, and its result written
+  as JSON. No HTTP. (That the application opens on Postgres is §1's third
+  test.)
 - **Who.** `admin:fuzz`, `employee:fuzz` and `viewer:fuzz`, and each actor
   the `default` scenario names, so record policies that compare
   `:actor_name` see the people who own the records.
@@ -217,16 +221,17 @@ what must hold, the application's invariants among it.
   carries a `request_key` of its own. A tool that asks for confirmation
   (`core.md` §3.6) is asked and then confirmed with the token it gave: two
   calls, one step.
-- **Replays.** When an earlier step of the sequence performed a mutation,
-  one step in five instead repeats one such: the same actor, tool and
-  arguments as the first call sent them, ids as they were then,
-  `request_key` included, without a confirmation token. It changes no
-  record but the audit's entries, and answers with what its receipt holds
-  (`core.md` §3.7): the first result, with each value shown once
-  (`auth.md` §7) as null. The keys a tool's live view adds after the
-  commit, which describe the records as they are at the replay, are not
-  compared; nor is the result when the receipt was redacted since (a
-  module anonymised the record it holds).
+- **Replays.** One step in five, chosen when the steps are made, instead
+  repeats an earlier step of a mutating tool; when that step performed no
+  mutation, the replay is not made and the step does nothing. A replay
+  repeats the same actor, tool and arguments as the first call sent them,
+  ids as they were then, `request_key` included, without a confirmation
+  token. It changes no record but the audit's entries, and answers with
+  what its receipt holds (`core.md` §3.7): the first result, with each
+  value shown once (`auth.md` §7) as null. The keys a tool's live view
+  adds after the commit, which describe the records as they are at the
+  replay, are not compared; nor is the result when the receipt was
+  redacted since (a module anonymised the record it holds).
 - **What must hold after each call:**
   1. all of §2's checks, judged against the records as they were just
      before the call;

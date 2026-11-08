@@ -2,7 +2,7 @@
 
 - loop: sequences
 - mode: reviewed
-- stage: shown
+- stage: build
 - base: 2ceb1296b6e5c94006b68e55c0f5cc1654b3b039
 - after: policy-properties
 - verified: 3ebe37d90e8a24da8266498179c90f15a10e142d
@@ -68,7 +68,9 @@ What holds today, and what does not:
 3. **A replay answers as the first call did.** When an earlier step of
    the sequence performed a mutation (it answered with a result, and was
    not an ask for confirmation), one step in five, chosen from the seed,
-   instead repeats one such step: the same actor, tool and arguments as
+   instead repeats one such step (chosen when the steps are made: a slot
+   whose step performed no mutation does nothing, the run counting only
+   the replays made): the same actor, tool and arguments as
    the first call sent them (ids as they were resolved then, not record
    refs read again), `request_key` included, without a confirmation token
    (a receipt is replayed before a token is asked for, `core.md` §3.6,
@@ -232,3 +234,7 @@ What holds today, and what does not:
 - 2026-11-08 11:41  bin/build no warnings; bin/test 72 suites green in 163 s
 - 2026-11-08 11:49  verify 1: passed build, test, check
 - 2026-11-08 11:49  shown (/ui)
+- 2026-11-08 11:50  gate B asked of a reviewer
+- 2026-11-08 11:57  gate B: changes (reviewer): Blocking: orders and inventory now use define-invariant (core 2.14.0) but declare >= 2.0.0; the replay check skips keys the receipt holds as null without comparing the replay (a secret shown twice passes); articles_create's schema lacks name and unit, which the README requires (criterion 8 says fix); a breach before the first step does not name the scenario. Also: ferdig/kurs generated totals, replays chosen at generation are often wasted, reproduce line wrong in Tun's suites, a leftover progn, attach client test output.
+- 2026-11-08 12:05  gate B round 1 fixes: orders and inventory build against core >= 2.14.0 (they use define-invariant); the replay is compared with every key its receipt holds, and the receipt with the first result but for values shown once (a secret shown twice now fails, unit-tested); articles_create's schema requires name and unit, as inventory README 2.1 says (the body's own check and its message are gone); a breach before the first step names the scenario; Tun's own suites read TUN_SEQUENCES and TUN_SEQUENCE_STEPS, so their reproduce line works; testing.md 4 says a replay slot whose step performed no mutation does nothing
+- 2026-11-08 12:05  open for gate C: schema-made inputs reach few states in the modules. In Tun's run 55 of 121 module tools never answer with a result (orders_create, orders_update, orders_accept, orders_confirm, articles_create, inventory_receive, inventory_adjust among them), and 11 of 67 mutating tools are replayed, so orders' and inventory's invariants are checked over the scenario's records and the few calls that succeed, not over sequences that move stock or orders. Deeper inputs (examples a module supplies, or inputs made from records) are a later loop's

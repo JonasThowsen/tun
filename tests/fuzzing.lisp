@@ -707,46 +707,45 @@ smallest input that still fails, and ALONE, true when it fails after only
 the calls of its own confirmation, or NIL when it did not fail again."
   tool seed index call problem kind earlier shrunk alone)
 
-(defun fuzz-tool (operation run)
-  "Call OPERATION's tool as RUN says, on a fresh application of its own,
-until a call breaks what must hold.  Values how many calls were made, and
-the failure or NIL."
+(defun fuzz-tool (operation run state)
+  "Call OPERATION's tool as RUN says, on *APP*, holding the scenario's
+records, with STATE, a fresh CALL-STATE, until a call breaks what must
+hold.  Values how many calls were made, and the failure or NIL."
   (let* ((*fuzz-random-state* (make-fuzz-random-state (fuzz-run-seed run)
                                                       (operation-tool operation)))
          (schema (fuzz-schema operation))
          (references (operation-references operation))
          (history '()))
-    (with-fuzzed-application (state run)
-      (flet ((make-call (actor input purpose)
-               (let* ((call (make-fuzz-call actor input purpose))
-                      (outcome (perform-call operation call state)))
-                 (when (fuzz-run-observe run)
-                   (funcall (fuzz-run-observe run) operation call outcome))
-                 (multiple-value-bind (problem kind) (call-problem operation call outcome state)
-                   (when problem
-                     (return-from fuzz-tool
-                       (values (1+ (length history))
-                               (make-fuzz-failure (operation-tool operation) (fuzz-run-seed run)
-                                                  (1+ (length history)) call problem kind
-                                                  (reverse history))))))
-                 (push call history)
-                 outcome)))
-        (dotimes (round (fuzz-run-calls run))
-          (dolist (actor (fuzz-run-actors run))
-            (let ((input (generate-input schema :references references)))
-              (cond ((not (operation-confirm-p operation))
-                     (make-call actor input :call))
-                    ;; core.md §3.6: the first call asks for confirmation;
-                    ;; then a wrong token and the token with another input
-                    ;; are refused, and the token with the input confirms.
-                    (t (remhash actor (call-state-tokens state))
-                       (make-call actor input :ask)
-                       (when (gethash actor (call-state-tokens state))
-                         (make-call actor (without-request-key input) :wrong-token)
-                         (let ((other (other-input schema input)))
-                           (when other
-                             (make-call actor other :other-input)))
-                         (make-call actor input :confirm)))))))))
+    (flet ((make-call (actor input purpose)
+             (let* ((call (make-fuzz-call actor input purpose))
+                    (outcome (perform-call operation call state)))
+               (when (fuzz-run-observe run)
+                 (funcall (fuzz-run-observe run) operation call outcome))
+               (multiple-value-bind (problem kind) (call-problem operation call outcome state)
+                 (when problem
+                   (return-from fuzz-tool
+                     (values (1+ (length history))
+                             (make-fuzz-failure (operation-tool operation) (fuzz-run-seed run)
+                                                (1+ (length history)) call problem kind
+                                                (reverse history))))))
+               (push call history)
+               outcome)))
+      (dotimes (round (fuzz-run-calls run))
+        (dolist (actor (fuzz-run-actors run))
+          (let ((input (generate-input schema :references references)))
+            (cond ((not (operation-confirm-p operation))
+                   (make-call actor input :call))
+                  ;; core.md §3.6: the first call asks for confirmation;
+                  ;; then a wrong token and the token with another input
+                  ;; are refused, and the token with the input confirms.
+                  (t (remhash actor (call-state-tokens state))
+                     (make-call actor input :ask)
+                     (when (gethash actor (call-state-tokens state))
+                       (make-call actor (without-request-key input) :wrong-token)
+                       (let ((other (other-input schema input)))
+                         (when other
+                           (make-call actor other :other-input)))
+                       (make-call actor input :confirm))))))))
     (values (length history) nil)))
 
 ;;; ------------------------------------------------------------------
@@ -800,6 +799,31 @@ does not fail after only its own confirmation's."
 TOOLS it fuzzed, the CALLS it made, the SECONDS it took and its FAILURES."
   seed calls-per-actor (tools 0) (calls 0) (seconds 0) (failures '()))
 
+(defun fuzz-tools-on-copies (run operations report)
+  "Fuzz each of OPERATIONS as RUN says, noting what it did in REPORT.  A
+tool's calls start from the scenario's records: on a fresh copy of RUN's
+template, or on the one the tool before it used when its calls left every
+record as they found it but the audit's entries, which is the same
+records; a fresh copy costs a database and an application of its own.  A
+failure is shrunk, and the next tool starts on a fresh copy."
+  (loop while operations
+        do (with-fuzzed-application (state run)
+             (let ((pristine (call-state-fingerprint state))
+                   (first t))
+               (loop while operations
+                     do (let ((operation (pop operations)))
+                          (multiple-value-bind (made failure)
+                              (fuzz-tool operation run (if first state (fresh-call-state)))
+                            (setf first nil)
+                            (incf (fuzz-report-tools report))
+                            (incf (fuzz-report-calls report) made)
+                            (when failure
+                              (push (shrink-failure operation run failure)
+                                    (fuzz-report-failures report))
+                              (return))
+                            (unless (equal pristine (records-fingerprint))
+                              (return)))))))))
+
 (defun fuzz-tools (operations &key (class 'application) scenario (actors +fuzz-actors+)
                                    (seed (fuzz-seed)) (calls (fuzz-calls)) variables
                                    (database :memory) observe)
@@ -826,13 +850,7 @@ shrunk."
         (unwind-protect
              (progn
                (make-template run)
-               (dolist (operation (remove-if-not #'fuzzed-tool-p operations))
-                 (multiple-value-bind (made failure) (fuzz-tool operation run)
-                   (incf (fuzz-report-tools report))
-                   (incf (fuzz-report-calls report) made)
-                   (when failure
-                     (push (shrink-failure operation run failure)
-                           (fuzz-report-failures report))))))
+               (fuzz-tools-on-copies run (remove-if-not #'fuzzed-tool-p operations) report))
           (drop-template run))))
     (setf (fuzz-report-failures report) (nreverse (fuzz-report-failures report))
           (fuzz-report-seconds report) (/ (- (get-internal-real-time) start)

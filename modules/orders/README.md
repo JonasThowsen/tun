@@ -5,7 +5,7 @@ ASDF system `tun-orders`, package `tun.orders`; pinned by clients through
 
 - **Owns:** `order`, order lines (with `choices`), bookings, quotes, checklists, requirement plans (fingerprinted over lines sorted by line, article and unit, §9.1), plan impacts and the internal queue of orders a catalog change reached (§11); `orders_*` (with `orders_correct_plan`), `quotes_*`, `checklists_*`, `plans_list`, `plans_get`, `plan_impacts_list`, `availability_check`; the `catalog_change` and `quote_expiry` workflows and the `order_plan` review kind (§9, §10, §11). Order dates lie in 1970..2999, at most 731 days apart (§1.3); stock warnings are computed after the commit (§12.3).
 - **Depends on:** `customers`, `catalog`, `inventory`, `reviews`.
-- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.14.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** seams `discount`, `requirements` (a client that registers it overrides the catalog's resolver, §8.1), `booking_window` (it receives event_date and end_date, §5.2), `suggestions`, `checklist_items`, `departments`, `department_changed`, `closure_guard`, `communication`, `quote_expired` (§14), the `/orders` screens. A client method on a seam computes: if it changes a core field of a record it is given, the kernel refuses the request. Its exported symbols are its interface for

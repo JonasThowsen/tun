@@ -161,8 +161,6 @@
    "Pakningsstørrelsen må være større enn 0")
   ("The level cannot be negative"
    "Nivået kan ikke være negativt")
-  ("Name and unit must be filled in"
-   "Navn og enhet må fylles ut")
   ("The starting balance cannot be negative"
    "Startbeholdningen kan ikke være negativ")
   ("The balance changes only through stock movements"
