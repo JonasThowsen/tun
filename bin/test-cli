@@ -402,10 +402,15 @@ git -C "$client" -c user.name=test-cli -c user.email=test-cli@localhost commit -
 loop finish >/dev/null || fail "tun loop finish"
 grep -q "finished at demo" "$client/loops/home-list.md" || fail "the record does not say the loop finished"
 
-step "the image holds no commit, and the targets carry it (spec/deploy.md 2, 3)"
+step "the image holds no commit, and nixploy gives each target its commit (spec/deploy.md 2, 3)"
 docker_drv() { (cd "$client" && nix eval --raw .#packages.x86_64-linux.docker.drvPath); }
-target_revision() {
-  (cd "$client" && nix eval --raw .#nixploy.targets.example.run.environment.TUN_CLIENT_REVISION)
+target_revision() { # target
+  (cd "$client" && nix eval --raw ".#nixploy.targets.$1.run.environment.TUN_CLIENT_REVISION")
+}
+# Tun's deployTarget and deployTargets as the client's flake pins them.
+tun_lib_eval() { # expression over l, Tun's lib
+  (cd "$client" && nix eval --impure --json --expr \
+    "let l = (builtins.getFlake (toString ./.)).inputs.tun.lib.x86_64-linux; in $1")
 }
 commit_client() { # message
   git -C "$client" -c user.name=test-cli -c user.email=test-cli@localhost commit --quiet -m "$1"
@@ -416,15 +421,29 @@ commit_client "Løkken er ferdig"
 drv_before="$(docker_drv)" || fail "nix eval of the image's derivation"
 cp "$client/deploy.nix" "$work/deploy.nix"
 cat >"$client/deploy.nix" <<'NIX'
-{ example = { ip = "203.0.113.10"; }; }
+{
+  example = { ip = "203.0.113.10"; };
+  pinned = { ip = "203.0.113.11"; run.environment.TUN_CLIENT_REVISION = "fixed"; };
+}
 NIX
 git -C "$client" add deploy.nix
-[ "$(target_revision)" = "$(git -C "$client" rev-parse HEAD)-dirty" ] \
-  || fail "a target with a changed tree carries $(target_revision)"
+# nixploy builds from the tracked files without .git and replaces
+# {revision} with the commit it deploys, committed tree or not.
+[ "$(target_revision example)" = "{revision}" ] \
+  || fail "a target with a changed tree carries $(target_revision example)"
 commit_client "Et mål"
-[ "$(target_revision)" = "$(git -C "$client" rev-parse HEAD)" ] \
-  || fail "a target carries $(target_revision), not the commit"
+[ "$(target_revision example)" = "{revision}" ] \
+  || fail "a target carries $(target_revision example), not nixploy's {revision}"
+[ "$(target_revision pinned)" = "fixed" ] \
+  || fail "a target's own TUN_CLIENT_REVISION became $(target_revision pinned)"
 [ "$(docker_drv)" = "$drv_before" ] || fail "a commit of deploy.nix alone changed the image"
+targets='{ a = { ip = "203.0.113.10"; web.domain = "a.example"; }; }'
+same="$(tun_lib_eval "l.deployTargets { targets = $targets; } == l.deployTargets { revision = \"abc\"; targets = $targets; }")" \
+  || fail "nix eval of deployTargets"
+[ "$same" = true ] || fail "deployTargets with a revision, as in 2.13.0, gives another configuration"
+single="$(tun_lib_eval '(l.deployTarget { ip = "203.0.113.10"; }).run.environment.TUN_CLIENT_REVISION')" \
+  || fail "nix eval of deployTarget"
+[ "$single" = '"{revision}"' ] || fail "deployTarget alone carries $single"
 cp "$work/deploy.nix" "$client/deploy.nix"
 git -C "$client" add deploy.nix
 commit_client "Uten mål"

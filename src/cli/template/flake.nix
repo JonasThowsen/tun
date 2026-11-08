@@ -45,15 +45,13 @@
         type = "app";
         program = "${server}/bin/{{name}}-server";
       };
-      # `nixploy deploy --target NAME` (spec/deploy.md in $TUN_SOURCE). The
-      # commit goes to the server when it starts, not into the image, so a
-      # commit elsewhere in the repository builds the same image.
+      # `nixploy deploy --target NAME` (spec/deploy.md in $TUN_SOURCE).
+      # nixploy gives the server the commit it deploys when it starts; the
+      # image holds none, so a commit elsewhere in the repository builds the
+      # same image.
       nixploy = nixploy.lib.makeConfig {
         project = "{{name}}";
-        targets = tunLib.deployTargets {
-          revision = self.rev or self.dirtyRev or "unknown";
-          targets = import ./deploy.nix;
-        };
+        targets = tunLib.deployTargets { targets = import ./deploy.nix; };
       };
       # SBCL with the pinned kernel and modules, Postgres, tun and nixploy.
       devShells.${system}.default = tunLib.clientShell {

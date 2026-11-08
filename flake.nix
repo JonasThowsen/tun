@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.13.0";
+      coreVersion = "2.13.1";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -264,10 +264,16 @@
         };
 
       # A nixploy target for a client's image (spec/deploy.md 3): what every
-      # Tun server needs, under what TARGET sets.
+      # Tun server needs, under what TARGET sets. nixploy builds from a copy
+      # of the tracked files with no git history, where the flake has no
+      # self.rev, so the commit comes from nixploy: it replaces {revision}
+      # with the commit it deploys when it starts the server.
       deployTarget = target: lib.recursiveUpdate (lib.recursiveUpdate {
         image = "docker";
-        run = { network = "host"; environment.PORT = "{port}"; };
+        run = {
+          network = "host";
+          environment = { PORT = "{port}"; TUN_CLIENT_REVISION = "{revision}"; };
+        };
         web.healthPath = "/health";
       } (lib.optionalAttrs (target ? web.domain) {
         run.environment.PUBLIC_URL = "https://${target.web.domain}";
@@ -275,15 +281,12 @@
         run.environment.TRUSTED_PROXY = "127.0.0.1";
       })) target;
 
-      # Every target of a client's deploy.nix, with the commit the client's
-      # flake was read from in the environment (spec/deploy.md 3). The
-      # commit reaches the server when it starts rather than being built
-      # into the image, so a commit that changes none of the client's files
-      # builds the same image.
-      deployTargets = { revision, targets }:
-        builtins.mapAttrs (_: target: deployTarget (lib.recursiveUpdate {
-          run.environment.TUN_CLIENT_REVISION = revision;
-        } target)) targets;
+      # Every target of a client's deploy.nix (spec/deploy.md 3). The commit
+      # reaches the server when it starts rather than being built into the
+      # image, so a commit that changes none of the client's files builds
+      # the same image. A revision passed here, as Tun 2.13.0's template
+      # did, is ignored: nixploy's is the one that is right where it builds.
+      deployTargets = { targets, ... }: builtins.mapAttrs (_: deployTarget) targets;
 
       # This revision's own modules, as a client's flake pins them
       # (modules/*/flake.nix, tunModule).

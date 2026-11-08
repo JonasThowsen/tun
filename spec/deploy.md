@@ -71,17 +71,35 @@ target. Tun fills in, unless the target sets them:
 | `run.environment.PORT` | `"{port}"`, the slot nixploy starts |
 | `run.environment.PUBLIC_URL` | `"https://"` and `web.domain`, when the target has one |
 | `run.environment.TRUSTED_PROXY` | `"127.0.0.1"`, the address Caddy on the host connects from, when the target has `web.domain` |
-| `run.environment.TUN_CLIENT_REVISION` | the commit the client's flake was read from, `-dirty` when its tree had changes, which `introspect_runtime` reports as `client_revision` (`core.md` §8.2) |
+| `run.environment.TUN_CLIENT_REVISION` | `"{revision}"`, which nixploy fills with the full commit it deploys; `introspect_runtime` reports it as `client_revision` (`core.md` §8.2) |
 | `web.healthPath` | `"/health"` |
 
 A target names the rest: the host (`ip`, `user`, `identityFile`), the
 domain and two free ports (`web.domain`, `web.slots`), and its secrets.
-The template's flake fills in all of them with `deployTargets`, which
-takes the revision and the attributes of `deploy.nix`. A client made
-before it fills in each target with `deployTarget`, without the
-revision, and passes the commit to `buildClient` as `revision`; that
-still works, with the commit built into its image; moving to
-`deployTargets` is a change of two lines in its `flake.nix`.
+The template's flake fills in all of them with
+`deployTargets { targets = import ./deploy.nix; }`, which applies
+`deployTarget` to each attribute of `deploy.nix`.
+
+**The commit a target runs.** nixploy builds a target from a copy of
+the repository's tracked files without its git history, so a flake
+evaluated there has no `self.rev`. The commit comes from nixploy, which
+replaces `{revision}` in `run.environment` with the full commit it
+deploys, the checkout's `HEAD`, when it starts the server.
+nixploy-dashboard deploys a clean checkout of a pushed commit, so there
+it is exactly what runs. A deploy by hand from a working tree whose
+tracked files have changed since `HEAD` names `HEAD` too: the revision
+then says which commit the tree started from, not that it was clean. A
+server started outside nixploy, as by `nix run` or a preview, gets no
+`TUN_CLIENT_REVISION` from it and reports the revision built into it,
+`unknown` unless the client passed one to `buildClient`.
+`deployTargets` still accepts the `revision` argument Tun 2.13.0's
+template passed, and ignores it.
+
+A client made before `deployTargets` fills in each target with
+`deployTarget`, which fills in the revision the same way, and may pass
+the commit to `buildClient` as `revision`, which builds it into the
+image; moving to `deployTargets` is a change of two lines in its
+`flake.nix`.
 
 **Caddy and callers that hold connections.** nixploy writes the target's
 route into Caddy, a reverse proxy to the slot on `127.0.0.1`, and nothing
