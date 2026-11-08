@@ -2,7 +2,7 @@
 
 - loop: markdown
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 205d5a2c0b42c81e1bfefaf7cc74ac162a6b0b6b
 - verified: 60923a28edfaa9d2a4d412a9022f75f25720019e
 - shown: 60923a28edfaa9d2a4d412a9022f75f25720019e
@@ -187,3 +187,5 @@ of this loop: they can, as JSON with base64 built in the shell
 - 2026-11-08 15:23  shown (/markdown, /ui/markdown)
 - 2026-11-08 15:23  gate B asked of a reviewer
 - 2026-11-08 15:34  gate B: approve (reviewer): All six round-1 findings fixed; no security holes, no cost worse than linear, no departure from §6.2. Non-blocking: empty fences make large output (copy button), many URL starts in one run re-count up to 2048 each, leading tabs in paragraphs, nits (link-tail literal newline, table-cells setf of loop var, ::- alignment).
+- 2026-11-08 15:34  pushed 081916d to main; ferdig takes it with tun update. Follow-ups from gate B: an empty fence renders a whole code-block (~1.1 KB, 400x its text); failing URL starts in one run re-count up to 2048 chars each; leading tabs in paragraphs become spaces (unstated in 6.2); nits: link-tail's literal newline, table-cells setf of its loop variable, ::- taken as start-aligned
+- 2026-11-08 15:34  finished at tun 081916d
