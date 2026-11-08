@@ -2,9 +2,10 @@
 
 - loop: sequences
 - mode: reviewed
-- stage: build
+- stage: verified
 - base: 2ceb1296b6e5c94006b68e55c0f5cc1654b3b039
 - after: policy-properties
+- verified: 3ebe37d90e8a24da8266498179c90f15a10e142d
 
 ## Brief
 
@@ -228,3 +229,4 @@ What holds today, and what does not:
 - 2026-11-08 11:41  clients on this Tun: ferdig 756 checks pass, sequence test 2.1 s, 31 of 31 tools, its 3 invariants hold; kurs 350 pass, 4.0 s (half a second per fresh application, as its fuzzing pays per tool); dashboard 1141 pass, 1.7 s
 - 2026-11-08 11:41  dashboard generated tests back to back: 26.8 s on this Tun against 24.5 s on its pin (fuzzing 22.7 against 22.1), within 30 s
 - 2026-11-08 11:41  bin/build no warnings; bin/test 72 suites green in 163 s
+- 2026-11-08 11:49  verify 1: passed build, test, check
