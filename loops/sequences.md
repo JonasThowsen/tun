@@ -2,11 +2,11 @@
 
 - loop: sequences
 - mode: reviewed
-- stage: build
+- stage: shown
 - base: 2ceb1296b6e5c94006b68e55c0f5cc1654b3b039
 - after: policy-properties
-- verified: 3ebe37d90e8a24da8266498179c90f15a10e142d
-- shown: 3ebe37d90e8a24da8266498179c90f15a10e142d
+- verified: b289e17bbbd5aa7e760c0802b46164ded6c77af0
+- shown: b289e17bbbd5aa7e760c0802b46164ded6c77af0
 
 ## Brief
 
@@ -240,3 +240,5 @@ What holds today, and what does not:
 - 2026-11-08 12:05  open for gate C: schema-made inputs reach few states in the modules. In Tun's run 55 of 121 module tools never answer with a result (orders_create, orders_update, orders_accept, orders_confirm, articles_create, inventory_receive, inventory_adjust among them), and 11 of 67 mutating tools are replayed, so orders' and inventory's invariants are checked over the scenario's records and the few calls that succeed, not over sequences that move stock or orders. Deeper inputs (examples a module supplies, or inputs made from records) are a later loop's
 - 2026-11-08 12:24  fuzzing made faster (criterion 10): on the dashboard the generated tests reached 31.3 s against 26.6 s on its pin in one loaded run, so a tool's calls now start on the copy the tool before it used when that one changed no record but the audit's entries (testing.md 2); a fresh copy cost a database and an application per tool. Tun's fuzz-core 12.5 s to 4.7 s, fuzz-modules 18.9 s to 9.8 s, fuzz 16.2 s to 9.1 s; all pass
 - 2026-11-08 12:24  generated tests back to back, this Tun against each client's pin (.build/loop/sequences/clients/): dashboard 22.3 s against 25.8 s (fuzzing 18.1 against 23.1, sequences 1.7); ferdig 15.0 s against 15.3 s (fuzzing 10.4 against 12.8, sequences 2.1); kurs 14.9 s against 10.7 s (fuzzing 7.9 both, sequences 4.2: half a second to open each fresh application). Clients' bin/test on this Tun: ferdig 756, kurs 350, dashboard 1141 checks, none failed; logs in the same folder
+- 2026-11-08 12:33  verify 2: passed build, test, check
+- 2026-11-08 12:33  shown (/ui)
