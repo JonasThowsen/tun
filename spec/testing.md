@@ -215,11 +215,15 @@ what must hold, the application's invariants among it.
   (`core.md` §3.6) is asked and then confirmed with the token it gave: two
   calls, one step.
 - **Replays.** When an earlier step of the sequence performed a mutation,
-  one step in five instead repeats one such: the same actor, tool, input
-  and `request_key`, without a confirmation token. It answers with a
-  result equal to the first (`core.md` §3.7) and changes no record but the
-  audit's entries. When the receipt was redacted since (a module
-  anonymised the record it holds), the result is not compared.
+  one step in five instead repeats one such: the same actor, tool and
+  arguments as the first call sent them, ids as they were then,
+  `request_key` included, without a confirmation token. It changes no
+  record but the audit's entries, and answers with what its receipt holds
+  (`core.md` §3.7): the first result, with each value shown once
+  (`auth.md` §7) as null. The keys a tool's live view adds after the
+  commit, which describe the records as they are at the replay, are not
+  compared; nor is the result when the receipt was redacted since (a
+  module anonymised the record it holds).
 - **What must hold after each call:**
   1. all of §2's checks, judged against the records as they were just
      before the call;
@@ -229,7 +233,7 @@ what must hold, the application's invariants among it.
      is a read tool of the client whose only required property takes ids
      of its own entity. An actor the get's policy refuses is skipped, as
      is a get that answers `forbidden` for an id that names nothing (a
-     system-only read, as in §3);
+     system-only read, as in §3). These gets are checked as calls too;
   3. every invariant of the application holds (below).
 - **Invariants.** `define-invariant` (`core.md` §1.1) states what holds
   across records, which a rule, one record at its write, cannot: an
@@ -247,7 +251,8 @@ what must hold, the application's invariants among it.
   repeats. Then the failing step's input is shrunk as in §2. The report
   lists the steps that remain, each with its actor, tool, input (an id as
   the record it names by insertion order) and how it ended; what broke;
-  and the variables that make it again.
+  and the variables that make it again. A failure that does not happen
+  again on a fresh copy is reported as it happened, unshrunk, saying so.
 - **Reproducible.** The sequences follow from the fuzzing seed
   (`TUN_FUZZ_SEED`, §2), so one seed makes both tests again.
 - **Fast.** 4 sequences of 25 steps, constants in `tun.test-support`, so a
@@ -260,12 +265,13 @@ what must hold, the application's invariants among it.
 
 ## 5. Not yet
 
-Every page for every role comes in a later loop, a section here. A
-running server does not check the invariants (§4); tests do. Not checked
-by §2, §3 and §4: that a list shows every record the actor reaches (lists have their own filters and
-limits); ids a result mentions as references to other records, such as
-an item's `project_id`, which a record the actor reaches may hold for one
-it does not; ids inside an input's arrays and nested objects; and Tun's
-own tools in a client's run, alone or in sequence. Of those, `attachments_…` read the record
-as the caller (`files.md` §4.2) and `audit_list` keeps to the policies
-(`core.md` §3.8), each checked by tests of its own in Tun's suite.
+Every page for every role comes in a later loop, a section here. A running
+server does not check the invariants (§4); tests do. Not checked by §2, §3
+and §4: that a list shows every record the actor reaches (lists have their
+own filters and limits); ids a result mentions as references to other
+records, such as an item's `project_id`, which a record the actor reaches
+may hold for one it does not; ids inside an input's arrays and nested
+objects; and Tun's own tools in a client's run, alone or in sequence. Of
+those, `attachments_…` read the record as the caller (`files.md` §4.2) and
+`audit_list` keeps to the policies (`core.md` §3.8), each checked by tests
+of its own in Tun's suite.

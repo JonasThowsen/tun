@@ -63,13 +63,17 @@ What holds today, and what does not:
 3. **A replay answers as the first call did.** When an earlier step of
    the sequence performed a mutation (it answered with a result, and was
    not an ask for confirmation), one step in five, chosen from the seed,
-   instead repeats one such step: the same actor, tool, input and
-   `request_key`, without a confirmation token (a receipt is replayed
-   before a token is asked for, `core.md` §3.6, §3.7). It must answer
-   with a result equal, as JSON, to the first one, and change no record
-   but the audit's entries. One exception: when the receipt was redacted
-   since (a module anonymised the record, `redact-entity-receipts`), the
-   result is not compared; the "changes nothing" half still holds.
+   instead repeats one such step: the same actor, tool and arguments as
+   the first call sent them (ids as they were resolved then, not record
+   refs read again), `request_key` included, without a confirmation token
+   (a receipt is replayed before a token is asked for, `core.md` §3.6,
+   §3.7). It must change no record but the audit's entries, and answer
+   with what its receipt holds: the first result, with each value shown
+   once (`show-once`, `auth.md` §7) as null. Not compared: the keys a
+   tool's live view adds after the commit (orders' `stock_warnings`,
+   orders README §12.3), which describe the records as they are at the
+   replay; and the whole result when the receipt was redacted since (a
+   module anonymised the record, `redact-entity-receipts`).
 4. **What a call makes, its get finds; what it removes, its get no
    longer does.** A *get* is a client read tool (`:kind :read`) whose
    only required property takes ids of its own entity (as §3, whether
@@ -107,9 +111,10 @@ What holds today, and what does not:
      (orders README §9.1);
    - orders and customers: a customer's `completed_orders` equals the
      number of its orders currently `completed` (orders README §2.2);
-   - inventory: each article's balance is the `balance_after` of its
-     latest balance-changing movement by `revision`, and those revisions
-     run 1, 2, … without a gap (inventory README §3.2);
+   - inventory: an article's ledger rows have distinct revisions, none
+     above its `movement_revision` (inventory README §3.2, which counts
+     every row written; a consumption re-sync deletes rows, §6.3, so the
+     revisions may have gaps);
    - inventory: at most one `consumption` movement per order and article
      (inventory README §3.1).
    A breach the sequences find in a module is fixed in this loop when
@@ -166,7 +171,7 @@ What holds today, and what does not:
 11. **Clients.** ferdig, kurs and nixploy-dashboard pass on the new Tun
     (ferdig and the dashboard in tunworks). ferdig declares three
     invariants from its spec: an item's project is at the item's
-    customer (§2); an item's parent is at the same customer (§3.6); no
+    customer (§3); an item's parent is at the same customer (§3.6); no
     item is its own ancestor (§3.6). A failure the new test finds in a
     client is fixed where its cause is and shown at gate C before
     anything is pushed.
@@ -202,3 +207,5 @@ What holds today, and what does not:
 ## Log
 
 - 2026-11-08 11:02  started, reviewed
+- 2026-11-08 11:04  gate A asked of a reviewer
+- 2026-11-08 11:08  gate A: changes (reviewer): Replays: show-once secrets are null in receipts and live views (stock_warnings) are added after commit, so 'equal as JSON' fails on specified behaviour; replay must send the original resolved arguments. Inventory ledger invariant is false by design (consumption replacement deletes rows without a movement). docs example uses :not, which the where language lacks (:not-null). ferdig rule is in §3, not §2. testing.md §4: unshrunk report, gets checked as calls, reflow §5.

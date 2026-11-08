@@ -152,7 +152,7 @@ sequence test (`spec/testing.md` §4); a running server does not.
 ```lisp
 (define-invariant items-are-at-their-projects-customer
     (:description "An item with a project is at that project's customer")
-  (loop for item in (select 'item :where '(:not (:null "project_id")))
+  (loop for item in (select 'item :where '(:not-null "project_id"))
         for project = (fetch 'project (item-project-id item))
         unless (and project (equal (project-customer-id project) (item-customer-id item)))
           collect (format nil "~a is at ~a, its project ~a at ~a"
