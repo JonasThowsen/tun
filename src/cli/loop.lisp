@@ -585,10 +585,12 @@ a whole number, or for --usd a decimal such as 0.25."
     (and value (parse-amount value (if (string= key "usd") "--usd" key)))))
 
 (defun format-amount (number)
-  "NUMBER as a field writes it: a whole number, or a decimal to six places."
-  (if (integerp number)
-      (princ-to-string number)
-      (string-right-trim "0" (format nil "~,6f" number))))
+  "NUMBER as a field writes it, so parse-amount reads it back: a whole
+number, or a decimal to at most six places."
+  (let ((rounded (/ (round (* number 1000000)) 1000000)))
+    (if (integerp rounded)
+        (princ-to-string rounded)
+        (string-right-trim "." (string-right-trim "0" (format nil "~,6f" rounded))))))
 
 (defun cost-object (record)
   (apply #'jobj (loop for (key member) in +cost-fields+
@@ -667,11 +669,16 @@ loop that is not done, up to NOW."
             (when (string= outcome "failed") (incf failed)))
           (when (eql 0 (search "resumed (" text))
             (incf interventions))
+          ;; Only tun loop estimate's own line counts: an agent's line that
+          ;; starts with «estimated» but holds no three durations is passed
+          ;; over, so no line of the log can make the record unreadable.
           (cl-ppcre:register-groups-bind (best likely worst at)
-              ("^estimated (\\S+) (\\S+) (\\S+) at ([a-z-]+)" text)
-            (push (estimate-object (parse-duration best "estimate") (parse-duration likely "estimate")
-                                   (parse-duration worst "estimate") at)
-                  estimates))
+              ("^estimated ((?:[0-9]+[dhm])+) ((?:[0-9]+[dhm])+) ((?:[0-9]+[dhm])+) at ([a-z-]+)" text)
+            (let ((minutes (handler-case (mapcar (lambda (text) (parse-duration text "estimate"))
+                                                 (list best likely worst))
+                             (usage-error () nil))))
+              (when minutes
+                (push (apply #'estimate-object (append minutes (list at))) estimates))))
           (when (eql 0 (search "finished at " text))
             (setf ended time)))))
     (let ((end (or ended now)))

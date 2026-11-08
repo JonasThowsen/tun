@@ -768,6 +768,14 @@ it, and no bin/test at its own top."
   (dolist (text '("90" "1.5h" "0m" "" "1h 30m" "m"))
     (signals tun.cli:usage-error (tun.cli:parse-duration text "--best"))))
 
+(test an-amount-is-written-so-it-reads-back
+  (dolist (case '(("0.25" "0.25") ("1.0000000000000002" "1") ("0.0000001" "0") ("12" "12")
+                  ("0.1234567" "0.123457")))
+    (destructuring-bind (given written) case
+      (let ((text (tun.cli::format-amount (tun.cli::parse-amount given "--usd"))))
+        (is (equal written text) "~a is written ~a, not ~a" given written text)
+        (is (tun.cli::parse-amount text "--usd") "and ~a reads back" text)))))
+
 (defparameter *known-log*
   '("2026-11-08 10:00  started, reviewed"
     "2026-11-08 10:05  estimated 30m 1h 2h at brief, like ferdig/i18n"
@@ -776,6 +784,8 @@ it, and no bin/test at its own top."
     "2026-11-08 10:30  gate A asked of a reviewer"
     "2026-11-08 10:40  gate A: approve (jonas) [3 min]: «ja»"
     "2026-11-08 10:50  verify 1: failed test"
+    "2026-11-08 10:52  estimated two more hours at build, an agent's line"
+    "2026-11-08 10:55  resumed (jonas): «prøv igjen»"
     "2026-11-08 11:00  verify 2: passed build, test"
     "2026-11-08 11:05  estimated 1h 2h 3h at verified"
     "2026-11-08 11:10  gate B asked of the person"
@@ -809,7 +819,7 @@ person (a reviewer's gate the person answered counts as theirs).")
     (is (= 1 (jget (jget actuals "verify") "failed")))
     (is (= 1 (jget (jget actuals "changes") "A")))
     (is (= 0 (jget (jget actuals "changes") "B")))
-    (is (= 2 (jget actuals "interventions")) "two gates the person decided")
+    (is (= 3 (jget actuals "interventions")) "two gates the person decided, and a resume")
     (is (= 0.75d0 (jget (jget actuals "cost") "usd")))
     (is (= 1500 (jget (jget actuals "cost") "tokens_in")))
     (is (json-null-p (jget (jget actuals "cost") "tokens_out")))
@@ -856,6 +866,9 @@ person (a reviewer's gate the person answered counts as theirs).")
                  (expect 2 "estimate" "--best" "1h" "--likely" "30m" "--worst" "2h")
                  (expect 2 "estimate" "--best" "30m" "--likely" "1h")
                  (expect 2 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h" "--like" "a,b")
+                 (expect 2 "estimate" "--best" "30m" "--likely" "3h" "--worst" "1h")
+                 (expect 2 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h" "--like" "a b")
+                 (expect 2 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h" "--tag" "kind ui")
                  (expect 0 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h"
                          "--like" "ferdig/i18n" "--like" "tun/attachments" "--tag" "module:board"
                          "--tag" "kind:ui")

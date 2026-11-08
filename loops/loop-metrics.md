@@ -5,6 +5,11 @@
 - stage: build
 - base: 932792b188947434b781cacc93930e68949b179c
 - item: sak_817by05z6pvdzsmt
+- estimate: 2h 4h 8h
+- like: tun/client-subdir tun/caller-kind tun/outbound-methods
+- tags: kind:cli module:loop
+- verified: 362f3edb7461f6ce6decf729f8b1ddb2d4b6f92c
+- shown: 362f3edb7461f6ce6decf729f8b1ddb2d4b6f92c
 
 ## Brief
 
@@ -29,8 +34,8 @@ orchestrator and the dashboard need the actuals in a form they can read.
    `estimated 30m 1h 3h at STAGE, like ferdig/i18n` (loop-tests).
 2. A DURATION such as `1h30m` reads as 90 minutes and writes back as
    `1h30m`; `90`, `1.5h` and `0m` are usage errors, and so is best > likely
-   or likely > worst, a REF or TAG with a space or comma, and an estimate
-   of a loop that is done (loop-tests).
+   or likely > worst, and a REF or TAG with a space or comma; an estimate
+   of a loop that is done is a step out of order, exit 1 (loop-tests).
 3. `tun loop cost --tokens-in 1000 --usd 0.25`, then `--tokens-in 500
    --tokens-out 20 --usd 0.5 --minutes 12`, leave the fields at 1500, 20,
    0.75 and 12; `cost` with no value is a usage error (loop-tests).
@@ -92,3 +97,42 @@ orchestrator and the dashboard need the actuals in a form they can read.
 - 2026-11-08 15:51  started, reviewed
 - 2026-11-08 15:53  gate A asked of a reviewer
 - 2026-11-08 17:48  gate A: approve (jonas): «ja»
+- 2026-11-08 17:49  estimated 2h 4h 8h at build, like tun/client-subdir tun/caller-kind tun/outbound-methods
+- 2026-11-08 17:55  verify 1: failed test
+- 2026-11-08 17:56  verify 1: the preview suite's test clashed with another session's preview on port 4201 (its Postgres socket lock in /run/user/1000/tun-preview-4201); the suite passes alone
+- 2026-11-08 18:04  verify 2: passed build, test, check
+- 2026-11-08 18:05  shown (/)
+- 2026-11-08 18:05  gate B asked of a reviewer
+- 2026-11-08 18:09  gate B: changes (reviewer)
+  I reviewed this by reading the code only. Running `nix` and `bin/tun` needs approval this non-interactive session can't get, so the behaviour described below is traced from the source, not observed.
+  
+  **What is right**
+  - All three steps in `verify.txt` passed (round 2). Round 1's failure is logged as a preview port clash.
+  - The commit matches the packet's diff, and the core version is raised in both places.
+  - `spec/loop.md` §6.2, `docs/loop.md` and `tun --help` cover the change (criterion 10). The spec's tracker table matches the events sent.
+  - Criteria 1, 3, 4, 6, 7 and 8 have tests that would fail without the change. The `decisions` regex still reads `(jonas) [3 min]`, so who decides the next gate is unaffected.
+  - Actuals are computed correctly for the known log, and the Actuals section is rewritten in place when a record is saved again.
+  - The screenshots show only the showcase home page, which is expected for a CLI-only change.
+  
+  **Changes**
+  
+  1. **Criterion 9 has no evidence.** It names `bin/test-cli` as its check, but that is not a verify step: `verify.txt` shows only build, test and check, and the record's log never mentions it. Earlier loops log it when run by hand (`loops/loop-links.md:58`, `loops/client-subdir.md:118`). The new steps at `bin/test-cli:401-418` include a Python assertion on the JSON that nothing shows has run. Run it on this tree and record the result with `tun loop log`.
+  
+  2. **A free-text log line can break the record** (`src/cli/loop.lisp:671-672`). `tun loop log "estimated two more hours at build"` matches `^estimated (\S+) (\S+) (\S+) at`, and `parse-duration` then refuses `two`.
+     - After that, `status` exits 2, and so does `actuals` without NAME, for every loop at that top.
+     - `finish`, or any save of a done loop, fails the same way, and the orchestrator and dashboard read these commands.
+     - Fix: match only duration-shaped tokens, and add a test with such a line.
+  
+  3. **`format-amount` can write a value it cannot read back** (`src/cli/loop.lisp:591`).
+     - A non-integer amount that rounds to six zero decimals is written as `0.` or `1.`, for example `--usd 0.0000001`. A total with float noise such as `1.0000000000000002` does the same, and that is the kind of number a harness reports.
+     - `parse-amount`'s regex refuses that value, so `status`, `actuals` and `finish` all fail on the record.
+     - Fix: trim the trailing `.` as well, and add a test.
+  
+  4. **Criterion 5 is only partly tested.** `*known-log*` (`tests/loop-tests.lisp:771-783`) has no `resumed (…)` line, and neither does the end-to-end test. Removing the resume count would leave the suite green, yet resumes are half of the factory's measure in the brief. Add a resume to the known log and raise the expected `interventions` at `tests/loop-tests.lisp:812`.
+  
+  5. **Criterion 2 does not match what is built.**
+     - It says an estimate of a done loop is a usage error, but the code uses `fail-step` and the test expects exit 1 (`tests/loop-tests.lisp:887`). The code follows `spec/loop.md:303` (a step out of order exits 1), so correct the criterion's wording in the record.
+     - The criterion also lists likely > worst, a REF with a space, and a bad TAG. The tests cover only best > likely and `a,b` on `--like`, so add those cases.
+  
+  **A question for Jonas, not blocking**
+  Time a loop sits `stuck` waiting for a person's `resume` counts as `working`, because `waiting_person` covers gates only. The brief's measure is "how often, and for how long, a person has to step in", so this understates it. The spec approved at gate A defines it this way, and actuals are recomputed from the log, so it can change later without losing data.
