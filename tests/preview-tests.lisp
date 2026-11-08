@@ -240,9 +240,12 @@ tun or a broken file would leave it."
       (uiop:wait-process process))))
 
 (defun free-preview-ports (count)
-  "The first COUNT ports from 4200 that nothing on this machine listens on."
+  "The first COUNT ports from 4200 that CLAIM-PORT would take, but for their
+claims: nothing on this machine listens on them, and no running database
+holds their socket directory, as another preview's may."
   (loop for port from 4200 below 4300
-        when (tun.cli:port-free-p port) collect port into ports
+        when (and (tun.cli:port-free-p port) (not (tun.cli::socket-directory-held-p port)))
+          collect port into ports
         until (= count (length ports))
         finally (return ports)))
 

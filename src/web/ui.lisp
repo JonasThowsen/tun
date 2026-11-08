@@ -16,6 +16,7 @@
   (:use #:cl #:tun.core #:tun.html)
   (:local-nicknames (#:ui #:tun.ui))
   (:export #:render-screen #:section #:json-table #:entity-detail #:web-resources
+           #:application-pages
            #:define-page #:web-call #:error-alert #:timestamp-text #:htmx-request-p
            #:staff-page-extras #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
@@ -363,6 +364,32 @@ ICON (a design system icon name) are its entry in the menu."
 (defun web-resources ()
   "The registered resources, in registration order."
   *resources*)
+
+(defun application-pages (application)
+  "The pages APPLICATION serves, for the generated page test
+(spec/testing.md 5): a plist for each, (:KIND :STAFF :PATH :POLICY
+:NAVIGATION) for a staff page it offers, (:KIND :RESOURCE :PATH) for a
+resource's list, and (:KIND :PUBLIC :PATH) for a public page's prefix.
+Staff pages come in the order registered, then resources, then public
+pages by prefix."
+  (with-application (application)
+    (let ((staff '()) (public '()))
+      (maphash (lambda (prefix page)
+                 (when (page-available-p page)
+                   (push (cons (staff-page-sequence page)
+                               (list :kind :staff :path (format nil "/~a" prefix)
+                                     :policy (staff-page-policy page)
+                                     :navigation (staff-page-navigation page)))
+                         staff)))
+               *staff-pages*)
+      (maphash (lambda (prefix handler)
+                 (declare (ignore handler))
+                 (push (list :kind :public :path (format nil "/~a" prefix)) public))
+               *public-pages*)
+      (append (mapcar #'cdr (sort staff #'< :key #'car))
+              (mapcar (lambda (resource) (list :kind :resource :path (resource-path resource)))
+                      *resources*)
+              (sort public #'string< :key (lambda (page) (getf page :path)))))))
 
 (defun page-texts ()
   "The titles of the staff pages and resources the menu shows, each as

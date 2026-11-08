@@ -208,5 +208,6 @@
                              (:file "fuzz-tests")
                              (:file "policy-tests")
                              (:file "sequence-tests")
+                             (:file "page-tests")
                              (:file "loop-tests")
                              (:file "run")))))

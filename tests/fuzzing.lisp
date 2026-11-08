@@ -110,21 +110,35 @@ oldest first."
     (prog1 (reverse *connection-attempts*)
       (setf *connection-attempts* '()))))
 
-(defun local-socket-call-p (name arguments)
+(defvar *loopback-port* nil
+  "The port of the test's own server on 127.0.0.1, which the page test's
+requests connect to (spec/testing.md 5), or NIL; 0 while the server
+starts.  Bound in the test's thread, the one that starts the server and
+makes those requests.")
+
+(defun allowed-connection-p (name arguments)
   "True when NAME, one of +CONNECTING-FUNCTIONS+, is called with ARGUMENTS to
-connect a Unix socket, which reaches this machine only: the test Postgres
-server's, for an application on Postgres."
-  (and (eq name 'sb-bsd-sockets:socket-connect)
-       (typep (first arguments) 'sb-bsd-sockets:local-socket)))
+reach this process or this machine only: to connect a Unix socket, such as
+the test Postgres server's, or, while *LOOPBACK-PORT* is set, to look up
+127.0.0.1 or connect to that port on it."
+  (case name
+    (sb-bsd-sockets:socket-connect
+     (or (typep (first arguments) 'sb-bsd-sockets:local-socket)
+         (and *loopback-port*
+              (equalp (second arguments) #(127 0 0 1))
+              (eql (third arguments) *loopback-port*))))
+    (sb-bsd-sockets:get-host-by-name
+     (and *loopback-port* (equal (first arguments) "127.0.0.1")))))
 
 (defun call-with-connections-refused (function)
   "Call FUNCTION with every lookup of and connection to another host, from
 any thread, failing and noted (TAKE-CONNECTION-ATTEMPTS).  The functions
 below drakma and usocket are wrapped for as long as FUNCTION runs; a Unix
-socket still connects.  The wrapping is the whole image's: while it lasts,
-any thread's connection fails, and two runs at once would unwrap under each
-other.  bin/test gives each suite a process of its own and FiveAM runs one
-test at a time, so neither happens there."
+socket still connects, and so does the page test's own server, as
+ALLOWED-CONNECTION-P says.  The wrapping is the whole image's: while it
+lasts, any thread's connection fails, and two runs at once would unwrap
+under each other.  bin/test gives each suite a process of its own and
+FiveAM runs one test at a time, so neither happens there."
   (let ((wrapped '()))
     (unwind-protect
          (progn
@@ -133,7 +147,7 @@ test at a time, so neither happens there."
                (let ((name name))
                  (sb-int:encapsulate name 'refuse-connection
                                      (lambda (original &rest arguments)
-                                       (if (local-socket-call-p name arguments)
+                                       (if (allowed-connection-p name arguments)
                                            (apply original arguments)
                                            (refuse-connection name arguments)))))
                (push name wrapped)))
@@ -433,16 +447,17 @@ returns."
                    (unwind-protect (funcall function (list :db url))
                      (drop-scratch-postgres url)))))))
 
-(defun call-with-fuzzed-application (run function)
+(defun call-with-fuzzed-application (run function &key initargs)
   "Call FUNCTION with *APP* a fresh application of RUN's class, on the test
-clock, holding a copy of RUN's template; with the variables RUN unsets bound
-to the values the scenario left them with, every job held, every other
-system answering as unreachable and no call waiting."
+clock, holding a copy of RUN's template, opened with INITARGS besides; with
+the variables RUN unsets bound to the values the scenario left them with,
+every job held, every other system answering as unreachable and no call
+waiting."
   (call-with-fuzz-database
    run
-   (lambda (initargs)
+   (lambda (database)
      (let ((*app* (apply #'tun.runtime:open-application (fuzz-run-class run) :test-clock t
-                         initargs)))
+                         (append database initargs))))
        (unwind-protect
             (progv (fuzz-run-variables run) (fuzz-run-values run)
               (tun.jobs:hold-jobs *app*)

@@ -2,7 +2,8 @@
 ;;;; client's suite (tests/support.lisp), the tests Tun generates for every
 ;;;; client (tests/generated.lisp), and what the fuzzing and record-policy
 ;;;; ones of them run (tests/fuzz-inputs.lisp, tests/fuzzing.lisp,
-;;;; tests/policy-checks.lisp), and the sequence one (tests/sequences.lisp).
+;;;; tests/policy-checks.lisp), the sequence one (tests/sequences.lisp) and the
+;;;; page one (tests/pages.lisp).
 ;;;;
 ;;;; A system of its own rather than a secondary system of tun.asd, so Nix
 ;;;; can build it as a package beside the kernel: a client outside this
@@ -20,4 +21,5 @@
                              (:file "fuzzing")
                              (:file "policy-checks")
                              (:file "sequences")
+                             (:file "pages")
                              (:file "generated")))))

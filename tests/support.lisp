@@ -2,8 +2,9 @@
 ;;;; client suite: calling tools as an actor, fresh applications, scratch
 ;;;; databases, concurrency, and a real HTTP server.  Scenarios and the
 ;;;; preview's server are in tests/scenarios.lisp, fuzzing every tool in
-;;;; tests/fuzz-inputs.lisp and tests/fuzzing.lisp, and the tests Tun
-;;;; generates for every client in tests/generated.lisp.
+;;;; tests/fuzz-inputs.lisp and tests/fuzzing.lisp, opening every page in
+;;;; tests/pages.lisp, and the tests Tun generates for every client in
+;;;; tests/generated.lisp.
 
 (defpackage #:tun.test-support
   (:use #:cl #:tun.core)
@@ -48,7 +49,15 @@
            #:sequence-failure-index #:sequence-failure-number #:sequence-failure-trace
            #:sequence-failure-text #:sequence-summary #:step-text
            #:sequence-step-operation #:sequence-step-actor #:sequence-step-input
-           #:environment-integer))
+           #:environment-integer
+           ;; every page for every role (spec/testing.md 5)
+           #:open-every-page #:check-every-page-answers-every-role #:page-report
+           #:page-report-failures #:page-report-tallies #:page-report-listed
+           #:page-failure-actor #:page-failure-method #:page-failure-path #:page-failure-status
+           #:page-failure-from #:page-failure-problem #:page-failure-fault #:page-failure-text
+           #:actor-tally-actor #:actor-tally-opened #:actor-tally-posted #:actor-tally-left-out
+           #:actor-tally-shapes #:actor-tally-paths #:actor-tally-forms #:pages-summary
+           #:*paths-per-shape* #:*paths-per-actor*))
 
 (in-package #:tun.test-support)
 

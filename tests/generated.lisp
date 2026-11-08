@@ -85,6 +85,16 @@ Postgres when the client needs it."
                                   :variables variables
                                   :database (if (needs-postgres-p package) :postgres :memory)))
 
+(defun check-every-page-of-the-client (class system package packages variables)
+  "Open every page of the client SYSTEM on CLASS as each role (spec/testing.md
+5), from the default scenario of PACKAGES when there is one, with VARIABLES,
+the client's own, unset: in memory, or on Postgres when the client defined
+in PACKAGE needs it."
+  (check-every-page-answers-every-role system
+                                       :class class :scenario (default-scenario packages)
+                                       :variables variables
+                                       :database (if (needs-postgres-p package) :postgres :memory)))
+
 (defun check-every-scenario-makes-its-records (class system packages variables)
   "Run each scenario defined in PACKAGES, package names, on a fresh Postgres
 database of its own, with VARIABLES unset around it."
@@ -118,8 +128,9 @@ whose system is NAME, a string, and whose package is PACKAGE, a string
 prefixed GENERATED-, in the current package. The scenario test runs the
 scenarios defined in PACKAGE and in the current package, and the fuzzing
 and record-policy tests start each tool from the one of them named
-default, and so does the sequence test.  Around each test, and around each scenario that test runs,
-*ISOLATED-VARIABLES* and the variables ISOLATE names are bound to NIL."
+default, and so do the sequence test and the page test.  Around each test,
+and around each scenario that test runs, *ISOLATED-VARIABLES* and the
+variables ISOLATE names are bound to NIL."
   (check-type name string)
   (check-type package string)
   (let ((class (application-class-variable package))
@@ -150,4 +161,7 @@ default, and so does the sequence test.  Around each test, and around each scena
                             ,class ,name ,package ',scenario-packages ',isolate))
          ,(generated-test "TOOLS-CALLED-IN-SEQUENCE-KEEP-THE-INVARIANTS"
                           `(check-the-client-s-tools-called-in-sequence
+                            ,class ,name ,package ',scenario-packages ',isolate))
+         ,(generated-test "EVERY-PAGE-ANSWERS-EVERY-ROLE"
+                          `(check-every-page-of-the-client
                             ,class ,name ,package ',scenario-packages ',isolate))))))

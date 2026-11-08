@@ -93,7 +93,8 @@ and what explaining its results printed."
 
 (test define-generated-tests-names-each-test-for-its-check
   (with-probe-client ()
-    (is (equal '("GENERATED-EVERY-SCENARIO-MAKES-ITS-RECORDS"
+    (is (equal '("GENERATED-EVERY-PAGE-ANSWERS-EVERY-ROLE"
+                 "GENERATED-EVERY-SCENARIO-MAKES-ITS-RECORDS"
                  "GENERATED-EVERY-TEXT-HAS-A-TRANSLATION-INTO-EACH-LANGUAGE-OFFERED"
                  "GENERATED-EVERY-TOOL-KEEPS-TO-THE-RECORD-POLICIES"
                  "GENERATED-EVERY-TOOL-WITHSTANDS-FUZZING"

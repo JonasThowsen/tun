@@ -30,7 +30,10 @@ and a check added to Tun reaches every client with `tun update`.
   6. every tool of the client withstands fuzzing (§2);
   7. every tool of the client keeps to its record policies (§3);
   8. the client's tools called in sequence keep what must hold, and
-     every invariant of the application (§4).
+     every invariant of the application (§4);
+  9. every page answers every role as its policy says, nothing a page
+     links to or posts to is a server error, and no link leads its reader
+     to a refusal (§5).
 - Each generated test is named for what it checks, prefixed
   `generated-`, so a failure says which check found it.
 - **Isolation.** A scenario may install handlers that answer for other
@@ -276,10 +279,125 @@ what must hold, the application's invariants among it.
   way, from the scenario its fuzz test uses, with core's and the modules'
   invariants, and more steps.
 
-## 5. Not yet
+## 5. Every page for every role
 
-Every page for every role comes in a later loop, a section here. A running
-server does not check the invariants (§4); tests do. Inputs follow a
+The ninth generated test, `generated-every-page-answers-every-role`,
+opens the application's pages as each actor, follows what they link to and
+posts what they offer, as a browser would.
+
+- **Where.** On a copy of the database the default scenario fills, as in
+  §2, served over HTTP by a test server that takes claimed identity
+  (`auth.md` §1). Each actor has a copy of their own. The copy is in
+  memory, or on Postgres when the client needs it (§2). The run is on the
+  test clock.
+- **Nothing leaves the process.** §2's check 3 holds for the whole test,
+  in the server's threads as in the test's. A call to another system
+  through `*http-json-handler*` or `*program-handler*` is answered as that
+  system being unreachable. No job runs. An attempt to look up or connect
+  to another host fails the test. The test's own requests to its server,
+  on the loopback address, are the one connection allowed.
+- **Who.** The actors the scenario names, and of the actors of §2,
+  `admin:fuzz`, `employee:fuzz` and `viewer:fuzz`, each whose role none
+  of the scenario's actors has; and no one, a request with no actor. The
+  scenario's actors own its records, as the people who use the pages
+  do.
+- **Which pages.** The staff pages the application offers: core's, the
+  client's and those of the modules it enables (`define-page`,
+  `ui.md` §8). The generated pages of its resources, at their list
+  paths. Its public pages, at their prefixes.
+- **Every page × every actor.** A GET of each page's path as each actor:
+  - never answers 500 or above;
+  - a staff page in the menu (`:navigation t`) whose policy admits the
+    actor answers below 400;
+  - a staff page left out of the menu, which may live only under its
+    prefix (such as `/runs/ID`) or only answer posts, may answer an actor
+    it admits with any status below 500;
+  - a staff page whose policy does not admit the actor answers 403;
+  - with no actor, a staff page or a resource's page answers 303 to the
+    login (`auth.md` §3.4);
+  - a public page answers below 500 to anyone.
+- **What a page leads to.** Each actor then opens, breadth first from the
+  home path and the pages above, every path on the same site that an
+  opened page names:
+  - in an `href` of an `<a>`;
+  - in an `hx-get`, requested as htmx requests it: with `HX-Request:
+    true`, and `HX-Request-Type: partial`, or `full` when its `hx-target`
+    is the body or it has an `hx-select` (`ui.md` §8.1);
+  - in the `Location` of a 301, 302, 303 or 307 that a GET answered, or
+    in the `HX-Location` or `HX-Redirect` an `hx-get` was answered with,
+    which htmx follows.
+
+  An `href` is requested as a browser without htmx would, with no htmx
+  headers. Only an element's own `hx-target` and `hx-select` are read, not
+  ones it inherits.
+- **What is checked.**
+  - Each path answers below 500. A path the test cannot send, such as
+    one its HTTP client cannot read once encoded as a browser encodes it
+    (a space as `%20`), fails as a server error does.
+  - No path a page names, or a redirect leads to, answers 403 or 404: a
+    page shows its actor no link they cannot follow. That holds for a
+    link to a page of the list above too, such as a search field's
+    `hx-get` to a page its actor may not open. The list's own GETs are
+    held only to their rules above, so a page outside the menu that
+    answers 404 at its bare prefix fails only when a page links there.
+  - Only answers of `text/html` are read for what they name, so a file
+    (`/files/ID`) is fetched and not read.
+- **What is left out.** The paths outside the pages are never opened,
+  posted to or followed: `/login`, `/logout`, `/auth`, `/setup`,
+  `/assets`, `/ui` and the paths under each, as whole segments (`/uitleg`
+  is opened). Nor is a path on another site, nor a link with only a `#`
+  fragment.
+- **Shapes.** A path's shape is its segments, each holding a digit or an
+  `_` written as `:id`, with the names of its query's keys, sorted.
+  - Each actor opens at most 2 paths of a shape, the first two the crawl
+    meets, and at most 150 paths in all.
+  - The summary says how many were left out by the bound.
+  - The crawl has no seed: it takes the pages in the order they name their
+    links. Two runs open the same shapes, as many paths of each. Where the
+    pages list records in an order that does not depend on their ids,
+    they open the same paths, each id read as the record it names by
+    insertion order.
+- **Forms.** After its GETs, each actor posts each form with
+  `method="post"` that its pages showed and whose action is on the site
+  and not left out above. The forms go once each, in the order they were
+  found, on the actor's own copy.
+  - The form is sent as a browser sends it untouched, without htmx:
+    each named input with its value (a checkbox or a radio only when
+    checked), each select's selected option (else its first), each text
+    area's text, and the first named submit button. Controls outside the
+    form that name it with `form="ID"` count as its own, as a board's move
+    buttons do. A file input is left empty. A form with
+    `enctype="multipart/form-data"` is sent as multipart.
+  - Two forms of the same action and the same names count once.
+  - The answer is below 500. A redirect it answers to a path on the site,
+    not left out above, is followed with one GET, which answers below 500
+    too.
+- **What a failure says.** The actor, the method and path, the status,
+  and the page whose link, form or redirect led there, or that it is a
+  page of the list above. It also gives the first line of the fault the
+  server recorded for it (`errors.md`), when there is one.
+- **The summary.** For each actor: the paths opened, their shapes, the
+  forms posted and the paths left out by the bound. It also names the
+  pages of the list above that answered no actor with a page, only with
+  refusals or redirects.
+- **Tun's own pages** are opened in Tun's suite, as their tools are
+  fuzzed: core's and every module's, from the scenario `fuzz-records`.
+
+## 6. Not yet
+
+Pages (§5) are not checked for the following:
+- forms posted with values made up as §2 makes inputs;
+- `hx-post` and other requests htmx makes outside a form, such as
+  ordering a card in a board's column;
+- links and forms sent as htmx's boost sends them, with `HX-Request:
+  true`, which a browser with JavaScript does on staff pages;
+- a path's partial answer when a plain link named the path first: a path
+  is opened once, the first way it is named;
+- links in a fragment that a page answers to a post;
+- a page's text being looked up in each language;
+- how a page looks, which browser checks see (`preview.md` §4).
+
+A running server does not check the invariants (§4); tests do. Inputs follow a
 tool's schema (§2): a rule the schema does not state, such as a department
 the tenant configured or a product that must be stock-tracked, refuses
 most of them, so a tool held by such rules is called but rarely answers
