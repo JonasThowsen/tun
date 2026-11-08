@@ -39,7 +39,15 @@
            #:policy-report-compared #:policy-report-past-validation #:policy-report-skipped
            #:policy-report-not-made #:policy-report-gets #:policy-report-seconds
            #:policy-report-failures #:policy-failure-tool #:policy-failure-actor
-           #:policy-failure-problem #:policy-failure-text #:policy-summary))
+           #:policy-failure-problem #:policy-failure-text #:policy-summary
+           #:call-tools-in-sequence #:check-tools-called-in-sequence #:sequence-report
+           #:sequence-report-calls #:sequence-report-replays #:sequence-report-gets
+           #:sequence-report-failures #:sequence-report-seconds #:sequence-report-called
+           #:sequence-report-answered #:sequence-report-replayed #:sequence-report-tools
+           #:sequence-failure-problem #:sequence-failure-kind #:sequence-failure-shrunk
+           #:sequence-failure-index #:sequence-failure-number #:sequence-failure-trace
+           #:sequence-failure-text #:sequence-summary #:step-text
+           #:sequence-step-operation #:sequence-step-actor #:sequence-step-input))
 
 (in-package #:tun.test-support)
 

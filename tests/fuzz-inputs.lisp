@@ -109,14 +109,16 @@ schema that gives none.")
 ;;; ------------------------------------------------------------------
 ;;; Ids of records
 
-(defstruct (record-ref (:constructor make-record-ref (entity index)))
+(defstruct (record-ref (:constructor make-record-ref (entity index &optional newest)))
   "In a made-up input, the id of a record of ENTITY, an entity's class name:
-the one inserted INDEXth, from 0, counted round the records there are, or an
-id that names nothing when there are none. The id is read when the call is
-made (RESOLVE-INPUT): a replay on a fresh database, whose ids are new,
-names the same record."
+the one inserted INDEXth, from 0, counted round the records there are, or,
+when NEWEST, the INDEXth counted back from the one inserted last; an id that
+names nothing when there are none. The id is read when the call is made
+(RESOLVE-INPUT): a replay on a fresh database, whose ids are new, names the
+same record."
   (entity nil :type symbol :read-only t)
-  (index 0 :type (integer 0) :read-only t))
+  (index 0 :type (integer 0) :read-only t)
+  (newest nil :type boolean :read-only t))
 
 (defvar *references* nil
   "While inputs are made: a hash table from a property's path to the entity
@@ -490,7 +492,8 @@ character."
   "Call FUNCTION with each value one step simpler than VALUE, the simplest
 first: an object without one of its properties, or with one of them
 simpler; an array empty, without one item, or with one simpler; a text
-shorter; a number nearer zero; an id of the first record."
+shorter; a number nearer zero; an id of the first record, or of the newest
+for one counted from the newest."
   (cond ((hash-table-p value)
          (dolist (key (jkeys value))
            (let ((copy (copy-object value)))
@@ -525,7 +528,8 @@ shorter; a number nearer zero; an id of the first record."
          (unless (= value (truncate value))
            (funcall function (truncate value))))
         ((and (record-ref-p value) (plusp (record-ref-index value)))
-         (funcall function (make-record-ref (record-ref-entity value) 0)))))
+         (funcall function (make-record-ref (record-ref-entity value) 0
+                                            (record-ref-newest value))))))
 
 (defun shrink-input (input fails-p &key (attempts 300))
   "The smallest input made from INPUT, a JSON object, for which FAILS-P, a

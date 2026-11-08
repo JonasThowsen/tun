@@ -171,6 +171,7 @@ precedence order. The full API is in `client-api.md`. In short:
 |---|---|
 | A field on a module's entity | `extend-entity` adds a mixin superclass to the live class |
 | A validation | `define-rule` runs on every insert or update of the entity |
+| What holds across records | `define-invariant`, checked after every call of the generated sequence test |
 | A derived value | `define-computed-field`, evaluated when the record is read |
 | React to an operation | `:before` or `:after` method on the operation's generic function |
 | A domain decision inside an operation | a method on a published seam, such as `order-discount` or `booking-window` |

@@ -292,3 +292,38 @@ the article.  Idempotent: adopted products have their article."
         (dolist (r (select 'reservation :where `(:and (:= "product_id" ,id) (:null "article_id"))))
           (setf (reservation-article-id r) (entity-id article))
           (save r))))))
+
+;;; What holds across an article's ledger (README 3.1, 3.2), which tests
+;;; check after every call of the sequence test (spec/testing.md 4).
+
+(define-invariant ledger-revisions-are-distinct-and-counted
+    (:description "An article's ledger rows have distinct revisions, none above its movement_revision (inventory README 3.2)")
+  (let ((articles (make-hash-table :test 'equal))
+        (seen (make-hash-table :test 'equal))
+        (breaches '()))
+    (dolist (article (select 'article))
+      (setf (gethash (entity-id article) articles) article))
+    (dolist (row (select 'inventory-movement :where '(:not-null "article_id")) (nreverse breaches))
+      (let ((article (gethash (inventory-movement-article-id row) articles))
+            (key (cons (inventory-movement-article-id row) (inventory-movement-revision row))))
+        (cond ((gethash key seen)
+               (push (format nil "the article ~a has two ledger rows of revision ~d, ~a and ~a"
+                             (car key) (cdr key) (gethash key seen) (entity-id row))
+                     breaches))
+              ((and article (> (inventory-movement-revision row) (article-movement-revision article)))
+               (push (format nil "the ledger row ~a of the article ~a has revision ~d, above its ~
+                                  movement_revision ~d"
+                             (entity-id row) (car key) (cdr key) (article-movement-revision article))
+                     breaches)))
+        (setf (gethash key seen) (entity-id row))))))
+
+(define-invariant one-consumption-per-order-and-article
+    (:description "There is at most one consumption row per order and article (inventory README 3.1)")
+  (let ((counts (make-hash-table :test 'equal)))
+    (dolist (row (select 'inventory-movement :where '(:= "kind" "consumption")))
+      (incf (gethash (cons (inventory-movement-order-id row) (inventory-movement-article-id row))
+                     counts 0)))
+    (loop for (order . article) being the hash-keys of counts using (hash-value count)
+          when (> count 1)
+            collect (format nil "the order ~a has ~d consumption rows of the article ~a"
+                            order count article))))

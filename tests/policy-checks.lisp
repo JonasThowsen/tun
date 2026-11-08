@@ -34,17 +34,12 @@ its schema."
             collect (cons name entity))))
 
 (defun get-property (operation)
-  "The property of OPERATION, a read, that takes ids of its own entity when
-that is its only required property and the entity has a record policy;
-else NIL (spec/testing.md 3, a get agrees)."
-  (let ((required (required-properties (operation-input-schema operation)))
-        (entity (operation-entity operation)))
-    (and (eq (operation-kind operation) :read)
-         entity
-         (= 1 (length required))
-         (eq entity (cdr (assoc (first required) (policy-references operation)
-                                :test #'string=)))
-         (first required))))
+  "The property of OPERATION when it is a get (GET-TOOL-PROPERTY) of an
+entity with a record policy; else NIL (spec/testing.md 3, a get agrees)."
+  (let ((property (get-tool-property operation)))
+    (and property
+         (entity-record-policy (find-entity-class (operation-entity operation)))
+         property)))
 
 (defun policy-checked-p (operation)
   "True for a tool this test calls: a fuzzed one with a property that takes

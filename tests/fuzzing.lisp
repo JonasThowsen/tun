@@ -346,11 +346,14 @@ the system actor without one, reaches, in insertion order."
 
 (defun reaches-p (class-name id actor)
   "True when ACTOR, a string, reaches the record ID of CLASS-NAME in *APP*:
-at once when the clause of the actor's role is T, or there is none; else
-as the store reads it as the actor."
+at once when the entity has no record policy or the clause of the actor's
+role is T, and not when the policy has no clause for the role; else as the
+store reads it as the actor."
   (let* ((actor (parse-actor actor))
-         (clause (assoc (actor-role actor) (entity-record-policy (find-entity-class class-name)))))
-    (cond ((null clause) nil)
+         (policy (entity-record-policy (find-entity-class class-name)))
+         (clause (assoc (actor-role actor) policy)))
+    (cond ((null policy) t)
+          ((null clause) nil)
           ((eq t (second clause)) t)
           (t (with-application (*app*)
                (with-actor (actor)
@@ -410,11 +413,13 @@ policy is viewer, which :VIEWER-MUTATION allows."
 
 (defun record-ref-id (ref)
   "The id REF names in *APP*: of the record of its entity inserted at its
-index, counted round, or one that names nothing when there is none."
+index, or that far back from the newest, counted round; or one that names
+nothing when there is none."
   (let ((ids (reading-every-record ()
                (mapcar #'entity-id (select (record-ref-entity ref) :order-by '(("seq" :asc)))))))
     (if ids
-        (nth (mod (record-ref-index ref) (length ids)) ids)
+        (let ((index (mod (record-ref-index ref) (length ids))))
+          (nth (if (record-ref-newest ref) (- (length ids) 1 index) index) ids))
         (missing-id (record-ref-entity ref)))))
 
 (defun call-with-fuzz-database (run function)
@@ -543,7 +548,8 @@ one a confirmation used."
 
 (defun call-problem (operation call outcome state)
   "What CALL's OUTCOME breaks of what must hold (spec/testing.md 2): values
-a sentence for the report and a keyword for its kind, or NIL when nothing.
+a sentence for the report and a keyword for its kind, or NIL when nothing;
+and, third, the json names of the entities whose records the call changed.
 Takes the fingerprint and the connection attempts anew, so it is called
 after every call."
   (let* ((attempts (take-connection-attempts))
@@ -552,47 +558,49 @@ after every call."
          (rejections (new-rejections (operation-tool operation) state))
          (kind (outcome-kind outcome))
          (code (outcome-code outcome)))
-    (cond (attempts
-           (values (format nil "it tried to reach another system: ~{~a~^; ~}" attempts)
-                   :connection))
-          ((eq kind :fault)
-           (values (format nil "it signalled an error Tun did not expect, a fault: ~a"
-                           (condition-description (outcome-condition outcome)))
-                   :fault))
-          ((eq code :deadline-exceeded)
-           (values "it ran past its deadline: deadline_exceeded" :deadline))
-          ((and (eq kind :error) (not (typep code 'error-code)))
-           (values (format nil "it answered ~s, not a code of core.md §3" code) :code))
-          ((and (member (fuzz-call-purpose call) '(:wrong-token :other-input))
-                (member kind '(:result :error))
-                (not (eq code :confirmation-invalid))
-                ;; The other input may itself be refused before the token
-                ;; is read, which core.md 3.6 allows.
-                (not (and (eq (fuzz-call-purpose call) :other-input)
-                          (eq code :invalid-input))))
-           (values (format nil "~a it answered ~:[with a result~;~:*~a~], not confirmation_invalid"
-                           (purpose-text call) (and code (json-name-of code)))
-                   :confirmation))
-          ((and (eq kind :error) changed)
-           (values (format nil "it refused with ~a but changed records of ~{~a~^, ~}"
-                           (json-name-of code) changed)
-                   :changed-records))
-          ((and (eq kind :error) (audited-refusal-code-p code) (< rejections 1))
-           (values (format nil "it refused with ~a but left no rejected audit entry (core.md §3.8)"
-                           (json-name-of code))
-                   :unaudited))
-          (hidden
-           (values (format nil "it showed ~{~a~^, ~}, which ~a's record policy hides (store.md §6); ~
-                                a tool that does so on purpose says why with :beyond-record-policy"
-                           (mapcar (lambda (record) (format nil "the ~a ~a" (car record) (cdr record)))
-                                   hidden)
-                           (fuzz-call-actor call))
-                   :hidden-record))
-          ((and changed (viewer-call-p call) (not (viewer-mutation-p operation)))
-           (values (format nil "a viewer's call changed records of ~{~a~^, ~}" changed)
-                   :viewer-wrote))
-          ((and (eq (operation-kind operation) :wait) (> (outcome-seconds outcome) 1))
-           (values (format nil "it waited ~,1f seconds" (outcome-seconds outcome)) :waited)))))
+    (multiple-value-bind (problem problem-kind)
+        (cond (attempts
+               (values (format nil "it tried to reach another system: ~{~a~^; ~}" attempts)
+                       :connection))
+              ((eq kind :fault)
+               (values (format nil "it signalled an error Tun did not expect, a fault: ~a"
+                               (condition-description (outcome-condition outcome)))
+                       :fault))
+              ((eq code :deadline-exceeded)
+               (values "it ran past its deadline: deadline_exceeded" :deadline))
+              ((and (eq kind :error) (not (typep code 'error-code)))
+               (values (format nil "it answered ~s, not a code of core.md §3" code) :code))
+              ((and (member (fuzz-call-purpose call) '(:wrong-token :other-input))
+                    (member kind '(:result :error))
+                    (not (eq code :confirmation-invalid))
+                    ;; The other input may itself be refused before the token
+                    ;; is read, which core.md 3.6 allows.
+                    (not (and (eq (fuzz-call-purpose call) :other-input)
+                              (eq code :invalid-input))))
+               (values (format nil "~a it answered ~:[with a result~;~:*~a~], not confirmation_invalid"
+                               (purpose-text call) (and code (json-name-of code)))
+                       :confirmation))
+              ((and (eq kind :error) changed)
+               (values (format nil "it refused with ~a but changed records of ~{~a~^, ~}"
+                               (json-name-of code) changed)
+                       :changed-records))
+              ((and (eq kind :error) (audited-refusal-code-p code) (< rejections 1))
+               (values (format nil "it refused with ~a but left no rejected audit entry (core.md §3.8)"
+                               (json-name-of code))
+                       :unaudited))
+              (hidden
+               (values (format nil "it showed ~{~a~^, ~}, which ~a's record policy hides (store.md §6); ~
+                                    a tool that does so on purpose says why with :beyond-record-policy"
+                               (mapcar (lambda (record) (format nil "the ~a ~a" (car record) (cdr record)))
+                                       hidden)
+                               (fuzz-call-actor call))
+                       :hidden-record))
+              ((and changed (viewer-call-p call) (not (viewer-mutation-p operation)))
+               (values (format nil "a viewer's call changed records of ~{~a~^, ~}" changed)
+                       :viewer-wrote))
+              ((and (eq (operation-kind operation) :wait) (> (outcome-seconds outcome) 1))
+               (values (format nil "it waited ~,1f seconds" (outcome-seconds outcome)) :waited)))
+      (values problem problem-kind changed))))
 
 (defun purpose-text (call)
   "How CALL was made, as the report says it."
@@ -652,6 +660,17 @@ it; and a NAME_id whose type names no entity, the entity NAME."
         (when (and class (not (entity-embedded-p class)) (not (gethash name references)))
           (setf (gethash name references) (class-name class)))))
     references))
+
+(defun get-tool-property (operation)
+  "The property of OPERATION, a read, that takes ids of its own entity when
+that is its only required property, which makes it a get; else NIL."
+  (let ((required (required-properties (operation-input-schema operation)))
+        (entity (operation-entity operation)))
+    (and (eq (operation-kind operation) :read)
+         entity
+         (= 1 (length required))
+         (eq entity (gethash (first required) (operation-references operation)))
+         (first required))))
 
 (defun without-request-key (input)
   (let ((copy (copy-object input)))
@@ -821,12 +840,16 @@ shrunk."
     report))
 
 (defun shown-input (input)
-  "INPUT as a report shows it: JSON, each id of a record as ‹ENTITY #N›."
+  "INPUT as a report shows it: JSON, each id of a record as ‹ENTITY #N›, or
+‹ENTITY #-N› counted back from the newest, -1 the newest itself."
   (to-json-string
    (resolve-input input (lambda (ref)
-                          (format nil "‹~a #~d›"
+                          (format nil "‹~a #~:[~;-~]~d›"
                                   (entity-json-name (find-entity-class (record-ref-entity ref)))
-                                  (record-ref-index ref))))))
+                                  (record-ref-newest ref)
+                                  (if (record-ref-newest ref)
+                                      (1+ (record-ref-index ref))
+                                      (record-ref-index ref)))))))
 
 (defun failure-text (failure calls)
   "FAILURE, of a run with CALLS per tool and actor, as the report says it:

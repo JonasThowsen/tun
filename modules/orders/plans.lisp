@@ -567,3 +567,12 @@ again."
      :description "What catalog changes did to the order's requirement plan, oldest first.")
   (find-order order-id)
   (page (select 'plan-impact :where `(:= "order_id" ,order-id) :limit (1+ limit)) limit))
+
+(define-invariant one-active-and-one-proposed-plan-per-order
+    (:description "An order has at most one active plan and at most one proposed plan (orders README 9.1)")
+  (let ((counts (make-hash-table :test 'equal)))
+    (dolist (plan (select 'plan :where '(:in "status" ("active" "proposed"))))
+      (incf (gethash (cons (plan-order-id plan) (plan-status plan)) counts 0)))
+    (loop for (order . status) being the hash-keys of counts using (hash-value count)
+          when (> count 1)
+            collect (format nil "the order ~a has ~d ~a plans" order count status))))

@@ -301,6 +301,12 @@ messaging module is enabled; otherwise do nothing.  Returns the message or NIL."
         "source" (source-string (operation-source op))
         "module" (operation-module op)))
 
+(defun describe-invariant (invariant)
+  (jobj "name" (json-name-of (invariant-name invariant))
+        "description" (invariant-description invariant)
+        "source" (source-string (invariant-source invariant))
+        "module" (invariant-module invariant)))
+
 (defun describe-locale (application)
   "The tenant's locale as registry_describe gives it: its language, the
 languages APPLICATION offers, its currency with the currency's minor digits,
@@ -319,6 +325,7 @@ and its time zone (spec/i18n.md 7)."
         "entities" (jarr (mapcar #'describe-entity
                                  (remove-if #'entity-internal-p (all-entity-classes))))
         "operations" (jarr (mapcar #'describe-operation (visible-operations application)))
+        "invariants" (jarr (mapcar #'describe-invariant (application-invariants application)))
         "workflows" (jarr (mapcar (lambda (w) (jobj "kind" (workflow-kind-name w)
                                                     "label" (workflow-kind-label w)
                                                     "source" (source-string (workflow-kind-source w))

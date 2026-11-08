@@ -56,6 +56,8 @@
    ;; entities
    #:entity-class #:entity #:stored-entity #:entity-id #:define-entity #:extend-entity
    #:define-rule #:define-computed-field
+   #:define-invariant #:invariant #:invariant-name #:invariant-description #:invariant-module
+   #:invariant-source #:application-invariants #:check-invariant
    #:entity-fields #:entity-input-fields #:entity-stored-fields #:find-field #:field-name
    #:field-json-name #:field-type #:field-label #:field-description #:field-required-p
    #:field-input-p #:field-stored-p #:field-source #:field-value #:field-secret-p #:field-json-value
@@ -137,7 +139,7 @@
    #:audit-entry-reason #:audit-entry-credential #:audit-as #:audit-target #:*audit-actor*
    #:*audit-reason* #:reject #:reject-as #:input-null-p
    #:decimal #:decimal-type #:json-number->rational #:round-decimal #:quantity-json #:format-quantity
-   #:receipt #:confirmation #:setting #:read-setting #:write-setting
+   #:receipt #:receipt-result #:receipt-redacted #:confirmation #:setting #:read-setting #:write-setting
    ;; operations
    #:operation #:define-operation #:operation-name #:operation-tool #:operation-entity
    #:operation-kind #:operation-title #:operation-description #:operation-policy

@@ -75,6 +75,16 @@ of PACKAGES when there is one, with VARIABLES, the client's own, unset."
                                                  :scenario (default-scenario packages)
                                                  :variables variables))
 
+(defun check-the-client-s-tools-called-in-sequence (class system package packages variables)
+  "Call the tools of the client SYSTEM defines in PACKAGE on CLASS in
+sequence (spec/testing.md 4), from the default scenario of PACKAGES when
+there is one, with VARIABLES, the client's own, unset: in memory, or on
+Postgres when the client needs it."
+  (check-tools-called-in-sequence (client-operations package) system
+                                  :class class :scenario (default-scenario packages)
+                                  :variables variables
+                                  :database (if (needs-postgres-p package) :postgres :memory)))
+
 (defun check-every-scenario-makes-its-records (class system packages variables)
   "Run each scenario defined in PACKAGES, package names, on a fresh Postgres
 database of its own, with VARIABLES unset around it."
@@ -108,7 +118,7 @@ whose system is NAME, a string, and whose package is PACKAGE, a string
 prefixed GENERATED-, in the current package. The scenario test runs the
 scenarios defined in PACKAGE and in the current package, and the fuzzing
 and record-policy tests start each tool from the one of them named
-default.  Around each test, and around each scenario that test runs,
+default, and so does the sequence test.  Around each test, and around each scenario that test runs,
 *ISOLATED-VARIABLES* and the variables ISOLATE names are bound to NIL."
   (check-type name string)
   (check-type package string)
@@ -137,4 +147,7 @@ default.  Around each test, and around each scenario that test runs,
                             ,class ,name ,package ',scenario-packages ',isolate))
          ,(generated-test "EVERY-TOOL-KEEPS-TO-THE-RECORD-POLICIES"
                           `(check-every-tool-of-the-client-keeps-to-the-record-policies
+                            ,class ,name ,package ',scenario-packages ',isolate))
+         ,(generated-test "TOOLS-CALLED-IN-SEQUENCE-KEEP-THE-INVARIANTS"
+                          `(check-the-client-s-tools-called-in-sequence
                             ,class ,name ,package ',scenario-packages ',isolate))))))

@@ -237,3 +237,14 @@
               (order-quote-responded-at quote) (now))
         (save quote)))
     (save order)))
+
+(define-invariant completed-orders-counts-the-orders-completed
+    (:description "A customer's completed_orders is the number of its orders now completed (orders README 2.2)")
+  (let ((completed (make-hash-table :test 'equal)))
+    (dolist (order (select 'order :where '(:= "status" "completed")))
+      (incf (gethash (order-customer-id order) completed 0)))
+    (loop for customer in (select 'customer)
+          for count = (gethash (entity-id customer) completed 0)
+          unless (= count (customer-completed-orders customer))
+            collect (format nil "the customer ~a has completed_orders ~d, but ~d orders completed"
+                            (entity-id customer) (customer-completed-orders customer) count))))

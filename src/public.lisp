@@ -73,7 +73,8 @@ the listed symbols (the same symbol objects, not copies)."
 (define-facade #:tun
   ;; Defining things
   (#:tun.core
-   #:define-entity #:extend-entity #:define-rule #:define-computed-field #:define-operation
+   #:define-entity #:extend-entity #:define-rule #:define-invariant #:define-computed-field
+   #:define-operation
    #:define-workflow #:define-message-template #:define-application #:define-setting #:define-setting-initial-value #:setting-value-at-use
    ;; field type designators (string, integer and boolean are CL's own)
    #:email #:enum #:date #:timestamp #:id #:list-of #:json #:files #:money

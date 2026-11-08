@@ -3,7 +3,7 @@
 - loop: sequences
 - mode: reviewed
 - stage: build
-- base: fac67a3716221af6f4d8483956b86398e693eb16
+- base: 2ceb1296b6e5c94006b68e55c0f5cc1654b3b039
 - after: policy-properties
 
 ## Brief
@@ -220,3 +220,11 @@ What holds today, and what does not:
 - 2026-11-08 11:14  gate A: changes (reviewer): Round 1 fixed. Not every tool is guaranteed a call: independent picks from a fixed seed leave ~9 of the dashboard's 49 tools (and ~40 of Tun's 173) never called, every run, silently. Deal each actor's admitted tools from a seeded shuffle; summary names tools never called or never answered with a result; planted check that a run with as many steps as tools calls each. Optional: one wording for when invariants are checked; §4 to mention picking another actor, the forbidden probe once per sequence and actor, English descriptions; completed_orders declared in orders.
 - 2026-11-08 11:15  gate A asked of the person
 - 2026-11-08 11:15  gate A: approve (jonas): Gate A passed to Jonas after two reviewer rounds of changes; he chose «Take the fix, approve»: tools dealt from a seeded shuffled deck so a run with enough steps calls every tool, summary names tools never called or never answered with a result, a planted check for it, and the reviewer's small wording fixes.
+- 2026-11-08 11:41  rebased onto main 2ceb129 (core 2.13.1); this loop is core 2.14.0
+- 2026-11-08 11:41  the sequence test found two defects in its own first probe, each only a sequence reaches: a create that took a parent id naming nothing (then the parts invariant broke), and reaches-p answered no for an entity without a record policy, so made records were never asked of their get; both fixed
+- 2026-11-08 11:41  replays compare JSON as written: a first result's NIL and a receipt's null differ as Lisp values, not as JSON
+- 2026-11-08 11:41  tools taking revision get the record's current one three times in four (a random one is always stale, conflict)
+- 2026-11-08 11:41  Tun's own run: core 46 of 46 tools called, modules 121 of 121, nothing broke; many module tools never answer with a result, held by rules their schemas do not state (configured departments, the actor form, stock-tracked products, name and unit required on articles_create but not in its schema); named in the summary and in testing.md 5
+- 2026-11-08 11:41  clients on this Tun: ferdig 756 checks pass, sequence test 2.1 s, 31 of 31 tools, its 3 invariants hold; kurs 350 pass, 4.0 s (half a second per fresh application, as its fuzzing pays per tool); dashboard 1141 pass, 1.7 s
+- 2026-11-08 11:41  dashboard generated tests back to back: 26.8 s on this Tun against 24.5 s on its pin (fuzzing 22.7 against 22.1), within 30 s
+- 2026-11-08 11:41  bin/build no warnings; bin/test 72 suites green in 163 s

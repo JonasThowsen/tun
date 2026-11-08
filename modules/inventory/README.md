@@ -91,7 +91,7 @@ fractional digits (core.md §2.1).
 | `receipt` | `inventory_receive` | `+ quantity` | integer 1..10⁶; article active |
 | `adjustment` | `inventory_adjust` | `+ delta` | signed integer, ≠ 0, \|delta\| ≤ 10⁶, reason required; article active; a negative result is `insufficient_stock` |
 | `recount` | `articles_recount {article_id, quantity, reason}` (create, admin) | `:= quantity` | quantity ≥ 0 (`Talt mengde kan ikke være negativ`), reason required (`Oppgi årsaken til lagerkorrigeringen`); article active |
-| `consumption` | the consumption sync only (§6) | `− quantity` when `balance_updated` | quantity > 0, `order_id` set, at most one per (order, article) |
+| `consumption` | the consumption sync only (§6) | `− quantity` when `balance_updated` | quantity > 0, `order_id` set, at most one per (order, article): the invariant `one-consumption-per-order-and-article` |
 | `reservation`, `release` | never written; readable when an older core stored them | none | |
 
 A movement on an archived article (except `consumption`) is `invalid_input`
@@ -103,7 +103,10 @@ any.
 Every balance-changing movement locks the article, increments
 `movement_revision`, sets the balance and `balance_after`, and inserts the
 row with `revision` = the new counter, in one write transaction. Ledger
-order is `revision`, not time. Concurrent movements on one article never
+order is `revision`, not time; an article's rows have distinct revisions,
+none above its `movement_revision` (the invariant
+`ledger-revisions-are-distinct-and-counted`; a re-sync deletes rows, §6.3,
+so there may be gaps). Concurrent movements on one article never
 interleave: of concurrent adjustments that would together overdraw, exactly
 the overdrawing ones fail with `insufficient_stock`.
 

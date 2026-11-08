@@ -99,7 +99,8 @@ and what explaining its results printed."
                  "GENERATED-EVERY-TOOL-WITHSTANDS-FUZZING"
                  "GENERATED-THE-APPLICATION-OPENS-WITH-THE-MODULES-IT-ENABLES"
                  "GENERATED-THE-PACKAGE-USES-ONLY-CL-AND-TUN"
-                 "GENERATED-THE-SOURCES-USE-ONLY-TUNS-PUBLIC-INTERFACE")
+                 "GENERATED-THE-SOURCES-USE-ONLY-TUNS-PUBLIC-INTERFACE"
+                 "GENERATED-TOOLS-CALLED-IN-SEQUENCE-KEEP-THE-INVARIANTS")
                (sort (loop for name in (fiveam:test-names)
                            when (eq (symbol-package name) (find-package +probe-package+))
                              collect (symbol-name name))

@@ -177,7 +177,9 @@ stored. Guards run in the order listed.
 From `picked_up` invoicing readiness therefore needs `force`: a pickup clears the
 return record. Completion counts once per order: after a reopen from
 `completed` the next completion counts it again, so the customer's count
-equals its orders currently `completed` (customers README §3).
+equals its orders currently `completed` (customers README §3). The
+invariant `completed-orders-counts-the-orders-completed` states it, and
+Tun's sequence test checks it after every call (`spec/testing.md` §4).
 
 #### 2.3 Locks
 
@@ -491,7 +493,8 @@ requirements had before stock articles existed).
 `status` (`proposed`, `active`, `superseded`, `rejected`), `fingerprint`,
 `activation` (`automatic`, `review`, `correction`), `activated_at`,
 `activated_by`, `note`, `order_revision`, `lines` (the snapshot of §8.1).
-Immutable but for `status`; at most one active and one proposed per order.
+Immutable but for `status`; at most one active and one proposed per order
+(the invariant `one-active-and-one-proposed-plan-per-order`).
 Only the active plan drives reservation, consumption, the forecast and the
 checklist of a started order.
 

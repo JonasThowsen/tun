@@ -274,12 +274,16 @@ what must hold, the application's invariants among it.
 ## 5. Not yet
 
 Every page for every role comes in a later loop, a section here. A running
-server does not check the invariants (§4); tests do. Not checked by §2, §3
-and §4: that a list shows every record the actor reaches (lists have their
-own filters and limits); ids a result mentions as references to other
-records, such as an item's `project_id`, which a record the actor reaches
-may hold for one it does not; ids inside an input's arrays and nested
-objects; and Tun's own tools in a client's run, alone or in sequence. Of
-those, `attachments_…` read the record as the caller (`files.md` §4.2) and
+server does not check the invariants (§4); tests do. Inputs follow a
+tool's schema (§2): a rule the schema does not state, such as a department
+the tenant configured or a product that must be stock-tracked, refuses
+most of them, so a tool held by such rules is called but rarely answers
+with a result, and §4's summary names it. Not checked by §2, §3 and §4:
+that a list shows every record the actor reaches (lists have their own
+filters and limits); ids a result mentions as references to other records,
+such as an item's `project_id`, which a record the actor reaches may hold
+for one it does not; ids inside an input's arrays and nested objects; and
+Tun's own tools in a client's run, alone or in sequence. Of those,
+`attachments_…` read the record as the caller (`files.md` §4.2) and
 `audit_list` keeps to the policies (`core.md` §3.8), each checked by tests
 of its own in Tun's suite.
