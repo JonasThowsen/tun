@@ -2,7 +2,7 @@
 
 - loop: sequences
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 2ceb1296b6e5c94006b68e55c0f5cc1654b3b039
 - after: policy-properties
 - verified: b289e17bbbd5aa7e760c0802b46164ded6c77af0
@@ -244,3 +244,8 @@ What holds today, and what does not:
 - 2026-11-08 12:33  shown (/ui)
 - 2026-11-08 12:34  gate B asked of a reviewer
 - 2026-11-08 12:40  gate B: approve (reviewer): Round 1's blocking items fixed; criteria 1-12 met with evidence (verify 2, Tun's sequence suites, client logs and back-to-back timings all under 30 s). Not blocking, for later: no test guards fuzzing's copy reuse (fuzz close before get); the replay's null exemption could be limited to secret fields; input shrinking always takes the last step; the clients' runs are as shallow as the modules' (dashboard 37 of 49 tools never answer with a result); no test of the summary's Never called line; breach order follows hash order; the packet's diff lacks the ferdig change.
+- 2026-11-08 12:45  gate C asked of the person
+- 2026-11-08 12:45  gate C: approve (jonas): Jonas chose «Push all, deploy ferdig + kurs»: push tunworks (ferdig invariants, ferdig and dashboard on 142c46c) and kurs, deploy ferdig and kurs, pin the dashboard in ~/nixos for his netcup deploy; the shallow schema-made inputs go on the list as a later loop.
+- 2026-11-08 12:48  deployed ferdig b71b282 (dpl_vyd4kx747pxq4eh3) and kurs d140466 (dpl_90ny1q1mp2s68yv0), both succeeded and independently verified; tunworks b71b282 also pins the dashboard, which ~/nixos d2bef4a pins for Jonas's netcup deploy
+- 2026-11-08 12:48  follow-ups (gate B round 2, not blocking): a test that fuzzing's copy reuse keeps tools apart (fuzz close before get); limit the replay's null exemption to secret fields; shrink the input of the step that fails after steps are dropped, not always the last; a test of the summary's Never called line; breach order in the module invariants; deeper inputs than schemas give (the runs are shallow on the clients as on the modules: dashboard 37 of 49 tools never answer with a result)
+- 2026-11-08 12:48  finished at tun 142c46c
