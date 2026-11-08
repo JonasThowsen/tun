@@ -2,9 +2,11 @@
 
 - loop: deploy-revision
 - mode: hands-on
-- stage: build
+- stage: done
 - base: fac67a3716221af6f4d8483956b86398e693eb16
 - item: sak_27f0jw32b2d1ce3v
+- verified: 37b39288bf66f02b58b7e53510291d829f187525
+- shown: 37b39288bf66f02b58b7e53510291d829f187525
 
 ## Brief
 
@@ -53,3 +55,8 @@ tree; the template and docs/architecture.md follow.
 - 2026-11-08 00:36  started, hands-on
 - 2026-11-08 00:38  gate A asked of the person
 - 2026-11-08 10:22  gate A: approve (jonas): «ja»
+- 2026-11-08 10:28  verify 1: passed build, test, check
+- 2026-11-08 10:28  shown (/ui)
+- 2026-11-08 10:29  gate B asked of the person
+- 2026-11-08 10:57  gate B: approve (jonas): «ja»
+- 2026-11-08 10:57  finished at tun 3f5b78a
