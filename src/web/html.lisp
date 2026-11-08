@@ -59,16 +59,27 @@ htmx refuses to run code besides (TUN.UI's kit script).")
 hx-target:inherited.")
 
 (defparameter +url-attributes+ '("href" "action" "src" "formaction" "hx-get" "hx-post")
-  "Attributes whose value is fetched or followed: only same-site paths and http(s) URLs.")
+  "Attributes whose value is fetched or followed: only same-site paths, # fragments
+and http(s) URLs, and in href mailto: addresses (SAFE-URL-P).")
 
 (defvar *untrusted* nil "True while rendering extension output.")
 
-(defun safe-url-p (value)
+(defun safe-url-p (value &key mailto)
+  "True when VALUE may be followed or fetched from extension output
+(spec/ui.md 5): a path on the same site, a # fragment, an http(s) URL, or
+with MAILTO a mailto: address.  A path starts with one /, not // or /\\, and
+no control character is in it: a browser reads \\ as / and drops tabs and
+line breaks, so /\\host and /<tab>/host would go to host."
   (let ((v (string-left-trim '(#\Space #\Tab #\Newline #\Return) value)))
-    (or (and (plusp (length v)) (char= (char v 0) #\/) (not (and (> (length v) 1) (char= (char v 1) #\/))))
-        (and (plusp (length v)) (char= (char v 0) #\#))
-        (eql 0 (search "https://" v :test #'char-equal))
-        (eql 0 (search "http://" v :test #'char-equal)))))
+    (flet ((prefix-p (prefix) (eql 0 (search prefix v :test #'char-equal))))
+      (and (plusp (length v))
+           (notany (lambda (char) (or (char< char #\Space) (char= char #\Rubout))) v)
+           (or (and (char= (char v 0) #\/)
+                    (not (and (> (length v) 1) (find (char v 1) "/\\"))))
+               (char= (char v 0) #\#)
+               (prefix-p "https://")
+               (prefix-p "http://")
+               (and mailto (prefix-p "mailto:")))))))
 
 (defun htmx-name (name)
   "The htmx attribute NAME stands for, without the data- that htmx also
@@ -92,7 +103,7 @@ true when every modifier is one of +HTMX-MODIFIERS+."
                      (eql 0 (search "aria-" name))))
              (or (not (member (or htmx name) +url-attributes+ :test #'string=))
                  (eq value t)
-                 (safe-url-p (princ-to-string value)))))))
+                 (safe-url-p (princ-to-string value) :mailto (string= name "href")))))))
 
 (defun escape-html (string &optional stream)
   (flet ((emit (out)

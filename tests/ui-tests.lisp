@@ -110,10 +110,18 @@ shortcut's keys (Ctrl+K), a name's initials (KN) and its first letter."
 
 (defun example-allowed-texts (component source)
   "The texts an example of COMPONENT whose forms are SOURCE may show without
-a lookup: its own strings and what a component shows of them, and for the
-icon the icons' names, which its specimen shows."
+a lookup: its own strings and what a component shows of them, the parts of
+a markdown's text, and for the icon the icons' names, which its specimen
+shows."
   (let ((strings (example-strings source)))
     (append strings (mapcan #'shown-parts strings)
+            ;; Markdown shows the parts of its text between the marks.
+            (when (eq (tun.ui:component-name component) 'tun.ui:markdown)
+              (mapcan (lambda (string)
+                        (unlooked-up-texts (with-language ("qps")
+                                             (tun.html:render-html
+                                              (tun.ui:markdown* (list :text string))))))
+                      strings))
             (when (eq (tun.ui:component-name component) 'tun.ui:icon)
               (mapcar (lambda (name) (string-downcase (symbol-name name))) (tun.ui:icon-names))))))
 
@@ -178,6 +186,23 @@ writes in the pseudo-language without looking them up."
                        (:data-hx-post "javascript:alert(1)") (:hx-get\:inherited "javascript:x")
                        (:hx-post "//evil.example/x")))
       (is (string= "<form>x</form>" (apply #'shown refused)) "~a is left out" (first refused)))))
+
+;; spec/ui.md 5: what a URL attribute may hold in extension output.
+(test extension-output-keeps-only-safe-addresses
+  (flet ((kept-p (attribute value)
+           (search (format nil "~(~a~)=" attribute)
+                   (tun.html:render-html (tun.html:untrusted `(:a (:@ ,attribute ,value) "x"))))))
+    (is (kept-p :href "mailto:kari@example.no"))
+    (is (kept-p :href "MAILTO:kari@example.no") "in any case, as http(s)")
+    (dolist (attribute '(:src :action :formaction :hx-get :hx-post))
+      (is (not (kept-p attribute "mailto:kari@example.no")) "~a refuses mailto:" attribute))
+    (dolist (value '("/saker/12" "#top" "https://example.no/x" "http://example.no"))
+      (is (kept-p :href value) "~a is kept" value))
+    (dolist (attribute '(:href :src :action :formaction :hx-get :hx-post))
+      (dolist (value (list "javascript:alert(1)" "//evil.example" "/\\evil.example"
+                           (format nil "/~c/evil.example" #\Tab) (format nil "/~c/evil.example" #\Newline)
+                           (format nil "/sak~c12" (code-char 1)) (format nil "https://a.no/~c" #\Rubout)))
+        (is (not (kept-p attribute value)) "~a refuses ~s" attribute value)))))
 
 ;;; ------------------------------------------------------------------
 ;;; The stylesheet, the script and the pages

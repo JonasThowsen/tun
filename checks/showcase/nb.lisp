@@ -106,6 +106,12 @@
   (("Open" :context "verb") "Åpne")
   ("Choose an item from the list" "Velg en sak fra listen"))
 
+;;; Markdown (markdown.lisp)
+
+(define-translations "nb"
+  ("Markdown" "Markdown")
+  ("A comment" "En kommentar"))
+
 ;;; Prices (prices.lisp)
 
 (define-translations "nb"

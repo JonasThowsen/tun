@@ -11,6 +11,7 @@
                (:file "cards")
                (:file "pages")
                (:file "prices")
+               (:file "markdown")
                (:file "notifications")
                (:file "mail")
                (:file "application")

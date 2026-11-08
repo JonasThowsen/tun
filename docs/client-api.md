@@ -267,7 +267,10 @@ its status, title and components, or `(values 303 PATH)` after a post.
 `/ui` shows every component with its options. A value over time, such as a
 share's price, is `(ui:line-chart (:label "EQNR.OL" :points points :digits
 2))`, with POINTS conses of a universal time and a real; `ui:sparkline`
-takes the same for a table cell.
+takes the same for a table cell. Text that people and agents write, such as a
+description or a comment, is `(ui:markdown (:text text))`. It shows the
+Markdown agents use (headings, lists, code, tables, bold, italic, links),
+and never passes HTML in the text on (`spec/ui.md` §6.2).
 
 ```lisp
 (define-page notes-page ("notater" :title "Notater" :icon :file-text)

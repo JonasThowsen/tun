@@ -322,13 +322,22 @@ A component is defined with `define-component` in the package `TUN.UI`:
   their geometry and paint, and `preserveAspectRatio`, which only says how
   a drawing fits its box; nothing in it loads or runs. That output may
   carry these htmx attributes, with or without `data-` and with the
-  modifiers `:inherited` and `:append`: `hx-get`, `hx-post` (a same-site path or an http(s) URL,
-  as `href`), `hx-target`, `hx-swap`, `hx-trigger`, `hx-select`,
+  modifiers `:inherited` and `:append`: `hx-get`, `hx-post`,
+  `hx-target`, `hx-swap`, `hx-trigger`, `hx-select`,
   `hx-select-oob`, `hx-swap-oob`, `hx-push-url`, `hx-replace-url`,
   `hx-indicator`, `hx-include`, `hx-vals`, `hx-confirm`, `hx-boost`,
   `hx-disable`, `hx-sync`, `hx-preserve`, `hx-validate`. Any other `hx-`
   or `data-hx-` attribute (`hx-on`, `hx-headers`, `hx-config`,
   `hx-status`, …) is left out.
+  An attribute that is followed or fetched (`href`, `src`, `action`,
+  `formaction`, `hx-get`, `hx-post`) holds a path on the same site, a
+  `#` fragment or an http(s) URL, and `href` may also hold a `mailto:`
+  address, its scheme in any case, as `http(s)`; with any other value it
+  is left out. A path on the same site
+  starts with one `/`, not with `//` or `/\`, and no value holds a tab,
+  a line break or another control character, since a browser reads `\` as `/`
+  and drops tabs and line breaks from a URL (`/\host` and `/⇥/host` go to
+  `host`).
 - **Documented.** `:doc` (English, one or two sentences on when to use
   it), `:source` (what it was converted from, §1) and at least one
   example are required. Examples are ordinary calls; the specimen shows
@@ -353,13 +362,13 @@ A component is defined with `define-component` in the package `TUN.UI`:
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
 | Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
-| Data (`data`, `board`, `files`, `charts`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline` |
+| Data (`data`, `board`, `files`, `charts`, `markdown`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
-`files.md` §6.
+`files.md` §6, and `markdown`, text written in Markdown, in §6.2.
 
 `combobox` is a text field that finds one of its `:options`, texts, as
 one types. Focusing or tapping it opens a list of every option under it;
@@ -598,6 +607,161 @@ another column.
   the limits above; on a phone (40rem wide or less) such a column is as
   tall as fits under the app shell's sticky header, and the board leaves
   3rem of page below it.
+
+### 6.2 Text written in Markdown
+
+`markdown` shows text that people and agents write, such as an item's
+description or a comment, with the parts of Markdown they use most:
+
+```lisp
+(ui:markdown (:text (item-description item)))
+```
+
+The rules are CommonMark's and GitHub's tables, made smaller. Text that
+no rule takes shows as written.
+
+- **Lines.** A line ends at LF, CR LF or CR, as in CommonMark, and the
+  CR is never shown. A browser sends a text area's lines with CR LF.
+- **From the text, each time.** TEXT is parsed whenever the component
+  renders, and nothing stored is changed. NIL is the empty text, which
+  renders an empty root.
+- **Safe by construction.** TEXT becomes Tun's markup (`tun.html`),
+  never HTML. Each character of it ends up in a text node, which the
+  renderer escapes, or is a mark the parser read (`**`, `#`, a fence).
+  HTML in TEXT, such as `<script>`, `<b>`, a comment or `&amp;`, shows as
+  written. The output is allowed extension output (§5).
+- **Plain text reads as before.** A text with none of the marks below
+  is paragraphs: one per run of lines with no blank line between them,
+  each line break inside a paragraph a `<br>`, every character as
+  written. Unlike CommonMark, a single line break is always kept.
+- **Bounded.** Lists nest at most four levels deep, bold and italic at
+  most eight. A table has at most 20 columns. The time to render and the
+  size of the output grow linearly with the text's length, whatever the
+  text holds, and no text makes the component signal.
+
+**Blocks.** A block starts at the beginning of a line, with at most three
+spaces before it.
+
+- **Paragraphs** are as above. A heading, a list, a fence, a rule or a
+  table starts a new block without a blank line before it. The one
+  exception is an ordered list that does not start at 1, so «Møtet
+  er\n2. mai» stays one paragraph. After a blank line, a line such as
+  «17. mai er fridag» starts an ordered list numbered from 17, so it
+  shows «17.» before «mai er fridag», indented as a list's item is.
+- **Headings.** `#` followed by a space starts a heading of the first
+  level. `##` followed by a space, or `###` up to `######`, starts one of
+  the second level. They are the elements `hN` and `hN+1`, where N is
+  `:heading-level`, from 2 to 5, 3 when omitted; any other value is an
+  error in the caller's code. So on a page whose title
+  is an `h1` and whose sections are `h2`, a text's headings never outrank
+  the page's own. Closing `#`s are left out. A `#` with no space after
+  it, as in `#12`, is text.
+- **Lists.** `-`, `*` or `+` followed by a space starts an item of an
+  unordered list. One to nine digits, then `.` or `)`, then a space,
+  starts an item of an ordered list, numbered from its first item's
+  number (`start`).
+  - A marker indented two or more spaces deeper than the item above it
+    starts a list inside that item, down to the fourth level. Markers
+    indented deeper than that make items of the fourth level.
+  - A marker of the other kind at the same depth starts a new list
+    there.
+  - A line that is not a marker continues the item above it, after a
+    line break. A heading, a fence or a rule ends the list instead.
+  - After a blank line, the list goes on only if the next line is an
+    item.
+- **Code.** A fence is a line of three or more backticks, with anything
+  after it except a backtick, such as a language name (not shown). It
+  starts a code block, which ends at a line of at least as many backticks
+  and nothing else, or at the end of the text. The block's lines are
+  written as they are, in a `code-block` (§6) with its copy button,
+  scrolling sideways in its own box. A fence indented by up to three
+  spaces has that many spaces taken from each of its lines.
+- **Rules.** A line of three or more of the same `-`, `*` or `_`, with
+  spaces between them or not and nothing else, is an `<hr>`. This also
+  holds under a line of text, where CommonMark would make a heading.
+- **Tables**, as GitHub writes them.
+  - A table starts at a line holding a `|` that is followed by a
+    delimiter line, such as `|---|:--:|---:|`. The delimiter line must
+    have as many cells as the first line, each made of `-` with or
+    without a `:` at either end. The first line is the table's headings.
+  - Each following line holding a `|` is a row, up to a blank line, a
+    line with no `|`, or a line that starts another block.
+  - Cells are split at each `|` not written `\|`. One `|` at each end of
+    a line is optional. Each cell is trimmed.
+  - `:-` aligns a column to the start, `:-:` to the centre, and `-:` to
+    the end.
+  - A row's cells beyond the headings' number are left out, as on
+    GitHub. A row with fewer cells is shorter: no empty cells are added.
+  - A first line with more than 20 cells does not start a table; it and
+    the lines after it are a paragraph.
+  - **Up to three columns:** a table at every width, its cells' text
+    wrapping, long words included.
+  - **Four or more:** where the component is less than 36rem wide, each
+    row is a card, and each cell in it has its column's heading above its
+    value. In a card, a heading is its text without marks, cut at 80
+    characters, and an empty cell has no heading. From 36rem wide, the
+    rows are a table that scrolls sideways in its own box when it does
+    not fit.
+
+**Inline**, in paragraphs, headings, items and cells:
+
+- **Code spans.** A run of backticks up to the next run of exactly as
+  many is a `<code>`. The text between them is written as it is, with no
+  marks read inside, a line break as a space, and one space at each end
+  left out when both ends have one and the text is not only spaces. A run
+  with no match is text.
+- **Bold and italic.** `**` or `__` around text is `<strong>`, `*` or
+  `_` is `<em>`, and three of either is both.
+  - An opening mark is followed by a character that is not a space, and
+    a closing mark is preceded by one. The two must be of the same
+    character and the same length.
+  - `_` opens only when it does not follow a letter or digit, and closes
+    only when none follows it. So `snake_case_name` stays as written,
+    while `*` inside a word marks, as in `un*frigging*believable`.
+  - A mark with no match is text. Inner marks are matched first, as
+    CommonMark does.
+- **Links.**
+  - `[text](address)`, with an optional title in quotes that is not
+    shown, is a link when the address is an `http:` or `https:` URL, a
+    `mailto:` address, or a path on the same site as §5 says
+    (`/saker/12`, but not `//host` or `/\host`).
+  - The address ends at the first space or at the `)` that closes the
+    link: parentheses inside it must be balanced, as in
+    `https://no.wikipedia.org/wiki/Tun_(gård)`. Written inside `<` and
+    `>`, it ends at the `>` and may hold parentheses unbalanced.
+  - `<address>` is such a link with the address as its text.
+  - So is an `http://` or `https://` URL written on its own, after the
+    start of a line, a space or a character that is not a letter or
+    digit. It ends at a space, `<`, `[` or `]`, and its final `.`, `,`, `:`, `;`,
+    `!`, `?`, `*`, `_`, `'` or `"`, and a `)` with no `(` to match it, are
+    left out of it. One whose run up to that space, `<`, `[` or `]` is
+    over 2048 characters makes no link.
+  - The text of a link may hold code, bold and italic, but not another
+    link, at any depth: a URL or `<address>` in it is text.
+  - Any other address, such as `javascript:`, `data:`, `vbscript:`, a
+    relative path, `//host`, `/\host` or one over 2048 characters,
+    makes no link. The text
+    shows as written, brackets and parentheses included.
+- **Escapes.** `\` before an ASCII punctuation character shows that
+  character as written, without its meaning, as in `\*`. Before anything
+  else, `\` is itself.
+
+**Width.** The root is a container (`container-type: inline-size`). What
+it holds never makes it wider than the space it is given, and it never
+widens the page.
+
+- Words longer than a line, such as a URL, break in paragraphs, headings,
+  items, inline code and the tables of up to three columns.
+- Code blocks and the tables of four or more columns, from 36rem, scroll
+  in their own boxes.
+- A `markdown` gets its width from its container, as a block does. In a
+  row of flex items it needs a width of its own.
+
+Not taken: block quotes, images, raw HTML, strikethrough, task lists,
+headings underlined with `=` or `-`, indented code, reference links,
+footnotes and character references (`&amp;`). Each of these shows as
+written.
+
 ## 7. The specimen
 
 - `/ui` shows every component: its documentation, its source, and each
@@ -785,11 +949,45 @@ form of `field`s with an `error-summary`, a confirmation is a
   their hash and cache headers; pages have the viewport tag and htmx's
   configuration; the allowed htmx attributes pass extension output, with
   `:inherited`, and others (`hx-on`, `data-hx-on`, `hx-headers`,
-  `hx-status`, an unknown modifier, a `javascript:` `hx-get`) do not.
+  `hx-status`, an unknown modifier, a `javascript:` `hx-get`) do not;
+  in extension output, `href` keeps a `mailto:` address in any case,
+  while `src`, `action`, `formaction`, `hx-get` and `hx-post` refuse it
+  and `href` still refuses `javascript:`; no URL attribute keeps `//host`,
+  `/\host`, or a path holding a tab, a line break or another control
+  character.
 - `tests/ui-data-tests.lisp`: the board's columns, counts, cards, move
   menus and their forms, and a board without an action; an ordered
   board's `before`, its «Rekkefølge» items and what each posts, its
   status region, and a board without `:ordered` posting as before.
+- `tests/markdown-tests.lisp` (`markdown`, §6.2):
+  - each block and inline rule, with `:heading-level`;
+  - HTML and script in the text shown as text, and the links that make
+    none (`javascript:`, `data:`, `vbscript:`, `//host`, a relative path,
+    `/\host`, a path with a tab in it, one over 2048 characters);
+  - an address with parentheses inside it;
+  - unterminated marks: a fence, `**`, a backtick, a `[` and a
+    `[text](`;
+  - plain text giving paragraphs and line breaks, every character as
+    written;
+  - a fence, a rule, a table and plain text written with CR LF, and
+    with CR alone, read as with LF, no CR shown;
+  - a table of ten columns, rows shorter and longer than its headings,
+    and one of 21 columns that stays a paragraph;
+  - a very long unbroken line;
+  - the output rendered alike in extension output, `mailto:` kept;
+  - texts of 64 KiB built to be costly rendered within a second, and
+    the time for four times the text at most about four times as long;
+  - a link in bold in a link's text left as text, a code block's tabs
+    kept, a list line ending a table;
+  - thousands of random texts of marks rendered without an error, their
+    output within a constant times their length.
+- `checks/showcase/checks/markdown-fits-a-phone.py` (`/markdown`): at
+  320px, 390px and on a desktop, the page does not scroll sideways with a
+  table of ten columns, a long unbroken line, a long code line and a long
+  URL; on a phone the ten columns are cards, each value under its
+  heading, and a table of three columns stays a table; on a desktop the
+  ten columns are a table scrolling in its own box, and the code block
+  scrolls in its own.
 - `tests/rank-tests.lisp`: `rank-between` (`core.md` §2.6).
 - `tests/chart-tests.lisp`: the y axis's ticks (multiples of a round
   step, three to five, their decimals, equal values), the x axis's labels
