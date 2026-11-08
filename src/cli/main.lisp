@@ -16,10 +16,14 @@
        tun preview stop NAME... | --all
        tun check [NAME...] [--dir DIR]
        tun loop start NAME --title TEXT [--mode MODE] [--client DIR] [--after LOOP]
-                      [--item REF]
+                      [--item REF] [--tag TAG]... [--drafted DURATION]
        tun loop status [NAME] [--json]
+       tun loop estimate --best DURATION --likely DURATION --worst DURATION
+                         [--like LOOP]... [--tag TAG]... [NAME]
+       tun loop cost [--tokens-in N] [--tokens-out N] [--usd AMOUNT] [--minutes N] [NAME]
+       tun loop actuals [NAME] [--json]
        tun loop gate A|B|C [NAME]
-       tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [NAME]
+       tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [--minutes N] [NAME]
        tun loop verify|finish [NAME]
        tun loop show [NAME] [--path PATH]... [--actor ACTOR] [--scenario NAME]
        tun loop resume --by WHO --why TEXT [NAME]
@@ -180,8 +184,10 @@ the first item."
              (run-with #'loop-command :flags '("--json")
                                       :options '("--dir" "--title" "--mode" "--client" "--after"
                                                  "--item" "--by" "--why" "--actor" "--scenario"
-                                                 "--onto" "--client-onto")
-                                      :lists '("--path")))
+                                                 "--onto" "--client-onto" "--drafted" "--best"
+                                                 "--likely" "--worst" "--tokens-in" "--tokens-out"
+                                                 "--usd" "--minutes")
+                                      :lists '("--path" "--like" "--tag")))
             (t (refuse "unknown command ~a" command))))))
 
 (defun run (arguments)

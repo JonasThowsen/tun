@@ -9,7 +9,7 @@
                 #:+core-version+ #:all-modules #:find-module #:module-name #:module-description
                 #:module-depends-on #:module-core-range #:module-dependency-closure
                 #:application #:describe-registry #:jobj #:jarr #:jget #:to-json-string
-                #:parse-json)
+                #:parse-json #:json-null-p #:json-bool)
   (:export #:main #:run #:usage-error #:step-failed
            #:module-catalog #:resolve-modules
            #:check-client-name #:client-files #:create-client #:add-modules
@@ -21,4 +21,5 @@
            #:ports-directory
            #:check-files #:check-scenario #:worktree-branch #:worktree-revision #:add-to-git
            #:make-record #:text-field #:set-text-field #:gate-decider #:reviewer-verdict
-           #:repository-tree #:loop-top #:*tracker-limit* #:without-links #:record-shown #:read-record #:loop-diff))
+           #:repository-tree #:loop-top #:*tracker-limit* #:without-links #:record-shown #:read-record #:loop-diff
+           #:parse-duration #:format-duration #:loop-actuals))

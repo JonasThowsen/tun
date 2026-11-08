@@ -379,12 +379,14 @@ sed -i 's/Ola Nordmann/Kari Nordmann/' "$client/checks/home.py"
 
 step "tun loop: a change from start to finish, its gates answered by hand (spec/loop.md)"
 loop() { in_client env XDG_STATE_HOME="$work/state" tun loop "$@"; }
-loop start home-list --title "Kundene på forsiden" >/dev/null || fail "tun loop start"
+loop start home-list --title "Kundene på forsiden" --tag kind:ui >/dev/null || fail "tun loop start"
+loop estimate --best 10m --likely 30m --worst 2h --like tun/board-paging >/dev/null \
+  || fail "tun loop estimate"
 loop gate A >"$work/loop.log" 2>&1 && fail "gate A without criteria"
 sed -i 's/^## Criteria$/## Criteria\n\n1. Anna ser kundene på forsiden (checks\/home.py)./' "$client/loops/home-list.md"
 loop gate A >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop gate A"; }
 grep -q "waits for the person" "$work/loop.log" || fail "gate A did not wait for the person"
-loop decide A approve --by test-cli --why "«ja»" >/dev/null || fail "tun loop decide A"
+loop decide A approve --by test-cli --why "«ja»" --minutes 2 >/dev/null || fail "tun loop decide A"
 loop verify >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop verify"; }
 grep -q "ok    check" "$work/loop.log" || { cat "$work/loop.log" >&2; fail "verify ran no checks"; }
 loop show --path / >"$work/loop.log" 2>&1 || { cat "$work/loop.log" >&2; fail "tun loop show"; }
@@ -399,8 +401,21 @@ loop decide B approve --by test-cli --why "«fint»" >/dev/null || fail "tun loo
 loop finish >"$work/loop.log" 2>&1 && fail "finish before the shown tree is committed"
 git -C "$client" add --all
 git -C "$client" -c user.name=test-cli -c user.email=test-cli@localhost commit --quiet -m "Kundene på forsiden"
+loop cost --tokens-in 1200 --tokens-out 300 --usd 0.12 --minutes 5 >/dev/null || fail "tun loop cost"
 loop finish >/dev/null || fail "tun loop finish"
 grep -q "finished at demo" "$client/loops/home-list.md" || fail "the record does not say the loop finished"
+# The record ends with its actuals, before the log, as tun loop actuals gives them (spec/loop.md 6.2).
+[ "$(grep -n -e '^## Actuals$' -e '^## Log$' "$client/loops/home-list.md" | cut -d: -f2 | tr '\n' ' ')" \
+    = "## Actuals ## Log " ] || fail "the record has no Actuals before its Log"
+loop actuals home-list --json >"$work/actuals.json" || fail "tun loop actuals"
+grep -qxF "$(cat "$work/actuals.json")" "$client/loops/home-list.md" \
+  || fail "the record's Actuals are not what tun loop actuals gives"
+python3 -c 'import json, sys
+a = json.load(open(sys.argv[1]))
+sys.exit(not (a["estimate"]["likely"] == 30 and a["cost"]["usd"] == 0.12
+              and a["minutes"]["person_at_gates"] == 2 and a["interventions"] == 2
+              and "kind:ui" in a["tags"]))' "$work/actuals.json" \
+  || { cat "$work/actuals.json" >&2; fail "tun loop actuals"; }
 
 step "the image holds no commit, and nixploy gives each target its commit (spec/deploy.md 2, 3)"
 docker_drv() { (cd "$client" && nix eval --raw .#packages.x86_64-linux.docker.drvPath); }

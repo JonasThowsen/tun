@@ -44,6 +44,22 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
   decide: «a card held at the right edge for a second brings the next
   column into view», not «dragging works better». Criteria a browser shows
   become browser checks, the rest tests.
+- **Estimate** the loop before the work: how long from its start to its
+  end, gates and waiting included, as a range, and the earlier loops you
+  compared it with. Find them with `tun loop actuals` here, and in the
+  repositories of similar work (`tun loop actuals --dir ~/coding/OTHER`):
+  look for the same kind of change, a similar number of criteria, the same
+  module. A loop you have nothing like is a wide range.
+
+  ```
+  tun loop estimate --best 30m --likely 1h --worst 3h \
+      --like ferdig/i18n --like tun/attachments --tag kind:ui --tag module:board
+  ```
+
+  Estimate again when you learn something that changes it, such as a gate
+  sent back or a verify round that shows a harder problem; the first
+  estimate is kept for comparison. Time you spent on the request before
+  `tun loop start` goes to `--drafted 40m` there.
 
 ## 3. Spec and gate A
 
@@ -55,7 +71,8 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
   spec change in short, and wait for the answer.
 - Record the answer, quoting the person: `tun loop decide A approve --by
   jonas --why "«ja, kjør»"`. If they want changes: `tun loop decide A
-  changes --by jonas --why "…"`, then go back to §2.
+  changes --by jonas --why "…"`, then go back to §2. When the person says
+  how long they spent on it, add `--minutes N`.
 - If you cannot wait, for example because you run without a person, end
   your turn and say the loop is at gate A. Never decide a person's gate
   yourself.
@@ -118,7 +135,12 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
 
 ## 8. Follow
 
-- `tun loop finish`, then commit the record.
+- Report what your work cost, if your harness tells you, before
+  `finish`: `tun loop cost --tokens-in N --tokens-out N --usd X --minutes
+  N`, once or after each run; the numbers add up. A `claude -p
+  --output-format json` run gives them as `usage` and `total_cost_usd`.
+- `tun loop finish`, then commit the record. It ends with the loop's
+  actuals, which `tun loop actuals --json` also gives.
 - Tell whoever asked, where they asked, that it is done. In a tracker,
   that is a comment on the item.
 - A reply that wants more, or something else, is a new loop:

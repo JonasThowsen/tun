@@ -2,7 +2,8 @@
 
 Status: v1, built 2026-10-24, core 1.13.0: the hands-on and reviewed
 modes; the tracker (§6.1), core 1.17.0; a client in a subdirectory of a
-larger repository (§6), 2026-11-04. It is built
+larger repository (§6), 2026-11-04; estimates, cost and actuals (§6.2),
+2026-11-08. It is built
 on previews and checks (`preview.md`).
 
 ## 1. What it is
@@ -57,7 +58,9 @@ the Tun worktree until Tun is pushed.
 2. **Shape.** Questions only for decisions that are the asker's; any
    other choice is made and written down. The result is the acceptance
    criteria, each written as a check could test it: «a card held at the
-   right edge brings the next column into view within a second».
+   right edge brings the next column into view within a second». Then
+   the estimate: how long the loop will take from its start to its end,
+   as a range, and the earlier loops it was compared with (§6.2).
 3. **Spec.** The contract changes first (`AGENTS.md`). **Gate A.**
 4. **Build.** Code, tests, the scenario and the browser checks for the
    criteria. A core change also raises the core version here, so the tree
@@ -137,8 +140,10 @@ the Tun worktree until Tun is pushed.
   revision the loop started from, and the diffs are taken from it. The
   other fields are `client` and `client-base`, `after` (the loop this one
   answers), `verified` and `shown` (the trees that passed and were shown,
-  §6), `failures` (failed verify rounds in a row), and `item`, the loop's
-  item in a tracker (§6.1).
+  §6), `failures` (failed verify rounds in a row), `item`, the loop's
+  item in a tracker (§6.1), and what §6.2 records: `estimate`, `like`,
+  `tags`, `drafted`, `tokens-in`, `tokens-out`, `usd` and
+  `agent-minutes`.
 - **No machine's address is in it.** The record is committed, and the
   repository may be public, so the link of a shared preview, which names
   the machine it runs on and its tailnet, is kept in
@@ -151,8 +156,13 @@ the Tun worktree until Tun is pushed.
   made without the asker, with why.
 - **Log** is `tun loop`'s, one line per event: a gate asked, a decision with
   who and why (a reviewer's reasons indented under it), a verify round
-  with what failed, a show with the paths it shows, and the agent's own
-  lines (`tun loop log`), such as a push or a deploy.
+  with what failed, a show with the paths it shows, an estimate, a cost
+  reported, and the agent's own lines (`tun loop log`), such as a push
+  or a deploy. It stays the last section.
+- **Actuals**, before Log, is `tun loop`'s too: once the loop is done,
+  one JSON object in a fenced block, what `tun loop actuals --json` gives
+  for it (§6.2), so the record alone says what the loop took. It is
+  written again whenever a done loop's record is saved.
 
 `tun loop` reads and writes the record and nothing else in the repository.
 What it produces, such as logs, packets and screenshots, goes to
@@ -163,9 +173,15 @@ What it produces, such as logs, packets and screenshots, goes to
 ```
 tun loop start NAME --title TEXT [--mode hands-on|reviewed|autonomous]
                     [--client DIR] [--after LOOP] [--item REF]
+                    [--tag TAG]... [--drafted DURATION]
 tun loop status [NAME] [--json]
+tun loop estimate --best DURATION --likely DURATION --worst DURATION
+                  [--like REF]... [--tag TAG]... [NAME]
+tun loop cost [--tokens-in N] [--tokens-out N] [--usd AMOUNT]
+              [--minutes N] [NAME]
+tun loop actuals [NAME] [--json]
 tun loop gate A|B|C [NAME]
-tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [NAME]
+tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [--minutes N] [NAME]
 tun loop verify [NAME]
 tun loop show [NAME] [--path PATH]... [--actor ACTOR] [--scenario S]
 tun loop resume --by WHO --why TEXT [NAME]
@@ -253,6 +269,9 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   at B and C, `verify.txt`, the checks' results, the screenshots and
   `link`, the preview's link.
 - **`decide`** records the decision of the gate the loop waits at.
+  `--minutes N` is how long the person says they spent on it, as distinct
+  from how long the gate waited; the log's line then ends its `(WHO)`
+  with ` [N min]`.
 - **`resume`** records the person's go-ahead after `stuck`.
 - **`rebase`** moves the loop's base after the repository moved under it:
   a merge of newer work, a rebase, or a rewritten history. It sets `base`
@@ -275,8 +294,10 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   `done`.
 - **`status`** prints the title, stage, mode, item, the preview's link
   from the last show (`"preview"` in `--json`, `null` before one), who
-  decides the next gate, the next step and the last lines of the log. With `--json`, it
-  prints the same as an object. Without NAME and an open loop, it says so
+  decides the next gate, the estimate and the time so far, the next step
+  and the last lines of the log. With `--json`, it
+  prints the same as an object, with the loop's actuals (§6.2) as
+  `"actuals"`. Without NAME and an open loop, it says so
   and exits 0 (`null` with `--json`).
 
 A step out of order, or a gate whose precondition does not hold, exits 1
@@ -294,8 +315,10 @@ stays the truth; the tracker is a mirror.
   `TUN_REVIEWER` is. Without it, nothing of this section happens.
 - After each event, once the record is saved, `tun loop` runs it in the
   loop's top as `COMMAND EVENT RECORD`: EVENT is `start`,
-  `gate`, `decide`, `verify`, `show`, `log`, `resume`, `rebase` or `finish`, and
-  RECORD the record's absolute path.
+  `gate`, `decide`, `verify`, `show`, `log`, `resume`, `rebase`,
+  `estimate`, `cost` or `finish`, and
+  RECORD the record's absolute path. A tracker passes over an event it
+  does not know.
 - **Its standard input** is one JSON object. Every event has these
   members, all strings except `item`, which is a string or `null`:
   `event`; `loop`, the NAME; `title`; `mode`; `stage`, after the event;
@@ -307,13 +330,15 @@ stays the truth; the tracker is a mirror.
   |---|---|
   | `start` | none |
   | `gate` | `gate`, `"A"`, `"B"` or `"C"`; `decider`, `"person"` or `"reviewer"`; `message`, the text `tun loop gate` prints for the person to be told, as one string with its line breaks, or `null` when a reviewer decides |
-  | `decide` | `gate`; `decision`, `"approve"` or `"changes"`; `by`, a string; `why`, a string or `null`; `reasons`, the reviewer's reasons as one string, or `null` |
+  | `decide` | `gate`; `decision`, `"approve"` or `"changes"`; `by`, a string; `why`, a string or `null`; `reasons`, the reviewer's reasons as one string, or `null`; `minutes`, the person's minutes, an integer or `null` |
   | `verify` | `round`, an integer from 1; `passed`, a boolean; `steps`, the round's steps, and `failed`, those that failed, each an array of the names verify prints, such as `"build"`, `"test"`, `"check"`, `"pressure"` and `"client-check"` |
   | `show` | `preview`, the link, a string; `paths`, an array of strings |
   | `log` | `line`, a string |
   | `resume` | `by`, a string; `why`, a string |
   | `rebase` | `from_stage`, the stage before; `bases`, an array of objects `{"repository": NAME, "old": REV, "new": REV}` for each of the loop's repositories, NAME `"tun"` or the client's, REV a full revision or `"none"` |
-  | `finish` | `commits`, an array of objects `{"repository": NAME, "revision": SHORT}`, NAME `"tun"` or the client's |
+  | `estimate` | `estimate`, the object §6.2 describes |
+  | `cost` | `cost`, the loop's totals so far, as in §6.2 |
+  | `finish` | `commits`, an array of objects `{"repository": NAME, "revision": SHORT}`, NAME `"tun"` or the client's; `actuals`, the loop's actuals (§6.2) |
 
   A gate a reviewer decides is a `gate` event, then a `decide` event. A
   step refused, such as one out of order, sends no event, and neither does
@@ -329,6 +354,61 @@ stays the truth; the tracker is a mirror.
   time limit, and the step goes on and exits as it would have. What the
   command writes to its standard error is added to
   `.build/loop/NAME/tracker.log`.
+
+### 6.2 Estimates, cost and actuals
+
+A factory that estimates its work needs each loop to say what it was
+expected to take and what it took, with the earlier loops it was compared
+with, so the next estimate can be compared with more. What a customer is
+promised is the total time; tokens and money show whether the work gets
+cheaper. The log already times each stage; these record the rest.
+
+- **A DURATION** is minutes, hours or days, joined: `45m`, `2h`,
+  `1h30m`, `1d`. A day is 24 hours. Anything else is a usage error.
+- **`estimate`** records how long the whole loop will take, from its
+  start to its end, gates and waiting included: the best case, the likely
+  one and the worst, best ≤ likely ≤ worst. Each `--like REF` names an
+  earlier loop it was compared with, as `REPOSITORY/LOOP` or `LOOP`, and
+  each `--tag TAG` what kind of change it is, such as `kind:ui` or
+  `module:invoicing`. REF and TAG are letters, digits and `._/:-`. It
+  sets the field `estimate` to `BEST LIKELY WORST`, the fields `like` and
+  `tags` to their REFs and TAGs separated by spaces (tags added to the
+  ones the loop has), and logs `estimated BEST LIKELY WORST at STAGE`
+  with `, like REF …`. It runs at any stage before `done`, so a loop is
+  estimated again when it learns more, at a gate or after a failed round;
+  each estimate stays in the log.
+- **`start --tag TAG`** gives the tags at the start; **`--drafted
+  DURATION`** the time spent on the request before the loop started,
+  such as drafting the spec, in the field `drafted`.
+- **`cost`** adds what the agent's harness reports for its work on the
+  loop to the fields `tokens-in`, `tokens-out`, `usd` and
+  `agent-minutes` (its own working time, from `--minutes`): N is a whole
+  number, AMOUNT a decimal number of US dollars. It needs one of them,
+  may be run any number of times, at any stage, and logs `cost: …` with
+  what it added. A harness such as `claude -p --output-format json`
+  reports these for each run; Tun reads no harness's format itself.
+- **The actuals** of a loop are computed from its log and fields, for a
+  loop that is done and, up to now, for one that is not:
+
+  | Member | What it is |
+  |---|---|
+  | `loop`, `title`, `mode`, `stage`, `item` | as in the record |
+  | `repository` | the name of the loop's top: `tun`, or the client's directory |
+  | `tags`, `like` | arrays of strings |
+  | `started`, `ended` | the first log line's time and the `finished` line's, `"YYYY-MM-DD HH:MM"`, local; `ended` is `null` while the loop is open |
+  | `minutes` | `total` from `started` to `ended` or now; `waiting_person` and `waiting_reviewer`, the time from a gate asked to its decision, by who decided (a gate still open, by who is asked, up to now); `working`, the rest; `drafted`, the field, or `null`; `person_at_gates`, the sum of the person's `--minutes`, or `null` when none was given; `agent`, the field `agent-minutes`, or `null` |
+  | `estimate` | the loop's first estimate, `{"best", "likely", "worst"}` in minutes, with `"at"`, the stage it was made at, or `null`; `latest_estimate` the same for the last one |
+  | `within_estimate` | for a loop that is done with an estimate: whether `total` lies from its best to its worst; otherwise `null` |
+  | `ratio` | `total` divided by the first estimate's likely, to two decimals, or `null` |
+  | `verify` | `{"rounds", "failed"}` |
+  | `changes` | requests for changes, `{"A", "B", "C"}` |
+  | `interventions` | how many times a person stepped in: each gate a person decided, each `resume` |
+  | `cost` | `{"tokens_in", "tokens_out", "usd", "agent_minutes"}`, each a number or `null` when never reported |
+
+- **`actuals`** prints them for NAME, or for every loop at the top
+  without one, oldest first; with `--json`, an object for NAME and an
+  array without. A record from before this section has no estimate and no
+  cost, and its actuals say `null` there.
 
 ## 7. Evidence
 
@@ -357,6 +437,15 @@ stays the truth; the tracker is a mirror.
     from `apps/a`; a commit of `apps/a`'s shown tree passes gate C; in
     Tun's repository a subdirectory such as `checks/showcase/` has Tun's
     top;
+  - a DURATION is read and written back; `estimate` refuses best > likely
+    > worst, a bad REF or TAG, and runs at no stage after `done`; `cost`
+    sums what it is given and needs one value; `decide --minutes` puts
+    ` [N min]` in the log without changing who decided;
+  - the actuals of a record with a known log: total, the waiting by who
+    decided, working, the first and latest estimate, within and ratio,
+    verify rounds, changes, interventions and cost; of a record from
+    before §6.2, with `null` for what it lacks; and the Actuals section
+    of a done loop, before Log, holding the same;
   - a loop runs in a repository of its own from start to finish, with a
     stand-in reviewer: changes at A back to the brief, five failed verify
     rounds to `stuck`, `resume`, gate B on the shown tree, and gate C and
@@ -383,3 +472,5 @@ stays the truth; the tracker is a mirror.
    tracker is the tracker's side.
 5. Starting loops without a person: a session per item, started when an
    item reaches a status, within limits on how many run at once.
+6. Estimates, cost and actuals (§6.2), for the factory's estimates
+   (Ferdig «Factory 6»). Built 2026-11-08.

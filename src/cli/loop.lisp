@@ -148,7 +148,10 @@ preview's link names the machine it runs on, and the record is committed."
                               (set-text-field text "preview" nil) "\\1 ("))
 
 (defun save-record (record)
+  "Write RECORD, without links, and with its Actuals once the loop is done."
   (setf (record-text record) (without-links (record-text record)))
+  (when (equal (stage record) "done")
+    (setf (record-text record) (actuals-section-text (record-text record) (loop-actuals record))))
   (write-text (record-file record) (record-text record)))
 
 (defun client-directory-p (directory)
@@ -450,8 +453,10 @@ in a row from a reviewer."
                      gate (eq :person (gate-decider record gate)) tun gate)))
       (let ((stage (stage record)))
         (cond ((string= stage "brief")
-               (format nil "Write Brief, Criteria and Decisions in ~a and change the spec; then ~
-                            ~a loop gate A." file tun))
+               (format nil "Write Brief, Criteria and Decisions in ~a and change the spec~
+                            ~:[, estimate it against earlier loops (~a loop estimate --best D ~
+                            --likely D --worst D --like LOOP)~;~*~]; then ~a loop gate A."
+                       file (field record "estimate") tun tun))
               ((string= stage "gate-a") (waiting "A"))
               ((string= stage "build")
                (format nil "Build the change, its tests, its scenario and its checks; then ~a loop verify."
@@ -487,9 +492,281 @@ in a row from a reviewer."
                command stages (record-name record) (stage record) (next-step record))))
 
 ;;; ------------------------------------------------------------------
+;;; Estimates, cost and actuals (spec/loop.md 6.2)
+
+(defun parse-duration (text option)
+  "The minutes of the DURATION TEXT, such as 1h30m, given as OPTION."
+  (let ((minutes (and text
+                      (cl-ppcre:register-groups-bind (days hours mins)
+                          ("^(?:([0-9]+)d)?(?:([0-9]+)h)?(?:([0-9]+)m)?$" text)
+                        (and (or days hours mins)
+                             (+ (* 1440 (if days (parse-integer days) 0))
+                                (* 60 (if hours (parse-integer hours) 0))
+                                (if mins (parse-integer mins) 0)))))))
+    (unless (and minutes (plusp minutes))
+      (refuse "~a takes a duration such as 45m, 2h, 1h30m or 1d, not ~s" option text))
+    minutes))
+
+(defun format-duration (minutes)
+  "MINUTES written as a DURATION: 1h30m, 2h, 45m."
+  (multiple-value-bind (hours mins) (floor minutes 60)
+    (format nil "~:[~*~;~dh~]~:[~*~;~dm~]~:[~;0m~]"
+            (plusp hours) hours (plusp mins) mins (zerop minutes))))
+
+(defun check-names (names option)
+  "Refuse NAMES given as OPTION unless each is letters, digits and ._/:-."
+  (dolist (name names)
+    (unless (cl-ppcre:scan "^[A-Za-z0-9._/:-]+$" name)
+      (refuse "~a is letters, digits and ._/:-, such as ferdig/i18n or kind:ui, not ~s" option name))))
+
+(defun field-words (record key)
+  "The words of the field KEY of RECORD, a list of strings."
+  (let ((value (field record key)))
+    (and value (remove "" (uiop:split-string value :separator " ") :test #'string=))))
+
+(defun add-tags (record tags)
+  "Add TAGS to the field tags of RECORD, each once, in the order given."
+  (check-names tags "--tag")
+  (let ((all (remove-duplicates (append (field-words record "tags") tags)
+                                :test #'string= :from-end t)))
+    (when all
+      (setf (field record "tags") (format nil "~{~a~^ ~}" all)))))
+
+(defun estimate-object (best likely worst at)
+  (jobj "best" best "likely" likely "worst" worst "at" at))
+
+(defun estimate-loop (record &key best likely worst like tag)
+  "tun loop estimate: record how long the loop will take, start to end."
+  (unless (and best likely worst)
+    (refuse "tun loop estimate needs --best, --likely and --worst, such as 30m, 1h and 3h"))
+  (let ((best (parse-duration best "--best"))
+        (likely (parse-duration likely "--likely"))
+        (worst (parse-duration worst "--worst")))
+    (unless (<= best likely worst)
+      (refuse "an estimate has best ≤ likely ≤ worst, not ~a, ~a and ~a"
+              (format-duration best) (format-duration likely) (format-duration worst)))
+    (check-names like "--like")
+    (when (string= (stage record) "done")
+      (fail-step "the loop ~a is done; an estimate comes before the work" (record-name record)))
+    (let ((estimate (format nil "~a ~a ~a"
+                            (format-duration best) (format-duration likely) (format-duration worst))))
+      (setf (field record "estimate") estimate)
+      (when like
+        (setf (field record "like") (format nil "~{~a~^ ~}" like)))
+      (add-tags record tag)
+      (add-log record (format nil "estimated ~a at ~a~@[, like ~{~a~^ ~}~]"
+                              estimate (stage record) like))
+      (save-record record)
+      (tell-tracker record "estimate" "estimate" (estimate-object best likely worst (stage record)))
+      (format t "~&Estimated ~a: ~a.~%" (record-name record) estimate)
+      (print-next record))))
+
+(defparameter +cost-fields+
+  '(("tokens-in" "tokens_in" "--tokens-in") ("tokens-out" "tokens_out" "--tokens-out")
+    ("usd" "usd" "--usd") ("agent-minutes" "agent_minutes" "--minutes"))
+  "What cost records: the field, its member in the actuals, and its option.")
+
+(defun parse-amount (text option)
+  "The non-negative number TEXT, given as OPTION, as an exact rational:
+a whole number, or for --usd a decimal such as 0.25."
+  (let ((parts (and text (cl-ppcre:register-groups-bind (whole fraction)
+                             ("^([0-9]+)(?:\\.([0-9]+))?$" text)
+                           (list whole fraction)))))
+    (unless (and parts (or (null (second parts)) (string= option "--usd")))
+      (refuse "~a takes ~:[a whole number~;an amount such as 0.25~], not ~s"
+              option (string= option "--usd") text))
+    (destructuring-bind (whole fraction) parts
+      (+ (parse-integer whole)
+         (if fraction (/ (parse-integer fraction) (expt 10 (length fraction))) 0)))))
+
+(defun field-amount (record key)
+  "The field KEY of RECORD as a number, or NIL."
+  (let ((value (field record key)))
+    (and value (parse-amount value (if (string= key "usd") "--usd" key)))))
+
+(defun format-amount (number)
+  "NUMBER as a field writes it: a whole number, or a decimal to six places."
+  (if (integerp number)
+      (princ-to-string number)
+      (string-right-trim "0" (format nil "~,6f" number))))
+
+(defun cost-object (record)
+  (apply #'jobj (loop for (key member) in +cost-fields+
+                      for amount = (field-amount record key)
+                      append (list member (if amount (json-amount amount) :null)))))
+
+(defun json-amount (number)
+  "NUMBER for JSON: a whole number as it is, a fraction to four decimals."
+  (if (integerp number) number (/ (round (* number 10000)) 10000.0d0)))
+
+(defun cost-loop (record &key tokens-in tokens-out usd minutes)
+  "tun loop cost: add what the agent's harness reports to RECORD's totals."
+  (let ((given (loop for (key nil option) in +cost-fields+
+                     for value in (list tokens-in tokens-out usd minutes)
+                     when value collect (list key (parse-amount value option) option))))
+    (unless given
+      (refuse "tun loop cost needs --tokens-in, --tokens-out, --usd or --minutes"))
+    (loop for (key amount) in given
+          do (setf (field record key)
+                   (format-amount (+ amount (or (field-amount record key) 0)))))
+    (add-log record (format nil "cost: ~{~{+~a ~a~}~^, ~}"
+                            (loop for (nil amount option) in given
+                                  collect (list (format-amount amount) (subseq option 2)))))
+    (save-record record)
+    (tell-tracker record "cost" "cost" (cost-object record))
+    (format t "~&The loop ~a's cost so far: ~{~{~a ~a~}~^, ~}.~%" (record-name record)
+            (loop for (key nil option) in +cost-fields+
+                  for amount = (field-amount record key)
+                  when amount collect (list (format-amount amount) (subseq option 2))))
+    (print-next record)))
+
+(defun log-line-time (line)
+  "The universal time of a log LINE's `- YYYY-MM-DD HH:MM`, read as local time."
+  (cl-ppcre:register-groups-bind ((#'parse-integer year month day hour minute))
+      ("^- ([0-9]{4})-([0-9]{2})-([0-9]{2}) ([0-9]{2}):([0-9]{2})  " line)
+    (encode-universal-time 0 minute hour day month year)))
+
+(defun log-line-text (line)
+  "A log LINE without its `- ` and its time."
+  (subseq line (min (length line) 20)))
+
+(defun minutes-between (from to)
+  (round (- to from) 60))
+
+(defun loop-actuals (record &optional (now (get-universal-time)))
+  "What RECORD's loop took (spec/loop.md 6.2), from its log and fields; for a
+loop that is not done, up to NOW."
+  (let ((started nil) (ended nil) (asked '())
+        (waiting-person 0) (waiting-reviewer 0) (person-minutes nil)
+        (rounds 0) (failed 0) (changes (list :a 0 :b 0 :c 0))
+        (interventions 0) (estimates '()))
+    (dolist (line (log-lines record))
+      (let ((time (log-line-time line))
+            (text (log-line-text line)))
+        (when time
+          (unless started (setf started time))
+          (cl-ppcre:register-groups-bind (gate whom) ("^gate ([ABC]) asked of (the person|a reviewer)" text)
+            (setf (getf asked (intern gate :keyword)) (cons time (string= whom "the person"))))
+          (cl-ppcre:register-groups-bind (gate decision by minutes)
+              ("^gate ([ABC]): (approve|changes) \\(([^)]*)\\)(?: \\[([0-9]+) min\\])?" text)
+            (let ((open (getf asked (intern gate :keyword)))
+                  (person (not (reviewer-p by))))
+              (when open
+                (if person
+                    (incf waiting-person (minutes-between (car open) time))
+                    (incf waiting-reviewer (minutes-between (car open) time)))
+                (remf asked (intern gate :keyword)))
+              (when (string= decision "changes")
+                (incf (getf changes (intern gate :keyword))))
+              (when person
+                (incf interventions)
+                (when minutes
+                  (setf person-minutes (+ (or person-minutes 0) (parse-integer minutes)))))))
+          (cl-ppcre:register-groups-bind (outcome) ("^verify [0-9]+: (passed|failed)" text)
+            (incf rounds)
+            (when (string= outcome "failed") (incf failed)))
+          (when (eql 0 (search "resumed (" text))
+            (incf interventions))
+          (cl-ppcre:register-groups-bind (best likely worst at)
+              ("^estimated (\\S+) (\\S+) (\\S+) at ([a-z-]+)" text)
+            (push (estimate-object (parse-duration best "estimate") (parse-duration likely "estimate")
+                                   (parse-duration worst "estimate") at)
+                  estimates))
+          (when (eql 0 (search "finished at " text))
+            (setf ended time)))))
+    (let ((end (or ended now)))
+      ;; A gate still open waits, up to now, for whoever it was asked of.
+      (unless ended
+        (loop for (nil (time . person)) on asked by #'cddr
+              do (if person
+                     (incf waiting-person (minutes-between time end))
+                     (incf waiting-reviewer (minutes-between time end)))))
+      (let* ((total (if started (minutes-between started end) 0))
+             (first-estimate (car (last estimates)))
+             (drafted (field record "drafted")))
+        (jobj "loop" (record-name record) "title" (record-title record)
+              "repository" (if (tun-repository-p (record-top record))
+                               "tun"
+                               (car (last (pathname-directory (record-top record)))))
+              "mode" (field record "mode") "stage" (stage record)
+              "item" (or (field record "item") :null)
+              "tags" (jarr (field-words record "tags")) "like" (jarr (field-words record "like"))
+              "started" (if started (universal-time-minute started) :null)
+              "ended" (if ended (universal-time-minute ended) :null)
+              "minutes" (jobj "total" total "waiting_person" waiting-person
+                              "waiting_reviewer" waiting-reviewer
+                              "working" (- total waiting-person waiting-reviewer)
+                              "drafted" (if drafted (parse-duration drafted "drafted") :null)
+                              "person_at_gates" (or person-minutes :null)
+                              "agent" (let ((agent (field-amount record "agent-minutes")))
+                                        (if agent (json-amount agent) :null)))
+              "estimate" (or first-estimate :null)
+              "latest_estimate" (or (first estimates) :null)
+              "within_estimate" (if (and ended first-estimate)
+                                    (json-bool (<= (jget first-estimate "best") total
+                                                   (jget first-estimate "worst")))
+                                    :null)
+              "ratio" (if first-estimate
+                          (/ (round (* 100 total) (jget first-estimate "likely")) 100.0d0)
+                          :null)
+              "verify" (jobj "rounds" rounds "failed" failed)
+              "changes" (jobj "A" (getf changes :a) "B" (getf changes :b) "C" (getf changes :c))
+              "interventions" interventions
+              "cost" (cost-object record))))))
+
+(defun universal-time-minute (time)
+  "TIME as `YYYY-MM-DD HH:MM`, local, as the log writes it."
+  (multiple-value-bind (second minute hour day month year) (decode-universal-time time)
+    (declare (ignore second))
+    (format nil "~d-~2,'0d-~2,'0d ~2,'0d:~2,'0d" year month day hour minute)))
+
+(defun actuals-section-text (text actuals)
+  "TEXT, a record's, with its section Actuals set to ACTUALS, before Log."
+  (let* ((lines (text-lines text))
+         (start (position "## Actuals" lines :test #'string=))
+         (lines (if start
+                    (let ((end (position-if (lambda (line) (eql 0 (search "## " line)))
+                                            lines :start (1+ start))))
+                      (append (subseq lines 0 start) (and end (nthcdr end lines))))
+                    lines))
+         (log (or (position "## Log" lines :test #'string=) (length lines))))
+    (lines-text (append (subseq lines 0 log)
+                        (list "## Actuals" "" "```json" (to-json-string actuals) "```" "")
+                        (nthcdr log lines)))))
+
+(defun print-actuals (actuals)
+  "One line of `tun loop actuals`: what a loop took, beside its estimate."
+  (let ((minutes (jget actuals "minutes"))
+        (estimate (jget actuals "estimate"))
+        (usd (jget (jget actuals "cost") "usd")))
+    (format t "~&~24a ~8a ~7@a, ~7@a for a person~:[~*~;, estimate ~a~]~
+               ~:[~*~;, ratio ~,2f~], ~d by a person~:[~*~;, $~,2f~]~%"
+            (jget actuals "loop") (jget actuals "stage")
+            (format-duration (jget minutes "total")) (format-duration (jget minutes "waiting_person"))
+            (not (json-null-p estimate))
+            (and (not (json-null-p estimate)) (format-duration (jget estimate "likely")))
+            (not (json-null-p (jget actuals "ratio"))) (jget actuals "ratio")
+            (jget actuals "interventions")
+            (not (json-null-p usd)) usd)))
+
+(defun actuals-command (top name &key json)
+  "tun loop actuals: what the loop NAME took, or every loop at TOP, oldest first."
+  (if name
+      (let ((actuals (loop-actuals (read-record top name))))
+        (if json (format t "~a~%" (to-json-string actuals)) (print-actuals actuals)))
+      (let ((all (sort (mapcar (lambda (name) (loop-actuals (read-record top name))) (record-names top))
+                       #'string<
+                       :key (lambda (actuals)
+                              (let ((started (jget actuals "started")))
+                                (if (json-null-p started) "" started))))))
+        (if json
+            (format t "~a~%" (to-json-string (jarr all)))
+            (mapc #'print-actuals all)))))
+
+;;; ------------------------------------------------------------------
 ;;; start, status, log, resume and finish
 
-(defun start-loop (top name &key title mode client after item)
+(defun start-loop (top name &key title mode client after item tag drafted)
   "tun loop start: write the record of a new loop NAME in TOP."
   (unless (and (stringp name) (cl-ppcre:scan "^[a-z][a-z0-9-]{0,59}$" name))
     (refuse "a loop's name matches [a-z][a-z0-9-]*, not ~s" name))
@@ -508,6 +785,9 @@ in a row from a reviewer."
       (client-name client))
     (when after
       (read-record top after))
+    (check-names tag "--tag")
+    (when drafted
+      (parse-duration drafted "--drafted"))
     (when (probe-file (merge-pathnames (format nil "loops/~a.md" name) top))
       (refuse "the loop ~a exists already" name))
     (let ((record (make-record top name
@@ -519,6 +799,9 @@ in a row from a reviewer."
                                        client (and client (string-right-trim "/" (namestring client)))
                                        (and client (or (head-commit client) "none"))
                                        after (and item (string-trim " " item))))))
+      (add-tags record tag)
+      (when drafted
+        (setf (field record "drafted") (format-duration (parse-duration drafted "--drafted"))))
       (add-log record (format nil "started, ~a" mode))
       (save-record record)
       (let ((output (tell-tracker record "start")))
@@ -533,7 +816,8 @@ in a row from a reviewer."
   (let* ((stage (stage record))
          (gate (find stage +gates+ :key #'third :test #'string=))
          (decider (and gate (gate-decider record (first gate))))
-         (log (last (log-lines record) 5)))
+         (log (last (log-lines record) 5))
+         (actuals (loop-actuals record)))
     (if json
         (format t "~a~%" (to-json-string
                           (jobj "name" (record-name record) "title" (record-title record)
@@ -543,11 +827,14 @@ in a row from a reviewer."
                                 "waiting_for" (if decider (string-downcase decider) :null)
                                 "preview" (or (preview-link record) :null)
                                 "next" (next-step record)
-                                "log" (jarr (mapcar (lambda (line) (subseq line 2)) log)))))
+                                "log" (jarr (mapcar (lambda (line) (subseq line 2)) log))
+                                "actuals" actuals)))
         (progn
-          (format t "~&~a: ~a~%  stage ~a, ~a~@[, item ~a~]~@[, preview ~a~]~%~%~{  ~a~%~}"
+          (format t "~&~a: ~a~%  stage ~a, ~a~@[, item ~a~]~@[, preview ~a~]~%  ~
+                     ~:[no estimate~;~:*estimate ~a~], ~a so far~%~%~{  ~a~%~}"
                   (record-name record) (record-title record) stage (field record "mode")
-                  (field record "item") (preview-link record)
+                  (field record "item") (preview-link record) (field record "estimate")
+                  (format-duration (jget (jget actuals "minutes") "total"))
                   (mapcar (lambda (line) (subseq line 2)) log))
           (print-next record)))))
 
@@ -597,7 +884,8 @@ in a row from a reviewer."
     (save-record record)
     (tell-tracker record "finish"
                   "commits" (jarr (loop for (repository revision) in commits
-                                        collect (jobj "repository" repository "revision" revision)))))
+                                        collect (jobj "repository" repository "revision" revision)))
+                  "actuals" (loop-actuals record)))
   (format t "~&The loop ~a is done.~%" (record-name record))
   (print-next record))
 
@@ -910,16 +1198,17 @@ its directory."
             (write-text (merge-pathnames "link" packet) (format nil "~a~%" link))))))
     packet))
 
-(defun record-decision (record gate decision by why &optional reasons)
-  "Record DECISION at GATE by BY, with WHY and a reviewer's REASONS, and move
-RECORD's loop on."
+(defun record-decision (record gate decision by why &optional reasons minutes)
+  "Record DECISION at GATE by BY, with WHY, a reviewer's REASONS and the
+person's MINUTES, and move RECORD's loop on."
   (destructuring-bind (from waiting approved changed what) (gate-stages gate)
     (declare (ignore from waiting what))
     (setf (field record "stage") (if (string= decision "approve") approved changed))
-    (add-log record (format nil "gate ~a: ~a (~a)~@[: ~a~]" gate decision by why) reasons)
+    (add-log record (format nil "gate ~a: ~a (~a)~@[ [~d min]~]~@[: ~a~]" gate decision by minutes why)
+             reasons)
     (save-record record)
     (tell-tracker record "decide" "gate" gate "decision" decision "by" by
-                  "why" (or why :null) "reasons" (or reasons :null))))
+                  "why" (or why :null) "reasons" (or reasons :null) "minutes" (or minutes :null))))
 
 (defun reviewer-verdict (answer)
   "The verdict ANSWER ends on, \"approve\" or \"changes\", and the reasons before it."
@@ -1007,7 +1296,7 @@ input, and record its verdict."
             (t (print-reviewer-request gate packet)))
       (print-next record))))
 
-(defun decide-loop (record gate decision &key by why)
+(defun decide-loop (record gate decision &key by why minutes)
   "tun loop decide: record the decision at the gate the loop waits at."
   (destructuring-bind (from waiting . rest) (gate-stages gate)
     (declare (ignore from rest))
@@ -1017,10 +1306,15 @@ input, and record its verdict."
     (check-by by)
     (when (and (string= decision "changes") (null why))
       (refuse "a request for changes needs --why, what is to change"))
+    (when (and minutes (reviewer-p by))
+      (refuse "--minutes is the person's time at a gate, not a reviewer's"))
+    (when minutes
+      (parse-amount minutes "--minutes"))
     (when (and (reviewer-p by) (eq :person (gate-decider record gate)))
       (refuse "gate ~a of the loop ~a is the person's to decide, not a reviewer's"
               gate (record-name record)))
-    (record-decision record gate decision by why)
+    (record-decision record gate decision by why nil
+                     (and minutes (parse-amount minutes "--minutes")))
     (format t "~&Gate ~a: ~a, by ~a.~%" gate decision by)
     (print-next record)))
 
@@ -1028,7 +1322,8 @@ input, and record its verdict."
 ;;; tun loop
 
 (defun loop-command (arguments &key dir title mode client after item by why actor scenario path json
-                                     onto client-onto)
+                                     onto client-onto tag drafted best likely worst like
+                                     tokens-in tokens-out usd minutes)
   "tun loop (spec/loop.md 6)."
   (let ((top (loop-top (absolute-directory (or dir "."))))
         (subcommand (first arguments))
@@ -1038,13 +1333,13 @@ input, and record its verdict."
                (refuse "tun loop ~a takes at most one NAME, not ~{~a~^ ~}" subcommand arguments))
              (find-record top (first arguments))))
       (cond ((null subcommand)
-             (refuse "tun loop needs a command: start, status, gate, decide, verify, show, ~
-                      resume, rebase, log or finish"))
+             (refuse "tun loop needs a command: start, status, estimate, cost, actuals, gate, ~
+                      decide, verify, show, resume, rebase, log or finish"))
             ((string= subcommand "start")
              (unless (= 1 (length arguments))
                (refuse "tun loop start takes one NAME"))
              (start-loop top (first arguments) :title title :mode mode :client client :after after
-                                              :item item))
+                                              :item item :tag tag :drafted drafted))
             ((and (string= subcommand "status") (null arguments)
                   (notany (lambda (name) (string/= "done" (stage (read-record top name))))
                           (record-names top)))
@@ -1055,6 +1350,15 @@ input, and record its verdict."
                             ($TUN_SOURCE/docs/loop.md).~%"
                          (namestring top) (record-names top) (tun-command))))
             ((string= subcommand "status") (loop-status (named-record) :json json))
+            ((string= subcommand "estimate")
+             (estimate-loop (named-record) :best best :likely likely :worst worst :like like :tag tag))
+            ((string= subcommand "cost")
+             (cost-loop (named-record) :tokens-in tokens-in :tokens-out tokens-out :usd usd
+                                       :minutes minutes))
+            ((string= subcommand "actuals")
+             (when (rest arguments)
+               (refuse "tun loop actuals takes at most one NAME"))
+             (actuals-command top (first arguments) :json json))
             ((string= subcommand "verify") (verify-loop (named-record)))
             ((string= subcommand "show")
              (show-loop (named-record) :paths path :actor actor :scenario scenario))
@@ -1079,5 +1383,5 @@ input, and record its verdict."
              (let ((gate (string-upcase (pop arguments)))
                    (decision (pop arguments)))
                (gate-stages gate)
-               (decide-loop (named-record) gate decision :by by :why why)))
+               (decide-loop (named-record) gate decision :by by :why why :minutes minutes)))
             (t (refuse "unknown tun loop command ~a" subcommand))))))

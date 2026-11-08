@@ -755,3 +755,166 @@ it, and no bin/test at its own top."
                    (is (search "waits for the person" (expect 0 a "gate" "C")))
                    (is (equal "brief" (stage b "board")) "apps/b's loop is untouched"))
               (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))))
+
+;;; Estimates, cost and actuals (spec/loop.md 6.2)
+
+(test a-duration-is-read-and-written-back
+  (is (= 90 (tun.cli:parse-duration "1h30m" "--best")))
+  (is (= 45 (tun.cli:parse-duration "45m" "--best")))
+  (is (= 1440 (tun.cli:parse-duration "1d" "--best")))
+  (is (equal "1h30m" (tun.cli:format-duration 90)))
+  (is (equal "2h" (tun.cli:format-duration 120)))
+  (is (equal "45m" (tun.cli:format-duration 45)))
+  (dolist (text '("90" "1.5h" "0m" "" "1h 30m" "m"))
+    (signals tun.cli:usage-error (tun.cli:parse-duration text "--best"))))
+
+(defparameter *known-log*
+  '("2026-11-08 10:00  started, reviewed"
+    "2026-11-08 10:05  estimated 30m 1h 2h at brief, like ferdig/i18n"
+    "2026-11-08 10:10  gate A asked of a reviewer"
+    "2026-11-08 10:20  gate A: changes (reviewer): one more criterion"
+    "2026-11-08 10:30  gate A asked of a reviewer"
+    "2026-11-08 10:40  gate A: approve (jonas) [3 min]: «ja»"
+    "2026-11-08 10:50  verify 1: failed test"
+    "2026-11-08 11:00  verify 2: passed build, test"
+    "2026-11-08 11:05  estimated 1h 2h 3h at verified"
+    "2026-11-08 11:10  gate B asked of the person"
+    "2026-11-08 11:40  gate B: approve (jonas): «fint»"
+    "2026-11-08 12:00  finished at demo 1234567")
+  "A done loop's log: 2 h in all, 10 min waiting for a reviewer, 40 for the
+person (a reviewer's gate the person answered counts as theirs).")
+
+(test a-loops-actuals-come-from-its-log-and-fields
+  (let* ((text (format nil "# Kort~%~%- loop: paging~%- mode: reviewed~%- stage: done~%- base: none~%~
+                            - tags: kind:ui~%- like: ferdig/i18n~%- usd: 0.75~%- tokens-in: 1500~%~
+                            ~%## Brief~%~%## Log~%~%~{- ~a~%~}"
+                       *known-log*))
+         (actuals (tun.cli:loop-actuals (tun.cli:make-record #p"/tmp/demo/" "paging" text)))
+         (minutes (jget actuals "minutes")))
+    (is (equal "demo" (jget actuals "repository")))
+    (is (equal "2026-11-08 10:00" (jget actuals "started")))
+    (is (equal "2026-11-08 12:00" (jget actuals "ended")))
+    (is (= 120 (jget minutes "total")))
+    (is (= 10 (jget minutes "waiting_reviewer")))
+    (is (= 40 (jget minutes "waiting_person")))
+    (is (= 70 (jget minutes "working")))
+    (is (= 3 (jget minutes "person_at_gates")))
+    (is (json-null-p (jget minutes "drafted")))
+    (let ((first (jget actuals "estimate")) (latest (jget actuals "latest_estimate")))
+      (is (equal '(30 60 120 "brief") (mapcar (lambda (key) (jget first key)) '("best" "likely" "worst" "at"))))
+      (is (equal '(60 120 180 "verified") (mapcar (lambda (key) (jget latest key)) '("best" "likely" "worst" "at")))))
+    (is (eq t (jget actuals "within_estimate")) "120 minutes is the first estimate's worst")
+    (is (= 2 (jget actuals "ratio")))
+    (is (= 2 (jget (jget actuals "verify") "rounds")))
+    (is (= 1 (jget (jget actuals "verify") "failed")))
+    (is (= 1 (jget (jget actuals "changes") "A")))
+    (is (= 0 (jget (jget actuals "changes") "B")))
+    (is (= 2 (jget actuals "interventions")) "two gates the person decided")
+    (is (= 0.75d0 (jget (jget actuals "cost") "usd")))
+    (is (= 1500 (jget (jget actuals "cost") "tokens_in")))
+    (is (json-null-p (jget (jget actuals "cost") "tokens_out")))
+    (is (equalp #("kind:ui") (jget actuals "tags")))))
+
+(test an-older-record-has-actuals-with-nulls-for-what-it-lacks
+  (let* ((file (merge-pathnames "loops/outbound-methods.md" (asdf:system-source-directory "tun")))
+         (actuals (tun.cli:loop-actuals
+                   (tun.cli:make-record (asdf:system-source-directory "tun") "outbound-methods"
+                                        (uiop:read-file-string file)))))
+    (is (equal "tun" (jget actuals "repository")))
+    (is (plusp (jget (jget actuals "minutes") "total")))
+    (is (plusp (jget actuals "interventions")))
+    (dolist (key '("estimate" "latest_estimate" "within_estimate" "ratio"))
+      (is (json-null-p (jget actuals key)) "~a is null" key))
+    (is (json-null-p (jget (jget actuals "cost") "usd")))))
+
+(test a-loop-records-its-estimate-cost-and-actuals
+  (let* ((root (cli-scratch-directory))
+         (directory (merge-pathnames "repository/" root))
+         (dir (namestring directory))
+         (calls (merge-pathnames "calls" root))
+         (tracker (write-file-in root "tracker.sh"
+                                 (format nil "#!/bin/sh~%{ printf '%s %s ' \"$1\" \"$2\"; cat; echo; } >> '~a'~%"
+                                         (namestring calls))
+                                 :program t))
+         (file (merge-pathnames "loops/paging.md" directory)))
+    (labels ((tun (&rest arguments)
+               (apply #'run-tun "loop" (append arguments (list "--dir" dir))))
+             (expect (wanted &rest arguments)
+               (multiple-value-bind (status output) (apply #'tun arguments)
+                 (is (= wanted status) "tun loop ~{~a~^ ~}: ~a" arguments output)
+                 output))
+             (record () (uiop:read-file-string file)))
+      (with-environment-variable ("TUN_WORKTREE" (namestring (asdf:system-source-directory "tun")))
+        (with-environment-variable ("TUN_TRACKER" (namestring tracker))
+          (unwind-protect
+               (progn
+                 (demo-repository directory)
+                 (expect 2 "start" "paging" "--title" "x" "--drafted" "1.5h")
+                 (expect 0 "start" "paging" "--title" "Kort bytter kolonne" "--tag" "kind:ui"
+                         "--drafted" "40m")
+                 (is (search "estimate it against earlier loops" (expect 0 "status")))
+                 (expect 2 "estimate" "--best" "1h" "--likely" "30m" "--worst" "2h")
+                 (expect 2 "estimate" "--best" "30m" "--likely" "1h")
+                 (expect 2 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h" "--like" "a,b")
+                 (expect 0 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h"
+                         "--like" "ferdig/i18n" "--like" "tun/attachments" "--tag" "module:board"
+                         "--tag" "kind:ui")
+                 (is (equal "30m 1h 3h" (tun.cli:text-field (record) "estimate")))
+                 (is (equal "ferdig/i18n tun/attachments" (tun.cli:text-field (record) "like")))
+                 (is (equal "kind:ui module:board" (tun.cli:text-field (record) "tags")) "each tag once")
+                 (is (equal "40m" (tun.cli:text-field (record) "drafted")))
+                 (is (search "estimated 30m 1h 3h at brief, like ferdig/i18n tun/attachments" (record)))
+                 (expect 2 "cost")
+                 (expect 2 "cost" "--tokens-in" "1.5")
+                 (expect 0 "cost" "--tokens-in" "1000" "--usd" "0.25")
+                 (expect 0 "cost" "--tokens-in" "500" "--tokens-out" "20" "--usd" "0.5" "--minutes" "12")
+                 (is (equal '("1500" "20" "0.75" "12")
+                            (mapcar (lambda (key) (tun.cli:text-field (record) key))
+                                    '("tokens-in" "tokens-out" "usd" "agent-minutes"))))
+                 (with-criteria directory "paging")
+                 (expect 0 "gate" "A")
+                 (expect 2 "decide" "A" "approve" "--by" "jonas" "--minutes" "x")
+                 (expect 0 "decide" "A" "approve" "--by" "jonas" "--why" "«ja»" "--minutes" "3")
+                 (is (search "gate A: approve (jonas) [3 min]: «ja»" (record)))
+                 (expect 0 "verify")
+                 (as-shown directory "paging")
+                 (expect 0 "gate" "B")
+                 (is (search "for the person" (expect 0 "status")) "who decides is read as before")
+                 (expect 0 "decide" "B" "approve" "--by" "jonas")
+                 (git-in directory "add" "--all")
+                 (git-in directory "commit" "--quiet" "-m" "the change")
+                 (expect 0 "finish")
+                 (expect 1 "estimate" "--best" "30m" "--likely" "1h" "--worst" "3h")
+                 (let* ((text (record))
+                        (json (string-trim '(#\Newline) (expect 0 "actuals" "paging" "--json")))
+                        (actuals (parse-json json))
+                        (status (parse-json (expect 0 "status" "paging" "--json"))))
+                   (is (< (search "## Actuals" text) (search "## Log" text)) "Actuals before Log")
+                   (is (search (format nil "```json~%~a~%```" json) text)
+                       "the record holds what actuals gives")
+                   (is (equal (to-json-string actuals) (to-json-string (jget status "actuals"))))
+                   (is (= 60 (jget (jget actuals "estimate") "likely")))
+                   (is (= 3 (jget (jget actuals "minutes") "person_at_gates")))
+                   (is (= 40 (jget (jget actuals "minutes") "drafted")))
+                   (is (= 12 (jget (jget actuals "minutes") "agent")))
+                   (is (= 2 (jget actuals "interventions")))
+                   (is (null (jget actuals "within_estimate")) "a loop quicker than its best is not")
+                   (expect 0 "log" "deployed nothing" "paging")
+                   (let ((text (record)))
+                     (is (> (search "deployed nothing" text) (search "## Log" text)) "a later line goes to Log")
+                     (is (= 1 (count-matches "(?m)^## Actuals$" text)) "one Actuals section")))
+                 (expect 0 "start" "second" "--title" "Neste")
+                 (let ((all (parse-json (expect 0 "actuals" "--json"))))
+                   (is (equal '("paging" "second") (map 'list (lambda (a) (jget a "loop")) all))
+                       "every loop, oldest first")
+                   (is (json-null-p (jget (aref all 1) "estimate"))))
+                 (is (search "paging" (expect 0 "actuals")))
+                 (let ((events (tracker-calls calls)))
+                   (flet ((member-of (event key)
+                            (jget (third (find event events :key #'first :test #'string=)) key)))
+                     (is (= 60 (jget (member-of "estimate" "estimate") "likely")))
+                     (is (= 1000 (jget (member-of "cost" "cost") "tokens_in")) "the totals so far")
+                     (is (= 3 (member-of "decide" "minutes")))
+                     (is (= 2 (jget (member-of "finish" "actuals") "interventions"))))))
+            (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore)))))))
+
