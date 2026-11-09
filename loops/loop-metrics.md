@@ -2,14 +2,14 @@
 
 - loop: loop-metrics
 - mode: reviewed
-- stage: build
+- stage: ship
 - base: 932792b188947434b781cacc93930e68949b179c
 - item: sak_817by05z6pvdzsmt
 - estimate: 2h 4h 8h
 - like: tun/client-subdir tun/caller-kind tun/outbound-methods
 - tags: kind:cli module:loop
-- verified: 362f3edb7461f6ce6decf729f8b1ddb2d4b6f92c
-- shown: 362f3edb7461f6ce6decf729f8b1ddb2d4b6f92c
+- verified: 90c84a6680eac2ec2871d76647dc533c5614b1b4
+- shown: 90c84a6680eac2ec2871d76647dc533c5614b1b4
 
 ## Brief
 
@@ -136,3 +136,31 @@ orchestrator and the dashboard need the actuals in a form they can read.
   
   **A question for Jonas, not blocking**
   Time a loop sits `stuck` waiting for a person's `resume` counts as `working`, because `waiting_person` covers gates only. The brief's measure is "how often, and for how long, a person has to step in", so this understates it. The spec approved at gate A defines it this way, and actuals are recomputed from the log, so it can change later without losing data.
+- 2026-11-09 19:46  verify 4: passed build, test, check
+- 2026-11-09 19:52  bin/test-cli passed on afdf646: tun new, build, test, image, restore, serve, preview, check, loop (with estimate, cost and Actuals), tun add and tun update
+- 2026-11-09 19:52  shown (/)
+- 2026-11-09 19:53  gate B asked of a reviewer
+- 2026-11-09 19:55  gate B: approve (reviewer)
+  **Gate B review of loop-metrics: approve.** All five requested changes from the first review are addressed, and I found nothing new that blocks.
+  
+  I reviewed by reading the code and comparing git trees. `nix` needs approval this session can't get, so I did not run `bin/tun` or the suites. Behaviour below is traced from the source.
+  
+  **The first review's changes**
+  1. **Criterion 9:** the log records `bin/test-cli` passing on afdf646, including estimate, cost and Actuals. That line is the builder's own, not a `verify.txt` step, but it follows earlier practice and names the commit under review.
+  2. **Free-text log lines:** the regex in `loop-actuals` now needs three duration-shaped tokens, and a `handler-case` covers ones like `0m`. `*known-log*` includes `estimated two more hours at build`.
+  3. **`format-amount`:** a value that rounds to a whole number now takes the integer path, and the `.` is trimmed. `an-amount-is-written-so-it-reads-back` covers both failing inputs from the first review.
+  4. **Resumes:** the known log has a `resumed (jonas)` line and expects 3 interventions. Its format matches what `resume` writes (`src/cli/loop.lisp:870`).
+  5. **Criterion 2:** the wording now says exit 1 for a done loop, and the tests add likely > worst, a REF with a space and a bad TAG.
+  
+  **The rest**
+  - **Criteria:** each of 1–9 has a test that would fail without the change, and 10 is met in `spec/loop.md` §6.2, `docs/loop.md` and `tun --help`.
+  - **Log parsing:** the patterns the actuals read match the lines the code writes for gates, verify, finish and resume. All 42 done records have a `finished at` line, so none reads as open.
+  - **Tree:** the verified tree `90c84a6` differs from afdf646 only under `loops/`, which the loop's tree leaves out by design, so the shown code is HEAD.
+  - **Verification:** build, test and check all passed in round 4, and no browser check in `checks/` records a failure.
+  - **Screenshots:** the report lists only the showcase home page at both widths, and I didn't open them. That is expected for a CLI-only change.
+  - **Code:** it follows `AGENTS.md`, its comments explain why rather than narrate history, and the core version is raised in both places.
+  
+  **Not blocking**
+  - A `tun loop log` line that mimics a generated one, such as `finished at the office`, can skew the numbers until the real line follows. It can no longer make a record unreadable.
+  - The first review's question for Jonas is still open: time a loop sits `stuck` waiting for a `resume` counts as `working`. It can change later without losing data, because actuals are recomputed from the log.
+- 2026-11-09 19:56  cost: not reported; this session's harness gives the agent no token or cost figures (the factory's claude -p runs will)
