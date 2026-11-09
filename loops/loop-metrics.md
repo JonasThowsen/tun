@@ -2,7 +2,7 @@
 
 - loop: loop-metrics
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 932792b188947434b781cacc93930e68949b179c
 - item: sak_817by05z6pvdzsmt
 - estimate: 2h 4h 8h
@@ -92,6 +92,12 @@ orchestrator and the dashboard need the actuals in a form they can read.
   tun/outbound-methods, tun/caller-kind.
 - Core version: the next free minor at merge (main is 2.15.0 at the start).
 
+## Actuals
+
+```json
+{"loop":"loop-metrics","title":"tun loop records estimates, cost and actuals","repository":"tun","mode":"reviewed","stage":"done","item":"sak_817by05z6pvdzsmt","tags":["kind:cli","module:loop"],"like":["tun/client-subdir","tun/caller-kind","tun/outbound-methods"],"started":"2026-11-08 15:51","ended":"2026-11-09 19:56","minutes":{"total":1685,"waiting_person":115,"waiting_reviewer":6,"working":1564,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":120,"likely":240,"worst":480,"at":"build"},"latest_estimate":{"best":120,"likely":240,"worst":480,"at":"build"},"within_estimate":false,"ratio":7.02,"verify":{"rounds":3,"failed":1},"changes":{"A":0,"B":1,"C":0},"interventions":1,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-08 15:51  started, reviewed
@@ -164,3 +170,4 @@ orchestrator and the dashboard need the actuals in a form they can read.
   - A `tun loop log` line that mimics a generated one, such as `finished at the office`, can skew the numbers until the real line follows. It can no longer make a record unreadable.
   - The first review's question for Jonas is still open: time a loop sits `stuck` waiting for a `resume` counts as `working`. It can change later without losing data, because actuals are recomputed from the log.
 - 2026-11-09 19:56  cost: not reported; this session's harness gives the agent no token or cost figures (the factory's claude -p runs will)
+- 2026-11-09 19:56  finished at tun 97b9046
