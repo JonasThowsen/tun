@@ -90,7 +90,7 @@ orchestrator and the dashboard need the actuals in a form they can read.
   gates of internal work). Its own estimate is recorded with the new
   command once built: best 2h, likely 4h, worst 8h, like tun/client-subdir,
   tun/outbound-methods, tun/caller-kind.
-- Core version: the next free minor at merge (main is 2.15.0 at the start).
+- Core version: the next free minor at merge: 2.17.0, since another loop took 2.16.0 meanwhile.
 
 ## Actuals
 
