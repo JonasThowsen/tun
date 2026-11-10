@@ -159,8 +159,8 @@ the person.
   yourself where your harness can start a separate session that does not
   share your context. Record the answer: `tun loop decide B changes --by
   reviewer --why "…"`.
-- Two *changes* in a row from a reviewer at one gate pass that gate to the
-  person. `tun loop gate` says when this happens.
+- Three *changes* in a row from a reviewer at one gate pass that gate to
+  the person. `tun loop gate` says when this happens.
 
 ## 10. With a tracker
 

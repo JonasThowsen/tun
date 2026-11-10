@@ -13,6 +13,10 @@
 (defparameter +verify-rounds+ 5
   "How many verify rounds may fail in a row before the loop stops and asks.")
 
+(defparameter +reviewer-changes+ 3
+  "How many answers of changes in a row from a reviewer at one gate pass that
+gate to the person (spec/loop.md 4).")
+
 (defparameter +gates+
   '(("A" "brief" "gate-a" "build" "brief" "the spec: the criteria and the contract's change")
     ("B" "shown" "gate-b" "ship" "build" "the preview: the change as it runs, its checks and its code")
@@ -431,15 +435,15 @@ not blank, at start."
 
 (defun gate-decider (record gate)
   "Who decides GATE of RECORD's loop, :person or :reviewer (spec/loop.md 4):
-the person in the hands-on mode, at C, and after two requests for changes
-in a row from a reviewer."
-  (let ((last-two (last (decisions record gate) 2)))
+the person in the hands-on mode, at C, and after +REVIEWER-CHANGES+ requests
+for changes in a row from a reviewer."
+  (let ((latest (last (decisions record gate) +reviewer-changes+)))
     (if (or (string= (field record "mode") "hands-on")
             (string= gate "C")
-            (and (= 2 (length last-two))
+            (and (= +reviewer-changes+ (length latest))
                  (every (lambda (decision)
                           (and (string= (first decision) "changes") (reviewer-p (second decision))))
-                        last-two)))
+                        latest)))
         :person
         :reviewer)))
 

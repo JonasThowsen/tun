@@ -3,7 +3,8 @@
 Status: v1, built 2026-10-24, core 1.13.0: the hands-on and reviewed
 modes; the tracker (§6.1), core 1.17.0; a client in a subdirectory of a
 larger repository (§6), 2026-11-04; estimates, cost and actuals (§6.2),
-2026-11-08. It is built
+2026-11-08; three answers of *changes* from a reviewer, not two, pass a
+gate to the person (§4), 2026-11-10. It is built
 on previews and checks (`preview.md`).
 
 ## 1. What it is
@@ -104,8 +105,9 @@ the Tun worktree until Tun is pushed.
   and records its verdict and reasons. Without it, `tun loop gate` prints
   how to start a reviewer in a fresh session, and the agent records the
   answer with `tun loop decide`.
-- Two answers of *changes* in a row at one gate from a reviewer pass that
-  gate to the person.
+- Three answers of *changes* in a row at one gate from a reviewer pass
+  that gate to the person. An approval or a person's answer between them
+  starts the count again.
 - Every gate decision is in the record: the gate, who decided, when, and
   why.
 
@@ -414,8 +416,8 @@ cheaper. The log already times each stage; these record the rest.
 
 - `tests/loop-tests.lisp`:
   - the record's fields are read, set and taken out;
-  - who decides each gate in each mode, including after two requests
-    for changes from a reviewer in a row;
+  - who decides each gate in each mode, including after two and after
+    three requests for changes from a reviewer in a row;
   - a reviewer's verdict is the last `VERDICT:` line;
   - `rebase` moves `base` and `client-base` to the checked-out commits or
     `--onto` and `--client-onto`, sends a loop past build back to it, tells
@@ -447,7 +449,8 @@ cheaper. The log already times each stage; these record the rest.
     before §6.2, with `null` for what it lacks; and the Actuals section
     of a done loop, before Log, holding the same;
   - a loop runs in a repository of its own from start to finish, with a
-    stand-in reviewer: changes at A back to the brief, five failed verify
+    stand-in reviewer: changes at A back to the brief, three of them in a
+    row passing A to the person, five failed verify
     rounds to `stuck`, `resume`, gate B on the shown tree, and gate C and
     `finish` refused until the shown tree is committed.
 - `bin/test-cli`: in a client made by `tun new`, a loop runs from start to

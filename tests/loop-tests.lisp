@@ -38,15 +38,26 @@
     (is (eq :person (decider "reviewed" "C")) "a deploy is the person's")
     (is (eq :person (decider "autonomous" "C")) "no target is marked for an autonomous deploy")
     (is (eq :reviewer (decider "reviewed" "A" "gate A: changes (reviewer): x")))
-    (is (eq :person (decider "reviewed" "A" "gate A: changes (reviewer): x"
-                             "gate A: changes (reviewer): y"))
-        "two requests for changes in a row")
-    (is (eq :reviewer (decider "reviewed" "B" "gate A: changes (reviewer): x"
+    (is (eq :reviewer (decider "reviewed" "A" "gate A: changes (reviewer): x"
                                "gate A: changes (reviewer): y"))
+        "two requests for changes in a row are still the reviewer's")
+    (is (eq :person (decider "reviewed" "A" "gate A: changes (reviewer): x"
+                             "gate A: changes (reviewer): y" "gate A: changes (reviewer): z"))
+        "three requests for changes in a row")
+    (is (eq :person (decider "autonomous" "B" "gate B: changes (reviewer): x"
+                             "gate B: changes (reviewer): y" "gate B: changes (reviewer): z"))
+        "in the autonomous mode too")
+    (is (eq :reviewer (decider "reviewed" "B" "gate A: changes (reviewer): x"
+                               "gate A: changes (reviewer): y" "gate A: changes (reviewer): z"))
         "at one gate")
     (is (eq :reviewer (decider "reviewed" "A" "gate A: changes (reviewer): x"
-                               "gate A: changes (reviewer): y" "gate A: changes (jonas): z"))
-        "the person's answer starts the count again")))
+                               "gate A: changes (reviewer): y" "gate A: changes (jonas): z"
+                               "gate A: changes (reviewer): w"))
+        "the person's answer starts the count again")
+    (is (eq :reviewer (decider "reviewed" "A" "gate A: changes (reviewer): x"
+                               "gate A: approve (reviewer): y" "gate A: changes (reviewer): z"
+                               "gate A: changes (reviewer): w"))
+        "an approval starts the count again")))
 
 (test a-reviewers-verdict-is-its-last-verdict-line
   (is (equal '("approve" "Fint.") (multiple-value-list (tun.cli:reviewer-verdict
@@ -136,10 +147,15 @@
                                                           (format nil "## Criteria~%~%1. Et kort.~%"))))
                  (is (search "runs at gate-a" (expect 1 "decide" "A" "approve" "--by" "jonas")))
                  (verdict "changes")
-                 (is (search "answered changes" (expect 0 "gate" "A")))
-                 (is (equal "brief" (stage)) "changes at A go back to the brief")
+                 (dotimes (round 3)
+                   (is (search "answered changes" (expect 0 "gate" "A")))
+                   (is (equal "brief" (stage)) "changes at A go back to the brief"))
                  (verdict "approve")
-                 (is (search "answered approve" (expect 0 "gate" "A")))
+                 (is (search "waits for the person" (expect 0 "gate" "A"))
+                     "after three requests for changes in a row from the reviewer")
+                 (is (equal "gate-a" (stage)) "the reviewer was not run")
+                 (is (search "the person's to decide" (expect 2 "decide" "A" "approve" "--by" "reviewer")))
+                 (expect 0 "decide" "A" "approve" "--by" "jonas" "--why" "«ja»")
                  (is (equal "build" (stage)))
                  (write-file-in directory "fail" "")
                  (dotimes (round 5)
@@ -174,7 +190,8 @@
                  (is (search "the loops done are paging" (expect 0 "status")))
                  (let ((log (uiop:read-file-string (merge-pathnames "loops/paging.md" directory))))
                    (dolist (line '("started, reviewed" "gate A: changes (reviewer)"
-                                   "  Kriteriene er oppfylt." "gate A: approve (reviewer)"
+                                   "  Kriteriene er oppfylt." "gate A asked of the person"
+                                   "gate A: approve (jonas): «ja»"
                                    "verify 5: failed test" "resumed (jonas): «prøv igjen»"
                                    "verify 6: passed test" "an agent's line"
                                    "gate B: approve (reviewer)" "gate C asked of the person"
