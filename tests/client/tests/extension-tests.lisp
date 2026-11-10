@@ -180,3 +180,53 @@ confirmed order, or the refusal of the confirmation."
         (is (search "Vi har fortsatt et tilbud til deg" (jget reminder "subject"))))
       (is (notany (lambda (message) (equal "påminnelse" (jget message "template")))
                   (messages-of answered))))))
+
+(test customers-update-changes-the-clients-own-fields-and-runs-its-rule
+  (with-client ()
+    (let ((id (customer "Kari" "kari@example.no" "kind" "privat")))
+      (flet ((update (revision &rest fields)
+               (call "customers_update" "employee:anna" "id" id "revision" revision
+                     "fields" (apply #'jobj fields))))
+        (is (string= "invalid_input" (nth-value 1 (update 1 "kind" "bedrift")))
+            "a business customer needs an org number, on update as on create")
+        (is (string= "invalid_input" (nth-value 1 (update 1 "kind" :null))) "kind is required")
+        (let ((changed (update 1 "org_number" "987654321" "kind" "bedrift" "name" "Kari AS")))
+          (is (string= "bedrift" (jget changed "kind")))
+          (is (string= "987654321" (jget changed "org_number")))
+          (is (string= "Kari AS" (jget changed "name")))
+          (is (= 2 (jget changed "revision"))))
+        (is (string= "invalid_input" (nth-value 1 (update 2 "org_number" :null)))
+            "the rule refuses clearing the org number of a business customer")
+        (is (string= "name, kind, org_number"
+                     (jget (find "customers_update"
+                                 (jget (call-ok "audit_list" "viewer:vera" "entity_type" "customer"
+                                                "entity_id" id)
+                                       "items")
+                                 :key (lambda (e) (list (jget e "tool") (jget e "outcome")))
+                                 :test (lambda (tool key) (equal (list tool "ok") key)))
+                           "reason"))
+            "the customer's fields first, then the client's, whatever the order sent")))))
+
+(test customers-update-lists-the-clients-fields-in-its-schema
+  (with-client ()
+    (let* ((tools (mapcar #'tun.core:tool-definition (tun.core:visible-operations *app*)))
+           (fields (jget (jget (jget (tool "customers_update" tools) "inputSchema") "properties")
+                         "fields"))
+           (properties (jget fields "properties")))
+      (is (equal '("name" "email" "phone" "notes" "kind" "org_number") (tun.core:jkeys properties)))
+      (is (equalp #("privat" "bedrift") (jget (jget properties "kind") "enum"))))))
+
+(test a-client-operation-changes-a-customer-through-customers-update
+  (with-client ()
+    (let ((id (customer "Ola" "ola@example.no" "kind" "privat")))
+      (is (string= "invalid_input"
+                   (nth-value 1 (call "customers_make_business" "employee:anna" "id" id
+                                      "org_number" "12ab")))
+          "the module's update runs the client's rule for the client's operation")
+      (let ((changed (call-ok "customers_make_business" "employee:anna" "id" id
+                              "org_number" "123456789")))
+        (is (string= "bedrift" (jget changed "kind")))
+        (is (string= "123456789" (jget changed "org_number")))
+        (is (= 2 (jget changed "revision")) "one update, through the module's operation"))
+      (is (string= "forbidden" (nth-value 1 (call "customers_make_business" "viewer:vera" "id" id
+                                                 "org_number" "123456789")))))))

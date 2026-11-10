@@ -3,12 +3,12 @@
 ASDF system `tun-customers`, package `tun.customers`; pinned by clients through
 `flake.nix` in this directory (tun-platform.md §2, §4).
 
-- **Owns:** `customer` (name, email, phone, notes, completed orders); `customers_create`, `customers_get`, `customers_list`.
+- **Owns:** `customer` (name, email, phone, notes, completed orders); `customers_create`, `customers_get`, `customers_list`, `customers_update`, `customers_set_consent`, `customers_erase`.
 - **Depends on:** none.
 - **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
-- **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`). Its exported symbols are its interface for
+- **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`); to `TUN`, the operations `customers-create`, `customers-get`, `customers-list`, `customers-update` and `customers-set-consent`, the accessors of `customer`'s name, email, phone, revision, completed orders, consent and erasure, and `marketing-allowed-p`. Its exported symbols are its interface for
   the modules that depend on it; what clients may use is what it publishes
   to `TUN`.
 - **Rollback:** its migrations only add tables and nullable columns, so the
@@ -57,12 +57,47 @@ from `completed_orders`. `registry_describe` marks such fields
 | `customers_create` | create | the customer's input fields, `marketing_consent`? | customer |
 | `customers_get` | read | `{"id"}` | customer |
 | `customers_list` | read | `{"query"?,"limit"?=20}` | `{"items","returned","has_more"}`, oldest first |
+| `customers_update` | update | `{"id","revision","fields"}` | customer (§2.1) |
 | `customers_set_consent` | update | `{"id","marketing_consent","source"}` | customer (§4) |
 | `customers_erase` | update, admin, confirm | `{"id"}` | customer (§5) |
 
 `customers_list` matches `query` as a case-insensitive substring of the
 name or the email, case folded beyond ASCII; lists follow core.md §2.4.
-There is no `customers_update`.
+
+#### 2.1 Changing a customer
+
+`customers_update {"id","revision","fields"}` changes the fields that
+`fields`, an object, names, and leaves every other field as it was.
+
+- `revision` is the customer's current revision; another is `conflict`
+  `Kunden er endret (revisjon N, ikke M)`, and nothing changes. An
+  accepted update raises the revision by one (core.md §2.1).
+- `fields` takes the customer's input fields, `name`, `email`, `phone`,
+  `notes` and the fields a client adds (§1), each with the rule it has in
+  `customers_create`. A field sent as `null` is cleared; `null` or blank
+  for a required field (`name`, `email`, a client's required field) is
+  `invalid_input` at `fields.<name>`. The tool's input schema lists them
+  under `fields`, a client's fields included.
+- `fields` cannot name `marketing_consent`, which changes only through
+  `customers_set_consent` with its source (§4): `invalid_input`
+  `samtykke endres med customers_set_consent`. A field the module keeps
+  (`id`, `revision`, `completed_orders`, `consent_source`, `consent_at`,
+  `erased`, `erased_at`, `created_at`) or an unknown name is `invalid_input`
+  `er ikke et kjent felt`, and so is an empty `fields`.
+- The module's and the client's rules run on the changed customer, as on
+  every write of it (core.md §1.1). The customer has no unique field.
+- An erased customer → `invalid_input` `kunden er slettet`, whatever the
+  revision.
+- The audit entry's reason is the names of the changed fields, such as
+  `name, email`, never their values, in the order of the customer's
+  fields: `name`, `email`, `phone`, `notes`, then a client's fields as
+  it added them, whatever the order in `fields`.
+- From Lisp, a client or another module calls it as any operation:
+  `(invoke 'customers-update "id" id "revision" revision "fields" (jobj
+  "name" "Kari Hansen"))`. A client's `invoke` answers with JSON, so its
+  revision is `(jget (invoke 'customers-get "id" id) "revision")`; a
+  module gets the customer itself and reads `customer-revision`, which a
+  client may also call on a customer a seam or rule hands it.
 
 ### 3. Completed orders
 
@@ -132,4 +167,5 @@ README §3).
 ### 7. Screen
 
 `/customers` lists, shows and creates customers through `customers_list`,
-`customers_get` and `customers_create` (spec/ui.md §8).
+`customers_get` and `customers_create` (spec/ui.md §8). It has no form for
+`customers_update`.

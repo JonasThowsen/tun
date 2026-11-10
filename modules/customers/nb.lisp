@@ -58,6 +58,20 @@
    "Slett kundedata")
   ("the customer is erased"
    "kunden er slettet")
+  ("Change customer"
+   "Endre kunde")
+  ("Changes"
+   "Endringer")
+  ("The customer's revision when it was read; another is a conflict."
+   "Kundens revisjon da den ble lest; en annen gir konflikt.")
+  ("The fields to change, with their new values; null clears an optional field. Consent is changed with customers_set_consent."
+   "Feltene som skal endres, med nye verdier; null tømmer et valgfritt felt. Samtykke endres med customers_set_consent.")
+  ("The customer has changed (revision ~d, not ~d)"
+   "Kunden er endret (revisjon ~d, ikke ~d)")
+  ("must name at least one field"
+   "må nevne minst ett felt")
+  ("consent is changed with customers_set_consent"
+   "samtykke endres med customers_set_consent")
   ;; The unsubscribe page
   ("You will no longer get offers and news from us by email."
    "Du får ikke lenger tilbud og nyheter på e-post fra oss.")

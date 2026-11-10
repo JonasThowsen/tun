@@ -45,3 +45,15 @@
 (defmethod order-discount ((app loyalty-feature) order customer)
   (floor (* (order-subtotal-minor order) (tier-discount-percent (customer-loyalty-tier customer)))
          100))
+
+;;; A client operation that changes a customer through the module's own
+;;; customers_update, so the module's revision, rules and audit hold for it.
+(define-operation customers-make-business
+    ((id :type (id customer) :required t :label "Kunde-ID")
+     (org-number :type (string :max 9) :required t :label "Organisasjonsnummer"))
+    (:entity customer :kind :update :title "Gjør til bedriftskunde"
+     :description "Gjør en privatkunde til bedriftskunde med organisasjonsnummeret.")
+  ;; A client's INVOKE answers with the record as JSON.
+  (let ((customer (invoke 'customers-get "id" id)))
+    (invoke 'customers-update "id" id "revision" (jget customer "revision")
+            "fields" (jobj "kind" "bedrift" "org_number" org-number))))

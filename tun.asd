@@ -197,6 +197,7 @@
                              (:file "slice2-review-tests")
                              (:file "pressure-tests")
                              (:file "communication-tests")
+                             (:file "customers-tests")
                              (:file "slice3-review-tests")
                              (:file "slice3-review-round3-tests")
                              (:file "slice3-review-round4-tests")

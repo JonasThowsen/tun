@@ -7,7 +7,8 @@
   (:local-nicknames (#:ui #:tun.ui))
   (:export #:customer #:customer-revision #:customer-name #:customer-email #:customer-phone
            #:customer-completed-orders #:customer-created-at #:customer-notes
-           #:customers-create #:customers-get #:customers-list #:customers-set-consent #:customers-erase
+           #:customers-create #:customers-get #:customers-list #:customers-update
+           #:customers-set-consent #:customers-erase
            #:customer-marketing-consent #:customer-consent-source #:customer-consent-at
            #:customer-erased #:customer-erased-at #:customer-erasing #:marketing-allowed-p
            #:record-completed-order #:record-reopened-order))
@@ -69,6 +70,96 @@
             (select 'customer :limit (1+ limit)))
         limit))
 
+;;; customers_update (README §2.1).  Its changes are an object of the
+;;; customer's input fields, read when the call is made rather than when
+;;; this module is compiled, so that the fields a client adds to the
+;;; customer are among them.
+
+(defparameter +most-unknown-changes+ 20
+  "The most unknown names in a customers_update's fields that its errors list.")
+
+(defclass customer-changes (field-type) ()
+  (:documentation "The type of customers_update's fields: an object naming the
+customer's changeable fields, each checked by the field's own type.  Its input
+is a list of (FIELD . VALUE), VALUE NIL for a field cleared with null."))
+
+(defun changeable-customer-fields ()
+  "The fields customers_update may change: the customer's input fields, a
+client's included, except marketing consent, which has a source and a time and
+changes only through customers_set_consent (README §4)."
+  (remove "marketing_consent" (entity-input-fields (find-entity-class 'customer))
+          :key #'field-json-name :test #'string=))
+
+(defmethod type-name ((type customer-changes)) "object")
+
+(defmethod type-json-schema ((type customer-changes))
+  (let ((properties (jobj)))
+    (dolist (field (changeable-customer-fields))
+      (let ((schema (type-json-schema (field-type field))))
+        (setf (gethash "description" schema) (or (field-description field) (field-label field))
+              (gethash (field-json-name field) properties) schema)))
+    (jobj "type" "object" "properties" properties "minProperties" 1
+          "additionalProperties" nil)))
+
+(defun change-path (path name)
+  "Where an error about NAME, a key of the changes at PATH, is shown; a long
+name a caller sent is cut."
+  (format nil "~a.~a" path (subseq name 0 (min 100 (length name)))))
+
+(defun coerce-change (field value path)
+  "The change of FIELD to the JSON VALUE as (FIELD . LISP-VALUE), or NIL after
+recording the input error at PATH.  Null clears an optional field."
+  (cond ((json-null-p value)
+         (if (field-required-p field)
+             (input-error path "must be filled in")
+             (cons field nil)))
+        (t (let* ((before (length *input-errors*))
+                  (coerced (coerce-input (field-type field) value path)))
+             (cond ((/= before (length *input-errors*)) nil)
+                   ;; Blank text is no value, so a required one is missing.
+                   ((and (null coerced) (field-required-p field)
+                         (typep (field-type field) 'string-type))
+                    (input-error path "must be filled in"))
+                   (t (cons field coerced)))))))
+
+(defmethod coerce-input ((type customer-changes) value path)
+  (cond ((not (hash-table-p value)) (input-error path "must be an object"))
+        ((zerop (hash-table-count value)) (input-error path "must name at least one field"))
+        (t (let ((fields (changeable-customer-fields)) (unknown 0))
+             (dolist (name (jkeys value))
+               (cond ((string= name "marketing_consent")
+                      (input-error (change-path path name)
+                                   "consent is changed with customers_set_consent"))
+                     ((find name fields :key #'field-json-name :test #'string=))
+                     ((<= (incf unknown) +most-unknown-changes+)
+                      (input-error (change-path path name) "is not a known field"))))
+             ;; In the customer's order of fields, whatever the caller's.
+             (loop for field in fields
+                   for name = (field-json-name field)
+                   for (given present) = (multiple-value-list (jget value name))
+                   for change = (and present (coerce-change field given (change-path path name)))
+                   when change collect change)))))
+
+(define-operation customers-update ((id :type (id customer) :required t :label "Customer ID")
+                                    (revision :type integer :required t :label "Revision"
+                                              :description "The customer's revision when it was read; another is a conflict.")
+                                    (fields :type customer-changes :required t :label "Changes"
+                                            :description "The fields to change, with their new values; null clears an optional field. Consent is changed with customers_set_consent."))
+    (:entity customer :kind :update :title "Change customer"
+     :description "Changes a customer's name, email, phone, note or the client's own fields, at the revision it was read. Returns the customer with its new revision.")
+  (let ((customer (fetch! 'customer id)))
+    (when (customer-erased customer) (fail :invalid-input "the customer is erased"))
+    (unless (= revision (customer-revision customer))
+      (fail :conflict "The customer has changed (revision ~d, not ~d)"
+            (customer-revision customer) revision))
+    (loop for (field . value) in fields
+          do (setf (field-value customer field) value))
+    ;; The names of the changed fields, never their values: an audit entry
+    ;; outlives an erasure.
+    (audit-as :reason (format nil "~{~a~^, ~}"
+                              (mapcar (lambda (change) (field-json-name (car change))) fields)))
+    (save customer)))
+
 (defun record-completed-order (customer-id)
   "Increment the customer's completed-order counter (used by orders_complete)."
   (let ((customer (fetch! 'customer customer-id)))
@@ -89,7 +180,7 @@ the count is the number of orders currently completed (README §3)."
 ;;; What clients may use (the module's other exports are for the modules
 ;;; that depend on it).
 (publish '(customer customer-name customer-email customer-phone customer-completed-orders
-           customers-create customers-get customers-list))
+           customer-revision customers-create customers-get customers-list customers-update))
 
 (defun marketing-allowed-p (customer)
   (and (customer-marketing-consent customer) (not (customer-erased customer))))
