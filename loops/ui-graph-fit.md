@@ -2,7 +2,7 @@
 
 - loop: ui-graph-fit
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 2b4e5560416b5da5ecd7e36dce861bd0bcbc67db
 - after: ui-graph
 - item: sak_9kev1pd3ey6e1paw
@@ -182,6 +182,12 @@ and should stay a graph where there is room to pan it.»
   stop narrowing and the list scrolls sideways in its own box.
 - **Core version**: the next free minor when pushed; `client-modules`
   took 2.19.0 on main first, so 2.20.0 unless another lands.
+
+## Actuals
+
+```json
+{"loop":"ui-graph-fit","title":"ui:graph reads on a phone for a 30-node plan","repository":"tun","mode":"reviewed","stage":"done","item":"sak_9kev1pd3ey6e1paw","tags":["kind:ui","module:ui","core"],"like":["ui-graph","price-chart"],"started":"2026-11-10 10:49","ended":"2026-11-10 12:32","minutes":{"total":103,"waiting_person":50,"waiting_reviewer":6,"working":47,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":75,"likely":135,"worst":270,"at":"brief"},"latest_estimate":{"best":75,"likely":135,"worst":270,"at":"brief"},"within_estimate":true,"ratio":0.76,"verify":{"rounds":3,"failed":2},"changes":{"A":5,"B":0,"C":0},"interventions":1,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
 
 ## Log
 
@@ -443,3 +449,4 @@ and should stay a graph where there is room to pan it.»
   - On the 1280 px desktop, the plan's card is as tall as its tallest layer, 11 rows. Below the first layers' nodes, about 700 px of the box is empty until you scroll sideways to the later layers. Criterion 8 is met, but Jonas should see this, since this graph is the factory's headline view.
   - On the phone, the 48-step list's gutter has many lanes. It reads as a dense grey band, though the nodes keep their 12rem minimum.
   - `rail-lanes` looks spans up with `(nth j spans)` inside a nested loop. Walking `spans` alongside `j` would read better and avoid the quadratic lookups. The test that renders the largest allowed graph within a second still passes.
+- 2026-11-10 12:32  finished at tun f154f9f
