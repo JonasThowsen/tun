@@ -2,7 +2,7 @@
 
 - loop: gate-three
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: d4cdbfa2688c9dca6e4cda60c7a8f93e335b0c73
 - item: sak_n5a3tqn1vdjznjn7
 - tags: kind:loop module:cli
@@ -49,6 +49,12 @@ reviewed.
 - Shown in the showcase like any change to `tun loop`; it changes no page,
   so the screenshots are the showcase's start page and the evidence is
   the tests.
+
+## Actuals
+
+```json
+{"loop":"gate-three","title":"A reviewer's gate passes to the person after three «changes» in a row, not two","repository":"tun","mode":"reviewed","stage":"done","item":"sak_n5a3tqn1vdjznjn7","tags":["kind:loop","module:cli"],"like":["rebase-named-base","loop-rebase"],"started":"2026-11-10 08:37","ended":"2026-11-10 08:49","minutes":{"total":12,"waiting_person":0,"waiting_reviewer":2,"working":10,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":30,"likely":60,"worst":150,"at":"brief"},"latest_estimate":{"best":30,"likely":60,"worst":150,"at":"brief"},"within_estimate":false,"ratio":0.2,"verify":{"rounds":1,"failed":0},"changes":{"A":0,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
 
 ## Log
 
@@ -102,3 +108,4 @@ reviewed.
   - No core version bump, following `rebase-named-base`, which is sound.
   
   **Verification:** build, test and check all passed in round 1. As decided at A, the screenshots only show the showcase's start page, since no page changes, and the tests are the evidence.
+- 2026-11-10 08:49  finished at tun f3d64c0
