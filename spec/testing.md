@@ -14,7 +14,15 @@ and a check added to Tun reaches every client with `tun update`.
   `*APPLICATION-CLASS*` in PACKAGE.
 - It defines the generated tests in the suite. Today they are:
   1. the client's package uses only `CL` and `TUN`;
-  2. its sources use only Tun's public interface;
+  2. its sources use only Tun's public interface. Its sources are the
+     `.lisp` files at any depth under the directory of its `.asd`, but
+     those under `tests/`, under the directory of one of its own modules
+     (test 10), and under a directory that holds a `flake.nix` and at
+     least one `.asd`, none of whose systems is loaded, such as a second
+     client in the same repository or a module the client does not
+     enable. A file that a loaded system, other than one of the client's
+     own modules', has as a component is always among its sources,
+     wherever it lies;
   3. its application opens on a fresh Postgres database, which runs every
      record policy and query (`store.md` §5, §6), with the modules it
      enables and no others;
@@ -33,7 +41,21 @@ and a check added to Tun reaches every client with `tun update`.
      every invariant of the application (§4);
   9. every page answers every role as its policy says, nothing a page
      links to or posts to is a server error, and no link leads its reader
-     to a refusal (§5).
+     to a refusal (§5);
+  10. each of the client's own modules is loaded from its directory in the
+     client's tree, and its sources use only the public interfaces of the
+     kernel and of the modules it depends on (`tun-platform.md` §2.3), the
+     check Tun's suite makes of Tun's modules. A client's own module is
+     one whose directory, under the client's, holds a `flake.nix` and
+     `tun-NAME.asd`, where NAME is a loaded module (`tun-platform.md`
+     §2.1). Its sources are the `.lisp` files of that directory but those
+     under its `tests/`. A module loaded from anywhere else, such as a dev
+     shell's store, fails the test, which names both places, and so does
+     a module named as one of Tun's modules (`tun-platform.md` §2.1).
+- The client's own modules are the client's to tests 4, 6, 7 and 8 too:
+  their texts are translated, and their tools are fuzzed, kept to their
+  record policies and called in sequence with the client's. Tun's own
+  modules are checked in Tun's suite instead.
 - Each generated test is named for what it checks, prefixed
   `generated-`, so a failure says which check found it.
 - **Isolation.** A scenario may install handlers that answer for other
@@ -59,7 +81,8 @@ The sixth generated test, `generated-every-tool-withstands-fuzzing`,
 calls every tool of the client with inputs Tun makes up, and checks what
 must hold whatever a caller sends.
 
-- **Which tools.** Every tool of an operation the client defines. Tun's own
+- **Which tools.** Every tool of an operation the client defines, in its
+  package or in one of its own modules (§1). Tun's own
   tools, core's and the modules', are fuzzed in Tun's own suite, once, the
   same way, from a scenario of that suite's with a record or two of each
   kind the modules keep: a client does not fuzz them again. Left out,

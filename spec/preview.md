@@ -62,7 +62,10 @@ that started it, until it is stopped.
    the scenario. (`bin/serve` is the one that keeps data.) `DATABASE_URL`
    is not used.
 3. **The server.** The working tree as it is, uncommitted changes too,
-   with its tests system, where its scenarios are. It runs with
+   with its tests system, where its scenarios are, and the client's own
+   modules from its `modules/` (`tun-platform.md` §2.1), which the source
+   registry names before the dev shell's and Tun's, so a builder sees the
+   tree they verified. It runs with
    `--claimed-identity` (`auth.md` §1), so `/login?actor=role:name` signs
    in as anyone, and a sign-in provider or mail provider whose settings
    are missing is left out, mail going to `(:log)` (`mail.md`). It gets

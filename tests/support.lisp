@@ -16,6 +16,9 @@
            #:enqueued-jobs #:perform-job #:drain-jobs
            #:public-interface-violations #:client-source-files #:client-files-under
            #:client-violations #:module-violations #:asd-violations #:module-asd-files #:+kernel-public-packages+ #:+module-library-packages+ #:file-text
+           #:module-directory #:client-module-directories #:client-module-names #:client-module-violations
+           #:client-module-violations-under #:client-tools #:client-text-owners
+           #:+tun-module-names+
            #:define-scenario #:find-scenario #:run-scenario #:scenario-names #:scenario-name #:scenario-actors
            #:scenario-description #:serve-preview #:define-generated-tests
            #:untranslated-texts #:unused-translations #:known-texts #:definition-texts
@@ -525,21 +528,89 @@ it is reached through the module's functions, by id."
         (error (e) (note "cannot be read in ~a: ~a" package e))))
     (nreverse violations)))
 
+(defun directory-namestring-under-p (path directory)
+  "True when the namestring of PATH starts with that of DIRECTORY."
+  (eql 0 (search (namestring directory) (namestring path))))
+
+(defun client-module-directories (root)
+  "The client's own modules under ROOT, a truename, as (NAME DIRECTORY): each
+directory below ROOT, outside its tests/, that holds a flake.nix and
+tun-NAME.asd, where NAME is a loaded module (tun-platform.md 2.1,
+testing.md 1)."
+  (let ((tests (merge-pathnames "tests/" root)))
+    (loop for asd in (directory (merge-pathnames "**/tun-*.asd" root))
+          for directory = (uiop:pathname-directory-pathname asd)
+          for name = (subseq (pathname-name asd) (length "tun-"))
+          when (and (directory-namestring-under-p directory root)
+                    (not (equal (namestring directory) (namestring root)))
+                    (not (directory-namestring-under-p directory tests))
+                    (probe-file (merge-pathnames "flake.nix" directory))
+                    (find-module name))
+            collect (list name directory))))
+
+(defun loaded-system-p (name)
+  "True when the system NAME is defined and loaded in this image."
+  (let ((system (asdf:registered-system name)))
+    (and system (asdf:component-loaded-p system) t)))
+
+(defun unloaded-directories (root)
+  "The directories below ROOT that hold a flake.nix and at least one .asd,
+none of whose systems is loaded: a second client of the same repository, or
+a module the client does not enable."
+  (loop for flake in (directory (merge-pathnames "**/flake.nix" root))
+        for directory = (uiop:pathname-directory-pathname flake)
+        for asds = (directory (merge-pathnames "*.asd" directory))
+        when (and (directory-namestring-under-p directory root)
+                  (not (equal (namestring directory) (namestring root)))
+                  asds
+                  (notany (lambda (asd) (loaded-system-p (pathname-name asd))) asds))
+          collect directory))
+
+(defun loaded-files-under (root except-systems)
+  "The truenames of the Lisp files under ROOT that a loaded system has as
+components, but for the systems EXCEPT-SYSTEMS names and their secondary
+systems (NAME/...)."
+  (flet ((excepted-p (name)
+           (some (lambda (system) (or (string= name system)
+                                      (eql 0 (search (concatenate 'string system "/") name))))
+                 except-systems)))
+    (loop for name in (asdf:registered-systems)
+          unless (or (excepted-p name) (not (loaded-system-p name)))
+            append (loop for component in (asdf:required-components (asdf:find-system name)
+                                                                    :other-systems nil
+                                                                    :component-type 'asdf:cl-source-file)
+                         for path = (probe-file (asdf:component-pathname component))
+                         when (and path (directory-namestring-under-p path root))
+                           collect (namestring path)))))
+
 (defun client-files-under (root)
-  "Every .lisp file under ROOT (any depth) except the test-suite under tests/.
-DIRECTORY follows symbolic links and answers truenames, so a link out of
-ROOT, such as direnv's .direnv/ into the Nix store, would bring in other
-projects' sources; only files whose truename is under ROOT count."
-  (let* ((root (namestring (truename root)))
-         (tests (concatenate 'string root "tests/")))
+  "Every .lisp file under ROOT (any depth) that is the client's (testing.md 1,
+test 2): not under tests/, nor under the directory of one of the client's
+own modules, which are checked as modules, nor under a directory of
+another client or of a module the client does not enable (UNLOADED-
+DIRECTORIES); but a file a loaded system other than the client's modules'
+has as a component is always the client's, so a directory cannot be made
+to look like another client to hide it.  DIRECTORY follows symbolic links
+and answers truenames, so a link out of ROOT, such as direnv's .direnv/
+into the Nix store, would bring in other projects' sources; only files
+whose truename is under ROOT count."
+  (let* ((root (truename root))
+         (tests (merge-pathnames "tests/" root))
+         (modules (client-module-directories root))
+         (left-out (append (mapcar #'second modules) (unloaded-directories root)))
+         (loaded (loaded-files-under root (loop for (name) in modules
+                                                collect (format nil "tun-~a" name)))))
     (remove-if-not (lambda (path)
-                     (let ((name (namestring path)))
-                       (and (eql 0 (search root name))
-                            (not (eql 0 (search tests name))))))
+                     (and (directory-namestring-under-p path root)
+                          (not (directory-namestring-under-p path tests))
+                          (or (member (namestring path) loaded :test #'string=)
+                              (notany (lambda (directory) (directory-namestring-under-p path directory))
+                                      left-out))))
                    (directory (merge-pathnames "**/*.lisp" root)))))
 
 (defun client-source-files (system)
-  "All Lisp sources of client SYSTEM, at any depth, except its tests."
+  "All Lisp sources of client SYSTEM, at any depth, except its tests and the
+directories CLIENT-FILES-UNDER leaves out."
   (client-files-under (asdf:system-source-directory system)))
 
 (defparameter +asd-system-options+
@@ -611,26 +682,80 @@ digests.  Nothing of SB-EXT, SB-INT, SB-KERNEL, the MOP or UIOP, whose
 externals unlock packages, wrap functions or call symbols by name (review
 finding 2).")
 
-(defun module-violations (name)
-  "Interface violations in every source file of the loaded module NAME."
+(defparameter +tun-module-names+
+  '("calendar" "catalog" "customers" "dashboard" "inbox" "inventory" "invoicing" "messaging"
+    "notifications" "orders" "reviews" "staffing" "warehouse")
+  "The names of Tun's modules, the directories of its modules/, which a
+client's own module may not take (tun-platform.md 2.1).  A test of Tun's
+suite holds the two equal.")
+
+(defun module-directory (name)
+  "The directory of module NAME's files: the source directory of its system
+tun-NAME (tun-platform.md 2.1)."
+  (let ((system (asdf:registered-system (format nil "tun-~a" name))))
+    (unless system
+      (error "The module ~a has no system tun-~a, where Tun looks for its files (tun-platform.md 2.1)"
+             name name))
+    (asdf:system-source-directory system)))
+
+(defun module-violations (name &key (directory (module-directory name)) (relative-to directory))
+  "Interface violations in every source file of the loaded module NAME, the
+.lisp files of DIRECTORY (by default its system's) at any depth but those
+under its tests/, named relative to RELATIVE-TO."
   (let* ((module (find-module name t))
-         (root (asdf:system-source-directory (format nil "tun-~a" name)))
+         (tests (merge-pathnames "tests/" directory))
          (own (module-packages module))
          (dependencies (remove name (module-dependency-closure (module-depends-on module)) :test #'string=))
          (public (append +kernel-public-packages+
                          (loop for d in dependencies append (module-packages (find-module d t))))))
     (append
-     (loop for file in (directory (merge-pathnames "**/*.lisp" root))
-           append (public-interface-violations (file-text file) :package (first own) :own-packages (rest own)
-                                                                :source (enough-namestring file root)
-                                                                :public-packages public
-                                                                :library-packages +module-library-packages+
-                                                                :module-packages
-                                                                (loop for d in dependencies
-                                                                      append (module-packages (find-module d t)))))
-     (loop for asd in (module-asd-files name)
-           append (asd-violations (file-text asd) :source (file-namestring asd))))))
+     (loop for file in (directory (merge-pathnames "**/*.lisp" directory))
+           unless (directory-namestring-under-p file tests)
+             append (public-interface-violations (file-text file) :package (first own) :own-packages (rest own)
+                                                                  :source (enough-namestring file relative-to)
+                                                                  :public-packages public
+                                                                  :library-packages +module-library-packages+
+                                                                  :module-packages
+                                                                  (loop for d in dependencies
+                                                                        append (module-packages (find-module d t)))))
+     (loop for asd in (module-asd-files name directory)
+           append (asd-violations (file-text asd) :source (enough-namestring asd relative-to))))))
 
-(defun module-asd-files (name)
-  "The .asd files of module NAME (scanned like its sources: data only)."
-  (directory (merge-pathnames "*.asd" (asdf:system-source-directory (format nil "tun-~a" name)))))
+(defun module-asd-files (name &optional (directory (module-directory name)))
+  "The .asd files of module NAME, in DIRECTORY (scanned like its sources: data only)."
+  (directory (merge-pathnames "*.asd" directory)))
+
+(defun client-root (system)
+  "The truename of the directory of the client SYSTEM's .asd, or NIL for a
+client with no system of that name, such as one defined in a test."
+  (let ((system (asdf:registered-system system)))
+    (and system (asdf:system-source-directory system)
+         (truename (asdf:system-source-directory system)))))
+
+(defun client-module-names (system)
+  "The names of the client SYSTEM's own modules (CLIENT-MODULE-DIRECTORIES)."
+  (let ((root (client-root system)))
+    (and root (mapcar #'first (client-module-directories root)))))
+
+(defun client-module-violations (system)
+  "What test 10 finds in the client SYSTEM's own modules (testing.md 1)."
+  (let ((root (client-root system)))
+    (and root (client-module-violations-under root))))
+
+(defun client-module-violations-under (root)
+  "What test 10 finds in the own modules of the client at ROOT: a module
+named as one of Tun's, a module loaded from elsewhere than its directory in
+the client's tree, and its MODULE-VIOLATIONS there, each file named from
+ROOT."
+  (let ((root (truename root)))
+    (loop for (name directory) in (client-module-directories root)
+          for place = (enough-namestring directory root)
+          for loaded = (asdf:system-source-directory (format nil "tun-~a" name))
+          append (append
+                  (when (member name +tun-module-names+ :test #'string=)
+                    (list (format nil "~a: the module ~a has the name of Tun's module ~a; name it otherwise (tun-platform.md 2.1)"
+                                  place name name)))
+                  (unless (and loaded (equal (namestring (truename loaded)) (namestring directory)))
+                    (list (format nil "~a: the module ~a is loaded from ~a, not from its directory ~a in the client's tree"
+                                  place name (and loaded (namestring loaded)) (namestring directory))))
+                  (module-violations name :directory directory :relative-to root)))))

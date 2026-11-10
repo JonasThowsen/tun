@@ -300,23 +300,28 @@ whose kernel and modules then take the place of the client's pins. The
 client's files compile apart from those of its own shell then, so neither
 loads files compiled against the other's Tun. The server starts without
 the ASDF configuration tun's own launcher left in the environment, which
-its sbcl would otherwise add to its own."
-  (let ((client-directory (namestring directory)))
+its sbcl would otherwise add to its own.  The client's own modules, under
+its modules/ (tun-platform.md 2.1), come from the working tree too, named in
+the source registry before anything else (preview.md 2)."
+  (let* ((client-directory (namestring directory))
+         (modules (namestring (merge-pathnames "modules/" (uiop:ensure-directory-pathname directory))))
+         (own (format nil "(:directory ~s)~:[~; (:tree ~s)~]"
+                      client-directory (uiop:directory-exists-p modules) modules)))
     (append
      (list "env" "-u" "CL_SOURCE_REGISTRY" "-u" "ASDF_OUTPUT_TRANSLATIONS"
            "sbcl" "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit")
      (if worktree
          (let ((tun (namestring (uiop:ensure-directory-pathname worktree))))
            (list "--load" (namestring (merge-pathnames "scripts/setup.lisp" tun))
-                 "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry (:directory ~s) (:directory ~s) (:tree ~s) :inherit-configuration))"
-                                     client-directory tun (namestring (merge-pathnames "modules/" tun)))
+                 "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a (:directory ~s) (:tree ~s) :inherit-configuration))"
+                                     own tun (namestring (merge-pathnames "modules/" tun)))
                  "--eval" (lisp-form "(asdf:initialize-output-translations '(:output-translations (~s ~s) (~s ~s) :inherit-configuration))"
                                      client-directory
                                      (namestring (merge-pathnames (format nil ".build/preview-fasl/~a/" client) tun))
                                      tun (namestring (merge-pathnames ".build/fasl/" tun)))))
          (list "--eval" "(load (sb-ext:posix-getenv \"ASDF\"))"
-               "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry (:directory ~s) :inherit-configuration))"
-                                   client-directory)))
+               "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a :inherit-configuration))"
+                                   own)))
      (list "--eval" (lisp-form "(let ((*compile-verbose* nil) (*load-verbose* nil)) (handler-bind ((warning #'muffle-warning)) (asdf:load-system ~s)))"
                                (format nil "~a/tests" client))
            "--eval" (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"SERVE-PREVIEW\" (symbol-value (find-symbol \"*APPLICATION-CLASS*\" ~s)) :name ~s)"

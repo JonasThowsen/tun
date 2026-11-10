@@ -40,6 +40,14 @@ repository holds only {{name}}'s own code.
   moves Tun and every module to one newer revision; run `bin/test` before
   committing `flake.lock`. Never move one Tun input alone with `nix flake
   update`.
+- A module of the client's own, which more than one business could use,
+  is kept in `modules/NAME/`, in the shape of Tun's: `flake.nix` with a
+  `tunModule`, `tun-NAME.asd`, package `TUN.NAME` on `TUN.CORE`,
+  `define-module` first and `seal-module` last, an `nb.lisp` and a
+  README (`$TUN_SOURCE/spec/tun-platform.md` §2.1). NAME is none of
+  Tun's modules' names. The client depends on `tun-NAME` in its `.asd` and
+  enables NAME in `(:modules …)`; the flake builds it, and `bin/test`
+  checks it as a module.
 - Code identifiers in English. Copy is written in the first language of
   `(:locale :languages …)` and translated in a catalogue per other language
   (`nb.lisp`); the suite finds a text without a translation

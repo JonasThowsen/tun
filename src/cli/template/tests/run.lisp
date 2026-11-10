@@ -1,10 +1,27 @@
-;;;; tests/run.lisp -- what bin/test runs: compile the client and its tests,
-;;;; failing on any compiler warning in them, then run the suite.
+;;;; tests/run.lisp -- what bin/test runs: compile the client, its own modules
+;;;; and its and their tests, failing on any compiler warning in them, then run
+;;;; the client's suite and each module's.
 
 (setf *read-eval* nil)
 (load (or (sb-ext:posix-getenv "ASDF") (error "Run inside `nix develop` (ASDF is not set)")))
 
-(defparameter *systems* '("{{name}}" "{{name}}/tests"))
+;;; The client's own modules, one directory each under modules/
+;;; ($TUN_SOURCE/spec/tun-platform.md 2.1), from the working tree before any
+;;; copy elsewhere, and compiled as strictly as the client.
+(asdf:initialize-source-registry
+ `(:source-registry (:tree ,(merge-pathnames "modules/" (uiop:getcwd))) :inherit-configuration))
+
+(defparameter *own-modules*
+  (mapcar #'pathname-name (directory (merge-pathnames "modules/*/tun-*.asd" (uiop:getcwd))))
+  "The systems of the client's own modules, tun-NAME.")
+
+(defparameter *module-tests*
+  (loop for module in *own-modules*
+        for tests = (format nil "~a/tests" module)
+        when (asdf:find-system tests nil) collect tests)
+  "The modules' own tests, tun-NAME/tests, where a module's .asd defines them.")
+
+(defparameter *systems* (append *own-modules* *module-tests* '("{{name}}" "{{name}}/tests")))
 
 ;;; Tun, its modules and the test libraries come compiled from the Nix
 ;;; store. Load them first, quietly: their warnings are not the client's.
@@ -26,10 +43,21 @@
                               (push (princ-to-string warning) warnings))
                             (muffle-warning warning))))
     (with-compilation-unit (:override t)
-      (asdf:load-system (car (last *systems*)) :force *systems*)))
+      (asdf:load-system (car (last *systems*)) :force *systems*)
+      ;; The modules' tests, which the client does not depend on.
+      (dolist (tests *module-tests*)
+        (asdf:load-system tests :force (list tests)))))
   (when warnings
     (format t "~&;; FAIL: ~d compiler warning~:p:~%~{;;   ~a~%~}"
             (length warnings) (reverse warnings))
     (uiop:quit 2)))
 
-(uiop:quit (if (uiop:symbol-call "{{package}}.TESTS" "RUN-TESTS") 0 1))
+;;; The client's suite, then each module's: the package TUN.NAME.TESTS of
+;;; tun-NAME/tests exports RUN-TESTS, true when every test passed.
+(let ((results (cons (uiop:symbol-call "{{package}}.TESTS" "RUN-TESTS")
+                     (loop for tests in *module-tests*
+                           for module = (subseq tests 0 (position #\/ tests))
+                           collect (uiop:symbol-call
+                                    (format nil "TUN.~:@(~a~).TESTS" (subseq module (length "tun-")))
+                                    "RUN-TESTS")))))
+  (uiop:quit (if (every #'identity results) 0 1)))

@@ -31,6 +31,24 @@ acceptance checks verify it from the outside.
    revision like core. The core package and the modules may share a repository
    and a revision; a client pins each separately so one can move without the
    others.
+
+   A module may also be kept in a client's repository, at `modules/<name>/`
+   beside the client's own files, until it moves to a repository of
+   modules. It has the shape of Tun's: a `flake.nix` whose `tunModule`
+   names it and its system, the ASDF system `tun-<name>` in
+   `tun-<name>.asd`, its packages `TUN.<NAME>` (or `TUN.<NAME>.…`), and its
+   tests, when it has any, under its `tests/`. These names are part of the
+   contract: Tun finds a module's files as the source directory of its
+   system `tun-<name>`, and only a package named `TUN` or `TUN.…` is a
+   module's to the registry (`"source": "core"`) and to the interface
+   check of the modules that depend on it. The client's flake builds such
+   a module from its own tree, pinned at the client's commit; the client's
+   strict compile, its generated tests and `tun preview` take it from the
+   working tree and check it as a module, not as client code (`cli.md` §6,
+   `testing.md` §1, `preview.md` §2). Its name, tools and paths must not
+   be one of Tun's: the client's generated tests refuse a module named
+   as one of Tun's modules, and the build refuses two modules of one
+   name.
 2. **Dependencies**: a module declares the modules it depends on. Dependency
    cycles are refused at build time. A module may extend an entity of a module
    it depends on, never one it does not.

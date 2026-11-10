@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.18.0";
+      coreVersion = "2.19.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -175,7 +175,12 @@
       buildModules = modules:
         let
           byName = builtins.listToAttrs (map (m: { name = m.name; value = m; }) modules);
-          checked = map (m:
+          # Two modules of one name, such as a client's own module named as
+          # one of Tun's (tun-platform.md 2.1), would hide one another.
+          duplicates = builtins.filter (m: builtins.length (builtins.filter (o: o.name == m.name) modules) > 1) modules;
+          checked = if duplicates != [ ]
+            then throw "two modules are named ${(builtins.head duplicates).name}: ${lib.concatMapStringsSep " and " (m: "${m.src}") duplicates}"
+            else map (m:
             let failed = builtins.filter (c: !(satisfies c)) m.core; in
             if failed != [ ]
             then throw "module ${m.name} (rev ${m.rev}) builds against core ${lib.concatStringsSep " and " m.core}, but the pinned core is ${coreVersion} (constraint ${lib.concatStringsSep ", " failed} fails)"
@@ -353,7 +358,9 @@
           ] ++ packages;
           shellHook = ''
             export TUN_SOURCE="${self}"
-            export CL_SOURCE_REGISTRY="$PWD/''${CL_SOURCE_REGISTRY:+:$CL_SOURCE_REGISTRY}"
+            # The client's systems and its own modules', from the working tree
+            # (spec/cli.md 6, tun-platform.md 2.1).
+            export CL_SOURCE_REGISTRY="$PWD/:$PWD/modules//''${CL_SOURCE_REGISTRY:+:$CL_SOURCE_REGISTRY}"
           '';
         };
       # Python with Playwright and the Chromium it drives: bin/ui-shots

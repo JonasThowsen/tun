@@ -985,6 +985,42 @@ fresh preview. Overrides of `ordremelding` may accept edited text; only admins
 send that template. Marketing templates always apply the customer's consent
 guard, including when invoked by code or a workflow.
 
+## A module of the client's own
+
+What more than one business could use, a client may keep as a module in
+its own repository, at `modules/NAME/`, until it moves to a repository of
+modules (`spec/tun-platform.md` §2.1). It has the shape of Tun's modules,
+and the names are part of it: a `flake.nix` with a `tunModule` (name
+NAME, system `tun-NAME`), `tun-NAME.asd`, a package `TUN.NAME` that uses
+`TUN.CORE`, `define-module` as its first form and `seal-module` as its
+last, `publish` for what clients may call, an `nb.lisp`, and its tests,
+if any, under its `tests/`. NAME must not be one of Tun's modules'.
+
+```lisp
+(defpackage #:tun.notes
+  (:use #:cl #:tun.core)
+  (:export #:notes-add))
+
+(in-package #:tun.notes)
+
+(define-module notes
+  (:core ">= 2.19.0" "< 3.0")
+  (:documentation "Notes the staff keep."))
+
+;; entities, operations, seams ...
+
+(seal-module "notes")
+```
+
+The client depends on `tun-NAME` in its `.asd` and enables NAME in
+`(:modules ...)`. A client made by `tun new` builds every `modules/*`
+with its server, pinned at its commit; its dev shell, `bin/test` and `tun
+preview` load the module from the working tree. The generated tests check
+it as a module, not as client code: only the public interfaces of the
+kernel (`TUN.CORE`, `TUN.WEB`, `TUN.UI`, ...) and of the modules it
+depends on, and they fuzz its tools and check its translations with the
+client's (`spec/testing.md` §1).
+
 ## Module API: retained trace erasure (core 1.1.6)
 
 `(tun.core:redact-request-traces (list subject-id name email phone))` runs in a write

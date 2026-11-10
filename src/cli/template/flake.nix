@@ -22,17 +22,23 @@
       # Every input that is a Tun module.
       modules = map (input: input.tunModule)
         (builtins.filter (input: input ? tunModule) (builtins.attrValues (removeAttrs inputs [ "self" ])));
+      # The client's own modules, one directory each under modules/, pinned
+      # at this repository's commit ($TUN_SOURCE/spec/tun-platform.md 2.1).
+      ownModules = lib.optionals (builtins.pathExists ./modules) (map
+        (name: ((import ./modules/${name}/flake.nix).outputs { inherit self; }).tunModule)
+        (builtins.attrNames (lib.filterAttrs (_: type: type == "directory") (builtins.readDir ./modules))));
       server = tunLib.buildClient {
         pname = "{{name}}";
-        inherit modules;
-        # The client's own sources: its .asd and Lisp files, not its tests,
-        # and the icons of the installed app (:web-app), when it has them.
+        modules = modules ++ ownModules;
+        # The client's own sources: its .asd and Lisp files, not its tests
+        # nor its modules, built above, and the icons of the installed app
+        # (:web-app), when it has them.
         src = lib.fileset.toSource {
           root = ./.;
           fileset = lib.fileset.union
             (lib.fileset.difference
               (lib.fileset.fileFilter (f: f.hasExt "lisp" || f.hasExt "asd") ./.)
-              ./tests)
+              (lib.fileset.unions [ ./tests (lib.fileset.maybeMissing ./modules) ]))
             (lib.fileset.maybeMissing ./icons);
         };
       };
@@ -54,6 +60,8 @@
         targets = tunLib.deployTargets { targets = import ./deploy.nix; };
       };
       # SBCL with the pinned kernel and modules, Postgres, tun and nixploy.
+      # The client's own modules are not in it: the shell takes them from
+      # the working tree.
       devShells.${system}.default = tunLib.clientShell {
         inherit modules;
         packages = [ nixploy.packages.${system}.default ];

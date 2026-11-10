@@ -150,30 +150,42 @@ NAME/
   .gitignore           .direnv/, .data/, result
   AGENTS.md            how to work in the repository, for agents and people
   README.md
+  modules/             not made: the client's own modules, one
+                       directory each (tun-platform.md 2.1)
 ```
 
 - `nix build` builds `NAME-server` with Tun's `buildClient` from the pinned
-  kernel and modules. `nix run . -- --port N` serves it, with the database
-  from `--db` or `DATABASE_URL` (`store.md` §1, `deploy.md` §1).
+  kernel and modules, and from each module of the client's own: every
+  directory under `modules/`, whose `flake.nix` the client's flake imports
+  with its own `self`, so the module is pinned at the client's commit
+  (`tun-platform.md` §2.1). `nix run . -- --port N` serves it, with the
+  database from `--db` or `DATABASE_URL` (`store.md` §1, `deploy.md` §1).
 - `nix develop` (or direnv through `.envrc`) gives SBCL with the pinned
   kernel, the pinned modules, Tun's test support, FiveAM and Slynk, plus
   Postgres and `tun` at the pinned revision. `TUN_SOURCE` names the pinned
   Tun source, so its documentation is at `$TUN_SOURCE/docs`. The client's
-  own systems join ASDF's source registry, so `M-x sly` in an editor that
-  takes the shell from `.envrc` can load them. The shell also has
+  own systems and those of its own modules under `modules/` join ASDF's
+  source registry from the working tree, so `M-x sly` in an editor that
+  takes the shell from `.envrc` can load them. The shell does not carry
+  the client's own modules built from the store: a copy as old as the
+  shell would hide the working tree's. The shell also has
   `nixploy`, `sops` for a target's secrets, `tun-with-postgres`, and
   `tun-check-python`, which `tun check` runs browser checks with
   (`preview.md` §4).
 - `nix build .#docker` builds the image, and the `nixploy` output deploys
   it to the targets in `deploy.nix` (`deploy.md`).
-- `bin/test` compiles the client and its tests and fails on any compiler
-  warning (loading a compiled file redefines its macros, which is not
-  one), then runs the suite with a throwaway Postgres server
+- `bin/test` compiles the client, its own modules from `modules/` (each
+  `modules/*/tun-*.asd`, registered ahead of anything else), the modules'
+  own tests (`tun-NAME/tests`, where a module's `.asd` defines them) and the
+  client's tests, and fails on any compiler warning in them (loading a compiled file
+  redefines its macros, which is not one), then runs the suite with a throwaway Postgres server
   (`tun-with-postgres`, Tun's `bin/with-postgres`; `TUN_TEST_POSTGRES`
   names it). The suite holds the tests Tun generates for every client
-  (`testing.md` §1) and the client's own.
-- `bin/serve [--port N]` serves the working tree on `127.0.0.1:N` (default
-  8080) against a Postgres server of the client's own under
+  (`testing.md` §1) and the client's own. Then each module's tests run:
+  the package `TUN.NAME.TESTS` of `tun-NAME/tests` exports `RUN-TESTS`,
+  true when every test passed, and `bin/test` fails when one is false.
+- `bin/serve [--port N]` serves the working tree, its own modules
+  included, on `127.0.0.1:N` (default 8080) against a Postgres server of the client's own under
   `.data/postgres`, reachable only through a socket in that directory. The
   first run creates it; later runs keep its data. When `bin/serve` ends, by
   an interrupt or a TERM signal too, it stops the Postgres server it
@@ -206,7 +218,13 @@ with the clone's own Nix-built `tun`:
 4. runs `tun add` with a module that brings a dependency, checks the
    three edits and the pins, and that a second `tun add` changes nothing;
 5. builds and tests again;
-6. makes a second commit in the clone, runs `tun update`, and checks that
+6. keeps a module of the client's own at `modules/notes/`, enabled by
+   the client: the client builds, `bin/test` passes, a planted `::` into a
+   Tun package in the module fails it naming the module's file, and so
+   does a compiler warning there; a preview shows a definition of the
+   module, added after the dev shell was entered, as the module's in
+   `registry_describe`;
+7. makes a second commit in the clone, runs `tun update`, and checks that
    every Tun input is locked at the new commit, that `nixploy` did not
    move, and that a second `tun update` changes nothing;
-7. builds and tests again.
+8. builds and tests again.

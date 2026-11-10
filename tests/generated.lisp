@@ -17,6 +17,28 @@
   (let ((violations (client-violations system package)))
     (fiveam:is (null violations) "~{~a~^~%~}" violations)))
 
+(defun check-client-modules-use-only-public-interfaces (system)
+  "Check each of the client SYSTEM's own modules as Tun's suite checks Tun's:
+loaded from its directory in the client's tree, and its sources reaching
+the kernel and its dependencies only through their public interfaces
+(testing.md 1, test 10)."
+  (let ((violations (client-module-violations system)))
+    (fiveam:is (null violations) "~{~a~^~%~}" violations)))
+
+(defun client-text-owners (system)
+  "The owners whose texts the translation test checks for the client SYSTEM:
+the client and each of its own modules (testing.md 1)."
+  (cons "client" (client-module-names system)))
+
+(defun client-tools (system package)
+  "The operations of the client SYSTEM whose package is PACKAGE, and those of
+its own modules (testing.md 1): what the fuzzing, record-policy and
+sequence tests call."
+  (let ((modules (client-module-names system)))
+    (append (client-operations package)
+            (remove-if-not (lambda (operation) (member (operation-module operation) modules :test #'string=))
+                           (all-operations)))))
+
 (defun check-application-opens-with-its-modules (class system)
   "Open CLASS on a fresh Postgres database, which runs every record policy
 and query, and check that it enables the modules it names and no others."
@@ -28,27 +50,32 @@ and query, and check that it enables the modules it names and no others."
       (fiveam:is (equal (sort (copy-list (application-declared-modules *app*)) #'string<)
                         (sort enabled #'string<))))))
 
-(defun check-translations (class)
-  "Check that every text of the client has a translation into each language
-CLASS offers, and that no entry of its catalogues is unused."
+(defun check-translations (class system)
+  "Check that every text of the client SYSTEM and of its own modules has a
+translation into each language CLASS offers, and that no entry of their
+catalogues is unused."
   (with-test-app (:class class)
-    (dolist (language (application-languages *app*))
-      (let ((missing (untranslated-texts language :owner "client")))
-        (fiveam:is (null missing) "~d texts lack ~a, such as ~{~s~^, ~}" (length missing) language
-                   (subseq missing 0 (min 5 (length missing))))))
-    (dolist (language +languages+)
-      (let ((unused (unused-translations language :owner "client")))
-        (fiveam:is (null unused) "~a entries no text uses: ~{~s~^, ~}" language unused)))))
+    (dolist (owner (client-text-owners system))
+      (dolist (language (application-languages *app*))
+        (let ((missing (untranslated-texts language :owner owner)))
+          (fiveam:is (null missing) "~d texts of ~a lack ~a, such as ~{~s~^, ~}" (length missing) owner language
+                     (subseq missing 0 (min 5 (length missing))))))
+      (dolist (language +languages+)
+        (let ((unused (unused-translations language :owner owner)))
+          (fiveam:is (null unused) "~a entries of ~a no text uses: ~{~s~^, ~}" language owner unused))))))
 
 (defun default-scenario (packages)
   "The scenario named default defined in PACKAGES, package names, or NIL."
   (find "default" (package-scenarios packages) :key #'scenario-name :test #'string=))
 
-(defun needs-postgres-p (package)
-  "True when the client whose package is PACKAGE defines a query or an
-entity with a record policy, which only Postgres runs (spec/store.md 5, 6)."
-  (let ((package (find-package package)))
-    (flet ((own-p (name) (eq package (symbol-package name))))
+(defun needs-postgres-p (system package)
+  "True when the client SYSTEM whose package is PACKAGE, or one of its own
+modules, defines a query or an entity with a record policy, which only
+Postgres runs (spec/store.md 5, 6)."
+  (let ((packages (cons (find-package package)
+                        (loop for name in (client-module-names system)
+                              append (mapcar #'find-package (module-packages (find-module name t)))))))
+    (flet ((own-p (name) (member (symbol-package name) packages)))
       (or (some (lambda (query) (own-p (query-name query))) (all-queries))
           (some (lambda (class) (and (own-p (class-name class)) (entity-record-policy class)))
                 (all-entity-classes))))))
@@ -58,10 +85,10 @@ entity with a record policy, which only Postgres runs (spec/store.md 5, 6)."
 the default scenario of PACKAGES when there is one and VARIABLES, the
 client's own, unset around each tool's run (spec/testing.md 2): in memory,
 or on Postgres when the client needs it."
-  (check-every-tool-withstands-fuzzing (client-operations package) system
+  (check-every-tool-withstands-fuzzing (client-tools system package) system
                                        :class class :scenario (default-scenario packages)
                                        :variables variables
-                                       :database (if (needs-postgres-p package)
+                                       :database (if (needs-postgres-p system package)
                                                      :postgres
                                                      :memory)))
 
@@ -70,7 +97,7 @@ or on Postgres when the client needs it."
   "Check that every tool of the client SYSTEM defines in PACKAGE on CLASS
 keeps to the record policies (spec/testing.md 3), from the default scenario
 of PACKAGES when there is one, with VARIABLES, the client's own, unset."
-  (check-every-tool-keeps-to-the-record-policies (client-operations package) system
+  (check-every-tool-keeps-to-the-record-policies (client-tools system package) system
                                                  :class class
                                                  :scenario (default-scenario packages)
                                                  :variables variables))
@@ -80,10 +107,10 @@ of PACKAGES when there is one, with VARIABLES, the client's own, unset."
 sequence (spec/testing.md 4), from the default scenario of PACKAGES when
 there is one, with VARIABLES, the client's own, unset: in memory, or on
 Postgres when the client needs it."
-  (check-tools-called-in-sequence (client-operations package) system
+  (check-tools-called-in-sequence (client-tools system package) system
                                   :class class :scenario (default-scenario packages)
                                   :variables variables
-                                  :database (if (needs-postgres-p package) :postgres :memory)))
+                                  :database (if (needs-postgres-p system package) :postgres :memory)))
 
 (defun check-every-page-of-the-client (class system package packages variables)
   "Open every page of the client SYSTEM on CLASS as each role (spec/testing.md
@@ -93,7 +120,7 @@ in PACKAGE needs it."
   (check-every-page-answers-every-role system
                                        :class class :scenario (default-scenario packages)
                                        :variables variables
-                                       :database (if (needs-postgres-p package) :postgres :memory)))
+                                       :database (if (needs-postgres-p system package) :postgres :memory)))
 
 (defun check-every-scenario-makes-its-records (class system packages variables)
   "Run each scenario defined in PACKAGES, package names, on a fresh Postgres
@@ -146,10 +173,12 @@ variables ISOLATE names are bound to NIL."
                           `(check-package-uses-only-cl-and-tun ,package))
          ,(generated-test "THE-SOURCES-USE-ONLY-TUNS-PUBLIC-INTERFACE"
                           `(check-sources-use-only-tuns-public-interface ,name ,package))
+         ,(generated-test "THE-CLIENT-S-MODULES-USE-ONLY-PUBLIC-INTERFACES"
+                          `(check-client-modules-use-only-public-interfaces ,name))
          ,(generated-test "THE-APPLICATION-OPENS-WITH-THE-MODULES-IT-ENABLES"
                           `(check-application-opens-with-its-modules ,class ,name))
          ,(generated-test "EVERY-TEXT-HAS-A-TRANSLATION-INTO-EACH-LANGUAGE-OFFERED"
-                          `(check-translations ,class))
+                          `(check-translations ,class ,name))
          ,(generated-test "EVERY-SCENARIO-MAKES-ITS-RECORDS"
                           `(check-every-scenario-makes-its-records
                             ,class ,name ',scenario-packages ',variables))

@@ -17,12 +17,14 @@
                                                                  :defaults *load-truename*))))
 (setf *root* (truename *root*))
 
-;;; The kernel, its modules, the test client and any client under clients/;
+;;; The kernel, its modules, the test client and its own module, and any
+;;; client under clients/;
 ;;; then whatever the environment adds, such as clients kept elsewhere.
 (asdf:initialize-source-registry
  `(:source-registry (:directory ,*root*)
                     (:tree ,(merge-pathnames "modules/" *root*))
                     (:directory ,(merge-pathnames "tests/client/" *root*))
+                    (:tree ,(merge-pathnames "tests/client/modules/" *root*))
                     (:tree ,(merge-pathnames "clients/" *root*))
                     :inherit-configuration))
 (asdf:initialize-output-translations

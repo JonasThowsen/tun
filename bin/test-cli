@@ -7,7 +7,8 @@
 # fake WorkOS, and access token (spec/auth.md 9), run it again on a restored dump of its database
 # (spec/deploy.md 4), serve it against its local Postgres, preview it and
 # run a browser check on it (spec/preview.md), take a change through the
-# feature loop (spec/loop.md), add a module,
+# feature loop (spec/loop.md), add a module, keep a module of its own in
+# modules/ (checked, strictly compiled and previewed from the working tree),
 # build and test again, then move it to a second commit of the clone with
 # tun update and build and test once more. Every Tun input must be locked
 # at the clone's revision. Builds with Nix, so it takes minutes. Run inside `nix develop`,
@@ -479,6 +480,126 @@ step "build and test again"
 (cd "$client" && nix build --quiet) || fail "nix build after tun add"
 in_client bin/test || fail "bin/test after tun add"
 
+step "a module of the client's own in modules/notes (spec/tun-platform.md 2.1)"
+mkdir -p "$client/modules/notes"
+cat >"$client/modules/notes/flake.nix" <<'EOF'
+{
+  description = "the client's module notes";
+  outputs = { self }: {
+    tunModule = {
+      name = "notes";
+      system = "tun-notes";
+      dependsOn = [ ];
+      core = [ ">= 2.19.0" "< 3.0" ];
+      src = ./.;
+      rev = self.rev or self.dirtyRev or "unknown";
+    };
+  };
+}
+EOF
+cat >"$client/modules/notes/tun-notes.asd" <<'EOF'
+(defsystem "tun-notes"
+  :description "The client's module notes."
+  :depends-on ("tun")
+  :serial t
+  :components ((:file "notes") (:file "nb")))
+
+(defsystem "tun-notes/tests"
+  :description "The module's own tests."
+  :depends-on ("tun-notes" "fiveam")
+  :components ((:module "tests" :components ((:file "tests")))))
+EOF
+mkdir -p "$client/modules/notes/tests"
+cat >"$client/modules/notes/tests/tests.lisp" <<'EOF'
+(defpackage #:tun.notes.tests
+  (:use #:cl #:fiveam)
+  (:export #:run-tests))
+
+(in-package #:tun.notes.tests)
+
+(def-suite notes)
+(in-suite notes)
+
+(test the-module-s-own-tests-run
+  (is (find-package "TUN.NOTES")))
+
+(defun run-tests ()
+  (run! 'notes))
+EOF
+cat >"$client/modules/notes/notes.lisp" <<'EOF'
+(defpackage #:tun.notes
+  (:use #:cl #:tun.core))
+
+(in-package #:tun.notes)
+
+(define-module notes
+  (:core ">= 2.19.0" "< 3.0"))
+
+(define-setting "notes.greeting" (:type "string" :default "" :description "A greeting"))
+
+(seal-module "notes")
+EOF
+cat >"$client/modules/notes/nb.lisp" <<'EOF'
+(in-package #:tun.notes)
+
+(define-translations "nb"
+  ("A greeting" "En hilsen"))
+EOF
+cp "$client/modules/notes/notes.lisp" "$work/notes.lisp"
+sed -i 's/"tun-inventory")/"tun-inventory" "tun-notes")/' "$client/demo.asd"
+sed -i 's/(:modules customers reviews inventory)/(:modules customers reviews inventory notes)/' "$client/application.lisp"
+grep -q '"tun-notes"' "$client/demo.asd" || fail "demo.asd lacks tun-notes"
+git -C "$client" add --all
+(cd "$client" && nix build --quiet) || fail "nix build with the client's module"
+grep -q 'TUN_MODULE_REVISION_NOTES=' "$client/result/bin/demo-server" \
+  || fail "the server does not carry the revision of the client's module"
+# Two modules of one name, such as a client's module named as one of Tun's,
+# are refused by the build, which names both sources.
+tun_lib_eval 'let notes = ((import ./modules/notes/flake.nix).outputs { self = { }; }).tunModule;
+              in builtins.length (l.buildModules [ notes (notes // { src = ./tests; }) ]).ordered' \
+  >"$work/duplicate.log" 2>&1 && fail "buildModules took two modules named notes"
+grep -q 'two modules are named notes: /nix/store/[^ ]*notes and /nix/store/[^ ]*tests' "$work/duplicate.log" \
+  || { cat "$work/duplicate.log"; fail "buildModules did not name both modules named notes"; }
+in_client bin/test >"$work/module.log" 2>&1 || { cat "$work/module.log"; fail "bin/test with the client's module"; }
+grep -q 'GENERATED-THE-CLIENT-S-MODULES-USE-ONLY-PUBLIC-INTERFACES' "$work/module.log" \
+  || fail "bin/test did not check the client's module"
+grep -q 'THE-MODULE-S-OWN-TESTS-RUN' "$work/module.log" \
+  || { cat "$work/module.log"; fail "bin/test did not run the module's own tests"; }
+sed -i 's/^(seal-module "notes")/(defun planted () (tun.core::run-guarded nil nil nil))\n\n(seal-module "notes")/' \
+  "$client/modules/notes/notes.lisp"
+in_client bin/test >"$work/module.log" 2>&1 && fail "bin/test passed a :: in the client's module"
+grep -q 'modules/notes/notes.lisp: uses a :: qualifier' "$work/module.log" \
+  || { cat "$work/module.log"; fail "the module check did not name modules/notes/notes.lisp"; }
+cp "$work/notes.lisp" "$client/modules/notes/notes.lisp"
+sed -i 's/^(seal-module "notes")/(defun planted () (no-such-function))\n\n(seal-module "notes")/' \
+  "$client/modules/notes/notes.lisp"
+in_client bin/test >"$work/module.log" 2>&1 && fail "bin/test passed a compiler warning in the client's module"
+grep -q 'NO-SUCH-FUNCTION' "$work/module.log" \
+  || { cat "$work/module.log"; fail "bin/test did not name the warning in the client's module"; }
+cp "$work/notes.lisp" "$client/modules/notes/notes.lisp"
+# A definition the module gains once the dev shell is up: the preview
+# serves the working tree's module, not a copy as old as the shell. ASDF
+# compares a file's time with its compiled file's to the second, and
+# bin/test compiled this file a moment ago: the edit waits a second, so
+# the preview does not take the compiled file for the edited one.
+in_client env XDG_STATE_HOME="$work/state" bash -c '
+  sleep 1
+  sed -i "s/^(seal-module \"notes\")/(define-setting \"notes.later\" (:type \"string\" :default \"\" :description \"Added later\"))\n\n(seal-module \"notes\")/" modules/notes/notes.lisp
+  tun preview --no-share --json' >"$work/preview.json" || fail "tun preview with the client's module"
+preview_url="$(field local_url)"; preview_name="$(field name)"
+curl -sS -H 'Content-Type: application/json' -H 'X-Tun-Actor: admin:test' --data '{}' \
+  "$preview_url/api/registry_describe" >"$work/registry.json" 2>&1 || true
+python3 -c 'import json, sys
+settings = json.load(open(sys.argv[1]))["settings"]
+later = [s for s in settings if s["key"] == "notes.later"]
+sys.exit(0 if later and later[0]["module"] == "notes" and later[0]["source"] == "core" else 1)' \
+  "$work/registry.json" \
+  || { cat "$work/preview.json"; head -c 2000 "$work/registry.json"; echo;
+       fail "the preview does not show the working tree's module notes"; }
+preview stop "$preview_name" >/dev/null || fail "tun preview stop"
+cp "$work/notes.lisp" "$client/modules/notes/notes.lisp"
+commit_client "Med egen modul"
+
 step "tun update to a second commit of Tun's main"
 git -C "$work/tun" -c user.name=test-cli -c user.email=test-cli@localhost \
   commit --quiet --allow-empty -m "bin/test-cli second commit"
@@ -507,4 +628,4 @@ step "build and test after tun update"
 (cd "$client" && nix build --quiet) || fail "nix build after tun update"
 in_client bin/test || fail "bin/test after tun update"
 
-step "ok: tun new, build, test, image, restore, serve, preview, check, loop, tun add and tun update, at $revision"
+step "ok: tun new, build, test, image, restore, serve, preview, check, loop, tun add, a module of its own and tun update, at $revision"

@@ -1,8 +1,9 @@
 #!/usr/bin/env bash
-# bin/test -- compile the client and its tests, failing on any compiler
-# warning in them, then run the suite (tests/run.lisp) with a throwaway
-# Postgres server for the tests that open the application. Run inside the
-# dev shell: `nix develop`, or direnv through .envrc.
+# bin/test -- compile the client, its own modules under modules/ and its
+# tests, failing on any compiler warning in them, then run the suite
+# (tests/run.lisp) with a throwaway Postgres server for the tests that open
+# the application. Run inside the dev shell: `nix develop`, or direnv
+# through .envrc.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 command -v sbcl >/dev/null || { echo "bin/test: run inside 'nix develop'" >&2; exit 2; }

@@ -120,6 +120,28 @@
                 command)
           "whose client files compile apart from the shell's"))))
 
+(test a-previews-server-loads-the-client-s-own-modules-from-the-working-tree
+  ;; A module kept in the client's modules/ (tun-platform.md 2.1) is named
+  ;; in the source registry right after the client, before what the dev
+  ;; shell or Tun's working tree offers (preview.md 2).
+  (let* ((client (cli-scratch-directory))
+         (modules (namestring (merge-pathnames "modules/" client))))
+    (ensure-directories-exist (merge-pathnames "modules/notes/" client))
+    (flet ((registry (command)
+             (find-if (lambda (part) (search "initialize-source-registry" part)) command)))
+      (dolist (worktree (list nil "/srv/tun"))
+        (let* ((form (registry (tun.cli:server-command "acme" client worktree '())))
+               (own (search (format nil "(:tree ~s)" modules) form)))
+          (is (and own (< (search (format nil "(:directory ~s)" (namestring client)) form) own))
+              "~:[from the shell~;on Tun's working tree~]: the client, then its modules: ~a" worktree form)
+          (when own
+            (is (< own (search ":inherit-configuration" form)) "before the shell's")
+            (when worktree
+              (is (< own (search "/srv/tun/" form)) "before Tun's own"))))))
+    (is (not (search "(:tree" (find-if (lambda (part) (search "initialize-source-registry" part))
+                                       (tun.cli:server-command "acme" #p"/srv/acme/" nil '()))))
+        "a client without modules/ names none")))
+
 (defun with-state-home (function)
   "Call FUNCTION with XDG_STATE_HOME naming a fresh directory, so the
 previews it sees are its own."

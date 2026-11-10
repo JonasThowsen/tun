@@ -2,13 +2,14 @@
 ;;;; Utleie, built only from the public TUN package. The kernel suite cannot
 ;;;; load client code (tests/module-tests.lisp checks that), so bin/test runs
 ;;;; this client's suite in a process of its own: the interface check on real
-;;;; client files, each kind of extension point, the hooks in explain and in
-;;;; request traces, the screens and a manifest that enables some modules only.
+;;;; client files and on a module of the client's own (modules/logbook), each
+;;;; kind of extension point, the hooks in explain and in request traces, the
+;;;; screens and a manifest that enables some modules only.
 
 (defsystem "test-client"
   :description "Nordvik Utleie, the client Tun's own suite tests the client surface on."
   :version "0.1.0"
-  :depends-on ("tun" "tun-customers" "tun-catalog" "tun-orders" "tun-messaging")
+  :depends-on ("tun" "tun-customers" "tun-catalog" "tun-orders" "tun-messaging" "tun-logbook")
   :serial t
   :components ((:file "package")
                (:file "customers")

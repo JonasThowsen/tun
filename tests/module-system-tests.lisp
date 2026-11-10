@@ -78,6 +78,92 @@ developer's dashboard (modules/dashboard/README.md).")
     (let ((violations (module-violations (module-name module))))
       (is (null violations) "~{~a~^~%~}" violations))))
 
+;;; A module kept in a client's repository (tun-platform.md 2.1, testing.md
+;;; 1, tests 2 and 10).
+
+(test the-names-of-tuns-modules-are-its-modules-directories
+  (is (equal (sort (mapcar (lambda (directory) (car (last (pathname-directory directory))))
+                           (uiop:subdirectories (merge-pathnames "modules/" (asdf:system-source-directory "tun"))))
+                   #'string<)
+             +tun-module-names+)))
+
+(test a-module-s-directory-is-its-system-s
+  (is (equal (asdf:system-source-directory "tun-customers") (module-directory "customers")))
+  (signals error (module-directory "no_such_module")))
+
+(defun fake-client-root ()
+  "A directory under .build/ that does not exist yet, for a client's tree."
+  (merge-pathnames (format nil ".build/test-db/fake-client-~a/" (new-id "c"))
+                   (asdf:system-source-directory "tun")))
+
+(defun write-fake-file (root path text)
+  "Write TEXT to PATH under ROOT, making its directories."
+  (let ((file (merge-pathnames path root)))
+    (ensure-directories-exist file)
+    (with-open-file (out file :direction :output :if-exists :supersede :external-format :utf-8)
+      (write-string text out))
+    file))
+
+(test a-client-s-check-leaves-out-its-modules-and-other-clients-but-not-what-it-loads
+  (let* ((root (fake-client-root))
+         (hidden-system (format nil "tun-test-hidden-~a" (string-downcase (new-id "h")))))
+    (write-fake-file root "main.lisp" "(list 1)")
+    (write-fake-file root "tests/t.lisp" "(list 2)")
+    ;; customers is a loaded module: its directory is the client's module's.
+    (write-fake-file root "modules/customers/flake.nix" "{ }")
+    (write-fake-file root "modules/customers/tun-customers.asd" "(defsystem \"tun-customers\")")
+    (write-fake-file root "modules/customers/module.lisp" "(list 3)")
+    ;; A second client, whose system is not loaded.
+    (write-fake-file root "clients/other/flake.nix" "{ }")
+    (write-fake-file root "clients/other/other.asd" "(defsystem \"other\")")
+    (write-fake-file root "clients/other/other.lisp" "(list 4)")
+    ;; A flake.nix beside a loaded system that is no module stays the client's,
+    (write-fake-file root "vendor/flake.nix" "{ }")
+    (write-fake-file root "vendor/fiveam.asd" "(defsystem \"fiveam\")")
+    (write-fake-file root "vendor/vendored.lisp" "(list 5)")
+    ;; and so does one with no .asd at all,
+    (write-fake-file root "bare/flake.nix" "{ }")
+    (write-fake-file root "bare/bare.lisp" "(list 6)")
+    ;; and a file a loaded system has as a component, beside an unused .asd.
+    (write-fake-file root "hidden/flake.nix" "{ }")
+    (write-fake-file root "hidden/dummy.asd" "(defsystem \"dummy\")")
+    (write-fake-file root "hidden/loaded.lisp" "(list 7)")
+    (write-fake-file root "hidden/unloaded.lisp" "(list 8)")
+    ;; The loading system is the client's own, outside the directory.
+    (asdf:load-asd (write-fake-file root (format nil "loader/~a.asd" hidden-system)
+                                    (format nil "(defsystem ~s :pathname \"../hidden/\" :components ((:file \"loaded\")))"
+                                            hidden-system)))
+    (let ((*compile-verbose* nil) (*load-verbose* nil))
+      (asdf:load-system hidden-system))
+    (let ((names (mapcar #'file-namestring (client-files-under root))))
+      (is (member "main.lisp" names :test #'string=))
+      (is (not (member "t.lisp" names :test #'string=)) "tests are not client code")
+      (is (not (member "module.lisp" names :test #'string=)) "the client's module is checked as a module")
+      (is (not (member "other.lisp" names :test #'string=)) "a second client is its own")
+      (is (member "vendored.lisp" names :test #'string=) "a loaded system that is no module is the client's")
+      (is (member "bare.lisp" names :test #'string=) "a flake.nix without an .asd hides nothing")
+      (is (member "loaded.lisp" names :test #'string=) "what a loaded system has is the client's")
+      (is (not (member "unloaded.lisp" names :test #'string=))))))
+
+(test a-client-s-own-module-is-checked-as-a-module
+  (let ((root (fake-client-root)))
+    (write-fake-file root "client.asd" "(defsystem \"client\")")
+    (write-fake-file root "modules/customers/flake.nix" "{ }")
+    (write-fake-file root "modules/customers/tun-customers.asd" "(defsystem \"tun-customers\")")
+    (write-fake-file root "modules/customers/customers.lisp"
+                     "(in-package #:tun.customers) (tun.core::run-guarded nil nil nil)")
+    (write-fake-file root "modules/customers/tests/tests.lisp"
+                     "(defpackage #:customers-tests (:use #:cl)) (in-package #:customers-tests) (fiveam::run!)")
+    (is (equal '("customers") (mapcar #'first (client-module-directories (truename root)))))
+    (let ((violations (client-module-violations-under root)))
+      (is (find-if (lambda (v) (search "modules/customers/customers.lisp: uses a :: qualifier" v)) violations)
+          "a :: names the module's file from the client's directory: ~s" violations)
+      (is (find-if (lambda (v) (search "has the name of Tun's module customers" v)) violations)
+          "a client's module may not take a name of Tun's")
+      (is (find-if (lambda (v) (search "is loaded from" v)) violations)
+          "nor be loaded from anywhere but its directory")
+      (is (notany (lambda (v) (search "tests/" v)) violations) "its tests/ are not its sources: ~s" violations))))
+
 (test the-module-check-catches-undeclared-and-internal-reaches
   (let ((public (append +kernel-public-packages+ '("TUN.CUSTOMERS" "TUN.CATALOG" "TUN.INVENTORY"))))
     (flet ((check (text)

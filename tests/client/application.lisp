@@ -11,8 +11,9 @@
                              order-screen-feature customer-list-feature)
   ;; The manifest: the modules this client enables. The modules they depend
   ;; on (inventory, reviews, staffing, notifications, inbox) come with them;
-  ;; invoicing, calendar, warehouse and dashboard stay out.
-  (:modules customers catalog orders messaging)
+  ;; invoicing, calendar, warehouse and dashboard stay out. logbook is the
+  ;; client's own, kept in its modules/ (tun-platform.md 2.1).
+  (:modules customers catalog orders messaging logbook)
   ;; A Norwegian tenant, written in Norwegian, as a client from before core
   ;; 2.0 is (spec/i18n.md 10).
   (:locale :languages ("nb") :currency "NOK" :time-zone "Europe/Oslo")
