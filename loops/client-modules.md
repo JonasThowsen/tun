@@ -2,7 +2,7 @@
 
 - loop: client-modules
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 9eaab707e7eb2650a1f5313863b37eca21103041
 - client: /home/jonas/coding/tun-erp-wt/module-layout
 - client-base: 024eb4f6a4493f1262817d021376468d89d3f8e8
@@ -153,6 +153,12 @@ same repository is kept out of the first client's check if that is cheap.»
   the next one.
 - **Shown** in Tun ERP's module-layout worktree (`--client`), whose module
   company the preview loads from the working tree.
+
+## Actuals
+
+```json
+{"loop":"client-modules","title":"A module kept in a client's repository passes the checks and previews from the working tree","repository":"tun","mode":"reviewed","stage":"done","item":"sak_wqn3k1gzq3jrke7v","tags":["kind:testing","module:test-support"],"like":["tun/client-checks","tun/fuzz","tun/sequences","tun/page-smoke"],"started":"2026-11-10 09:06","ended":"2026-11-10 10:44","minutes":{"total":98,"waiting_person":0,"waiting_reviewer":6,"working":92,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":150,"worst":300,"at":"brief"},"latest_estimate":{"best":90,"likely":150,"worst":300,"at":"brief"},"within_estimate":true,"ratio":0.65,"verify":{"rounds":4,"failed":0},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
 
 ## Log
 
@@ -335,3 +341,4 @@ same repository is kept out of the first client's check if that is cheap.»
   - **The code.** I found no leftover debugging or dead code. The docstrings cite the spec, and the spec is changed where the behaviour is: `cli.md` §6, `preview.md` §2.3, `testing.md` §1 (tests 2 and 10) and `tun-platform.md` §2.1.
   
   **Not blocking:** step 6 in `spec/cli.md` doesn't mention two things `bin/test-cli` now does: running the module's own tests, and the `buildModules` refusal of two modules with one name. Both are specified elsewhere (§6 bullets, `tun-platform.md` §2.1), so the step list could name them too, but nothing depends on it.
+- 2026-11-10 10:44  finished at tun f6a00d5, erp 024eb4f
