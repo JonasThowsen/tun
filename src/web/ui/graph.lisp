@@ -37,12 +37,15 @@ A badge without a kind is a plain label.")
 
 ;;; The drawing's sizes, in CSS pixels at 16px to the rem.
 
-(defparameter +graph-node-width+ 192 "A node's width, 12rem.")
-(defparameter +graph-node-height+ 88 "A node's height, 5.5rem.")
-(defparameter +graph-column-gap+ 64 "The space between two layers, 4rem.")
+(defparameter +graph-node-width+ 224 "A node's width in the drawing, 14rem.")
+(defparameter +graph-node-height+ 104 "A node's height, 6.5rem.")
+(defparameter +graph-column-gap+ 48 "The space between two layers, 3rem.")
 (defparameter +graph-row-gap+ 16 "The space between two places in a layer, 1rem.")
 (defparameter +graph-arrow-length+ 8 "How far an arrowhead reaches back along its edge.")
 (defparameter +graph-arrow-half-width+ 5 "Half an arrowhead's width at its base.")
+(defparameter +graph-back-offset+ 8
+  "How far below the middle of its nodes' sides an edge a cycle reversed
+runs in the drawing, 0.5rem.")
 
 (defun graph-rem (pixels)
   "PIXELS, at 16px to the rem, as a CSS length in rem."
@@ -187,12 +190,19 @@ decrease, pool-adjacent-violators gives each run of S its weighted mean."
             append (loop repeat count
                          collect (+ (incf i) (max 0 (round sum weight))))))))
 
+(defun dense-rows (rows)
+  "ROWS, a vector of rows, with every row no vertex is in taken out: each
+row becomes its rank among the rows in use, so the first is 0."
+  (let ((used (sort (remove-duplicates (coerce rows 'list)) #'<)))
+    (map 'vector (lambda (row) (position row used)) rows)))
+
 (defun vertex-rows (order ups downs count)
   "The row of each of COUNT vertices in ORDER: each layer in turn takes the
-rows, strictly increasing down it, nearest the mean rows of its vertices'
+rows, strictly increasing down it, nearest the topmost row of its vertices'
 neighbours in the layer before, then after, as many times as the order is
 swept, and once more down; a vertex with no such neighbour keeps its row as
-far as the others let it (spec/ui.md 6.3, 5)."
+far as the others let it.  Then the rows no vertex is in are taken out
+(spec/ui.md 6.3, 5)."
   (let ((rows (make-array count :initial-element 0)))
     (note-positions order rows)
     (flet ((settle (layer neighbours)
@@ -200,11 +210,10 @@ far as the others let it (spec/ui.md 6.3, 5)."
                (dolist (vertex layer)
                  (let ((others (aref neighbours vertex)))
                    (push (if others
-                             (/ (reduce #'+ others :key (lambda (other) (aref rows other)))
-                                (length others))
+                             (reduce #'min others :key (lambda (other) (aref rows other)))
                              (aref rows vertex))
                          targets)
-                   (push (if others (length others) 1/100) weights)))
+                   (push (if others 1 1/100) weights)))
                (loop for vertex in layer
                      for row in (increasing-rows (nreverse targets) (nreverse weights))
                      do (setf (aref rows vertex) row)))))
@@ -213,11 +222,7 @@ far as the others let it (spec/ui.md 6.3, 5)."
           (loop for layer from 1 to last-layer do (settle (aref order layer) ups))
           (loop for layer from (1- last-layer) downto 0 do (settle (aref order layer) downs)))
         (loop for layer from 1 to last-layer do (settle (aref order layer) ups))))
-    (when (plusp count)
-      (let ((top (reduce #'min rows)))
-        (dotimes (vertex count)
-          (decf (aref rows vertex) top))))
-    rows))
+    (dense-rows rows)))
 
 (defun edge-chain (edge reversed layer-of trunks)
   "The vertices EDGE, (LEFT . RIGHT), passes from left to right: LEFT, a
@@ -395,6 +400,56 @@ GRAPH takes (spec/ui.md 6.3)."
 (defun graph-badges (badges)
   (mapcar #'graph-badge-markup badges))
 
+;;; A node shows the badges that fit the narrowest node's line, reckoned on
+;;; the server, since CSS cannot count what wrapped out of sight (spec/ui.md
+;;; 6.3, «The badges a node shows»).  Widths are in rem.
+
+(defparameter +graph-badge-room+ 41/4
+  "The width of the badge line of the narrowest node, a list's at 12rem,
+less its padding and stripe.")
+
+(defun badge-reckoned-width (text &optional agent)
+  "The width a badge of TEXT is reckoned to take: its padding and border,
+0.45rem a character, and an agent's dot."
+  (+ 11/10 (* 9/20 (length text)) (if agent 3/5 0)))
+
+(defun more-text (count)
+  (format nil "+~d" count))
+
+(defun shown-badge-count (badges)
+  "How many of BADGES, from the first, a node shows: the first always, then
+each in turn while it fits the line and leaves room for the «+N» of those
+still left after it."
+  (let ((used (badge-reckoned-width (getf (first badges) :text)
+                                    (eq :agent (getf (first badges) :kind))))
+        (count (length badges)))
+    (loop for shown from 1 below count
+          for badge in (rest badges)
+          for width = (+ used 1/4 (badge-reckoned-width (getf badge :text)
+                                                        (eq :agent (getf badge :kind))))
+          for left = (- count shown 1)
+          while (<= (+ width (if (plusp left)
+                                 (+ 1/4 (badge-reckoned-width (more-text left)))
+                                 0))
+                    +graph-badge-room+)
+          do (setf used width)
+          finally (return shown))))
+
+(defun node-badges (badges)
+  "The badge line of a node: the BADGES that fit, and «+N» for the rest,
+whose title, and a screen reader, name them."
+  (when badges
+    (let* ((shown (shown-badge-count badges))
+           (left (nthcdr shown badges))
+           (names (tr "~d more: ~{~a~^, ~}" (length left)
+                      (mapcar (lambda (badge) (getf badge :text)) left))))
+      (append (graph-badges (subseq badges 0 shown))
+              (when left
+                (list (badge* (list :variant :outline
+                                    :attributes (list :data-kind "more" :title names))
+                              `(:span (:@ :aria-hidden "true") ,(more-text (length left)))
+                              `(:span (:@ :class "tun-graph-hidden") ,names))))))))
+
 (defun graph-node-markup (node)
   "NODE as the box the drawing shows."
   (destructuring-bind (&key id title meta state href badges) node
@@ -407,8 +462,8 @@ GRAPH takes (spec/ui.md 6.3)."
                     ,(if href `(:a (:@ :class "tun-graph-link" :href ,href) ,title) title))
              (:span (:@ :class "tun-graph-line")
                     (:span (:@ :class "tun-graph-state") ,(graph-state-text state))
-                    ,@(when meta `((:span (:@ :class "tun-graph-meta") ,meta))))
-             (:span (:@ :class "tun-graph-badges") ,@(graph-badges badges))))))
+                    ,@(when meta `((:span (:@ :class "tun-graph-meta" :title ,meta) ,meta))))
+             (:span (:@ :class "tun-graph-badges") ,@(node-badges badges))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The drawing
@@ -424,22 +479,29 @@ GRAPH takes (spec/ui.md 6.3)."
   "The y of the middle of a node at PLACE's row."
   (+ (* (cdr place) (+ +graph-node-height+ +graph-row-gap+)) (/ +graph-node-height+ 2)))
 
+(defun edge-y (place reversed)
+  "The y an edge meets the node or empty place at PLACE: the middle, or
++GRAPH-BACK-OFFSET+ below it for an edge a cycle REVERSED, so that edge and
+one forward between the same nodes are two lines."
+  (+ (place-middle place) (if reversed +graph-back-offset+ 0)))
+
 (defun route-points (places reversed)
   "The points (X . Y) an edge through PLACES, from left to right, is drawn
 along, from its source to where its arrowhead starts: from the right side of
 the first to the left side of the last, or back from the last when the edge
 was REVERSED."
-  (let ((points (append (list (cons (place-right (first places)) (place-middle (first places))))
-                        (loop for place in (butlast (rest places))
-                              collect (cons (place-left place) (place-middle place))
-                              collect (cons (place-right place) (place-middle place)))
-                        (let ((last (first (last places))))
-                          (list (cons (place-left last) (place-middle last)))))))
-    (if reversed
-        (progn (incf (car (first points)) +graph-arrow-length+)
-               (reverse points))
-        (progn (decf (car (first (last points))) +graph-arrow-length+)
-               points))))
+  (flet ((point (x place) (cons x (edge-y place reversed))))
+    (let ((points (append (list (point (place-right (first places)) (first places)))
+                          (loop for place in (butlast (rest places))
+                                collect (point (place-left place) place)
+                                collect (point (place-right place) place))
+                          (let ((last (first (last places))))
+                            (list (point (place-left last) last))))))
+      (if reversed
+          (progn (incf (car (first points)) +graph-arrow-length+)
+                 (reverse points))
+          (progn (decf (car (first (last points))) +graph-arrow-length+)
+                 points)))))
 
 (defun route-path (points)
   "The SVG path along POINTS: straight where two are on one row, else a
@@ -459,7 +521,7 @@ left of the last of PLACES, or the right of the first when REVERSED."
   (let* ((target (if reversed (first places) (first (last places))))
          (tip (if reversed (place-right target) (place-left target)))
          (base (if reversed (+ tip +graph-arrow-length+) (- tip +graph-arrow-length+)))
-         (y (place-middle target)))
+         (y (edge-y target reversed)))
     (format nil "~d,~d ~d,~d ~d,~d" tip y base (- y +graph-arrow-half-width+)
             base (+ y +graph-arrow-half-width+))))
 
@@ -527,6 +589,128 @@ and its badges, in the order of the layers, then the nodes with no edges."
                                                 ,@(graph-badges badges)))))))))
 
 ;;; ------------------------------------------------------------------
+;;; The list (spec/ui.md 6.3, «The list»): the nodes in one column, in the
+;;; order of the layers, and the edges as rails in a gutter left of them.
+;;; Sizes are CSS pixels at 16px to the rem, as in the drawing.
+
+(defparameter +graph-list-gap+ 8 "The space between two nodes of the list, 0.5rem.")
+(defparameter +graph-lane-width+ 6 "The space between two lanes of the gutter.")
+(defparameter +graph-gutter-margin+ 12
+  "The space between the nearest lane and the nodes, where arrowheads stand.")
+(defparameter +graph-list-arrow-length+ 6 "An arrowhead's length in the list.")
+(defparameter +graph-list-arrow-half-width+ 4 "Half its width at its base.")
+
+(defun list-top (row)
+  (* row (+ +graph-node-height+ +graph-list-gap+)))
+
+(defun list-upper (row)
+  "The y where edges come into the node at ROW: the upper part of its side."
+  (+ (list-top row) (round +graph-node-height+ 3)))
+
+(defun list-lower (row)
+  "The y where edges leave the node at ROW: the lower part of its side."
+  (- (+ (list-top row) +graph-node-height+) (round +graph-node-height+ 3)))
+
+(defun graph-rails (layout)
+  "LAYOUT's edges as rails, each (NODE REVERSED OTHERS): a NODE's edges to
+the nodes below it, or, REVERSED, those a cycle reversed from the nodes
+below it into it; OTHERS are those nodes' ids, in the edges' order."
+  (let ((rails '()))
+    (loop for (from to reversed) in (layout-routes layout)
+          for top = (if reversed to from)
+          for other = (if reversed from to)
+          for rail = (find-if (lambda (rail) (and (equal (first rail) top)
+                                                  (eq (second rail) reversed)))
+                              rails)
+          do (if rail
+                 (setf (third rail) (append (third rail) (list other)))
+                 (push (list top reversed (list other)) rails)))
+    (nreverse rails)))
+
+(defun rail-extent (rail row-of)
+  "The ys, (TOP . BOTTOM), RAIL's vertical line runs between: from where it
+meets the node at its top to where it meets the lowest node it joins."
+  (destructuring-bind (top reversed others) rail
+    (let ((last-row (reduce #'max others :key row-of)))
+      (if reversed
+          (cons (list-upper (funcall row-of top)) (list-lower last-row))
+          (cons (list-lower (funcall row-of top)) (list-upper last-row))))))
+
+(defun rail-lanes (spans)
+  "The lane of each of SPANS, (TOP . BOTTOM) ys: from the shortest, each
+takes the lane nearest the nodes, 0, that no span meeting it holds
+(spec/ui.md 6.3)."
+  (let ((lanes (make-array (length spans) :initial-element nil))
+        (by-length (stable-sort (loop for span in spans for i from 0 collect (cons i span))
+                                #'< :key (lambda (entry) (- (cddr entry) (cadr entry))))))
+    (loop for (i first . last) in by-length
+          do (setf (aref lanes i)
+                   (loop for lane from 0
+                         unless (loop for j below (length spans)
+                                      for other = (nth j spans)
+                                        thereis (and (eql (aref lanes j) lane)
+                                                     (<= (car other) last)
+                                                     (<= first (cdr other))))
+                           return lane)))
+    (coerce lanes 'list)))
+
+(defun rail-markup (rail lane gutter row-of)
+  "The SVG of RAIL in LANE of a gutter GUTTER wide, ROW-OF giving each
+node's row in the list: its line down the lane, a line from each node at
+its tail to the lane, and a line from the lane to each node at its head,
+ending in an arrowhead; a dot on the lane where each line meets it."
+  (destructuring-bind (top reversed others) rail
+    (let* ((x (- gutter +graph-gutter-margin+ (* lane +graph-lane-width+)))
+           (base (- gutter +graph-list-arrow-length+))
+           (extent (rail-extent rail row-of))
+           (heads (if reversed (list top) others))
+           (tails (if reversed others (list top))))
+      (labels ((y-of (id)
+                 (if (member id heads :test #'equal)
+                     (list-upper (funcall row-of id))
+                     (list-lower (funcall row-of id))))
+               (line (from-x to-x id)
+                 (format nil "M~d,~d L~d,~d" from-x (y-of id) to-x (y-of id)))
+               (dot (id)
+                 `(:circle (:@ :data-node ,id :cx ,(princ-to-string x)
+                               :cy ,(princ-to-string (y-of id)) :r "2.5")))
+               (arrowhead (id)
+                 (let ((y (y-of id)) (half +graph-list-arrow-half-width+))
+                   `(:polygon (:@ :data-node ,id
+                                  :points ,(format nil "~d,~d ~d,~d ~d,~d" gutter y
+                                                   base (- y half) base (+ y half)))))))
+        `(:g (:@ :class "tun-graph-rail" :data-node ,top :data-back ,(and reversed ""))
+             (:path (:@ :d ,(format nil "M~d,~d L~d,~d~{ ~a~}" x (car extent) x (cdr extent)
+                                    (append (mapcar (lambda (id) (line gutter x id)) tails)
+                                            (mapcar (lambda (id) (line x base id)) heads)))))
+             ,@(mapcar #'dot (append tails heads))
+             ,@(mapcar #'arrowhead heads))))))
+
+(defun graph-list (layout nodes)
+  "The list of LAYOUT's NODES: the gutter of rails and the nodes' column."
+  (let* ((order (layout-order layout))
+         (rows (make-hash-table :test #'equal))
+         (by-id (make-hash-table :test #'equal)))
+    (loop for id in order for row from 0 do (setf (gethash id rows) row))
+    (dolist (node nodes) (setf (gethash (getf node :id) by-id) node))
+    (flet ((row-of (id) (gethash id rows)))
+      (let* ((rails (graph-rails layout))
+             (spans (mapcar (lambda (rail) (rail-extent rail #'row-of)) rails))
+             (lanes (rail-lanes spans))
+             (gutter (+ +graph-gutter-margin+ (* (1+ (reduce #'max lanes :initial-value 0))
+                                                 +graph-lane-width+)))
+             (height (- (list-top (length order)) +graph-list-gap+)))
+        `(:div (:@ :class "tun-graph-list")
+               (:svg (:@ :class "tun-graph-rails" :width ,(princ-to-string gutter)
+                         :viewbox ,(format nil "0 0 ~d ~d" gutter height)
+                         :preserveaspectratio "none" :aria-hidden "true" :focusable "false")
+                     ,@(loop for rail in rails
+                             for lane in lanes
+                             collect (rail-markup rail lane gutter #'row-of)))
+               (:div (:@ :class "tun-graph-list-nodes")
+                     ,@(mapcar (lambda (id) (graph-node-markup (gethash id by-id))) order)))))))
+
+;;; ------------------------------------------------------------------
 ;;; Graph
 
 (define-component graph ((&key label nodes edges id attributes))
@@ -534,7 +718,9 @@ and its badges, in the order of the layers, then the nodes with no edges."
   (:doc "Things and what depends on what among them, such as a project's steps with where
 agents work and the items tied to each, or modules and what each requires: nodes in layers
 from left to right, laid out on the server, each with its state, a link and badges, and an
-arrow for each edge (:from A :to B), B depending on A. A table under it holds the same.")
+arrow for each edge (:from A :to B), B depending on A. In a box narrower than 40rem, such as
+a phone's, it is a list of the nodes with the edges as rails beside it. A table under it holds
+the same.")
   (:source "Tun, in the look of shadcn/ui's cards and badges; a layered (Sugiyama) layout")
   (:css (format nil "
 .tun-graph {
@@ -544,6 +730,7 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
   width: 100%;
   min-width: 0;
   margin: 0;
+  container-type: inline-size;
   & > figcaption {
     color: var(--muted-foreground);
     font-size: var(--text-xs);
@@ -552,9 +739,40 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
   /* The drawing scrolls in its own box; the padding keeps a ring or a
      focus outline inside it. */
   & .tun-graph-scroll {
+    display: none;
     max-width: 100%;
     overflow-x: auto;
     padding: calc(var(--spacing) * 1.5);
+  }
+  /* The list: the gutter of rails beside a column of nodes 12rem to 40rem
+     wide; below 12rem the list scrolls in its own box. */
+  & .tun-graph-list {
+    display: grid;
+    grid-template-columns: auto minmax(12rem, 40rem);
+    justify-content: start;
+    max-width: 100%;
+    overflow-x: auto;
+    padding-block: calc(var(--spacing) * 1.5);
+    padding-inline-end: calc(var(--spacing) * 1.5);
+  }
+  & .tun-graph-rails {
+    height: 100%;
+    overflow: visible;
+    & path {
+      fill: none;
+      stroke: var(--muted-foreground);
+      stroke-width: 1.5px;
+      vector-effect: non-scaling-stroke;
+    }
+    & :is(circle, polygon) { fill: var(--muted-foreground); }
+    & [data-back] path { stroke-dasharray: 4 3; }
+  }
+  & .tun-graph-list-nodes {
+    display: flex;
+    flex-direction: column;
+    gap: ~a;
+    min-width: 0;
+    & .tun-graph-node { width: auto; }
   }
   /* The columns' sizes are those the edges are drawn to (+GRAPH-NODE-WIDTH+
      and the others), so they are written from the same numbers. */
@@ -601,7 +819,7 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
     display: flex;
     flex: none;
     flex-direction: column;
-    justify-content: center;
+    justify-content: flex-start;
     gap: var(--spacing);
     width: ~a;
     height: ~a;
@@ -630,13 +848,18 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
     &:has(.tun-graph-link:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
     & a:not(.tun-graph-link) { position: relative; z-index: 1; }
   }
+  /* Up to two lines of title, cut with an ellipsis after the second. */
   & .tun-graph-title {
+    display: -webkit-box;
+    flex: none;
     overflow: hidden;
+    -webkit-box-orient: vertical;
+    -webkit-line-clamp: 2;
+    line-clamp: 2;
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
     font-weight: var(--font-weight-medium);
-    text-overflow: ellipsis;
-    white-space: nowrap;
+    overflow-wrap: anywhere;
   }
   /* The title's link covers the box, as a card's does. */
   & .tun-graph-link {
@@ -730,10 +953,18 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
     cursor: pointer;
   }
   & .tun-graph-table[open] > summary { margin-block-end: calc(var(--spacing) * 2); }
+  /* The figure's own width chooses the form: the list in a narrow box,
+     the drawing from 40rem (spec/ui.md 6.3, «Two forms»).  Last, so it
+     overrides the forms' own display. */
+  @container (min-width: 40rem) {
+    & .tun-graph-scroll { display: block; }
+    & .tun-graph-list { display: none; }
+  }
 }
 @keyframes tun-graph-pulse {
   50% { opacity: 0.35; }
 }"
+                (graph-rem +graph-list-gap+)
                 (graph-rem +graph-column-gap+) (graph-rem +graph-row-gap+)
                 (graph-rem +graph-node-width+) (graph-rem +graph-node-height+)
                 (graph-rem +graph-row-gap+)
@@ -776,6 +1007,73 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
                              ("customers" "inbox") ("orders" "inbox") ("notifications" "inbox")
                              ("orders" "messaging") ("customers" "messaging")
                              ("notifications" "messaging") ("inbox" "messaging"))))))
+   (("A plan of 30 components, the shape of a real one" :layout :stack)
+    (graph (:label "Plan"
+            :nodes (mapcar (lambda (component)
+                             (destructuring-bind (id title state &rest badges) component
+                               (list :id id :title title :state state :meta "Module"
+                                     :badges badges)))
+                           '(("layout" "Module layout and build path" :done)
+                             ("update" "Updating customers in Tun" :done)
+                             ("company" "Company profile and settings" :done)
+                             ("pricing" "Prices, discounts and VAT rules" :done)
+                             ("customers" "Customers and their contacts" :done)
+                             ("catalogue" "Product and rental catalogue" :done)
+                             ("staff" "Staff, roles and working hours" :active
+                              (:text "Builder 1" :kind :agent))
+                             ("messages" "Messages to customers by mail and SMS" :done)
+                             ("accounting" "Port to the accounting system" :waiting
+                              (:text "1 question" :kind :ref :tone :warning)
+                              (:text "Planner" :kind :agent) (:text "#40" :kind :ref))
+                             ("orders" "Orders from quote to delivery" :active
+                              (:text "Builder 2" :kind :agent) (:text "#41" :kind :ref))
+                             ("lifecycle" "Order states and their transitions" :active)
+                             ("stock" "Stock ledger per warehouse" :done)
+                             ("quotes" "Quotes the customer can accept online" :planned)
+                             ("timers" "Reminders on quotes about to expire" :planned)
+                             ("inquiries" "Inquiries from the website form" :failed)
+                             ("reservations" "Stock reserved for confirmed orders" :planned)
+                             ("work-orders" "Work orders for the field crew" :planned)
+                             ("calendar" "Crew calendar by week and day" :planned)
+                             ("invoices" "Invoices from delivered orders" :blocked)
+                             ("invoice-status" "Invoice status from the accounting system"
+                              :planned)
+                             ("work-time" "Hours worked against work orders" :planned)
+                             ("payments" "Payments by card and invoice" :planned)
+                             ("front-page" "Front page with today's work" :planned)
+                             ("reports" "Monthly sales and margin reports" :planned)
+                             ("setup" "First-run setup for a new company" :active)
+                             ("bookings" "Rental bookings by date range" :planned)
+                             ("packing" "Packing lists for rental pickups" :planned)
+                             ("handover" "Handover and return of rented items" :planned)
+                             ("demo" "Demo companies with realistic data" :planned)
+                             ("parity" "Parity map against the old system" :planned)))
+            :edges (loop for (to . froms)
+                           in '(("company" "layout") ("pricing" "company")
+                                ("customers" "company" "update") ("catalogue" "company")
+                                ("staff" "company") ("messages" "customers")
+                                ("accounting" "company")
+                                ("orders" "customers" "catalogue" "pricing")
+                                ("lifecycle" "orders") ("stock" "catalogue")
+                                ("quotes" "lifecycle" "messages") ("timers" "quotes")
+                                ("inquiries" "orders" "messages")
+                                ("reservations" "stock" "lifecycle")
+                                ("work-orders" "lifecycle" "staff") ("calendar" "work-orders")
+                                ("invoices" "lifecycle" "accounting" "messages")
+                                ("invoice-status" "invoices")
+                                ("work-time" "work-orders" "stock" "invoices")
+                                ("payments" "lifecycle" "messages" "accounting")
+                                ("front-page" "timers" "invoice-status" "reservations"
+                                 "work-orders" "inquiries")
+                                ("reports" "invoice-status")
+                                ("setup" "company" "catalogue" "messages")
+                                ("bookings" "lifecycle" "catalogue")
+                                ("packing" "bookings" "reservations")
+                                ("handover" "bookings" "invoices")
+                                ("demo" "front-page" "reports" "setup" "payments" "calendar"
+                                 "work-time" "packing" "handover")
+                                ("parity" "demo"))
+                         append (mapcar (lambda (from) (list :from from :to to)) froms)))))
    (("A cycle, and nodes with no edges" :layout :stack)
     (graph (:label "Review"
             :nodes (list (list :id "write" :title "Write" :state :done)
@@ -803,7 +1101,8 @@ arrow for each edge (:from A :to B), B depending on A. A table under it holds th
                         `((:div (:@ :class "tun-graph-scroll")
                                 (:div (:@ :class "tun-graph-canvas")
                                       ,(graph-edges-markup layout)
-                                      ,@(graph-columns layout nodes)))))
+                                      ,@(graph-columns layout nodes)))
+                          ,(graph-list layout nodes)))
                     ,@(when loose
                         `((:div (:@ :class "tun-graph-loose")
                                 ,@(mapcar #'graph-node-markup loose))))

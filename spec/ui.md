@@ -10,7 +10,8 @@ person's language, amounts and dates by its formats (`i18n.md`),
 2026-10-27, core 2.0.0; `line-chart` and `sparkline` (§6), the chart
 token (§3) and `preserveAspectRatio` in extension output (§5),
 2026-11-02, core 2.6.0; `graph`, nodes and the edges between them
-(§6.3), 2026-11-10, core 2.18.0. How every Tun
+(§6.3), 2026-11-10, core 2.18.0; its list for narrow boxes, 2026-11-10,
+core 2.20.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -790,12 +791,27 @@ Tun's modules and what each requires:
   `:waiting` (on a person), `:done`, `:failed` and `:blocked`; with
   HREF the whole node is a link, as `card`'s is, its badges' links
   staying above it; BADGES a list of badges (below).
-- **The node** is a box of one size, 12rem by 5.5rem: TITLE on one
-  line, cut with an ellipsis and whole in the box's `title`; the
-  state's word with a dot, then META, on the second; the badges on the
-  third. Badges that do not fit the line are left out of the box whole;
-  a first badge wider than the line alone ends in an ellipsis, its whole
-  text in its `title`. Every badge is in the table. The state's tone is a 3px stripe at the box's start and
+- **The node** is a box 6.5rem high, 14rem wide in the drawing and as
+  wide in the list as «The list» says: TITLE on up to two lines, cut with an
+  ellipsis after the second and whole in the box's `title`; the state's
+  word with a dot, then META, cut with an ellipsis and whole in its own
+  `title`, on the next; the badges on the last.
+- **The badges a node shows** are those that fit the line of the
+  narrowest node, a list's at 12rem, with its padding (10.25rem of
+  badges), as the server reckons a badge's width from its text: 1.1rem
+  of padding and border, 0.45rem a character, and 0.6rem for an agent's
+  dot, with 0.25rem between badges; «+N» counts as a badge of its own
+  text. The first badge always shows, then each in turn while it and,
+  if any are left after it, the «+N» for those still fit.
+  The same badges show in both forms. «+N» says how many are left out,
+  and its `title` names them (en «2 more: Kari, #21», nb «2 til: Kari,
+  #21»). The badges left out are not in the node, so none of their links
+  takes focus; every badge is in the table.
+- **The guard.** A text can be wider than reckoned, so the badge line is
+  one line high and clipped: a badge that wraps past it is out of sight
+  whole, and a badge alone wider than the line ends in an ellipsis, its
+  whole text in its `title`.
+- **The tones.** The state's tone is a 3px stripe at the box's start and
   the dot: planned `--muted-foreground`, active `--info`, waiting
   `--warning` on a `--warning-soft` box, done `--success`, failed and
   blocked `--destructive` on `--destructive-soft`. The words are
@@ -832,26 +848,39 @@ to right, each edge from a layer to a later one:
 3. An edge across more than one layer takes an empty place in each layer
    between, so it never runs under a node. The edges from one node share
    their empty place in a layer, so a node's long edges run as one trunk
-   until they part.
+   until they part; the edges step 1 reversed share theirs only with
+   each other, so a dashed edge never runs along a solid one.
 4. Within each layer, the nodes and places are ordered by the mean
    position of their neighbours in the layer before, then the layer
    after, four times each way, and the order with the fewest crossing
    edges is kept.
 5. Each layer in turn takes rows that grow down it in that order, one
    place a row at least, as near as they can be, in the least squares,
-   to the mean row of each place's neighbours in the layer before; then
+   to the topmost row of each place's neighbours in the layer before; then
    the same by the layer after, back up; four times each way and once
    more down. A place with no such neighbours keeps its row as far as
-   the others let it. The rows are then moved up so the first is 0.
+   the others let it. Then a row no layer has a place in is taken out,
+   and the first row is 0. Leaning to the topmost neighbour keeps a
+   chain level and puts a node that feeds a wide fan level with the
+   fan's top, so the drawing's first layers stand at its top.
 
 Nodes with no edges are not in the layers: they stand in a row under
-the drawing that wraps to its width. The same input always gives the
-same layout.
+the drawing or the list that wraps to its width. The same input always
+gives the same layout.
+
+**Two forms.** The figure holds the graph twice, as **the drawing**, the
+layers from left to right, and as **the list**, one column, and CSS shows
+one of them by the figure's own width. The figure is a container
+(`container-type: inline-size`): narrower than 40rem, as on a phone or in
+a narrow column, it shows the list; from 40rem, as in a desktop's
+content, the drawing. The form not shown is `display: none`, neither
+seen, read nor focused. So the window does not decide: a graph in a
+narrow card on a wide page is a list.
 
 **The drawing.**
 
-- Layers are columns 12rem wide with 4rem between them, and a layer's
-  nodes and empty places are 5.5rem high with 1rem between them, so no
+- Layers are columns 14rem wide with 3rem between them, and a layer's
+  nodes and empty places are 6.5rem high with 1rem between them, so no
   `style` attribute places anything (§4). The edges are an SVG over
   the columns, behind the nodes, whose viewBox is the columns' size in
   CSS pixels at 16px to the rem.
@@ -861,18 +890,52 @@ same layout.
   at the middle, to its target's left side, the arrowhead pointing
   right. An edge the search reversed, whose target is in an earlier
   layer, is dashed and runs from its source's left side to its target's
-  right side, the arrowhead pointing left.
-- The drawing scrolls sideways in its own box when it is wider than
-  the box, as on a phone; the page does not.
-- The figure's caption is LABEL. Under the drawing, a `<details>`
-  closed by default, «Show as a table», holds a `table` with a row per
+  right side, 0.5rem below their middles, the arrowhead pointing left;
+  so two nodes that depend on each other show two lines.
+- The drawing has its own box, which scrolls sideways when the drawing
+  is wider than it; the page does not.
+
+**The list.**
+
+- The nodes with edges stand in one column, in the order of the
+  layers, each layer from its top, one after the other with 0.5rem
+  between them: the first node is at the top, and no place in the list
+  is empty. Each is as wide as the figure less the gutter, at most
+  40rem and at least 12rem: when the gutter leaves less, the list
+  scrolls sideways in its own box.
+- The gutter, left of the nodes, holds the edges as rails. A rail
+  belongs to the node at its top and is a vertical line from that
+  node's row down to the lowest node it joins, in a lane of its own
+  among the rails its line would meet: rails are given lanes from the
+  shortest, each the lane nearest the nodes that no rail whose line
+  overlaps its own, from where it meets its top node to where it meets
+  its lowest, holds. So a rail into a node's upper part and one out of
+  its lower part may share a lane, as a chain does. Lanes are 6px
+  apart.
+  - A node's **solid rail** holds its edges to the nodes below it: a dot
+    on the rail and a line from the lower part of the node's left side
+    start it, and at each target a dot on the rail and a line to the
+    upper part of the target's left side end in an arrowhead pointing
+    into the target.
+  - A node's **dashed rail** holds the edges step 1 reversed, from nodes
+    below it into it: a line to the upper part of the node's left side
+    ends in an arrowhead pointing into it, and at each source below, a
+    dot on the rail and a line from the lower part of the source's left
+    side start that source's edge.
+  - The rails and lines are 1.5px in `--muted-foreground`, the dots
+    2.5px in radius.
+- The gutter is an SVG as high as the list, whose width is the lanes',
+  stretched to the list's height (`preserveAspectRatio="none"`), the
+  lines kept 1.5px by `vector-effect: non-scaling-stroke`.
+- The figure's caption is LABEL. Under both forms, outside them, and so
+  under whichever shows, a `<details>` closed by default, «Show as a table», holds a `table` with a row per
   node: its title (a link to HREF), its state's word, the titles of the
   nodes it depends on, and its badges. The rows follow the layers, from
   the first, each layer from its top; then come the nodes with no
   edges, in the order NODES gives them.
-  The SVG and the empty places are `aria-hidden`. The component has no
-  script: without JavaScript it is drawn the same.
-- With no nodes, «No data» stands in place of the drawing, and there is
+  The SVGs and the empty places are `aria-hidden`. The component has
+  no script: without JavaScript it is drawn the same.
+- With no nodes, «No data» stands in place of both forms, and there is
   no table.
 
 ## 7. The specimen
@@ -1107,17 +1170,35 @@ form of `field`s with an `error-summary`, a confirmation is a
   places never shared, crossed edges uncrossed, a cycle reversed and
   marked, and the same layout every time; the nodes' states, words and
   tones, a node's long edges sharing their empty places, the badges'
-  kinds, tones and links, the edges drawn and
+  kinds, tones and links, which badges a node shows and its «+N», the
+  two forms and their breakpoint, rows leaning to the top, the list's order and its rails' lanes and
+  ends, the edges drawn and
   reversed, the table, no nodes, the bounds refused, Norwegian, and
   the largest graph allowed within a second.
-- `checks/showcase/checks/graph.py` (`/graph`): at 390px and 1280px,
-  light and dark, every edge's ends at its nodes' sides, no nodes
-  overlapping, the stripe in the state's colour, the agent's dot and
-  ring, each badge wholly inside its node or wholly out of sight, a
-  badge too long for the line ending in an ellipsis, the page not
-  scrolling sideways while a wide drawing scrolls in its box; the
+- `checks/showcase/checks/graph.py` (`/graph`): at 1280px every graph
+  on the page is a drawing, and light and dark, every edge's ends at
+  its nodes' sides, a reversed one below their middles, no nodes
+  overlapping, no row empty across the 48-step drawing, the stripe in
+  the state's colour, the agent's dot and ring, each badge wholly inside
+  its node or, alone too long for its line, ending in an ellipsis; at
+  390px every graph on the page is a list, the 48-step one's nodes at
+  least 12rem wide; at both, the page does not scroll sideways; the
   table's rows, a node's and a badge's links; without the script the
-  graph is drawn and the table opens.
+  forms and the table work the same.
+- `checks/showcase/checks/graph-plan.py` (`/graph`, the shape of a real
+  plan of 30 components): at 390px, light and dark, it is a list of all
+  30 nodes that starts at its first node with nothing empty between
+  them, neither the page nor the list scrolling sideways; each
+  arrowhead's tip and each dot's line at its node's left side; at least
+  28 titles whole in two lines, and every state word and META whole;
+  «+2» on `accounting-port`, «+1» on `order-lifecycle` and no «+N» on
+  `orders`, whose two badges fit; every badge wholly inside its
+  node but the one too long for the line alone, which ends in an
+  ellipsis with its whole text in its `title`; at 1280px it is a
+  drawing scrolling sideways in its box, with at least 24 titles whole,
+  every state word and META whole, the first layer's node
+  (`module-layout`) in its first two rows, and at least six nodes in
+  the box's first 600px.
 - `tests/rank-tests.lisp`: `rank-between` (`core.md` §2.6).
 - `tests/chart-tests.lisp`: the y axis's ticks (multiples of a round
   step, three to five, their decimals, equal values), the x axis's labels

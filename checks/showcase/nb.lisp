@@ -119,6 +119,8 @@
   ("The pilot" "Piloten")
   ("Event rental" "Utleie til arrangementer")
   ("48 steps" "48 steg")
+  ("A plan of 30 components" "En plan med 30 komponenter")
+  ("Tun ERP's plan" "Planen for Tun ERP")
   ("Eight strands" "Åtte tråder"))
 
 ;;; Prices (prices.lisp)

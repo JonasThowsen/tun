@@ -277,7 +277,10 @@ working on them and the items tied to each, are `(ui:graph (:label L
 :badges)`, a badge `(:text :kind :tone :href)` with the kind `:agent` for
 someone working there now and `:ref` for a count or an item's number, and
 each edge `(:from A :to B)` for B depending on A. Tun lays them out in
-layers on the server (`spec/ui.md` §6.3).
+layers on the server, drawn left to right in a box of 40rem or more,
+scrolling sideways when wider, and as a list with the dependencies as
+rails beside it in a narrower box, such as on a phone (`spec/ui.md`
+§6.3).
 
 ```lisp
 (define-page notes-page ("notater" :title "Notater" :icon :file-text)

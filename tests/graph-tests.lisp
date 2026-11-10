@@ -135,6 +135,16 @@ later one, chosen by a fixed walk from SEED."
     (is (ascending-p layout) "two nodes each other's dependency")
     (is (= 1 (count-if #'third (tun.ui::layout-routes layout))))))
 
+(test a-node-feeding-a-fan-stands-level-with-its-top
+  (let ((layout (layout-of '("s" "a" "b" "c") '(("s" "a") ("s" "b") ("s" "c")))))
+    (is (equal '(0 1 2) (mapcar (lambda (id) (cdr (place-of layout id))) '("a" "b" "c"))))
+    (is (= 0 (cdr (place-of layout "s"))) "level with the fan's top, not its middle")))
+
+(test no-row-is-empty-across-every-layer
+  (let ((layout (layout-of (numbered-ids 60) (random-edges 60 90 7))))
+    (is (equal (loop for row below (tun.ui::layout-rows layout) collect row)
+               (sort (remove-duplicates (mapcar #'cdr (every-place layout))) #'<)))))
+
 (test the-same-graph-gets-the-same-layout
   (flet ((picture (layout)
            (list (mapcar (lambda (id) (place-of layout id)) (numbered-ids 40))
@@ -173,7 +183,7 @@ later one, chosen by a fixed walk from SEED."
         "an agent's badge marks its node live")
     (is (search "<a class=\"tun-graph-link\" href=\"/steps/b\">Booking calendar</a>" html))
     (is (search (concatenate 'string "<span class=\"tun-graph-state\">Active</span>"
-                             "<span class=\"tun-graph-meta\">Factory 3</span>")
+                             "<span class=\"tun-graph-meta\" title=\"Factory 3\">Factory 3</span>")
                 html))
     (is (search "data-state=\"planned\" title=\"Docs\"" html) "planned unless given")
     (is (search "class=\"tun-graph-live\" aria-hidden=\"true\"" html))
@@ -191,7 +201,8 @@ later one, chosen by a fixed walk from SEED."
                 (graph-html :label "x" :nodes (list (list :id "a" :title "a"
                                                           :badges (list (list :text "Plain"))))))
         "a badge without a kind is a plain label")
-    (is (= 1 (count-matches "data-live" html)) "only the node an agent works on")))
+    (is (= 2 (count-matches "data-live" html))
+        "only the node an agent works on, in the drawing and in the list")))
 
 (test every-state-has-its-word-in-english-and-norwegian
   (let ((nodes (loop for state in '(:planned :active :waiting :done :failed :blocked)
@@ -214,26 +225,27 @@ later one, chosen by a fixed walk from SEED."
                                        (edge "b" "c") (edge "c" "b")))))
     (is (= 3 (count-matches "class=\"tun-graph-edge\"" html))
         "a repeated edge once, one to itself not at all")
-    (is (search "0 0 704 88" html) "three layers of one row, in CSS pixels")
+    (is (search "0 0 768 104" html) "three layers of one row, in CSS pixels")
     (is (search (concatenate 'string "data-from=\"a\" data-to=\"b\">"
-                             "<path d=\"M192,44 L248,44\"></path>"
-                             "<polygon points=\"256,44 248,39 248,49\">")
+                             "<path d=\"M224,52 L264,52\"></path>"
+                             "<polygon points=\"272,52 264,47 264,57\">")
                 html)
         "from the source's right side to the arrowhead at the target's left")
     (is (search (concatenate 'string "data-from=\"c\" data-to=\"b\" data-back=\"\">"
-                             "<path d=\"M512,44 L456,44\"></path>"
-                             "<polygon points=\"448,44 456,39 456,49\">")
+                             "<path d=\"M544,60 L504,60\"></path>"
+                             "<polygon points=\"496,60 504,55 504,65\">")
                 html)
-        "a reversed edge from its source's left side, its arrowhead at its target's right")))
+        "a reversed edge from its source's left side, its arrowhead at its target's right,
+0.5rem below the middle")))
 
 (test edges-between-rows-curve-and-pass-through-empty-places
   (let ((html (graph-html :label "x"
                           :nodes (loop for id in '("a" "b" "c" "d") collect (list :id id :title id))
                           :edges (list (edge "a" "b") (edge "b" "c") (edge "c" "d")
                                        (edge "a" "d")))))
-    (is (search (concatenate 'string "data-from=\"a\" data-to=\"d\"><path d=\"M192,44"
-                             " C224,44 224,148 256,148 L448,148 L512,148 L704,148"
-                             " C732,148 732,44 760,44")
+    (is (search (concatenate 'string "data-from=\"a\" data-to=\"d\"><path d=\"M224,52"
+                             " C248,52 248,172 272,172 L496,172 L544,172 L768,172"
+                             " C788,172 788,52 808,52")
                 html)
         "a curve down to the empty place, straight through it")
     (is (= 2 (count-matches "class=\"tun-graph-gap\" aria-hidden=\"true\"" html))
@@ -302,3 +314,92 @@ later one, chosen by a fixed walk from SEED."
          (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
     (is (= 300 (count-matches "class=\"tun-graph-edge\"" html)))
     (is (< seconds 1) "rendered in ~,2fs" (float seconds))))
+
+;;; ------------------------------------------------------------------
+;;; Badges that fit, and «+N»
+
+(test a-node-shows-the-badges-that-fit-and-counts-the-rest
+  (flet ((shown (&rest badges) (tun.ui::shown-badge-count badges)))
+    (is (= 1 (shown '(:text "1 question" :kind :ref) '(:text "Planner" :kind :agent)
+                    '(:text "#40" :kind :ref))))
+    (is (= 2 (shown '(:text "Reviewer" :kind :agent) '(:text "#42" :kind :ref)
+                    '(:text "#43" :kind :ref)))
+        "exactly the room left for «+1»")
+    (is (= 2 (shown '(:text "Builder 2" :kind :agent) '(:text "#41" :kind :ref))))
+    (is (= 1 (shown '(:text "Builder 3, the one on the long name" :kind :agent)))
+        "the first always"))
+  (let* ((html (graph-html :label "x"
+                           :nodes (list (list :id "a" :title "a"
+                                              :badges (list (list :text "1 question" :kind :ref)
+                                                            (list :text "Planner" :kind :agent)
+                                                            (list :text "#40" :kind :ref
+                                                                  :href "/items/40"))))))
+         (node (subseq html (search "tun-graph-loose" html) (search "tun-graph-table" html))))
+    (is (search "data-kind=\"more\" title=\"2 more: Planner, #40\"" node))
+    (is (search (concatenate 'string "<span aria-hidden=\"true\">+2</span>"
+                             "<span class=\"tun-graph-hidden\">2 more: Planner, #40</span>")
+                node))
+    (is (not (search "/items/40" node)) "a badge left out is not in the node, nor its link")
+    (is (search "/items/40" (subseq html (search "tun-graph-table" html))) "the table has it"))
+  (is (search "2 til: Planner, #40"
+              (graph-html-nb :label "x"
+                             :nodes (list (list :id "a" :title "a"
+                                                :badges (list (list :text "1 question")
+                                                              (list :text "Planner" :kind :agent)
+                                                              (list :text "#40" :kind :ref))))))))
+
+;;; ------------------------------------------------------------------
+;;; The two forms, and the list
+
+(defun list-part (html)
+  (subseq html (search "class=\"tun-graph-list\"" html) (search "tun-graph-table" html)))
+
+(test both-forms-are-rendered-and-css-chooses-by-the-figures-width
+  (let ((html (graph-html :label "x" :nodes *graph-nodes* :edges (list (edge "a" "b")))))
+    (is (search "class=\"tun-graph-scroll\"" html))
+    (is (search "class=\"tun-graph-list\"" html)))
+  (let ((css (tun.ui:component-css (tun.ui:find-component "graph"))))
+    (is (search "container-type: inline-size" css))
+    (is (search "@container (min-width: 40rem)" css))))
+
+(test the-list-holds-the-nodes-in-the-order-of-the-layers
+  (let ((list (list-part (graph-html :label "x"
+                                     :nodes (loop for id in '("c" "b" "a")
+                                                  collect (list :id id :title id))
+                                     :edges (list (edge "a" "b") (edge "b" "c"))))))
+    (is (equal '("a" "b" "c") (all-matches-group "class=\"tun-graph-node\" data-node=\"([a-z]+)\""
+                                                 list)))))
+
+(test a-chain-runs-down-one-lane-of-the-gutter
+  (let ((list (list-part (graph-html :label "x"
+                                     :nodes (loop for id in '("a" "b" "c")
+                                                  collect (list :id id :title id))
+                                     :edges (list (edge "a" "b") (edge "b" "c"))))))
+    (is (search "width=\"18\" viewbox=\"0 0 18 328\"" list) "one lane, three nodes")
+    (is (search (concatenate 'string "data-node=\"a\"><path d=\"M6,69 L6,147 M18,69 L6,69"
+                             " M6,147 L12,147\"></path>")
+                list)
+        "from a's lower part down to b's upper part, in lane 0")
+    (is (search "<polygon data-node=\"b\" points=\"18,147 12,143 12,151\">" list)
+        "the arrowhead's tip at b's left side")
+    (is (search "data-node=\"b\"><path d=\"M6,181 L6,259" list) "b's rail in the same lane")))
+
+(test rails-that-meet-take-different-lanes-the-shortest-nearest
+  (let ((list (list-part (graph-html :label "x"
+                                     :nodes (loop for id in '("a" "b" "c")
+                                                  collect (list :id id :title id))
+                                     :edges (list (edge "a" "b") (edge "a" "c")
+                                                  (edge "b" "c"))))))
+    (is (search "data-node=\"b\"><path d=\"M12,181" list) "b's short rail in lane 0")
+    (is (search "data-node=\"a\"><path d=\"M6,69 L6,259" list) "a's longer one in lane 1")))
+
+(test a-reversed-rail-is-dashed-and-points-into-its-top-node
+  (let ((list (list-part (graph-html :label "x"
+                                     :nodes (loop for id in '("a" "b")
+                                                  collect (list :id id :title id))
+                                     :edges (list (edge "a" "b") (edge "b" "a"))))))
+    (is (search "class=\"tun-graph-rail\" data-node=\"a\" data-back=\"\"" list))
+    (is (search "<polygon data-node=\"a\" points=\"24,35 18,31 18,39\">" list)
+        "its arrowhead into a's upper part")
+    (is (search "<circle data-node=\"b\" cx=\"6\" cy=\"181\"" list)
+        "a dot where b's edge leaves its lower part, in the outer lane")))
