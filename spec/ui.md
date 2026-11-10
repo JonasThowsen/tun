@@ -9,7 +9,8 @@ Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
 person's language, amounts and dates by its formats (`i18n.md`),
 2026-10-27, core 2.0.0; `line-chart` and `sparkline` (§6), the chart
 token (§3) and `preserveAspectRatio` in extension output (§5),
-2026-11-02, core 2.6.0. How every Tun
+2026-11-02, core 2.6.0; `graph`, nodes and the edges between them
+(§6.3), 2026-11-10, core 2.18.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -362,13 +363,14 @@ A component is defined with `define-component` in the package `TUN.UI`:
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
 | Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
-| Data (`data`, `board`, `files`, `charts`, `markdown`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown` |
+| Data (`data`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
-`files.md` §6, and `markdown`, text written in Markdown, in §6.2.
+`files.md` §6, `markdown`, text written in Markdown, in §6.2, and
+`graph`, nodes and the edges between them, in §6.3.
 
 `combobox` is a text field that finds one of its `:options`, texts, as
 one types. Focusing or tapping it opens a list of every option under it;
@@ -762,6 +764,117 @@ headings underlined with `=` or `-`, indented code, reference links,
 footnotes and character references (`&amp;`). Each of these shows as
 written.
 
+### 6.3 The graph
+
+`graph` draws things and what depends on what among them, such as a
+project's steps with where agents work and the items tied to each, or
+Tun's modules and what each requires:
+
+```lisp
+(ui:graph (:label "Event rental"
+           :nodes (list (list :id "brief" :title "Brief" :state :done :href "/steps/1")
+                        (list :id "calendar" :title "Booking calendar" :meta "Factory 3"
+                              :state :active :href "/steps/2"
+                              :badges (list (list :text "Claude i tun" :kind :agent)
+                                            (list :text "#12" :kind :ref :href "/items/12")))
+                        (list :id "staging" :title "Deploy to staging" :state :waiting
+                              :badges (list (list :text "2 questions" :kind :ref
+                                                  :tone :warning))))
+           :edges (list (list :from "brief" :to "calendar")
+                        (list :from "calendar" :to "staging"))))
+```
+
+- **Nodes.** Each is `(:id :title [:meta] [:state] [:href] [:badges])`:
+  ID a string, unique in the graph; TITLE its name; META a second line
+  of small text; STATE one of `:planned` (the default), `:active`,
+  `:waiting` (on a person), `:done`, `:failed` and `:blocked`; with
+  HREF the whole node is a link, as `card`'s is, its badges' links
+  staying above it; BADGES a list of badges (below).
+- **The node** is a box of one size, 12rem by 5.5rem: TITLE on one
+  line, cut with an ellipsis and whole in the box's `title`; the
+  state's word with a dot, then META, on the second; the badges on the
+  third. Badges that do not fit the line are left out of the box whole;
+  a first badge wider than the line alone ends in an ellipsis, its whole
+  text in its `title`. Every badge is in the table. The state's tone is a 3px stripe at the box's start and
+  the dot: planned `--muted-foreground`, active `--info`, waiting
+  `--warning` on a `--warning-soft` box, done `--success`, failed and
+  blocked `--destructive` on `--destructive-soft`. The words are
+  catalogued: «Planned», «Active», «Waiting», «Done», «Failed»,
+  «Blocked» (nb «Planlagt», «Aktiv», «Venter», «Ferdig», «Feilet»,
+  «Blokkert»).
+- **Badges.** Each is `(:text [:kind] [:tone] [:href])`, drawn as a
+  `badge`: TONE `:neutral` (the default, the outline variant),
+  `:info`, `:success`, `:warning` or `:destructive`. Without KIND a
+  badge is a plain label. KIND `:agent` is
+  someone working there now: a dot before the text that pulses (and
+  stands still when motion is reduced), the tone `:info` unless
+  given, «, working now» («, arbeider nå») after the text for a screen
+  reader only, and a 2px ring in `--info` around its node. KIND `:ref`
+  is a count or a reference, such as «3 open» or «#12», in tabular
+  figures. With HREF the badge is a link.
+- **Edges.** Each is `(:from A :to B)`: B depends on A, or comes after
+  it. A repeated edge is drawn once, and an edge from a node to itself
+  not at all. An edge naming a node that is not in NODES is an error in
+  the caller's code.
+- **Bounds.** At most 150 nodes, 300 edges and 8 badges on a node; more,
+  a repeated or missing ID, or a STATE, KIND or TONE not listed is an
+  error in the caller's code.
+
+**The layout** is computed on the server, in layers that run from left
+to right, each edge from a layer to a later one:
+
+1. A depth-first search through the nodes in their order, and through
+   each node's edges in theirs, reverses each edge back to a node it
+   is still searching from, so a cycle becomes a chain.
+2. A node's layer is the longest path to it from a node with no edge
+   into it; such a node then moves to the layer just before its
+   earliest successor's.
+3. An edge across more than one layer takes an empty place in each layer
+   between, so it never runs under a node. The edges from one node share
+   their empty place in a layer, so a node's long edges run as one trunk
+   until they part.
+4. Within each layer, the nodes and places are ordered by the mean
+   position of their neighbours in the layer before, then the layer
+   after, four times each way, and the order with the fewest crossing
+   edges is kept.
+5. Each layer in turn takes rows that grow down it in that order, one
+   place a row at least, as near as they can be, in the least squares,
+   to the mean row of each place's neighbours in the layer before; then
+   the same by the layer after, back up; four times each way and once
+   more down. A place with no such neighbours keeps its row as far as
+   the others let it. The rows are then moved up so the first is 0.
+
+Nodes with no edges are not in the layers: they stand in a row under
+the drawing that wraps to its width. The same input always gives the
+same layout.
+
+**The drawing.**
+
+- Layers are columns 12rem wide with 4rem between them, and a layer's
+  nodes and empty places are 5.5rem high with 1rem between them, so no
+  `style` attribute places anything (§4). The edges are an SVG over
+  the columns, behind the nodes, whose viewBox is the columns' size in
+  CSS pixels at 16px to the rem.
+- An edge is 1.5px in `--muted-foreground`, a curve between layers and
+  straight through its empty places, and ends in an arrowhead pointing
+  into its target. An edge forward runs from its source's right side,
+  at the middle, to its target's left side, the arrowhead pointing
+  right. An edge the search reversed, whose target is in an earlier
+  layer, is dashed and runs from its source's left side to its target's
+  right side, the arrowhead pointing left.
+- The drawing scrolls sideways in its own box when it is wider than
+  the box, as on a phone; the page does not.
+- The figure's caption is LABEL. Under the drawing, a `<details>`
+  closed by default, «Show as a table», holds a `table` with a row per
+  node: its title (a link to HREF), its state's word, the titles of the
+  nodes it depends on, and its badges. The rows follow the layers, from
+  the first, each layer from its top; then come the nodes with no
+  edges, in the order NODES gives them.
+  The SVG and the empty places are `aria-hidden`. The component has no
+  script: without JavaScript it is drawn the same.
+- With no nodes, «No data» stands in place of the drawing, and there is
+  no table.
+
 ## 7. The specimen
 
 - `/ui` shows every component: its documentation, its source, and each
@@ -988,6 +1101,23 @@ form of `field`s with an `error-summary`, a confirmation is a
   heading, and a table of three columns stays a table; on a desktop the
   ten columns are a table scrolling in its own box, and the code block
   scrolls in its own.
+- `tests/graph-tests.lisp` (`graph`, §6.3): the layout's layers, a
+  chain on one row, nodes without edges in a row of their own, a
+  source next to its successor, long edges through empty places,
+  places never shared, crossed edges uncrossed, a cycle reversed and
+  marked, and the same layout every time; the nodes' states, words and
+  tones, a node's long edges sharing their empty places, the badges'
+  kinds, tones and links, the edges drawn and
+  reversed, the table, no nodes, the bounds refused, Norwegian, and
+  the largest graph allowed within a second.
+- `checks/showcase/checks/graph.py` (`/graph`): at 390px and 1280px,
+  light and dark, every edge's ends at its nodes' sides, no nodes
+  overlapping, the stripe in the state's colour, the agent's dot and
+  ring, each badge wholly inside its node or wholly out of sight, a
+  badge too long for the line ending in an ellipsis, the page not
+  scrolling sideways while a wide drawing scrolls in its box; the
+  table's rows, a node's and a badge's links; without the script the
+  graph is drawn and the table opens.
 - `tests/rank-tests.lisp`: `rank-between` (`core.md` §2.6).
 - `tests/chart-tests.lisp`: the y axis's ticks (multiples of a round
   step, three to five, their decimals, equal values), the x axis's labels

@@ -41,6 +41,29 @@
    "Tidspunkt")
   ("~a: ~a to ~a"
    "~a: ~a til ~a")
+  ;; The graph
+  ("Planned"
+   "Planlagt")
+  ("Active"
+   "Aktiv")
+  ("Waiting"
+   "Venter")
+  ("Done"
+   "Ferdig")
+  ("Failed"
+   "Feilet")
+  ("Blocked"
+   "Blokkert")
+  ("working now"
+   "arbeider nå")
+  ("Name"
+   "Navn")
+  ("State"
+   "Tilstand")
+  ("Depends on"
+   "Avhenger av")
+  ("Details"
+   "Opplysninger")
   ("Previous page"
    "Forrige side")
   ("Previous"

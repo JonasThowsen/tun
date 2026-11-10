@@ -270,7 +270,14 @@ share's price, is `(ui:line-chart (:label "EQNR.OL" :points points :digits
 takes the same for a table cell. Text that people and agents write, such as a
 description or a comment, is `(ui:markdown (:text text))`. It shows the
 Markdown agents use (headings, lists, code, tables, bold, italic, links),
-and never passes HTML in the text on (`spec/ui.md` §6.2).
+and never passes HTML in the text on (`spec/ui.md` §6.2). Things and what
+depends on what among them, such as a project's steps with the agents
+working on them and the items tied to each, are `(ui:graph (:label L
+:nodes NODES :edges EDGES))`: each node `(:id :title :meta :state :href
+:badges)`, a badge `(:text :kind :tone :href)` with the kind `:agent` for
+someone working there now and `:ref` for a count or an item's number, and
+each edge `(:from A :to B)` for B depending on A. Tun lays them out in
+layers on the server (`spec/ui.md` §6.3).
 
 ```lisp
 (define-page notes-page ("notater" :title "Notater" :icon :file-text)

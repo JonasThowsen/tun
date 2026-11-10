@@ -112,6 +112,15 @@
   ("Markdown" "Markdown")
   ("A comment" "En kommentar"))
 
+;;; Graph (graph.lisp)
+
+(define-translations "nb"
+  ("Graph" "Graf")
+  ("The pilot" "Piloten")
+  ("Event rental" "Utleie til arrangementer")
+  ("48 steps" "48 steg")
+  ("Eight strands" "Åtte tråder"))
+
 ;;; Prices (prices.lisp)
 
 (define-translations "nb"

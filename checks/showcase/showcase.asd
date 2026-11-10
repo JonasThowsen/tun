@@ -12,6 +12,7 @@
                (:file "pages")
                (:file "prices")
                (:file "markdown")
+               (:file "graph")
                (:file "notifications")
                (:file "mail")
                (:file "application")
