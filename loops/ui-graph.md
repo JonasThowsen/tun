@@ -2,7 +2,7 @@
 
 - loop: ui-graph
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: fa659be3d11a357d9cb2bdffa943fde4adca81d2
 - item: sak_8xph0h22zbjd2mmp
 - tags: kind:ui module:ui core
@@ -177,6 +177,12 @@ raised. Mode: reviewed.
 - **Core 2.18.0**: a new public component in `TUN.UI`.
 - **Shown in the showcase** (`/graph`): the factory's app is being built
   at the same time and takes this once it is pushed.
+
+## Actuals
+
+```json
+{"loop":"ui-graph","title":"ui:graph: a visual graph of nodes and edges, where agents work and the issues tied to them","repository":"tun","mode":"reviewed","stage":"done","item":"sak_8xph0h22zbjd2mmp","tags":["kind:ui","module:ui","core"],"like":["price-chart","markdown"],"started":"2026-11-10 08:49","ended":"2026-11-10 09:46","minutes":{"total":57,"waiting_person":0,"waiting_reviewer":6,"working":51,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":120,"likely":210,"worst":420,"at":"brief"},"latest_estimate":{"best":50,"likely":75,"worst":150,"at":"build"},"within_estimate":false,"ratio":0.27,"verify":{"rounds":3,"failed":0},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
 
 ## Log
 
@@ -402,3 +408,4 @@ raised. Mode: reviewed.
   - **A gap in §6.3 step 3.** `edge-chain` in `src/web/ui/graph.lisp` keeps a cycle's reversed edges out of the forward edges' shared empty places, so a dashed line never runs along a solid one. §6.3 step 3 only says "the edges from one node share their empty place". Adding a clause for this would make the spec match the code.
   - **For gate C.** `shots/report.md` says the preview ran from `bc284f7-dirty`, and `spec/ui.md` was modified and uncommitted in the worktree when I started. Before deploying, confirm that the committed tree is the one shown here.
   - **Still open from round 2.** Badge links that are clipped out of sight can still take focus. Large graphs, the 48-step one especially, leave a lot of empty rows. Both are fine for a later loop.
+- 2026-11-10 09:46  finished at tun bf1331a
