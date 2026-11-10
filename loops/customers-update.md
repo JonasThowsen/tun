@@ -2,7 +2,7 @@
 
 - loop: customers-update
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: d1a4019d2973344859b8ed013164a55c08e67845
 - item: sak_k0jjnrp8b5mphf8t
 - estimate: 45m 1h30m 3h
@@ -176,6 +176,12 @@ Its criteria:
   (`http-json-get`, `mcp-error-codes`). Gate B's packet carries the diff
   and the tests.
 
+## Actuals
+
+```json
+{"loop":"customers-update","title":"customers_update in the customers module","repository":"tun","mode":"reviewed","stage":"done","item":"sak_k0jjnrp8b5mphf8t","tags":["kind:module","module:customers"],"like":["tun/http-json-get","tun/mcp-error-codes","tun/card-link-fields"],"started":"2026-11-10 08:54","ended":"2026-11-10 09:24","minutes":{"total":30,"waiting_person":0,"waiting_reviewer":5,"working":25,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":45,"likely":90,"worst":180,"at":"brief"},"latest_estimate":{"best":45,"likely":90,"worst":180,"at":"brief"},"within_estimate":false,"ratio":0.33,"verify":{"rounds":2,"failed":1},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-10 08:54  started, reviewed
@@ -241,3 +247,5 @@ Its criteria:
   
   - `customers.lisp:104-107` and `:78`: `change-path` cuts a long name at a literal `100`, and `+most-unknown-changes+` repeats the kernel's `+most-unknown-names+`. The kernel exports `shown-name` (`src/core/package.lisp:53`), which does the same cut and adds `…`. Using it would make a nested path read like a top-level one. Past 20 unknown names the module also drops the rest silently, where the kernel adds "has N more unknown fields". Nothing is wrong as a result, because the call is still refused.
   - `tests/client/tests/extension-tests.lisp`, the first assertion of `a-client-operation-changes-a-customer-through-customers-update`: `"12ab"` is refused by `org_number`'s pattern, not by the rule `business_customers_need_org_number`, so the assertion's message overstates what it shows. The rule itself is covered by the test above it.
+- 2026-11-10 09:24  pushed 8d21254 to main; Tun ERP takes it with tun update; cost: not reported, this harness gives the agent no token or cost figures
+- 2026-11-10 09:24  finished at tun 8d21254
