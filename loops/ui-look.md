@@ -2,7 +2,7 @@
 
 - loop: ui-look
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 31baa9989256c38e4f073a6692d2f20e6947ba24
 - item: sak_s77vyp4103cr54ze
 - estimate: 1h30m 2h30m 5h
@@ -279,6 +279,12 @@ Mode: reviewed. A core change, a minor version.
   another loop while this one ran): new tokens, a new badge default and
   a changed look; no call shape changes.
 
+## Actuals
+
+```json
+{"loop":"ui-look","title":"The look and states of Tun's components: grounds, edges, focus, pressed, chosen, buttons, badges","repository":"tun","mode":"reviewed","stage":"done","item":"sak_s77vyp4103cr54ze","tags":["kind:ui","core","module:ui"],"like":["ui-graph","loading-sign","ui-graph-fit"],"started":"2026-11-11 19:03","ended":"2026-11-11 21:06","minutes":{"total":123,"waiting_person":0,"waiting_reviewer":5,"working":118,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":150,"worst":300,"at":"brief"},"latest_estimate":{"best":90,"likely":150,"worst":300,"at":"brief"},"within_estimate":true,"ratio":0.82,"verify":{"rounds":5,"failed":3},"changes":{"A":2,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-11 19:03  started, reviewed
@@ -447,3 +453,5 @@ Mode: reviewed. A core change, a minor version.
   **One thing for gate C, not blocking here.** The asker hasn't answered question `kom_aya5hm22rm0cf80b` about `--input` (A, 12 % like the panels, or B, 3:1). The loop still builds B. The answer should be in the Log before deploy. If it's A, the token `--input` and the floor in `a-fields-edge-is-3-to-1` change.
   
   **A small note.** Criterion 1 says the sidebar's ground is the chrome's. The browser check reads `.tun-app-shell-header`, which at desktop width is the sidebar and has `var(--chrome)` as its ground (layout.lisp, diff line 1696), so the check does test that.
+- 2026-11-11 21:06  pushed b3bb715 to Tun's main, core 2.25.0
+- 2026-11-11 21:06  finished at tun b3bb715
