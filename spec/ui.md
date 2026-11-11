@@ -1,22 +1,22 @@
 # The design system
 
-Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4
-(§4.1, §8.1) and the board (§6.1), 2026-10-21; installing as an app
-(§4.2), 2026-10-22; ordering a board's cards within a column (§6.1),
-2026-10-26, core 1.18.0; push notifications in the service worker and
-`push-switch` (`push.md`), 2026-10-26, core 1.19.0; `file-input` and
-`attachments` (`files.md`), 2026-10-26, core 1.20.0; pages in the
-person's language, amounts and dates by its formats (`i18n.md`),
-2026-10-27, core 2.0.0; `line-chart` and `sparkline` (§6), the chart
-token (§3) and `preserveAspectRatio` in extension output (§5),
-2026-11-02, core 2.6.0; `graph`, nodes and the edges between them
-(§6.3), 2026-11-10, core 2.18.0; its list for narrow boxes, 2026-11-10,
-core 2.20.0; the home page a client names (§8, «Home»), 2026-11-11,
-core 2.21.0. How every Tun
-page looks and behaves: the tokens, the components that are built from
-them, the specimen that shows them, and the rules a component follows.
-The generated screens (`ui.lisp`, `access.lisp`) and a client's own
-screens are built from these components and nothing else.
+Status: v1, 2026-10-13; a client's pages (§8), 2026-10-15; htmx 4 (§4.1,
+§8.1) and the board (§6.1), 2026-10-21; installing as an app (§4.2),
+2026-10-22; ordering a board's cards within a column (§6.1), 2026-10-26,
+core 1.18.0; push notifications in the service worker and `push-switch`
+(`push.md`), 2026-10-26, core 1.19.0; `file-input` and `attachments`
+(`files.md`), 2026-10-26, core 1.20.0; pages in the person's language,
+amounts and dates by its formats (`i18n.md`), 2026-10-27, core 2.0.0;
+`line-chart` and `sparkline` (§6), the chart token (§3) and
+`preserveAspectRatio` in extension output (§5), 2026-11-02, core 2.6.0;
+`graph`, nodes and the edges between them (§6.3), 2026-11-10, core
+2.18.0; its list for narrow boxes, 2026-11-10, core 2.20.0; the home
+page a client names (§8, «Home»), 2026-11-11, core 2.21.0; the loading
+sign (§4.1), 2026-11-11, core 2.22.0. How every Tun page looks and
+behaves: the tokens, the components that are built from them, the
+specimen that shows them, and the rules a component follows. The
+generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
+are built from these components and nothing else.
 
 ## 1. Sources
 
@@ -220,6 +220,42 @@ component has a dark-mode selector.
   with an htmx request of its own (`hx-get` and the like), or inside an
   element with `data-tun-preload="off"`, the link itself included, as a
   link that acts on a GET should be.
+- **The loading sign.** A staff page shows that it is working when a
+  person's htmx request has not been answered after 300 ms: a thin bar
+  across the top of the window, 3px high in `--primary` over a track of
+  it at 20 %, in front of everything (`--z-toast`), its short part
+  sliding across. A page that answers within 300 ms shows nothing, so
+  fast pages never flash. Under `prefers-reduced-motion` the bar stands
+  still, as stripes over the whole width.
+  - **Which requests.** A request for the whole page (a boosted link or
+    form, Back, an `HX-Location`) and a request for a part of a page a
+    click or a submission started (a board's move). Not a part that
+    loads by itself (`hx-trigger="load"`, `revealed`, polling), and not
+    a preload, which is a plain fetch htmx never sees; a click on a link
+    whose preload is still loading waits for it, and shows the sign if
+    that takes longer than 300 ms.
+  - **When it goes.** When the last such request ends, however it ends:
+    swapped, refused (a 4xx or 5xx page is swapped in too), failed on
+    the network, or cancelled (`htmx:abort` on the element that asked);
+    and when the browser shows a page from its cache (`pageshow` with
+    `persisted`). htmx 4 cancels no request when a person follows
+    another link or presses Back while one is under way: the earlier
+    request still ends, and is swapped in when it does, so the sign stays
+    until then, and goes when it has. A page swapped in meanwhile, such
+    as the one Back restores, keeps the bar showing; its region is not
+    made to say «Loading…» again.
+  - **For a screen reader.** The shell holds a polite live region
+    (`role="status"`, visually hidden), empty; when the bar shows, its
+    text becomes «Loading…» («Laster…»), written by the server in the
+    page's language, once for that wait, and it is emptied when the bar
+    goes. The bar itself is `aria-hidden`.
+  - **Where.** The bar, with `hidden`, and the region are in every
+    `app-shell`. The components' script shows and hides them, found by
+    `data-tun-loading` and `data-tun-loading-status`, from listeners on
+    `document` for `htmx:before:request` and `htmx:finally:request`. Its
+    look is in the stylesheet: no style attribute and no inline script,
+    within the page's policy. Without JavaScript the bar stays hidden,
+    and the browser's own loading sign is what a person gets.
 
 ### 4.2 Installing as an app
 
@@ -1281,6 +1317,24 @@ form of `field`s with an `error-summary`, a confirmation is a
   application does not enable or one the actor's role is refused is not
   taken, and the option or the default is; a `next` kept still wins; a
   `:home` that is not such a path is refused when compiled.
+- `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
+  sign hidden and `aria-hidden`, and an empty `role="status"` region
+  with «Loading…» in the page's language to say; the script and the
+  stylesheet hold what §4.1 «The loading sign» describes.
+- `checks/showcase/checks/loading-sign.py` (§4.1, «The loading sign»),
+  on the showcase's `/wait`, which answers after `?ms=`: at 390 px, a
+  link to a fast page and a part that loads by itself never show the
+  bar; a link to a page that waits 1.5 s shows nothing at 150 ms, then
+  the bar across the width and the region saying «Loading…» once, from
+  300 ms after the press, and neither once the page is swapped in; a
+  slow form shows it and clears it, and so does one cancelled with
+  `htmx:abort`; a request that fails on the network and a 500 answer
+  show it and leave no bar; after a slow link and then a fast one, and
+  after Back to a boosted page while a slow page loads, it stays while
+  the slow request is under way and goes when it ends; a pointer resting
+  on a slow link preloads it and shows nothing; in the dark at 1280 px
+  it shows; under reduced motion it stands still; without JavaScript it
+  is hidden.
 - `checks/showcase/checks/home-page.py`: the showcase's home for
   everyone is «Graph», and an admin's is «Welcome» until they finish
   it; at 390 px, an employee opening `/` and an admin signing in land

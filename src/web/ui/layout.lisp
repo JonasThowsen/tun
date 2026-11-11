@@ -596,6 +596,38 @@ a wide overview.")
     }
   }
 
+  /* The loading sign (spec/ui.md 4.1): a thin bar across the top of the
+     window while a person's htmx request goes unanswered, its short part
+     sliding across; under reduced motion it stands still as stripes. */
+  & .tun-app-shell-loading {
+    position: fixed;
+    inset: 0 0 auto 0;
+    z-index: var(--z-toast);
+    height: 3px;
+    overflow: hidden;
+    background-color: color-mix(in oklab, var(--primary) 20%, transparent);
+    background-image: linear-gradient(var(--primary), var(--primary));
+    background-repeat: no-repeat;
+    background-size: 40% 100%;
+    pointer-events: none;
+    animation: tun-app-shell-loading 1.2s var(--ease) infinite;
+    &[hidden] { display: none; }
+    @media (prefers-reduced-motion: reduce) {
+      animation: none;
+      background-image: repeating-linear-gradient(
+        -45deg, var(--primary) 0 6px, transparent 6px 12px);
+      background-size: auto;
+    }
+  }
+  & .tun-app-shell-loading-status {
+    position: absolute;
+    width: 1px;
+    height: 1px;
+    overflow: hidden;
+    clip-path: inset(50%);
+    white-space: nowrap;
+  }
+
   & .tun-app-shell-header {
     position: sticky;
     top: 0;
@@ -826,8 +858,59 @@ a wide overview.")
       min-height: 100dvh;
     }
   }
+}
+@keyframes tun-app-shell-loading {
+  from { background-position: -70% 0; }
+  to { background-position: 170% 0; }
 }")
   (:script "
+// The loading sign (spec/ui.md 4.1): a person's htmx request for a whole
+// page, or for a part that a click or a submission started, shows the bar
+// and says «Loading…» once if it is not answered within DELAY, and both go
+// when the last such request ends, however it ends.  A page swapped in
+// while another such request is still under way, as after Back, brings a
+// hidden bar of its own, which is shown again.  A preload is a plain
+// fetch, not an htmx request, and never shows it.
+const delay = 300;
+let waiting = 0;
+let timer = null;
+let showing = false;
+const bars = () => document.querySelectorAll('[data-tun-loading]');
+const show = () => {
+  timer = null;
+  showing = true;
+  for (const bar of bars()) bar.hidden = false;
+  for (const region of document.querySelectorAll('[data-tun-loading-status]'))
+    region.textContent = region.dataset.tunLoadingStatus;
+};
+const clear = () => {
+  clearTimeout(timer);
+  timer = null;
+  waiting = 0;
+  showing = false;
+  for (const bar of bars()) bar.hidden = true;
+  for (const region of document.querySelectorAll('[data-tun-loading-status]'))
+    region.textContent = '';
+};
+document.addEventListener('htmx:after:swap', () => {
+  if (showing) for (const bar of bars()) bar.hidden = false;
+});
+const shows = (ctx) => ctx.request?.headers?.['HX-Request-Type'] === 'full'
+  || ['click', 'submit'].includes(ctx.sourceEvent?.type);
+document.addEventListener('htmx:before:request', (event) => {
+  const ctx = event.detail.ctx;
+  if (!ctx || !shows(ctx)) return;
+  ctx.tunLoading = true;
+  waiting += 1;
+  if (waiting === 1) timer = setTimeout(show, delay);
+});
+document.addEventListener('htmx:finally:request', (event) => {
+  if (!event.detail.ctx?.tunLoading) return;
+  waiting -= 1;
+  if (waiting <= 0) clear();
+});
+window.addEventListener('pageshow', (event) => { if (event.persisted) clear(); });
+
 // The phone menu is a popover.  When the window grows wide enough for the
 // sidebar (a tablet turned on its side) while the menu is open, close it, so
 // the menu does not stay on top of the page.
@@ -899,6 +982,10 @@ wide.addEventListener('change', () => {
     `(:div ,(attrs (list :class "tun-app-shell" :id id) attributes)
            (:a (:@ :class "tun-app-shell-skip" :href ,(format nil "#~a" main-id))
                ,(tr "Skip to the main content"))
+           (:div (:@ :class "tun-app-shell-loading" :data-tun-loading t :hidden t
+                     :aria-hidden "true"))
+           (:div (:@ :class "tun-app-shell-loading-status" :role "status"
+                     :data-tun-loading-status ,(tr "Loading…")))
            (:header (:@ :class "tun-app-shell-header")
                     (:div (:@ :class "tun-app-shell-bar")
                           ,@(when menu-p (list open-button))

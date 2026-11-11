@@ -16,6 +16,7 @@
                (:file "notifications")
                (:file "mail")
                (:file "welcome")
+               (:file "wait")
                (:file "application")
                (:file "nb")))
 

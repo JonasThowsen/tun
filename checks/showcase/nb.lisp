@@ -144,3 +144,13 @@
   ("Set up the showcase" "Sett opp utstillingen")
   ("Until an admin finishes this step, / leads admins here."
    "Til en administrator fullfører dette steget, leder / administratorer hit."))
+;;; A page that waits, for the loading sign (wait.lisp)
+
+(define-translations "nb"
+  ("Wait" "Vent")
+  ("A slow page" "En treg side")
+  ("A fast page" "En rask side")
+  ("Send a slow form" "Send et tregt skjema")
+  ("The part has loaded." "Delen er lastet.")
+  ("This page waited ~d ms." "Denne siden ventet ~d ms.")
+  ("A part that loads by itself…" "En del som laster av seg selv …"))

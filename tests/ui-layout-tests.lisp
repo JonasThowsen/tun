@@ -98,6 +98,29 @@ tag without it."
   (let ((html (tun.html:render-html (tun.ui:app-shell (:title "Nordvik Utleie") "Innhold"))))
     (is (not (search "popover" html)) "a shell with no menu has no menu button")))
 
+(test the-shell-holds-the-loading-sign-hidden-and-an-empty-status
+  ;; spec/ui.md 4.1, «The loading sign»: the script shows them, by their
+  ;; data attributes; the page carries no style for them.
+  (let ((html (shell-html)))
+    (is (search "<div class=\"tun-app-shell-loading\" data-tun-loading hidden aria-hidden=\"true\"></div>"
+                html)
+        "the bar, hidden until the script shows it, and hidden from a screen reader")
+    (is (search "<div class=\"tun-app-shell-loading-status\" role=\"status\" data-tun-loading-status=\"Loading…\"></div>"
+                html)
+        "an empty live region, with the text it will say")
+    (is (not (search "style=" html))))
+  (let ((html (with-language ("nb")
+                (tun.html:render-html (tun.ui:app-shell (:title "Nordvik Utleie") "Innhold")))))
+    (is (search "data-tun-loading-status=\"Laster…\"" html) "in the page's language"))
+  (let ((script (tun.ui:script)))
+    (dolist (part '("htmx:before:request" "htmx:finally:request" "htmx:after:swap"
+                    "[data-tun-loading]"
+                    "const delay = 300;" "'click', 'submit'" "event.persisted"))
+      (is (search part script) "the script has ~s" part)))
+  (let ((css (tun.ui:stylesheet)))
+    (is (search "@keyframes tun-app-shell-loading" css))
+    (is (search "prefers-reduced-motion" css))))
+
 (test a-narrow-shell-marks-its-content-narrow
   (is (not (search "data-width" (shell-html))) "the default width needs no attribute")
   (let ((html (tun.html:render-html
