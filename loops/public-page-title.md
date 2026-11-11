@@ -2,7 +2,7 @@
 
 - loop: public-page-title
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 8800b66573c7063111438d48f69ba1376899a06a
 - item: sak_w2vc686s0zc4fx3d
 - estimate: 40m 1h15m 2h30m
@@ -152,6 +152,12 @@ reviewed. A core change, additive.
   its method, as a tenant's company name would be.
 - **Core version** 2.23.0, the next free minor; additive.
 
+## Actuals
+
+```json
+{"loop":"public-page-title","title":"A client names the title a customer sees on public pages","repository":"tun","mode":"reviewed","stage":"done","item":"sak_w2vc686s0zc4fx3d","tags":["kind:ui","core","module:web"],"like":["tun/home-page","tun/loading-sign"],"started":"2026-11-11 15:02","ended":"2026-11-11 15:20","minutes":{"total":18,"waiting_person":0,"waiting_reviewer":2,"working":16,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":40,"likely":75,"worst":150,"at":"brief"},"latest_estimate":{"best":40,"likely":75,"worst":150,"at":"brief"},"within_estimate":false,"ratio":0.24,"verify":{"rounds":1,"failed":0},"changes":{"A":0,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-11 15:02  started, reviewed
@@ -207,3 +213,5 @@ reviewed. A core change, additive.
   **The code:** it's small and readable. `public-title` is one well-documented function, and the new `site-title` key on `respond`, `page-frame` and `page-document` is optional and documented. There's no leftover debugging or dead code. The showcase's Norwegian (`nb`) translations cover the new texts.
   
   **Not blocking:** the test's guarded method on `customers-module` depends on the global `*module-title*` being unset in other suites. It defaults to NIL and is only set with `with-global` or `let`, so that's fine.
+- 2026-11-11 15:20  pushed cc4946d to Tun's main, core 2.23.0
+- 2026-11-11 15:20  finished at tun cc4946d
