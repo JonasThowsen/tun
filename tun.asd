@@ -169,6 +169,7 @@
                              (:file "fake-provider")
                              (:file "auth-tests")
                              (:file "sign-in-tests")
+                             (:file "home-tests")
                              (:file "oauth-tests")
                              (:file "api-tests")
                              (:file "waiting-tests")

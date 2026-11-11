@@ -203,8 +203,11 @@ Values the callback's status, its body and headers, and the jar."
   (drakma:url-encode string :utf-8))
 
 (defun home-location (port)
-  "Where / sends a browser: where a login lands."
-  (location (nth-value 2 (web-request port "/"))))
+  "Where a login lands in an application with no home page of its own: Tun's
+default, the first resource with record pages (spec/ui.md 8); home-tests
+pins it to /customers.  PORT is the server's, which serves the same."
+  (declare (ignore port))
+  (tun.web::resource-path (find-if #'tun.web::resource-detail-screen tun.web::*resources*)))
 
 (defun account-by-name (name)
   (find name (admin-items "accounts_list") :key (lambda (a) (jget a "name")) :test #'equal))

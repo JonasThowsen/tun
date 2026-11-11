@@ -12,6 +12,9 @@
 # or auth), compiled as strictly, in this process and nothing else.
 set -euo pipefail
 cd "$(dirname "$0")/.."
+# A loop run from this shell may name a tracker (spec/loop.md 6.1); the
+# tests' own loops must not report to it, and those that want one set it.
+unset TUN_TRACKER
 command -v sbcl >/dev/null || { echo "bin/test: run inside 'nix develop'" >&2; exit 2; }
 test_lisp() {
   sbcl --noinform --non-interactive --no-userinit --no-sysinit --load scripts/test.lisp "$@"

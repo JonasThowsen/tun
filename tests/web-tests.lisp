@@ -184,11 +184,11 @@
 (test home-is-the-first-page-in-the-menu-without-a-resource
   (let ((tun.web::*resources* '())
         (*actor* (parse-actor "employee:anna")))
-    (is (equal (getf (first (tun.web::navigation-items)) :href) (tun.web::home-path)))
-    (is (string/= "/login" (tun.web::home-path))))
+    (is (equal (getf (first (tun.web::navigation-items)) :href) (tun.web::default-home-path)))
+    (is (string/= "/login" (tun.web::default-home-path))))
   (let ((tun.web::*resources* '())
         (*actor* nil))
-    (is (string= "/login" (tun.web::home-path)) "before anyone is logged in")))
+    (is (string= "/login" (tun.web::default-home-path)) "before anyone is logged in")))
 
 ;;; ------------------------------------------------------------------
 ;;; The menu: the business's work first, the system's pages last (spec/ui.md 8)

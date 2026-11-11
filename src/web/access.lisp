@@ -45,26 +45,10 @@ ASIDE that explains it."
 ;;; ------------------------------------------------------------------
 ;;; The page to return to after logging in (spec/auth.md 3.4)
 
-(defun login-step-p (path)
-  "True when PATH, without its query, is a step of logging in or out: a
-login that returned there would loop or start again."
-  (let ((bare (subseq path 0 (position-if (lambda (c) (member c '(#\? #\#))) path))))
-    (or (member bare '("/login" "/login-info" "/logout") :test #'string=)
-        (string-prefix-p "/auth/" bare)
-        (string-prefix-p "/setup/" bare))))
-
 (defun return-path (raw)
   "RAW when it is a page on this server to return to after logging in, else
-NIL.  It must begin with a single /: to a browser //host and /\\host are
-another site, and a login must never send a person to one."
-  (and (stringp raw)
-       (<= 1 (length raw) 2000)
-       (char= (char raw 0) #\/)
-       (not (and (> (length raw) 1) (char= (char raw 1) #\/)))
-       (notany (lambda (c) (or (char= c #\\) (< (char-code c) 32) (= (char-code c) 127)))
-               raw)
-       (not (login-step-p raw))
-       raw))
+NIL (SITE-PATH-P)."
+  (and (site-path-p raw) raw))
 
 (defun login-address (next)
   "/login, asked to return to NEXT, a page from RETURN-PATH, when there is one."
@@ -113,7 +97,7 @@ to NEXT."
          ;; SameSite=Strict: a cross-site form post never carries the claim.
          (hunchentoot:set-cookie +actor-cookie+ :value (hunchentoot:url-encode raw :utf-8)
                                  :path "/" :http-only t :same-site "Strict")
-         (see-other (or next (home-path))))
+         (see-other (or next (person-home-path (parse-actor raw)))))
         (t (respond 400 (tr "Sign in")
                     (list (ui:alert (:variant :destructive :title (tr "Invalid actor"))
                             (format nil "~a " (tr "Use"))
@@ -126,7 +110,7 @@ to NEXT."
         (next (return-path (hunchentoot:get-parameter "next"))))
     (cond ((not (eq method :get)) nil)
           ((and claim (claimed-identity-p *web-app*)) (claimed-login claim next))
-          (*actor* (see-other (or next (home-path))))
+          (*actor* (see-other (or next (home-address))))
           (t (login-page 200 :next next)))))
 
 (defun handle-logout (method)
@@ -178,11 +162,10 @@ to RETURN-PATH."
                                      :code (hunchentoot:get-parameter "code")
                                      :error (hunchentoot:get-parameter "error")
                                      :cookie cookie :redirect-uri (callback-url strategy))
-          (declare (ignore account))
           (set-session-cookie session)
           (see-other (cond ((eq purpose :setup) "/access")
                            ((return-path next))
-                           (t (home-path)))))
+                           (t (person-home-path (tun.auth:account-actor account))))))
       (tun.auth:sign-in-refused (refusal)
         (let ((detail (or (tun.auth:sign-in-refused-detail refusal)
                           ;; The server's log is for developers: source text.

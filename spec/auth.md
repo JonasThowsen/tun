@@ -140,7 +140,9 @@ offers the providers is §3.4.
   request gets `HX-Redirect` to the same address instead, PATH then being
   the page the browser shows (`HX-Current-URL`), so the whole page goes
   to the login. Any other method answers 401 with a page saying to log
-  in, as it did. `/` with no home page for them goes to `/login`.
+  in, as it did. `/` for someone not logged in goes to `/login`, with
+  no `next`, so the sign-in lands on their home page (`ui.md` §8,
+  «Home»).
 - **Back to the page.** After a login started from `/login?next=PATH`
   the answer is 303 to PATH (§3.5 step 6); so is `GET /login?next=PATH`
   from someone already logged in, and `/login?actor=role:name&next=PATH`
@@ -148,7 +150,11 @@ offers the providers is §3.4.
   it begins with one `/`, holds no `\` and no control character, is at
   most 2000 characters, and is not `/login`, `/logout`, or under
   `/auth/` or `/setup/`. Any other `next` is ignored, and the person goes
-  to the home page. The provider never sees PATH: the attempt stores it.
+  to the home page: the one the application names for them (`ui.md` §8,
+  «Home»), else Tun's default. A `next` that is kept wins over the home
+  page, but it is never checked against the person's role: a page they
+  cannot open answers 403 there, as a link to it would. The provider
+  never sees PATH: the attempt stores it.
 - `/login-info`, the old page that only said to log in, answers 303 to
   `/login`.
 - An application lists at least one provider. An authenticated server
@@ -236,7 +242,9 @@ settings, at least one (§3.4).
    is no account to sign up for.
 6. A session starts (§3.3), audited as `login`
    with the session as the credential, and the answer is 303 to the page
-   the login started from (§3.4), else to the home page.
+   the login started from (§3.4), else to the home page of the person
+   now signed in (`ui.md` §8, «Home»). A sign-in that sets up the first
+   admin (§4) goes to `/access`, whatever the home page would be.
 
 Refusals answer the login page with a message (LABEL is the strategy's
 label), are not audited, and are retained as rejected requests

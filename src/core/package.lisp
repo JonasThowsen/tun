@@ -166,6 +166,8 @@
    #:application-instructions
    ;; the sites a page's forms may lead to (spec/ui.md 4)
    #:application-form-sites
+   ;; the home page and the paths a login may lead to (spec/ui.md 8, auth.md 3.4)
+   #:application-home #:site-path-p #:root-path-p
    ;; the programs an application may run (spec/outbound.md 6)
    #:application-programs #:application-programs-running #:application-programs-lock
    #:await #:call-awaiting #:*await-limit* #:*await-heartbeat* #:*waiting-leaves*

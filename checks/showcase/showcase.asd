@@ -15,6 +15,7 @@
                (:file "graph")
                (:file "notifications")
                (:file "mail")
+               (:file "welcome")
                (:file "application")
                (:file "nb")))
 

@@ -392,6 +392,34 @@ filters names one of the keys, empty.
   ...)
 ```
 
+### The home page
+
+`/` and a sign-in that was not started from a page lead to the first
+resource, unless the client names its home page (`spec/ui.md` §8,
+«Home»). `(:home "/today")` in `define-application` names it for
+everyone. For some people only, specialise `(home-path APPLICATION
+ACTOR)`: return a path for those you decide, and `(call-next-method)`
+for the rest. A module's method on its mixin wins over `:home`; a
+client's own method wins over both. The method runs in a read
+transaction with `*actor*` bound, so it may read the store:
+
+```lisp
+(define-application erp (erp-features)
+  (:modules setup-wizard ...)
+  (:home "/today"))                         ; «Today» for everyone
+
+;; in the setup-wizard module: a new company's admin goes to the setup
+(defmethod home-path ((app setup-wizard-module) actor)
+  (if (and (eq (actor-role actor) :admin) (not (setup-completed-p)))
+      "/company/setup"
+      (call-next-method)))                   ; everyone else: :home
+```
+
+A path is taken only when the person's role opens it (a staff page whose
+policy admits them, or a resource) and it is on this site and not `/`;
+otherwise Tun takes `:home`, else its own default, and says why in the
+server's output. A `next` from the login still wins.
+
 ### Installing as an app
 
 `(:web-app ...)` in `define-application` lets people install the client

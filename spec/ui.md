@@ -11,7 +11,8 @@ person's language, amounts and dates by its formats (`i18n.md`),
 token (§3) and `preserveAspectRatio` in extension output (§5),
 2026-11-02, core 2.6.0; `graph`, nodes and the edges between them
 (§6.3), 2026-11-10, core 2.18.0; its list for narrow boxes, 2026-11-10,
-core 2.20.0. How every Tun
+core 2.20.0; the home page a client names (§8, «Home»), 2026-11-11,
+core 2.21.0. How every Tun
 page looks and behaves: the tokens, the components that are built from
 them, the specimen that shows them, and the rules a component follows.
 The generated screens (`ui.lisp`, `access.lisp`) and a client's own
@@ -1076,9 +1077,52 @@ form of `field`s with an `error-summary`, a confirmation is a
      click that follows it saves. What is saved is kept with the
      account's name, in an internal entity. `:remembers` that is not a
      list of strings is refused when the page is defined.
-- **Home.** `/` leads to the first resource with record pages, else the
-  first resource, else the first page a module or client defines that
-  the person may see, in the menu's order.
+- **Home.** `/` sends a person who is signed in to their home page, and
+  so does a sign-in that was not asked to return to a page (`auth.md`
+  §3.4). Someone not signed in who opens `/` goes to `/login`, and
+  their sign-in then lands on their home page. A sign-in that sets up
+  the first admin goes to `/access`, as before (`auth.md` §3.5).
+  1. **The default.** Tun's own home page is the first resource with
+     record pages, else the first resource, else the first page in the
+     menu the person sees, else `/access`.
+  2. **The option.** `(:home "/today")` in `define-application` names the
+     home page for everyone. The path starts with one `/`, is not `/`
+     (alone or with a query or fragment), and is a path a `next` may be
+     (`auth.md` §3.4: no `\`, no control character, at most 2000
+     characters, not a step of signing in); anything else is refused
+     when the client is compiled.
+  3. **The seam.** `(home-path APPLICATION ACTOR)`, a generic function in
+     `TUN`, answers the home page for ACTOR: a path, or NIL for no
+     answer. Tun's own method, the least specific, answers the `:home`
+     option, or NIL without one. A module specialises it on its mixin
+     and a client on its application class or a feature, and CLOS runs
+     them most specific first: the client's, then the modules', then
+     Tun's. A method that does not decide for ACTOR returns
+     `(call-next-method)`. So a module's answer wins over the option, and
+     a client's method wins over both and chooses, by calling
+     `call-next-method` or not, whether a module may answer. A method
+     runs in a read transaction with `*actor*` bound to ACTOR, so it may
+     read the store (`select`, `fetch`).
+
+     ```lisp
+     (defmethod home-path ((app setup-module) actor)
+       (if (and (eq (actor-role actor) :admin) (not (setup-completed-p)))
+           "/company/setup"
+           (call-next-method)))
+     ```
+  4. **Only a page the person can open.** An answer is taken when it is a
+     path a `next` may be and is not `/` (2), and its first segment is a
+     page the application serves and ACTOR's role opens: a staff page (`define-page`, a module's or the kernel's,
+     such as `/access`) of a module the application enables, whose
+     policy admits ACTOR, or a resource's list or record. An answer that
+     is not taken, such as a page for admins answered for an employee,
+     another site or a page that does not exist, is written to the
+     server's error output, and Tun takes the `:home` option instead
+     when ACTOR can open that, else the default (1). So `/` never sends
+     a person to another site, to a page their role is refused, or back
+     to `/`.
+  5. A client with no `:home` and no method of its own, whose modules
+     have none, sends everyone where Tun's default (1) does, as before.
 
 ### 8.1 Answering htmx
 
@@ -1227,6 +1271,21 @@ form of `field`s with an `error-summary`, a confirmation is a
   resource; a staff page is boosted and a guest page is not; a page
   answers a fragment, an `HX-Location` for a 303 to htmx, `HX-Trigger`,
   and `HX-Redirect` for stale assets.
+- `tests/home-tests.lisp` (§8, «Home»): without `:home` and methods `/`
+  and a sign-in lead where they did; `/` without a sign-in goes to
+  `/login`; `(:home PATH)` sends `/`, a claimed sign-in and a provider's
+  sign-in there; a module's method wins over the option and a client's
+  over both, calling `call-next-method` or not; a method reads the store
+  with `*actor*` bound; an answer that is another site, `/`, a step of
+  signing in, a page that does not exist, a page of a module the
+  application does not enable or one the actor's role is refused is not
+  taken, and the option or the default is; a `next` kept still wins; a
+  `:home` that is not such a path is refused when compiled.
+- `checks/showcase/checks/home-page.py`: the showcase's home for
+  everyone is «Graph», and an admin's is «Welcome» until they finish
+  it; at 390 px, an employee opening `/` and an admin signing in land
+  there, the admin goes on to «Graph» after «Done», and a sign-in from
+  a page returns to that page.
 - `tests/web-app-tests.lisp`: the `:web-app` options and icons are
   checked; the manifest, the icons, the offline page and the service
   worker are served without a login, with their types and cache

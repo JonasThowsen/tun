@@ -18,7 +18,7 @@
   (:export #:render-screen #:section #:json-table #:entity-detail #:web-resources
            #:application-pages
            #:define-page #:web-call #:error-alert #:timestamp-text #:htmx-request-p
-           #:staff-page-extras #:preload-request-p #:decline-preload
+           #:staff-page-extras #:home-path #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
            #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
            #:page-texts))
@@ -1648,15 +1648,71 @@ that posts the confirmation token back."
                (confirmation-page resource id op json))
               (t (see-other (format nil "~a/~a" path id))))))))
 
-(defun home-path ()
-  "Where / and a login lead: the first resource with detail pages (the work
-list), else the first resource, else the first page in the menu; with none
-of them, /access for someone logged in and /login for anyone else."
+(defun default-home-path ()
+  "Tun's own home page (spec/ui.md 8): the first resource with detail pages
+(the work list), else the first resource, else the first page in the menu;
+with none of them, /access for someone logged in and /login for anyone
+else."
   (let ((home (or (find-if #'resource-detail-screen *resources*) (first *resources*))))
     (cond (home (resource-path home))
           ((and *actor* (navigation-items)) (getf (first (navigation-items)) :href))
           (*actor* "/access")
           (t "/login"))))
+
+(defgeneric home-path (application actor)
+  (:documentation "The path of ACTOR's home page in APPLICATION, where / and a
+sign-in that returns to no page lead (spec/ui.md 8), or NIL for no answer.
+A module specialises it on its mixin and a client on its application class;
+a method that does not decide for ACTOR returns (CALL-NEXT-METHOD).  It runs
+in a read transaction with *ACTOR* bound to ACTOR.  Tun takes an answer only
+when ACTOR's role opens the page it names.  The default, the least specific
+method, answers the (:home path) option, or NIL.")
+  (:method (application actor)
+    (declare (ignore actor))
+    (application-home application)))
+(register-extension-protocol
+ 'home-path "screen" :point "home_page"
+ :description "A module or the client names the page / and a sign-in lead to, for each person.")
+
+(defun home-page-opens-p (path actor)
+  "True when PATH can be ACTOR's home page (spec/ui.md 8): a page on this site
+other than /, whose first segment is a staff page of the application that
+admits ACTOR, or a resource's list or record."
+  (when (and (site-path-p path) (not (root-path-p path)))
+    (let* ((bare (subseq path 0 (position-if (lambda (c) (member c '(#\? #\#))) path)))
+           (first-part (first (split-path bare)))
+           (page (and first-part (gethash first-part *staff-pages*))))
+      (cond (page (and (page-available-p page)
+                       (actor-permits-p actor (staff-page-policy page))))
+            (first-part (find (format nil "/~a" first-part) *resources*
+                              :key #'resource-path :test #'string=))
+            (t nil)))))
+
+(defun person-home-path (actor)
+  "Where / and a sign-in lead ACTOR: what HOME-PATH answers when ACTOR can
+open it, else the (:home path) option when ACTOR can open that, else Tun's
+default (spec/ui.md 8).  An answer that is not taken is written to the
+error output: it is a mistake in the client or a module."
+  (let ((answer (let ((*actor* actor))
+                  (with-transaction (:read) (home-path *web-app* actor))))
+        (option (application-home *web-app*)))
+    (flet ((refused (path)
+             (format *error-output* "~&;; tun web: the home page ~s is not one ~a can open; ~
+                                     taking another~%" path (actor-string actor))
+             nil))
+      (let ((*actor* actor))
+        (or (and answer
+                 (if (and (stringp answer) (home-page-opens-p answer actor))
+                     answer
+                     (refused answer)))
+            (and option (not (equal option answer))
+                 (if (home-page-opens-p option actor) option (refused option)))
+            (default-home-path))))))
+
+(defun home-address ()
+  "Where / leads this request: the home page of the person signed in, or
+/login for someone not signed in (spec/ui.md 8)."
+  (if *actor* (person-home-path *actor*) "/login"))
 
 (defun url-origin (url)
   "The origin of URL, scheme://host[:port], or NIL when URL is not an http(s)
@@ -1756,7 +1812,7 @@ uncached, so a page rendered before a deploy still gets styles."
                 ((and (eq method :get) (equal (first parts) "ui")) (serve-specimen parts))
                 ((dispatch-public-page method parts))
                 ((dispatch-staff-page method parts))
-                ((string= path "/") (see-other (home-path)))
+                ((string= path "/") (see-other (home-address)))
                 ;; Logging in and out, and the first admin: access.lisp.
                 ((string= path "/login") (handle-login method))
                 ((string= path "/logout") (handle-logout method))

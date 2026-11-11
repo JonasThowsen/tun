@@ -115,7 +115,7 @@ the listed symbols (the same symbol objects, not copies)."
   ;; from the components in TUN.UI (spec/ui.md 8)
   (#:tun.web
    #:render-screen #:section #:json-table #:entity-detail
-   #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras
+   #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras #:home-path
    #:preload-request-p #:decline-preload)
   ;; Mail: queued in the caller's write, delivered after it commits, its
   ;; HTML a node tree that render-mail also previews (spec/mail.md), and

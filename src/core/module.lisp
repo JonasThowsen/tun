@@ -17,7 +17,7 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +core-version+ "2.20.0"
+(defparameter +core-version+ "2.21.0"
   "The kernel's version.  Modules declare the range they build against; the
 client build (flake.nix, lib.buildClient) and DEFINE-MODULE both refuse a
 module whose range does not contain it.  The first versioned core was 0.1.0.")
@@ -340,6 +340,10 @@ it, as it wrote it in (:instructions text...) (spec/waiting.md 4).")
   "Application class name -> the origins its forms may lead to, as the client
 wrote them in (:form-sites origin...) (spec/ui.md 4).  TUN.WEB reads them.")
 
+(defvar *application-home* (make-hash-table :test 'eq)
+  "Application class name -> the path of its home page, as the client wrote
+it in (:home path) (spec/ui.md 8).  TUN.WEB reads it.")
+
 (defvar *application-programs* (make-hash-table :test 'eq)
   "Application class name -> the programs it may run, as the client wrote them
 in (:programs name...) (spec/outbound.md 6).  TUN.OUTBOUND reads them.")
@@ -518,7 +522,9 @@ tenant's language, currency and time zone, as spec/i18n.md 2.2 describes.
 name looked up on the server's PATH, as spec/outbound.md 6 describes.
 (:form-sites origin...) names the sites a form may lead to after its post,
 such as \"https://sim.logonvalidation.net\" for a sign-in at another system,
-as spec/ui.md 4 describes.
+as spec/ui.md 4 describes.  (:home path) names the page / and a sign-in
+lead to, such as \"/today\", as spec/ui.md 8 describes; a module or the
+client answers for some people with a method on HOME-PATH.
 Other OPTIONS are DEFCLASS options."
   (let* ((modules (mapcar (lambda (m) (string-downcase (string m)))
                           (rest (assoc :modules options))))
@@ -532,11 +538,12 @@ Other OPTIONS are DEFCLASS options."
          (locale (assoc :locale options))
          (programs (rest (assoc :programs options)))
          (form-sites (rest (assoc :form-sites options)))
+         (home (assoc :home options))
          (class-options (remove-if (lambda (o) (member (first o) '(:modules :on-open :sign-in :mail
                                                                    :queues :error-mail
                                                                    :instructions :web-app
                                                                    :locale :programs
-                                                                   :form-sites)))
+                                                                   :form-sites :home)))
                                    options)))
     (dolist (strategy (rest sign-in))
       (unless (and (consp strategy) (keywordp (first strategy)))
@@ -562,6 +569,9 @@ Other OPTIONS are DEFCLASS options."
       (unless (form-site-p site)
         (error "define-application ~s: a form site is an origin, such as ~
                 \"https://sim.logonvalidation.net\", without a path, not ~s" name site)))
+    (unless (or (null home) (and (= (length home) 2) (home-option-p (second home))))
+      (error "define-application ~s: (:home path) names a page on this site other than /, ~
+              such as (:home \"/today\"), not ~s" name home))
     (dolist (address error-mail)
       (unless (or (stringp address)
                   (and (consp address) (eq (first address) :env) (stringp (second address))))
@@ -586,6 +596,9 @@ Other OPTIONS are DEFCLASS options."
              (gethash ',name *application-form-sites*) ',(remove-duplicates form-sites
                                                                             :test #'string=
                                                                             :from-end t))
+       ,(if home
+            `(setf (gethash ',name *application-home*) ',(second home))
+            `(remhash ',name *application-home*))
        ,(if web-app
             (multiple-value-bind (web-app-options icons) (web-app-options name (rest web-app))
               `(setf (gethash ',name *application-web-app*)
@@ -653,6 +666,44 @@ could carry more into the page's policy."
   "The origins APPLICATION's class (or the nearest declaring superclass) lets
 its forms lead to (spec/ui.md 4)."
   (values (declared-option *application-form-sites* application)))
+
+(defun login-step-p (path)
+  "True when PATH, without its query, is a step of logging in or out: a
+login that returned there would loop or start again."
+  (let ((bare (subseq path 0 (position-if (lambda (c) (member c '(#\? #\#))) path))))
+    (or (member bare '("/login" "/login-info" "/logout") :test #'string=)
+        (string-prefix-p "/auth/" bare)
+        (string-prefix-p "/setup/" bare))))
+
+(defun site-path-p (path)
+  "True when PATH is a page on this server a login may lead to (spec/auth.md
+3.4): it begins with a single /, since to a browser //host and /\\host are
+another site, holds no \\ or control character, is at most 2000
+characters, and is not a step of logging in or out."
+  (and (stringp path)
+       (<= 1 (length path) 2000)
+       (char= (char path 0) #\/)
+       (not (and (> (length path) 1) (char= (char path 1) #\/)))
+       (notany (lambda (c) (or (char= c #\\) (< (char-code c) 32) (= (char-code c) 127)))
+               path)
+       (not (login-step-p path))
+       t))
+
+(defun root-path-p (path)
+  "True when PATH is / itself, with or without a query or fragment: a home
+page there would lead back to itself."
+  (and (stringp path) (plusp (length path)) (char= (char path 0) #\/)
+       (or (= 1 (length path)) (member (char path 1) '(#\? #\#)))))
+
+(defun home-option-p (path)
+  "True when PATH can be named in (:home path): a page on this site other
+than / (spec/ui.md 8)."
+  (and (site-path-p path) (not (root-path-p path))))
+
+(defun application-home (application)
+  "The path APPLICATION's class (or the nearest declaring superclass) names
+in (:home path), or NIL (spec/ui.md 8)."
+  (values (declared-option *application-home* application)))
 
 (defun program-name-p (name)
   "True when NAME can name a program in (:programs ...): a file name, with no

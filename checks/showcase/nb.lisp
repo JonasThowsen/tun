@@ -131,3 +131,16 @@
   ("Share" "Aksje")
   ("Three months" "Tre måneder")
   ("Last" "Siste"))
+
+;;; The welcome an admin finishes once (welcome.lisp)
+
+(define-translations "nb"
+  ("Welcome" "Velkommen")
+  ("Finished by" "Fullført av")
+  ("The admin who finished the welcome." "Administratoren som fullførte velkomsten.")
+  ("Finish the welcome" "Fullfør velkomsten")
+  ("Marks the welcome as done, so / leads admins to the graph too."
+   "Merker velkomsten som ferdig, så / leder administratorer til grafen også.")
+  ("Set up the showcase" "Sett opp utstillingen")
+  ("Until an admin finishes this step, / leads admins here."
+   "Til en administrator fullfører dette steget, leder / administratorer hit."))
