@@ -19,7 +19,8 @@ def shown(page):
 
 
 def is_open(page):
-    return page.locator(LISTBOX).is_visible()
+    # Open, not leaving: a list that closes stays in sight while it fades.
+    return page.locator(LISTBOX).evaluate("(list) => list.matches(':popover-open')")
 
 
 def on_screen(page):

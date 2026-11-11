@@ -322,6 +322,20 @@ htmx 4 inherits an attribute only when it says so (`hx-target:inherited`
 on a container), names its events with colons (`htmx:after:swap`), and
 runs no JavaScript from markup on a Tun page: `hx-on` does nothing. A
 page's own script belongs in a component's `:script`.
+A control that should ask before it acts is marked with
+`ui:confirm-attributes`: a click opens the page's confirm dialog (a sheet
+on a phone) with the question, the sentence and the control's own words
+on its action, red when the control is destructive, and the control acts
+once the person agrees. Without JavaScript the control acts as it is.
+`hx-confirm` asks in the same dialog (`spec/ui.md` §6, `confirm-dialog`):
+
+```lisp
+(ui:button (:type "submit" :variant :destructive
+            :attributes (ui:confirm-attributes "Slette ordre 1042?"
+                                               :detail "Ordren og linjene slettes for godt."))
+  "Slett ordren")
+```
+
 `(values 303 PATH)` to htmx becomes `HX-Location`, and a fourth value
 `(:trigger "name")` sends `HX-Trigger`. `ui:board` (`spec/ui.md` §6.1)
 is a board of cards in columns whose cards move by a «Flytt til» menu or

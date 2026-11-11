@@ -340,6 +340,9 @@ textarea { resize: vertical; }
   --highlight-foreground: light-dark(#ffffff, #19191c);
   --highlight-soft: light-dark(#f0f7ff, #06193a);
   --ring: var(--highlight);
+  /* The dim behind a modal dialog, deeper in the dark, where a faint one
+     would not read as a dim. */
+  --overlay: light-dark(#00000066, #0000008a);
   /* A chart's line (spec/ui.md 3): 4.4:1 on the light card, 4.8:1 on the dark. */
   --chart-1: light-dark(#2a78d6, #3987e5);
 
@@ -469,6 +472,17 @@ button:not(:disabled), [role='button']:not(:disabled) { cursor: pointer; }
 const tunText = (template, values = {}) =>
   String(template ?? '').replace(/\\{(\\w+)\\}/g,
                                  (match, name) => (name in values ? String(values[name]) : match));
+
+// Whether ELEMENT is a popover that shows, and a dialog that is modal.
+// Safari before 17 has no popovers, and a browser that does not know a
+// pseudo-class throws when a script matches it, which would stop every
+// script after it: these two are the only places a script names them.
+const tunPopoverOpen = (element) => {
+  try { return element.matches(':popover-open'); } catch (e) { return false; }
+};
+const tunModal = (dialog) => {
+  try { return dialog.matches(':modal'); } catch (e) { return dialog.open; }
+};
 
 // Set up what a component's markup needs once it is in the page: SETUP is
 // called with the document when the page has loaded, and with each element

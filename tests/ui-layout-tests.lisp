@@ -91,7 +91,9 @@ tag without it."
                        ("<div class=\"tun-app-shell-panel\" id=\"([^\"]+)\" popover=\"auto\"" html)
                      id)))
     (is (stringp panel-id) "the menu is a popover, which opens without JavaScript")
-    (is (equal (list panel-id panel-id nil) (attribute-values html "button" "popovertarget"))
+    (is (equal (list panel-id panel-id nil)
+               (attribute-values (subseq html 0 (search "</header>" html)) "button"
+                                 "popovertarget"))
         "the menu button and the close button point at it, «Sign out» does not")
     (is (search "aria-label=\"Menu\"" html))
     (is (search "popovertargetaction=\"hide\"" html)))

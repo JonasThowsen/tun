@@ -402,6 +402,20 @@ stands at the end of the field's row. For a few answers, a select or radios are 
     background-color: var(--popover);
     color: var(--popover-foreground);
     box-shadow: 0 0 0 1px var(--border), var(--shadow-md);
+    /* Closed, and leaving: a little below its place, faded. */
+    opacity: 0;
+    translate: 0 var(--spacing);
+    transition-property: opacity, translate, display, overlay;
+    transition-duration: var(--duration-close);
+    transition-timing-function: var(--ease);
+    transition-behavior: allow-discrete;
+    &:not(:popover-open) { pointer-events: none; }
+    &:popover-open {
+      opacity: 1;
+      translate: none;
+      transition-duration: var(--duration-fast);
+      @starting-style { opacity: 0; translate: 0 var(--spacing); }
+    }
   }
   & .tun-combobox-option, & .tun-combobox-none {
     display: flex;
@@ -433,6 +447,8 @@ stands at the end of the field's row. For a few answers, a select or radios are 
 // list is a popover, placed under the field, or above it when there is more
 // room there, and kept there while the page scrolls.  A strict combobox
 // holds back its form's submit buttons until the field holds an option.
+// A browser without popovers keeps its own list (<datalist>).
+if (typeof HTMLElement.prototype.showPopover !== 'function') return;
 const comboboxParts = (box) => ({
   box,
   input: box.querySelector('.tun-combobox-input'),
@@ -442,7 +458,7 @@ const comboboxParts = (box) => ({
 });
 const comboboxOf = (element) => element.closest('[data-tun-combobox]');
 const comboboxShown = (parts) => parts.options.filter((option) => !option.hidden);
-const comboboxIsOpen = (parts) => parts.list.matches(':popover-open');
+const comboboxIsOpen = (parts) => tunPopoverOpen(parts.list);
 
 const comboboxPlace = (parts) => {
   const edge = 8;
@@ -499,8 +515,8 @@ const comboboxClose = (parts) => {
 // An open list follows its field when the page, or a part of it, scrolls,
 // and when the window changes size.
 const comboboxFollow = () => {
-  for (const list of document.querySelectorAll('.tun-combobox-listbox:popover-open'))
-    comboboxPlace(comboboxParts(comboboxOf(list)));
+  for (const list of document.querySelectorAll('.tun-combobox-listbox'))
+    if (tunPopoverOpen(list)) comboboxPlace(comboboxParts(comboboxOf(list)));
 };
 window.addEventListener('scroll', comboboxFollow, { capture: true, passive: true });
 window.addEventListener('resize', comboboxFollow);

@@ -13,7 +13,9 @@ amounts and dates by its formats (`i18n.md`), 2026-10-27, core 2.0.0;
 2.18.0; its list for narrow boxes, 2026-11-10, core 2.20.0; the home
 page a client names (§8, «Home»), 2026-11-11, core 2.21.0; the loading
 sign (§4.1), 2026-11-11, core 2.22.0; the look and the states of the
-components (§2.1, §3, §6), 2026-11-11, core 2.25.0. How every Tun page
+components (§2.1, §3, §6), 2026-11-11, core 2.25.0; the dialog as a
+sheet on a phone, the motion of what opens, `confirm-dialog` and the
+flash as a toast (§2.1, §3, §6), 2026-11-11, core 2.26.0. How every Tun page
 looks and behaves: the tokens, the components that are built from them,
 the specimen that shows them, and the rules a component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
@@ -145,6 +147,23 @@ application of 2026-11-10 and 2026-11-11; the token names stay shadcn's.
   what opens as a sheet and what closes. Every duration is 0 under
   `prefers-reduced-motion`. A loop (a spinner, the loading sign, an
   agent's pulse) keeps an even easing of its own.
+- **What opens moves into place.** A dialog, a menu, a combobox's list,
+  a tooltip and a flash move in as they open and out as they close, and
+  only by `opacity` and `translate`, never
+  `transform`, `scale` or a size (a script that places a menu owns its
+  `transform` and inline position). A sheet slides up over
+  `--duration-sheet`; the rest rise a few pixels and fade in over
+  `--duration` or `--duration-fast`; everything leaves over
+  `--duration-close`. The opening and leaving are CSS's own for the top
+  layer (`@starting-style`, `transition-behavior: allow-discrete` with
+  `display` and `overlay`), so no script times them, and a browser
+  without them opens and closes at once. The duration follows the state
+  it goes to: the open state names the opening duration, the closed
+  state `--duration-close`.
+- **The dim only gets darker.** The page behind a modal dialog dims in
+  one fade of its `::backdrop`, in `--overlay`, from nothing to whole
+  while the dialog opens and back while it closes; there is no second
+  layer to cross it and no blur.
 
 ## 3. Tokens
 
@@ -161,8 +180,10 @@ colours, sizes and motion.
   ground and edge), `--input-background` (a field's ground),
   `--border-strong`, `--pressed`, `--soft`, and `--highlight`,
   `--highlight-foreground` and `--highlight-soft` (the accent, text on
-  it, and a tint of it). `--accent` keeps shadcn's meaning, the ground
-  under a pointer; `--ring` is `--highlight`.
+  it, and a tint of it), and `--overlay`, the dim behind a modal dialog
+  (black at 40 % in the light, `#00000066`, and at 54 % in the dark,
+  `#0000008a`). `--accent` keeps shadcn's meaning, the ground under a
+  pointer; `--ring` is `--highlight`.
 
   | Token | Light | Dark |
   |---|---|---|
@@ -181,6 +202,7 @@ colours, sizes and motion.
   | `--border-strong` | the text colour at 26 % | at 30 % |
   | `--input` | the text colour at 50 % | at 40 % |
   | `--highlight` | `#005ff2` | `#47a8ff` |
+  | `--overlay` | `#00000066` | `#0000008a` |
 - **Status:** for each of `info`, `success`, `warning` and `destructive`:
   `--STATUS` (icons, borders, text on the soft background),
   `--STATUS-foreground` (text on `--STATUS`) and `--STATUS-soft` (a tinted
@@ -517,7 +539,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
 | Data (`data`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
-| Interaction (`interaction`) | `dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
+| Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
@@ -546,7 +568,93 @@ is disabled.
 
 `dialog` with `:shortcut` opens on that key from anywhere on the page;
 Ctrl is Cmd on a Mac, and a key without Ctrl is left to a field being
-typed in. `showModal` focuses the control that has `autofocus`.
+typed in.
+
+- **A sheet on a phone.** Below 40rem a dialog, of every variant, stands
+  at the bottom of the window at its full width, its top corners
+  `--radius-xl`, its bottom ones square, and is never taller than the
+  window less a strip of 2rem of the page above it. Its header (the
+  title, the description, the close button) stays at the top and its
+  footer at the bottom; only its body scrolls. The footer's buttons
+  share one row, «Cancel» first, each growing to fill it, and keep the
+  bottom's safe area. From 40rem it is centred, 28rem wide (32rem for
+  the asking variants), all its corners rounded, its buttons at the end
+  of the row.
+- **The keyboard.** Below 40rem a dialog that holds a text field (an
+  `input` that takes text), a `textarea` or a `combobox` is as tall as
+  it may be from the moment it opens, so the on-screen keyboard moves
+  only its bottom edge. While a modal dialog is open, the script writes
+  how far the visible part of the window (the visual viewport) is from
+  the window's top and bottom as `--tun-visual-top` and
+  `--tun-visual-bottom` on `<html>`, and the dialog stands between
+  them: above the keyboard, its footer and the focused field in sight.
+  Nothing is written while the page is zoomed in or when the visible
+  part fills the window, and both are removed when no dialog is open.
+  The page behind does not scroll while a modal dialog is open: the
+  script sets `overflow: hidden` on `<html>`, keeping the scroll bar's
+  room when the page had one, and gives back what was there when the
+  last one closes.
+- **Motion.** A sheet slides up from below the window over
+  `--duration-sheet` and back down over `--duration-close`; from 40rem
+  the dialog rises 0.5rem and fades in over `--duration` and sinks and
+  fades over `--duration-close`. The dim is §2.1's.
+- **Focus.** Opening puts the focus on the control with `autofocus`,
+  else on the first control in the dialog. Closing gives it back to the
+  control that opened it: the `command` button, or what had the focus
+  when its shortcut opened it. Escape closes the topmost dialog only.
+  Tab and Shift+Tab go round the controls of an open modal dialog,
+  never out of it.
+- Without JavaScript a dialog opens with its button where the browser
+  has invoker commands, closes, and its form posts; it is a sheet and
+  moves as above, since that is CSS.
+
+`confirm-dialog` is the page's one dialog that asks before an action:
+`(confirm-dialog ())`, a `dialog` of the `:confirm` variant whose
+question and sentence are empty and whose buttons are «Cancel»
+(«Avbryt») and the action, «Confirm» («Bekreft»), until a control fills
+them. Those two words are written on it in the page's language
+(`data-cancel-label`, `data-confirm-label`), and its buttons take them
+when it asks, so a page holds no «Cancel» in its text while nothing is
+asked. Every `app-shell` holds one, so a client's page needs none of its
+own.
+
+- **A control that confirms.** A button, a link or a menu item marked
+  `data-tun-confirm="QUESTION"`, and as it needs
+  `data-tun-confirm-detail` (one sentence of what happens) and
+  `data-tun-confirm-action` (the action's words), asks in that dialog
+  on a click instead of acting. `(confirm-attributes QUESTION :detail D
+  :action A)` gives these attributes as a plist for a component's
+  `:attributes`. The question names the record, «Delete order 1042?»,
+  and the sentence says what follows, «The order and its lines are
+  deleted for good.».
+- **What it shows.** Its title is the question and under it the
+  sentence (none when there is none). The action button holds the
+  action's words, else the control's own (its text without key caps,
+  else its `aria-label`) when they are 1 to 40 characters, else
+  «Confirm»; it is the destructive button, red words, when the control
+  is destructive (`data-variant="destructive"`), else the primary.
+- **Answering.** The focus starts on «Cancel» when the action is
+  destructive, so Enter is safe, and on the action otherwise. Escape
+  and «Cancel» close it: nothing happens, and the focus goes back to
+  the control. The action closes it and clicks the control once more,
+  which then acts as it would have: its form posts with it as the
+  submitter, its link is followed, htmx sends its request. The action
+  runs once.
+- **htmx.** `hx-confirm` asks in the same dialog, from htmx's
+  `htmx:confirm` event, so every `hx-confirm` in a page gets it: its
+  text up to and with its first «?» is the question and the rest,
+  trimmed, the sentence; a text without «?» is all question, with no
+  sentence.
+  htmx sends the request on the action and drops it on «Cancel» or
+  Escape. Mark a control one way, not both.
+- **Without JavaScript** nothing is asked in the browser: the control
+  acts, and an action that asks on the server, such as a `:confirm`
+  operation's `confirm-panel`, still asks there. A page without a
+  `confirm-dialog` (none of Tun's) asks with the browser's own box.
+
+The `dropdown-menu`'s list, the `combobox`'s list and a `tooltip` rise
+0.25rem and fade in over `--duration-fast`, and sink and fade over
+`--duration-close` as they close.
 
 `button` keeps its variants. `:primary` is ink, the one main step of a
 view. `:outline` has the page's ground and the edge; `:destructive` is
@@ -605,6 +713,19 @@ row of links above the cards. A column given `:narrow nil` is left out
 of the cards, and kept in the table on a wide screen: a page says which
 columns a phone can do without. `confirm-panel` is the form a `:confirm` operation
 shows before it runs. `flash` is a message carried over a redirect.
+
+`flash` is a toast where the browser runs scripts. It stands over the
+page, out of its flow: below 40rem at the bottom, 1rem from the
+window's sides and 1rem above the bottom's safe area; from 40rem 1rem
+from the top and the right of the window, at most 25rem wide; in the
+layer `--z-toast`. It rises in over `--duration` and sinks and fades
+over `--duration-close`. `:success` and `:info` leave by themselves 5
+seconds after they showed, the time standing still while a pointer is
+over the flash or the focus is in it; `:warning` and `:destructive` stay
+until closed. Each has its close button. `:destructive` has
+`role="alert"`, the others `role="status"`. `:toast nil` keeps a flash
+in the page's flow, as without scripts. Without JavaScript a flash
+stands in the page where it is written and stays.
 
 `line-chart` draws a value over time, such as a share's price:
 `(line-chart (:label L :points POINTS :digits D))`. POINTS is a list of
@@ -1547,6 +1668,38 @@ form of `field`s with an `error-summary`, a confirmation is a
   part keeps its edge and ground; a focused button shows the two-ring shadow; the app shell's
   sidebar stands on `--chrome` and the menu's headings are not in
   capitals on a staff page; and no page scrolls sideways.
+- `tests/ui-sheets-tests.lisp` (§2.1 «What opens moves into place», «The
+  dim only gets darker», §6 `dialog`, `confirm-dialog`, `flash`): the
+  CSS of `dialog`, `confirm-dialog`, `dropdown-menu`, `combobox`,
+  `tooltip` and `flash` where they open animates only `opacity` and
+  `translate` (with `display`, `overlay`, `visibility` and
+  `content-visibility`), with no `scale`, `transform` or keyframes,
+  and each has a leaving transition over `--duration-close`; the sheet's
+  box, corners, strip, pinned parts and full height for a field; the
+  dialog standing inside `--tun-visual-top` and `--tun-visual-bottom`;
+  `--overlay` and the backdrop's one fade; `:popover-open` and `:modal`
+  named only in the kit's guarded helpers; the `confirm-dialog`'s
+  markup in English and Norwegian, `confirm-attributes`, one in every
+  `app-shell`; the flash's roles, its `:toast nil`, its leaving after 5
+  seconds for success and info only.
+- `checks/showcase/checks/ui-sheets.py`, on the specimen: at 390 px a
+  dialog's box at the bottom, full width, top corners rounded, bottom
+  ones square, below the strip; its header and footer where they were
+  while its body scrolls; a dialog with a text area as tall as it may
+  be at once; with the visual viewport shrunk as a keyboard does, the
+  dialog's bottom edge, its footer and the focused field above it, and
+  the page not scrolling behind; at 1280 px the dialog centred; at both,
+  the backdrop's opacity never falling while it opens nor rising while
+  it closes, light and dark; a closing menu still in the page midway
+  and gone after `--duration-close`; the focus on opening and back on
+  closing, Tab going round, Escape closing the top one only; the
+  `confirm-dialog`'s question, sentence, action words and red words,
+  its focus, Escape and «Cancel» running nothing, the action posting a
+  form once and sending an `hx-confirm` request once; the flash as a
+  toast at the bottom and at the top right, leaving after 5 seconds and
+  not while pointed at, a warning staying; under reduced motion nothing
+  moving; without JavaScript the flash in the page and a dialog's form
+  posting.
 - `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
   sign hidden and `aria-hidden`, and an empty `role="status"` region
   with «Loading…» in the page's language to say; the script and the

@@ -205,7 +205,11 @@
                        ,@(if inline
                              `((:style ,(trusted (stylesheet)))
                                (:script ,(trusted (script))))
-                             `((:link (:@ :rel "stylesheet" :href ,(stylesheet-path)))
+                             ;; htmx, as on every page, so an example's hx-
+                             ;; attributes (hx-confirm) work as they would there.
+                             `((:meta (:@ :name "htmx-config" :content ,(htmx-config)))
+                               (:link (:@ :rel "stylesheet" :href ,(stylesheet-path)))
+                               (:script (:@ :defer t :src ,(htmx-path)))
                                (:script (:@ :defer t :src ,(script-path))))))
                 (:body ,body))))
 

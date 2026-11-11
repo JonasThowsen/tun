@@ -929,8 +929,8 @@ if (!('hidePopover' in HTMLElement.prototype)) return;
 const wide = window.matchMedia('(min-width: 64rem)');
 wide.addEventListener('change', () => {
   if (!wide.matches) return;
-  for (const panel of document.querySelectorAll('[data-tun-app-shell-menu]:popover-open'))
-    panel.hidePopover();
+  for (const panel of document.querySelectorAll('[data-tun-app-shell-menu]'))
+    if (tunPopoverOpen(panel)) panel.hidePopover();
 });")
   (:examples
    (("A whole page" :layout :stack)
@@ -1021,4 +1021,6 @@ wide.addEventListener('change', () => {
            (:main (:@ :class "tun-app-shell-main" :id ,main-id :tabindex "-1")
                   (:div (:@ :class "tun-app-shell-content"
                             :data-width ,(unless (eq width :default) (option-string width)))
-                        ,@children)))))
+                        ,@children))
+           ;; The page's one dialog that asks before an action (spec/ui.md 6).
+           ,(confirm-dialog ()))))

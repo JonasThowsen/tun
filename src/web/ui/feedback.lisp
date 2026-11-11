@@ -158,12 +158,15 @@ deadline for the VAT return. Vouchers that come later are entered in the next te
 ;;; Flash
 
 (define-component flash ((&key (variant :success) (icon (status-icon variant)) (dismissible t)
-                               id attributes)
+                               (toast t) id attributes)
                          &rest children)
   (:group "Feedback")
-  (:doc "The message a page shows at its top after a redirect, such as «The customer has been
-saved.». It has role=\"status\". The close button shows only when JavaScript runs; without it
-the message stays until the next page.")
+  (:doc "The message a page shows after a redirect, such as «The customer has been saved.».
+Where scripts run it is a toast over the page: at the bottom of a phone, at the top right of a
+wider screen. Success and info leave by themselves after five seconds, not while pointed at or
+focused; a warning and an error stay until closed. TOAST nil keeps it in the page where it is
+written, as it is without JavaScript, where it stays until the next page. It has
+role=\"status\", or role=\"alert\" for an error.")
   (:source "Basecoat alert (Vega); GOV.UK notification banner (a message after an action)")
   (:css "
 .tun-flash {
@@ -215,39 +218,122 @@ the message stays until the next page.")
     }
     &:active { background-color: color-mix(in oklab, var(--tun-flash-tone) 25%, transparent); }
   }
+  /* A toast where scripts run, from the first paint: over the page, not in
+     its flow; the script lifts it into the top layer, over a dialog too. */
+  @media (scripting: enabled) {
+    &:not([data-placement='page']) {
+      position: fixed;
+      z-index: var(--z-toast);
+      inset: auto calc(var(--spacing) * 4) calc(var(--spacing) * 4 + env(safe-area-inset-bottom));
+      width: auto;
+      height: auto;
+      margin: 0;
+      overflow: visible;
+      box-shadow: 0 0 0 1px var(--border), var(--shadow-lg);
+      transition-property: opacity, translate;
+      transition-duration: var(--duration);
+      transition-timing-function: var(--ease);
+      @starting-style { opacity: 0; translate: 0 calc(var(--spacing) * 2); }
+      &[data-tun-leaving] {
+        opacity: 0;
+        translate: 0 calc(var(--spacing) * 2);
+        transition-duration: var(--duration-close);
+      }
+      @media (min-width: 40rem) {
+        inset: calc(var(--spacing) * 4) calc(var(--spacing) * 4) auto auto;
+        width: min(25rem, calc(100% - var(--spacing) * 8));
+      }
+    }
+  }
 }")
   (:script "
 // The close button is hidden in the markup, so a page without JavaScript
 // never shows a button that does nothing.
-const reveal = (root) => {
+const toasts = '.tun-flash:not([data-placement=page])';
+const lifetime = 5000;
+// Each toast that leaves by itself: the time it has left, and its timer
+// while it runs.
+const clocks = new WeakMap();
+
+// Leaving: it sinks and fades, and is gone once that has run.
+const leave = (flash) => {
+  if (!flash.matches(toasts)) {
+    flash.remove();
+    return;
+  }
+  if (flash.hasAttribute('data-tun-leaving')) return;
+  flash.setAttribute('data-tun-leaving', '');
+  const gone = () => flash.remove();
+  Promise.all(flash.getAnimations().map((animation) => animation.finished)).then(gone, gone);
+};
+const run = (flash) => {
+  const clock = clocks.get(flash);
+  if (!clock || clock.timer || flash.matches(':hover, :focus-within')) return;
+  clock.started = performance.now();
+  clock.timer = setTimeout(() => leave(flash), clock.left);
+};
+const stop = (flash) => {
+  const clock = clocks.get(flash);
+  if (!clock?.timer) return;
+  clearTimeout(clock.timer);
+  clock.timer = null;
+  clock.left = Math.max(0, clock.left - (performance.now() - clock.started));
+};
+
+tunOnContent((root) => {
   for (const button of root.querySelectorAll('[data-tun-flash-close][hidden]'))
     button.hidden = false;
-};
-tunOnContent(reveal);
+  const found = [...(root.matches?.(toasts) ? [root] : []), ...root.querySelectorAll(toasts)];
+  for (const flash of found) {
+    // Over a dialog too, where the browser has a top layer for it.
+    if (typeof flash.showPopover === 'function' && !flash.hasAttribute('popover')) {
+      flash.setAttribute('popover', 'manual');
+      flash.showPopover();
+    }
+    if (!clocks.has(flash) && /^(success|info)$/.test(flash.dataset.variant)) {
+      clocks.set(flash, { left: lifetime, timer: null, started: 0 });
+      run(flash);
+    }
+  }
+});
+
 document.addEventListener('click', (event) => {
-  const button = event.target.closest('[data-tun-flash-close]');
-  if (button) button.closest('.tun-flash')?.remove();
-});")
+  const button = event.target.closest?.('[data-tun-flash-close]');
+  const flash = button?.closest('.tun-flash');
+  if (flash) leave(flash);
+});
+// The time stands still while a pointer is over it or the focus is in it.
+for (const [type, act] of [['pointerover', stop], ['focusin', stop],
+                           ['pointerout', run], ['focusout', run]])
+  document.addEventListener(type, (event) => {
+    const flash = event.target instanceof Element && event.target.closest(toasts);
+    if (!flash || flash.contains(event.relatedTarget)) return;
+    if (act === run) setTimeout(() => run(flash));
+    else act(flash);
+  });")
   (:examples
-   (("Variants" :layout :stack)
-    (flash () "The customer has been saved.")
-    (flash (:variant :info) "The order has been moved to Hansen Bakery Ltd.")
-    (flash (:variant :warning)
+   (("After an action, as a toast" :layout :stack)
+    (flash () "The customer has been saved."))
+   (("Variants, in the page" :layout :stack)
+    (flash (:toast nil) "The customer has been saved.")
+    (flash (:variant :info :toast nil) "The order has been moved to Hansen Bakery Ltd.")
+    (flash (:variant :warning :toast nil)
            "The invoice was saved as a draft because the customer has no address.")
-    (flash (:variant :destructive)
+    (flash (:variant :destructive :toast nil)
            "The order could not be saved because the customer has no email."))
    (("With a link and a long text" :layout :stack)
-    (flash ()
+    (flash (:toast nil)
            "Quote 311 has been sent to post@northernlights.example.com. "
            '(:a (:@ :href "/quotes/311") "Show the quote"))
-    (flash (:variant :info)
+    (flash (:variant :info :toast nil)
            "The invoices for September have been sent to the accountant, and the copy of
 the VAT report is under Documents."))
    (("Without a close button" :layout :stack)
-    (flash (:dismissible nil) "You are signed out.")))
+    (flash (:dismissible nil :toast nil) "You are signed out.")))
   (check-type variant (member :success :info :warning :destructive))
   `(:div ,(attrs (list :class "tun-flash" :id id :data-variant (option-string variant)
-                       :role "status")
+                       :data-placement (unless toast "page")
+                       :role (if (eq variant :destructive) "alert" "status"))
                  attributes)
          ,@(when icon (list (icon (:name icon))))
          (:div (:@ :class "tun-flash-message") ,@children)

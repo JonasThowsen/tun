@@ -52,11 +52,20 @@ in a field.")
   (:source "Basecoat dialog and alert dialog (Vega)")
   (:css "
 .tun-dialog {
-  --tun-dialog-padding: calc(var(--spacing) * 6);
-  /* On a phone the dialog is a sheet along the bottom edge. */
+  --tun-dialog-padding: calc(var(--spacing) * 4);
+  /* A strip of the page shows above the highest dialog, so it reads as
+     over the page. */
+  --tun-dialog-strip: calc(var(--spacing) * 8);
+  /* The window less what a keyboard covers (the script's
+     --tun-visual-top and --tun-visual-bottom) and the strip. */
+  --tun-dialog-max-height: calc(100% - var(--tun-visual-top, 0px)
+                                - var(--tun-visual-bottom, 0px) - var(--tun-dialog-strip));
+  /* On a phone the dialog is a sheet along the bottom edge of the part of
+     the window the keyboard leaves. */
+  inset-block: var(--tun-visual-top, 0px) var(--tun-visual-bottom, 0px);
   width: 100%;
   max-width: 100%;
-  max-height: calc(100dvh - var(--spacing) * 8);
+  max-height: var(--tun-dialog-max-height);
   margin: auto 0 0;
   padding: var(--tun-dialog-padding);
   padding-bottom: max(var(--tun-dialog-padding), env(safe-area-inset-bottom));
@@ -69,45 +78,50 @@ in a field.")
   font-size: var(--text-running);
   line-height: var(--text-running--line-height);
   box-shadow: 0 0 0 1px var(--border), var(--shadow-lg);
-  /* Opening focuses the dialog itself; a ring around the whole of it would
+  /* Opening focuses a control in it; a ring around the whole of it would
      only be noise. */
   outline: none;
-  opacity: 0;
+  /* Closed, and leaving: below the window.  A transition takes the
+     duration of the state it goes to, so leaving is --duration-close. */
   translate: 0 100%;
-  transition-property: opacity, translate, scale, display, overlay;
-  transition-duration: var(--duration);
+  transition-property: opacity, translate, display, overlay;
+  transition-duration: var(--duration-close);
   transition-timing-function: var(--ease);
   transition-behavior: allow-discrete;
+  &:not([open]) { pointer-events: none; }
   &[open] {
     display: flex;
-    opacity: 1;
     translate: none;
-    @starting-style { opacity: 0; translate: 0 100%; }
+    transition-duration: var(--duration-sheet);
+    @starting-style { translate: 0 100%; }
   }
   &[open], & > .tun-dialog-form {
     flex-direction: column;
-    gap: calc(var(--spacing) * 6);
+    gap: calc(var(--spacing) * 5);
     min-height: 0;
   }
   & > .tun-dialog-form { display: flex; flex: 1; }
-  /* The page behind: Basecoat's black at 10% is too faint on a dark page. */
+  /* The page behind dims in one fade, darker while the dialog opens and
+     lighter while it closes, never a second layer across it. */
   &::backdrop {
-    background-color: light-dark(rgb(0 0 0 / 0.1), rgb(0 0 0 / 0.5));
-    backdrop-filter: blur(4px);
+    background-color: var(--overlay);
     opacity: 0;
     transition-property: opacity, display, overlay;
-    transition-duration: var(--duration);
+    transition-duration: var(--duration-close);
+    transition-timing-function: var(--ease);
     transition-behavior: allow-discrete;
   }
   &[open]::backdrop {
     opacity: 1;
+    transition-duration: var(--duration);
     @starting-style { opacity: 0; }
   }
 
   & .tun-dialog-header {
     display: flex;
+    flex: none;
     flex-direction: column;
-    gap: calc(var(--spacing) * 2);
+    gap: calc(var(--spacing) * 1.5);
     padding-inline-end: calc(var(--spacing) * 10);
   }
   & .tun-dialog-title {
@@ -115,49 +129,37 @@ in a field.")
     line-height: var(--text-base--line-height);
     font-weight: var(--font-weight-medium);
     letter-spacing: normal;
+    overflow-wrap: anywhere;
   }
   & .tun-dialog-description { color: var(--muted-foreground); }
-  /* The body scrolls when the dialog is taller than the screen; the inset
+  /* Only the body scrolls, between the header and the footer; the inset
      keeps the focus rings of its fields from being cut off. */
   & .tun-dialog-body {
     flex: 1;
     min-height: 0;
     overflow-y: auto;
+    overscroll-behavior: contain;
     margin: calc(var(--spacing) * -1);
     padding: var(--spacing);
     & > * + * { margin-top: calc(var(--spacing) * 3); }
   }
+  /* On a phone the buttons share one row, the step last. */
   & .tun-dialog-footer {
     display: flex;
-    flex-direction: column-reverse;
+    flex: none;
+    flex-wrap: wrap;
     gap: calc(var(--spacing) * 2);
+    & > * { flex: 1 1 auto; }
   }
   & .tun-dialog-close {
     position: absolute;
-    top: calc(var(--spacing) * 4);
-    right: calc(var(--spacing) * 4);
+    top: calc(var(--spacing) * 3);
+    right: calc(var(--spacing) * 3);
   }
 
   &:is([data-variant='confirm'], [data-variant='destructive']) {
-    width: calc(100% - var(--spacing) * 8);
-    max-width: 32rem;
-    margin: auto;
-    padding-bottom: var(--tun-dialog-padding);
-    border-radius: var(--radius-xl);
-    translate: none;
-    scale: 0.95;
-    &[open] {
-      scale: none;
-      @starting-style { opacity: 0; translate: none; scale: 0.95; }
-    }
-    & .tun-dialog-header {
-      align-items: center;
-      gap: calc(var(--spacing) * 1.5);
-      padding-inline-end: 0;
-      text-align: center;
-    }
+    & .tun-dialog-header { padding-inline-end: 0; }
     & .tun-dialog-title { font-size: var(--text-lg); line-height: var(--text-lg--line-height); }
-    & .tun-dialog-description { text-wrap: balance; }
   }
   & .tun-dialog-icon {
     display: inline-flex;
@@ -178,23 +180,39 @@ in a field.")
     color: var(--destructive);
   }
 
+  /* A dialog to type in fills the phone from the start, so the keyboard
+     moves only its bottom edge and never pushes its top off the screen. */
+  @media (max-width: 39.99rem) {
+    &:has(textarea, [role='combobox'], input:not([type='checkbox'], [type='radio'],
+                                                [type='hidden'], [type='file'], [type='submit'],
+                                                [type='button'], [type='reset'], [type='image'],
+                                                [type='range'], [type='color'])) {
+      height: var(--tun-dialog-max-height);
+    }
+  }
+
+  /* From 40rem it is centred, and rises a little as it fades in. */
   @media (min-width: 40rem) {
+    --tun-dialog-padding: calc(var(--spacing) * 6);
     width: calc(100% - var(--spacing) * 8);
     max-width: 28rem;
     margin: auto;
-    padding-bottom: var(--tun-dialog-padding);
     border-radius: var(--radius-xl);
-    translate: none;
-    scale: 0.95;
+    opacity: 0;
+    translate: 0 calc(var(--spacing) * 2);
+    & .tun-dialog-close { top: calc(var(--spacing) * 4); right: calc(var(--spacing) * 4); }
     &[open] {
-      scale: none;
-      @starting-style { opacity: 0; translate: none; scale: 0.95; }
+      opacity: 1;
+      translate: none;
+      transition-duration: var(--duration);
+      @starting-style { opacity: 0; translate: 0 calc(var(--spacing) * 2); }
     }
-    & .tun-dialog-footer { flex-direction: row; justify-content: flex-end; }
+    & .tun-dialog-footer {
+      justify-content: flex-end;
+      & > * { flex: none; }
+    }
     &:is([data-variant='confirm'], [data-variant='destructive']) {
       max-width: 32rem;
-      & .tun-dialog-header { align-items: flex-start; text-align: start; }
-      & .tun-dialog-description { text-wrap: pretty; }
       & .tun-dialog-header:has(.tun-dialog-icon) {
         display: grid;
         grid-template-columns: auto 1fr;
@@ -210,6 +228,9 @@ in a field.")
 // the buttons that open and close a Tun dialog.
 const invokers = 'commandForElement' in HTMLButtonElement.prototype;
 const close = (dialog) => (dialog.requestClose ? dialog.requestClose() : dialog.close());
+
+// What opened each dialog, which the focus goes back to when it closes.
+const openers = new WeakMap();
 
 // A click on the backdrop closes a dismissible dialog.  The press must start
 // there too, so selecting text in the dialog and letting go outside does not.
@@ -228,11 +249,12 @@ document.addEventListener('click', (event) => {
     close(dialog);
     return;
   }
-  if (invokers) return;
-  const button = event.target.closest('button[commandfor]');
+  const button = event.target instanceof Element && event.target.closest('button[commandfor]');
   const target = button && document.getElementById(button.getAttribute('commandfor'));
   if (!target || !target.matches('[data-tun-dialog]')) return;
   const command = button.getAttribute('command');
+  if (command === 'show-modal' && !target.open) openers.set(target, button);
+  if (invokers) return;
   if (command === 'show-modal' && !target.open) target.showModal();
   else if (command === 'close') target.close(button.value);
   else if (command === 'request-close') close(target);
@@ -255,10 +277,119 @@ document.addEventListener('keydown', (event) => {
   for (const dialog of document.querySelectorAll('dialog[data-tun-dialog-shortcut]')) {
     const shortcut = dialog.dataset.tunDialogShortcut.split(' ')
       .find((each) => pressedKey(event, each));
-    if (!shortcut || dialog.open || (!/^ctrl\+/i.test(shortcut) && typing(event.target))) continue;
+    if (!shortcut || dialog.open || (!/^ctrl\\+/i.test(shortcut) && typing(event.target))) continue;
     event.preventDefault();
+    openers.set(dialog, document.activeElement);
     dialog.showModal();
     return;
+  }
+});
+
+// The controls of a dialog, in the order Tab goes through them.
+const focusable = 'a[href], button:not(:disabled), input:not(:disabled):not([type=hidden]), '
+  + 'select:not(:disabled), textarea:not(:disabled), summary, [tabindex]:not([tabindex=\"-1\"])';
+const controls = (dialog) => [...dialog.querySelectorAll(focusable)]
+  .filter((control) => control.getClientRects().length > 0 && !control.closest('[inert]'));
+const modals = () => [...document.querySelectorAll('dialog[open]')].filter(tunModal);
+
+// Opening puts the focus on the control with autofocus, else on the first
+// control, unless the browser or the script that opened it put it on one.
+const focusInto = (dialog) => {
+  const active = document.activeElement;
+  if (active && active !== dialog && dialog.contains(active)) return;
+  const first = dialog.querySelector('[autofocus]') || controls(dialog)[0];
+  first?.focus({ preventScroll: true });
+};
+
+// While a modal dialog is open the page behind it holds still.  The room
+// of a scroll bar that takes room is kept, so nothing moves sideways.
+let held = null;
+const hold = () => {
+  const root = document.documentElement;
+  if (modals().length > 0 && !held) {
+    held = { overflow: root.style.overflow, gutter: root.style.scrollbarGutter };
+    if (window.innerWidth > root.clientWidth) root.style.scrollbarGutter = 'stable';
+    root.style.overflow = 'hidden';
+  } else if (modals().length === 0 && held) {
+    root.style.overflow = held.overflow;
+    root.style.scrollbarGutter = held.gutter;
+    held = null;
+  }
+};
+
+// The keyboard (spec/ui.md 6): while a modal dialog is open, how far the
+// visible part of the window is from its top and its bottom, which a
+// dialog stands between, so a keyboard laid over the page (Safari) or
+// shrinking only what is visible (Chrome on Android) never covers it.
+// Nothing while the page is zoomed in, where the visible part is meant to
+// be smaller, and nothing once no dialog is open.
+const fit = () => {
+  const root = document.documentElement;
+  const viewport = window.visualViewport;
+  let inset = null;
+  if (viewport && modals().length > 0 && Math.abs((viewport.scale ?? 1) - 1) <= 0.01) {
+    const top = Math.max(0, Math.round(viewport.offsetTop || 0));
+    const bottom = Math.max(0, Math.round(root.clientHeight - top - viewport.height));
+    if (top > 1 || bottom > 1) inset = { top, bottom };
+  }
+  if (inset) {
+    root.style.setProperty('--tun-visual-top', `${inset.top}px`);
+    root.style.setProperty('--tun-visual-bottom', `${inset.bottom}px`);
+    // The field being typed in stays in sight above the keyboard.
+    const field = document.activeElement;
+    if (field instanceof Element && field.closest('dialog[open]')
+        && field.matches('input, textarea, [contenteditable]'))
+      field.scrollIntoView({ block: 'nearest' });
+  } else {
+    root.style.removeProperty('--tun-visual-top');
+    root.style.removeProperty('--tun-visual-bottom');
+  }
+};
+window.visualViewport?.addEventListener('resize', fit);
+window.visualViewport?.addEventListener('scroll', fit);
+document.addEventListener('focusin', (event) => {
+  if (event.target instanceof Element && event.target.closest('dialog[open]')) fit();
+});
+
+// A dialog opens and closes by its open attribute, whoever sets it: the
+// browser's invoker commands, showModal from a script, a form's method=dialog.
+new MutationObserver((records) => {
+  for (const { target } of records)
+    if (target instanceof HTMLDialogElement && target.open && tunModal(target)) focusInto(target);
+  hold();
+  fit();
+}).observe(document.documentElement,
+            { subtree: true, attributes: true, attributeFilter: ['open'] });
+
+// Closing gives the focus back to what opened the dialog, where the
+// browser has not already.
+document.addEventListener('close', (event) => {
+  const dialog = event.target;
+  if (!(dialog instanceof HTMLDialogElement)) return;
+  const opener = openers.get(dialog);
+  openers.delete(dialog);
+  const active = document.activeElement;
+  if (opener?.isConnected && (!active || active === document.body || dialog.contains(active)))
+    opener.focus({ preventScroll: true });
+}, true);
+
+// Tab and Shift+Tab go round the controls of a modal dialog, never out of it.
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Tab' || event.defaultPrevented || event.altKey || event.ctrlKey
+      || event.metaKey) return;
+  const active = document.activeElement;
+  const dialog = active instanceof Element && active.closest('dialog[open]');
+  if (!dialog || !tunModal(dialog)) return;
+  const all = controls(dialog);
+  if (all.length === 0) return;
+  const first = all[0];
+  const last = all[all.length - 1];
+  if (event.shiftKey && (active === first || active === dialog)) {
+    event.preventDefault();
+    last.focus();
+  } else if (!event.shiftKey && (active === last || active === dialog)) {
+    event.preventDefault();
+    first.focus();
   }
 });")
   (:examples
@@ -316,6 +447,21 @@ undone."
                  :footer (list (button (:type "submit") "Search")))
             (text-input (:label "Search for items, customers and people" :name "q" :type :search
                                 :attributes (list :autofocus t)))))
+   ("A note to type: on a phone it fills the screen at once"
+    (button (:variant :outline :attributes (list :command "show-modal" :commandfor "add-note"))
+            "Add a note")
+    (dialog (:id "add-note" :title "Note on order 1042" :action "/orders/1042/notes"
+             :footer (list (button (:variant :outline
+                                    :attributes (list :command "close" :commandfor "add-note"))
+                                   "Cancel")
+                           (button (:type "submit") "Save the note")))
+            (textarea (:label "Note" :name "note" :rows 4))))
+   ("Without a footer"
+    (button (:variant :ghost :attributes (list :command "show-modal" :commandfor "shortcuts"))
+            "Keyboard shortcuts")
+    (dialog (:id "shortcuts" :title "Keyboard shortcuts")
+            `(:p "Press " ,(kbd () "/") " to search, and " ,(kbd () "Esc")
+                 " to close a window.")))
    ("Long content scrolls inside the dialog"
     (button (:variant :ghost
                       :attributes (list :command "show-modal" :commandfor "terms"))
@@ -394,6 +540,201 @@ inside a raw HTML string is not looked into."
            (some #'holds-file-input-p markup))))
 
 ;;; ------------------------------------------------------------------
+;;; confirm-dialog
+
+(defun confirm-attributes (question &key detail action)
+  "The attributes that make a control (a button, a link, a menu item) ask
+QUESTION in the page's CONFIRM-DIALOG before it acts, as a property list for
+its :ATTRIBUTES (spec/ui.md 6).  QUESTION names the record, «Delete order
+1042?»; DETAIL is one sentence of what follows; ACTION is the words of the
+dialog's action button, for a control whose own words do not say it, such
+as one that is only an icon.  Without JavaScript the control acts unasked."
+  (check-type question string)
+  (check-type detail (or null string))
+  (check-type action (or null string))
+  (list :data-tun-confirm question :data-tun-confirm-detail detail
+        :data-tun-confirm-action action))
+
+(export 'confirm-attributes)
+
+(define-component confirm-dialog ((&key id attributes))
+  (:group "Interaction")
+  (:doc "The page's one dialog that asks before an action, instead of the browser's own box.
+Every app-shell holds one. A control marked with (confirm-attributes QUESTION :detail D) asks
+in it on a click and acts only when the person agrees, and so does htmx's hx-confirm. Its
+action repeats the control's words, in red when the control is destructive. Without
+JavaScript the control acts unasked, and a page that asks on the server still asks.")
+  (:source "Basecoat alert dialog (Vega); GOV.UK confirmation (the question names the record)")
+  (:css "
+.tun-confirm-dialog {
+  /* Only the dialog inside it takes room, once it is open. */
+  display: contents;
+}")
+  (:script "
+// One confirm (spec/ui.md 6): a control marked data-tun-confirm, and an
+// element with htmx's hx-confirm, ask in the page's confirm dialog before
+// they act.  The texts are the page's: the question and the sentence on the
+// control, and the words of Cancel and of the action when the control has
+// none in the dialog's data-cancel-label and data-confirm-label.  The
+// buttons are empty until it asks, so a page that shows no «Cancel» of its
+// own does not hold one in its text.
+const confirmDialog = () => document.querySelector('[data-tun-confirm-dialog] > dialog');
+const words = (text) => String(text ?? '').replace(/\\s+/g, ' ').trim();
+// A control's own words: its text without its key caps and icons, else
+// its name.
+const ownWords = (control) => {
+  const copy = control.cloneNode(true);
+  for (const part of copy.querySelectorAll('.tun-kbd, svg, [aria-hidden=true]')) part.remove();
+  return words(copy.textContent) || words(control.getAttribute('aria-label'));
+};
+const destructive = (control) => control?.getAttribute('data-variant') === 'destructive';
+// Where the focus goes back to: the control, or the button of the menu it
+// was in, which has closed.
+const returnTo = (control) => {
+  const menu = control.closest('[popover]');
+  if (!menu || tunPopoverOpen(menu) || !menu.id) return control;
+  return document.querySelector(`[popovertarget='${CSS.escape(menu.id)}']`) || control;
+};
+
+const ask = (control, question, detail, action, danger) => new Promise((answer) => {
+  const dialog = confirmDialog();
+  if (!dialog) {
+    answer(window.confirm(detail ? `${question} ${detail}` : question));
+    return;
+  }
+  if (dialog.open) {
+    answer(false);
+    return;
+  }
+  const ok = dialog.querySelector('[data-tun-confirm-ok]');
+  const cancel = dialog.querySelector('[data-tun-confirm-cancel]');
+  const sentence = dialog.querySelector('.tun-dialog-description');
+  const labels = dialog.parentElement.dataset;
+  cancel.textContent = labels.cancelLabel;
+  dialog.querySelector('.tun-dialog-title').textContent = question;
+  sentence.textContent = detail;
+  sentence.hidden = !detail;
+  ok.textContent = action.length > 0 && action.length <= 40 ? action : labels.confirmLabel;
+  ok.dataset.variant = danger ? 'destructive' : 'primary';
+  dialog.returnValue = '';
+  dialog.addEventListener('close', () => {
+    const yes = dialog.returnValue === 'ok';
+    if (!yes && control?.isConnected) returnTo(control).focus({ preventScroll: true });
+    answer(yes);
+  }, { once: true });
+  dialog.showModal();
+  // Something that cannot be undone starts on Cancel, so Enter is safe.
+  (danger ? cancel : ok).focus({ preventScroll: true });
+});
+
+// A marked control's click is held back while the dialog asks; once the
+// person agrees the control is clicked again and let through, once.
+const agreed = new WeakSet();
+document.addEventListener('click', (event) => {
+  if (!(event.target instanceof Element)) return;
+  const asking = event.target.closest('[data-tun-confirm-dialog] > dialog');
+  if (asking) {
+    if (event.target.closest('[data-tun-confirm-ok]')) asking.close('ok');
+    else if (event.target.closest('[data-tun-confirm-cancel]')) asking.close('');
+    return;
+  }
+  const control = event.target.closest('[data-tun-confirm]');
+  if (!control || control.matches(':disabled, [aria-disabled=true]')) return;
+  if (agreed.has(control)) {
+    agreed.delete(control);
+    return;
+  }
+  event.preventDefault();
+  event.stopImmediatePropagation();
+  ask(control, words(control.dataset.tunConfirm), words(control.dataset.tunConfirmDetail),
+      words(control.dataset.tunConfirmAction) || ownWords(control), destructive(control))
+    .then((yes) => {
+      if (!yes || !control.isConnected) return;
+      agreed.add(control);
+      control.click();
+    });
+}, true);
+
+// htmx asks before a request with hx-confirm: the text up to and with its
+// first question mark is the question, the rest the sentence.
+document.addEventListener('htmx:confirm', (event) => {
+  if (!confirmDialog()) return;
+  event.preventDefault();
+  const { ctx, issueRequest, dropRequest } = event.detail;
+  const control = ctx.sourceEvent?.submitter || event.target;
+  const text = words(ctx.confirm);
+  const end = text.indexOf('?');
+  ask(control, end >= 0 ? text.slice(0, end + 1) : text, end >= 0 ? text.slice(end + 1).trim() : '',
+      ownWords(control), destructive(control))
+    .then((yes) => (yes ? issueRequest() : dropRequest()));
+});")
+  (:examples
+   ("A destructive action asks first"
+    (confirm-dialog (:id "confirm-delete"))
+    `(:form (:@ :method "post" :action "/orders/1042/delete")
+            ,(button (:type "submit" :variant :destructive :icon :trash
+                      :attributes (confirm-attributes
+                                   "Delete order 1042?"
+                                   :detail "The order and all its lines are deleted for good."))
+                     "Delete order")))
+   ("Without danger, and a link"
+    (confirm-dialog (:id "confirm-send"))
+    `(:form (:@ :method "post" :action "/invoices/2024-117/send")
+            ,(button (:type "submit" :icon :send
+                      :attributes (confirm-attributes
+                                   "Send invoice 2024-117?"
+                                   :detail "It goes as a PDF to the customer's invoice address."))
+                     "Send invoice"))
+    (button (:variant :outline :href "/orders"
+             :attributes (confirm-attributes "Leave order 1042 without saving?"
+                                             :detail "What you changed is lost."
+                                             :action "Leave"))
+            "Back to the orders"))
+   ("htmx's hx-confirm asks in it too"
+    (confirm-dialog (:id "confirm-archive"))
+    (button (:variant :outline
+             :attributes (list :hx-post "/orders/1042/archive" :hx-swap "none"
+                               :hx-confirm
+                               "Archive order 1042? It leaves the list of open orders."))
+            "Archive"))
+   ("Long words, and a text without a question"
+    (confirm-dialog (:id "confirm-remind"))
+    (button (:variant :outline
+             :attributes (confirm-attributes
+                          "Send 12 reminders?"
+                          :detail "Each customer with an unpaid invoice gets one by email."))
+            "Send a reminder of every unpaid invoice to its customer")
+    (button (:variant :outline
+             :attributes (list :hx-post "/orders/archive-finished" :hx-swap "none"
+                               :hx-confirm "Every finished order is archived."))
+            "Archive the finished orders"))
+   ("From inside a dialog"
+    (confirm-dialog (:id "confirm-edit"))
+    (button (:variant :outline :attributes (list :command "show-modal" :commandfor "edit-order"))
+            "Edit order 1042")
+    (dialog (:id "edit-order" :title "Edit order 1042" :action "/orders/1042"
+             :footer (list (button (:type "submit" :variant :destructive
+                                    :attributes (append
+                                                 (list :formaction "/orders/1042/delete")
+                                                 (confirm-attributes
+                                                  "Delete order 1042?"
+                                                  :detail
+                                                  "The order and all its lines are deleted for good.")))
+                                   "Delete")
+                           (button (:type "submit") "Save")))
+            (text-input (:label "Reference" :name "reference" :value "Spring fair")))))
+  `(:div ,(attrs (list :class "tun-confirm-dialog" :data-tun-confirm-dialog t
+                       :data-cancel-label (tr "Cancel") :data-confirm-label (tr "Confirm"))
+                 attributes)
+         ;; One id for the one on a page, so a page renders the same every
+         ;; time (the offline page's version is its content's hash).
+         ,(dialog* (list :id (or id "tun-confirm-dialog")
+                         :variant :confirm :title "" :description ""
+                         :footer (list (button (:variant :outline
+                                                :attributes (list :data-tun-confirm-cancel t)))
+                                       (button (:attributes (list :data-tun-confirm-ok t))))))))
+
+;;; ------------------------------------------------------------------
 ;;; dropdown-menu
 
 (defun dropdown-menu-item (&key label href icon shortcut variant disabled attributes)
@@ -451,16 +792,19 @@ LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:lab
     color: var(--popover-foreground);
     box-shadow: 0 0 0 1px var(--border), var(--shadow-md);
     outline: none;
+    /* Closed, and leaving: a little below its place, faded. */
     opacity: 0;
-    scale: 0.95;
-    transition-property: opacity, scale, display, overlay;
-    transition-duration: var(--duration-fast);
+    translate: 0 var(--spacing);
+    transition-property: opacity, translate, display, overlay;
+    transition-duration: var(--duration-close);
     transition-timing-function: var(--ease);
     transition-behavior: allow-discrete;
+    &:not(:popover-open) { pointer-events: none; }
     &:popover-open {
       opacity: 1;
-      scale: none;
-      @starting-style { opacity: 0; scale: 0.95; }
+      translate: none;
+      transition-duration: var(--duration-fast);
+      @starting-style { opacity: 0; translate: 0 var(--spacing); }
     }
   }
   /* Under its button where the browser can anchor it; the script places it
@@ -475,11 +819,9 @@ LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:lab
       inset: auto;
       margin: var(--spacing) 0;
       min-width: max(8rem, anchor-size(width));
-      transform-origin: top left;
     }
     &[data-align='end'] .tun-dropdown-menu-content {
       position-area: block-end span-inline-start;
-      transform-origin: top right;
     }
   }
 
@@ -582,14 +924,14 @@ const place = (menu) => {
 };
 const placeOpenMenus = () => {
   if (anchored) return;
-  for (const menu of document.querySelectorAll(`${menuSelector}:popover-open`)) place(menu);
+  for (const menu of document.querySelectorAll(menuSelector)) if (tunPopoverOpen(menu)) place(menu);
 };
 window.addEventListener('resize', placeOpenMenus);
 document.addEventListener('scroll', placeOpenMenus, true);
 
 const syncExpanded = (root) => {
   for (const menu of root.querySelectorAll(menuSelector))
-    triggerOf(menu)?.setAttribute('aria-expanded', String(menu.matches(':popover-open')));
+    triggerOf(menu)?.setAttribute('aria-expanded', String(tunPopoverOpen(menu)));
 };
 tunOnContent(syncExpanded);
 
@@ -611,7 +953,7 @@ document.addEventListener('toggle', (event) => {
 }, true);
 
 const closeMenu = (menu) => {
-  if (menu.matches(':popover-open')) menu.hidePopover();
+  if (tunPopoverOpen(menu)) menu.hidePopover();
   triggerOf(menu).focus({ preventScroll: true });
 };
 
@@ -631,7 +973,7 @@ document.addEventListener('keydown', (event) => {
   if (trigger && (event.key === 'ArrowDown' || event.key === 'ArrowUp')) {
     const menu = document.getElementById(trigger.getAttribute('popovertarget'));
     event.preventDefault();
-    if (menu.matches(':popover-open')) {
+    if (tunPopoverOpen(menu)) {
       const items = itemsOf(menu);
       move(items, event.key === 'ArrowDown' ? 0 : -1);
     } else {
@@ -640,8 +982,8 @@ document.addEventListener('keydown', (event) => {
     }
     return;
   }
-  const menu = event.target.closest(`${menuSelector}:popover-open`);
-  if (!menu || event.altKey || event.ctrlKey || event.metaKey) return;
+  const menu = event.target.closest(menuSelector);
+  if (!menu || !tunPopoverOpen(menu) || event.altKey || event.ctrlKey || event.metaKey) return;
   const items = itemsOf(menu);
   const index = items.indexOf(document.activeElement);
   if (event.key === 'ArrowDown') move(items, index + 1);
@@ -784,12 +1126,15 @@ so it should add to the name, not repeat it.")
     font-weight: var(--font-weight-normal);
     text-align: start;
     white-space: normal;
+    /* Where it stands (centred on its button), and hidden a little below
+       it, faded, from where it rises. */
+    --tun-tooltip-x: -50%;
+    --tun-tooltip-y: 0px;
     visibility: hidden;
     opacity: 0;
-    translate: -50% 0;
-    scale: 0.95;
-    transition-property: opacity, scale, visibility;
-    transition-duration: var(--duration-fast);
+    translate: var(--tun-tooltip-x) calc(var(--tun-tooltip-y) + var(--spacing));
+    transition-property: opacity, translate, visibility;
+    transition-duration: var(--duration-close);
     transition-timing-function: var(--ease);
   }
   &[data-side='bottom'] .tun-tooltip-content {
@@ -801,7 +1146,8 @@ so it should add to the name, not repeat it.")
     top: 50%;
     bottom: auto;
     margin: 0;
-    translate: 0 -50%;
+    --tun-tooltip-x: 0px;
+    --tun-tooltip-y: -50%;
   }
   &[data-side='left'] .tun-tooltip-content {
     right: 100%;
@@ -822,7 +1168,8 @@ so it should add to the name, not repeat it.")
       position-anchor: --tun-tooltip;
       inset: auto;
       margin: calc(var(--spacing) * 1.5);
-      translate: none;
+      --tun-tooltip-x: 0px;
+      --tun-tooltip-y: 0px;
     }
     &[data-side='top'] .tun-tooltip-content {
       position-area: top;
@@ -849,13 +1196,15 @@ so it should add to the name, not repeat it.")
     &:not([data-dismissed]):hover .tun-tooltip-content {
       visibility: visible;
       opacity: 1;
-      scale: none;
+      translate: var(--tun-tooltip-x) var(--tun-tooltip-y);
+      transition-duration: var(--duration-fast);
     }
   }
   &:not([data-dismissed]):has(:focus-visible) .tun-tooltip-content {
     visibility: visible;
     opacity: 1;
-    scale: none;
+    translate: var(--tun-tooltip-x) var(--tun-tooltip-y);
+    transition-duration: var(--duration-fast);
   }
 }")
   (:script "
