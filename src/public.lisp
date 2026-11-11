@@ -144,7 +144,8 @@ the listed symbols (the same symbol objects, not copies)."
   ;; Jobs: work later, again when it fails, in the background (spec/jobs.md)
   (#:tun.jobs #:define-job #:enqueue-job #:cancel-job #:snooze-job #:fail-job #:last-attempt-p
    #:define-schedule #:define-trigger)
-  (#:tun.auth #:account-address #:account-welcomed-p #:actor-account-kind #:account-names #:accounts-create)
+  (#:tun.auth #:account-address #:account-welcomed-p #:actor-account-kind #:account-kind-and-role
+   #:account-names #:accounts-create)
   ;; Workflows (the kernel's engine)
   (#:tun.workflows
    #:schedule-workflow #:cancel-workflows #:pending-workflows #:note-workflow-run

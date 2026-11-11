@@ -3,7 +3,7 @@
 Status: v1, 2026-10-13; sign-in with an identity provider (§3.5),
 2026-10-14; WorkOS, providers in place of passwords (§3.1, §3.4) and
 OAuth for MCP clients (§5.1), 2026-10-21; `accounts_invite` and
-`actor-account-kind`, 2026-10-21. Who a request runs as, and how a tenant knows it.
+`actor-account-kind`, 2026-10-21; `account-kind-and-role`, 2026-11-11. Who a request runs as, and how a tenant knows it.
 Every call already runs as an actor, a role and a name such as
 `employee:kari` (`core.md` §3.2); policy, audit, receipts and
 confirmation tokens are bound to it. This contract says where the actor
@@ -66,7 +66,11 @@ An account is a record of the core entity `account` (id prefix `acc`):
   ACTOR)`: `:person` or `:agent`, the kind of the active account ACTOR
   acts for, or NIL when it acts for none (a claimed actor no account
   has, the process itself, a customer). `(actor-account-kind *actor*)`
-  is the caller's.
+  is the caller's. `(account-kind-and-role NAME)` is the kind and the
+  role of the active account NAME as two values, such as `:agent` and
+  `:employee`, or NIL when NAME is no active account: for a client that
+  gives an account something of its own, such as a supplier limiting an
+  agent to projects.
 - Credentials (token and session hashes, and the identities a provider
   vouches for) are stored in internal entities apart from the account. They are secret
   fields (§7) and never appear in any tool's output.

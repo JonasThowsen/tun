@@ -15,7 +15,8 @@
    #:account #:account-name #:account-display-name #:account-kind #:account-role
    #:account-email #:account-status #:account-actor #:find-account-by-name #:account-disabled
    #:base64url #:base64url-octets
-   #:account-address #:account-welcomed-p #:actor-account-kind #:account-names #:accounts-create
+   #:account-address #:account-welcomed-p #:actor-account-kind #:account-kind-and-role
+   #:account-names #:accounts-create
    ;; access tokens
    #:access-token #:authenticate-token
    ;; sessions and logging in

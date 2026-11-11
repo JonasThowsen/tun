@@ -636,7 +636,9 @@ last went, and another within five minutes is refused with `conflict`.
 signed in; a client mails people about its work only then.
 `(actor-account-kind *actor*)` tells whether the caller acts for a person
 (`:person`), an agent such as another system's integration (`:agent`),
-or no account (NIL).
+or no account (NIL). `(account-kind-and-role "erp")` answers the same of
+the active account by that name, with its role as a second value, such as
+`:agent` and `:employee`, or NIL when there is none.
 
 ## Sending mail
 

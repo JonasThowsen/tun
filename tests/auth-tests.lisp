@@ -582,7 +582,12 @@ browser to the login."
           (is (eq :person (kind "employee:kari")))
           (is (eq :agent (kind "employee:erp")))
           (is (null (kind "employee:eva")) "a disabled account is none")
-          (is (null (kind "admin:nobody")) "nor is a claimed actor without one"))))))
+          (is (null (kind "admin:nobody")) "nor is a claimed actor without one"))
+        (flet ((kind-and-role (name) (multiple-value-list (tun:account-kind-and-role name))))
+          (is (equal '(:person :employee) (kind-and-role "kari")))
+          (is (equal '(:agent :employee) (kind-and-role "erp")))
+          (is (equal '(nil) (kind-and-role "eva")) "a disabled account is none")
+          (is (equal '(nil) (kind-and-role "nobody")) "nor is a name without one"))))))
 
 (test redirects-are-recorded-as-ok
   (with-test-server (port)

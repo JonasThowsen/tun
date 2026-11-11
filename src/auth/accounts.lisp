@@ -95,6 +95,14 @@ customer (spec/auth.md 2)."
     (and account (account-active-p account)
          (if (person-p account) :person :agent))))
 
+(defun account-kind-and-role (name)
+  "The kind of the active account NAME, :PERSON or :AGENT, and its role, such
+as :EMPLOYEE, as two values; NIL when NAME is no active account (spec/auth.md 2)."
+  (let ((account (find-account-by-name name)))
+    (when (and account (account-active-p account))
+      (values (if (person-p account) :person :agent)
+              (role-keyword (account-role account))))))
+
 (defun account-names (&key role)
   "The names of the active people, in name order; only those with ROLE, a
 keyword such as :ADMIN, when it is given (spec/auth.md 2)."
