@@ -2,7 +2,7 @@
 
 - loop: loading-sign
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 0a9f48a3d8a35c7e4356070800c606390fc5b93b
 - item: sak_d6c25jh5w82q8t93
 - tags: kind:ui core module:ui
@@ -157,6 +157,12 @@ Mode: reviewed. A core change, additive.
   stays empty, since «Loading…» was said once for that wait.
 - **Core version** 2.22.0, the next free minor after `home-page`'s
   2.21.0; additive.
+
+## Actuals
+
+```json
+{"loop":"loading-sign","title":"A staff page shows that it is loading when a link or form takes more than a moment","repository":"tun","mode":"reviewed","stage":"done","item":"sak_d6c25jh5w82q8t93","tags":["kind:ui","core","module:ui"],"like":["ui-graph-fit","home-page","chart-tooltip-height"],"started":"2026-11-11 09:55","ended":"2026-11-11 10:41","minutes":{"total":46,"waiting_person":0,"waiting_reviewer":4,"working":42,"drafted":30,"person_at_gates":null,"agent":null},"estimate":{"best":60,"likely":120,"worst":240,"at":"brief"},"latest_estimate":{"best":60,"likely":120,"worst":240,"at":"brief"},"within_estimate":false,"ratio":0.38,"verify":{"rounds":3,"failed":0},"changes":{"A":1,"B":2,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
 
 ## Log
 
@@ -324,3 +330,5 @@ Mode: reviewed. A core change, additive.
   - The CSS sits in the shell's component CSS and the script listens on `document`, so nothing breaks the page's content security policy.
   - I checked whether the new names (`show`, `waiting` and the others) could clash with names in other component scripts. They don't: the other `show` and `waiting` are inside their own blocks, and the push, files and other checks all passed.
   - There's no leftover debugging and no dead code. The spec, the unit test and the version (2.22.0 in both `module.lisp` and `flake.nix`) all agree.
+- 2026-11-11 10:41  pushed adb44d8 to Tun's main, core 2.22.0
+- 2026-11-11 10:41  finished at tun adb44d8
