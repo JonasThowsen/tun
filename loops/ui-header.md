@@ -2,7 +2,7 @@
 
 - loop: ui-header
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 6d34699fad961f9a0cc9f8acbe3689c315349b82
 - item: sak_79ne242sb9ep96dh
 - estimate: 2h30m 4h 7h
@@ -314,6 +314,12 @@ Mode: reviewed. A core change, a minor version.
 - **Core version 2.27.0**: new component, new options, a changed look and
   new defaults; no call shape changes.
 
+## Actuals
+
+```json
+{"loop":"ui-header","title":"One header per page with its actions beside the title on a phone, and the shell on the new grounds","repository":"tun","mode":"reviewed","stage":"done","item":"sak_79ne242sb9ep96dh","tags":["kind:ui","core","module:ui"],"like":["tun/ui-sheets","tun/ui-look"],"started":"2026-11-11 23:39","ended":"2026-11-12 00:50","minutes":{"total":71,"waiting_person":0,"waiting_reviewer":3,"working":68,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":150,"likely":240,"worst":420,"at":"brief"},"latest_estimate":{"best":150,"likely":240,"worst":420,"at":"brief"},"within_estimate":false,"ratio":0.3,"verify":{"rounds":3,"failed":0},"changes":{"A":2,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-11 23:39  started, reviewed
@@ -449,3 +455,5 @@ Mode: reviewed. A core change, a minor version.
     - the facts' layout and their line with the header;
     - the tabs' grounds.
   - **Everything round 1 found right still holds.** The only changes since verify 2 are tests, the spec and a docstring, as the Log says. So the five clients' runs on verify 2's tree still apply to this code.
+- 2026-11-12 00:49  pushed b3ad4d12 to Tun's main, core 2.27.0
+- 2026-11-12 00:50  finished at tun b3ad4d12
