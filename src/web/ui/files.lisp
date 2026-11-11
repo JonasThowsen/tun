@@ -42,8 +42,7 @@ is how many files the field takes.")
   padding: calc(var(--spacing) * 3);
   border: 1px dashed " +control-border+ ";
   border-radius: var(--radius-md);
-  background-color: light-dark(var(--background),
-                               color-mix(in oklab, var(--input) 20%, transparent));
+  background-color: var(--input-background);
   transition-property: border-color, background-color;
   transition-duration: var(--duration-fast);
   &[data-dragging] {
@@ -397,7 +396,13 @@ and fetches it only when it is shown.")
     color: var(--foreground);
     text-decoration: none;
     &:focus-visible { outline: none; box-shadow: var(--focus-ring); }
-    &:hover { border-color: var(--ring); }
+    @media (hover: hover) {
+      &:hover { border-color: var(--border-strong); }
+    }
+    &:active {
+      border-color: var(--border-strong);
+      background-image: linear-gradient(var(--pressed), var(--pressed));
+    }
   }
   & .tun-attachments-image img { width: 100%; height: 100%; object-fit: cover; }
   & .tun-attachments-file {

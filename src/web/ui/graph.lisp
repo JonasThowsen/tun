@@ -829,7 +829,7 @@ the same.")
     border-radius: var(--radius-md);
     background-color: var(--card);
     color: var(--card-foreground);
-    box-shadow: var(--shadow-xs);
+    box-shadow: var(--shadow-panel);
     &[data-state='active'] { --tun-graph-tone: var(--info); }
     &[data-state='done'] { --tun-graph-tone: var(--success); }
     &[data-state='waiting'] {
@@ -846,6 +846,10 @@ the same.")
       .tun-graph-line { color: var(--foreground); }
     &[data-live] { box-shadow: 0 0 0 2px var(--info), var(--shadow-sm); }
     &:has(.tun-graph-link:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+    /* Pressed on its link: the tint of the text colour over its ground. */
+    &:has(.tun-graph-link:active) {
+      background-image: linear-gradient(var(--pressed), var(--pressed));
+    }
     & a:not(.tun-graph-link) { position: relative; z-index: 1; }
   }
   /* Up to two lines of title, cut with an ellipsis after the second. */
@@ -932,7 +936,8 @@ the same.")
     height: calc(var(--spacing) * 1.5);
     border-radius: var(--radius-full);
     background-color: currentColor;
-    animation: tun-graph-pulse 1.6s var(--ease) infinite;
+    /* A loop keeps an even easing of its own; --ease is for a change of state. */
+    animation: tun-graph-pulse 1.6s ease-in-out infinite;
   }
   & .tun-graph-hidden {~a
   }

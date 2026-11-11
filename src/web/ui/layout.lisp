@@ -163,6 +163,7 @@ screen only a link back to the level above shows.")
     @media (hover: hover) {
       &:hover { color: var(--foreground); }
     }
+    &:active { background-color: var(--pressed); }
   }
   & ol {
     display: none;
@@ -294,22 +295,28 @@ CURRENT is marked; when there is none, the nearest link above it is (/customers 
     gap: calc(var(--spacing) * 2);
     min-height: calc(var(--spacing) * 8);
     padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
+    border: 1px solid transparent;
     border-radius: var(--radius-md);
     color: var(--foreground);
     text-decoration: none;
-    transition: background-color var(--duration-fast) var(--ease);
-    outline-offset: 0;
+    outline: none;
+    transition-property: background-color, border-color, box-shadow;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease);
+    &:focus-visible { box-shadow: var(--focus-ring); }
     @media (hover: hover) {
       &:hover { background-color: var(--accent); color: var(--accent-foreground); }
     }
-    &:active { background-color: var(--accent); }
+    /* The current entry stands out as a panel of the page's ground in its
+       frame, at the weight of the others, so marking it moves nothing. */
     &[aria-current] {
-      background-color: var(--accent);
-      color: var(--accent-foreground);
-      font-weight: var(--font-weight-medium);
+      border-color: var(--border);
+      background-color: var(--background);
+      box-shadow: var(--shadow-xs);
     }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
     & .tun-icon { color: var(--muted-foreground); }
-    &[aria-current] .tun-icon { color: var(--accent-foreground); }
+    &[aria-current] .tun-icon { color: var(--foreground); }
   }
   & .tun-nav-list-label { flex: 1; min-width: 0; overflow-wrap: anywhere; }
   & .tun-nav-list-count {
@@ -610,7 +617,8 @@ a wide overview.")
     background-repeat: no-repeat;
     background-size: 40% 100%;
     pointer-events: none;
-    animation: tun-app-shell-loading 1.2s var(--ease) infinite;
+    /* A loop keeps an even easing of its own; --ease is for a change of state. */
+    animation: tun-app-shell-loading 1.2s ease-in-out infinite;
     &[hidden] { display: none; }
     @media (prefers-reduced-motion: reduce) {
       animation: none;
@@ -628,12 +636,15 @@ a wide overview.")
     white-space: nowrap;
   }
 
+  /* The top bar, the sidebar and the phone's menu stand on the chrome
+     ground; a focus ring there leaves its gap in that ground. */
   & .tun-app-shell-header {
+    --focus-ring: 0 0 0 2px var(--chrome), 0 0 0 4px var(--ring);
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
-    border-bottom: 1px solid var(--border);
-    background-color: color-mix(in oklab, var(--background) 90%, transparent);
+    border-bottom: 1px solid var(--chrome-border);
+    background-color: color-mix(in oklab, var(--chrome) 95%, transparent);
     backdrop-filter: blur(8px);
   }
   & .tun-app-shell-bar {
@@ -678,9 +689,9 @@ a wide overview.")
     margin: 0;
     padding: 0;
     border: 0;
-    border-right: 1px solid var(--border);
-    background-color: var(--popover);
-    color: var(--popover-foreground);
+    border-right: 1px solid var(--chrome-border);
+    background-color: var(--chrome);
+    color: var(--foreground);
     box-shadow: var(--shadow-lg);
     overflow: hidden;
     translate: -100% 0;
@@ -712,7 +723,7 @@ a wide overview.")
     flex-shrink: 0;
     height: calc(var(--spacing) * 14);
     padding-inline: calc(var(--spacing) * 4) var(--spacing);
-    border-bottom: 1px solid var(--border);
+    border-bottom: 1px solid var(--chrome-border);
     font-weight: var(--font-weight-semibold);
   }
   & .tun-app-shell-nav {
@@ -729,7 +740,7 @@ a wide overview.")
     flex-shrink: 0;
     padding: calc(var(--spacing) * 4);
     padding-bottom: max(calc(var(--spacing) * 4), env(safe-area-inset-bottom));
-    border-top: 1px solid var(--border);
+    border-top: 1px solid var(--chrome-border);
   }
   & .tun-app-shell-user {
     display: flex;
@@ -827,8 +838,8 @@ a wide overview.")
       flex-direction: column;
       height: 100dvh;
       border-bottom: 0;
-      border-right: 1px solid var(--border);
-      background-color: color-mix(in oklab, var(--muted) 50%, var(--background));
+      border-right: 1px solid var(--chrome-border);
+      background-color: var(--chrome);
       backdrop-filter: none;
     }
     & .tun-app-shell-bar { flex-shrink: 0; padding-inline: calc(var(--spacing) * 3); }

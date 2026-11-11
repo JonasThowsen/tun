@@ -809,7 +809,7 @@ element of the text's first level of heading, so its headings stay below the pag
         border: 1px solid var(--border);
         border-radius: var(--radius-lg);
         background-color: var(--card);
-        box-shadow: var(--shadow-xs);
+        box-shadow: var(--shadow-panel);
       }
       & td { padding: calc(var(--spacing) * 1.5) 0; border: 0; text-align: start; }
       & td:has(> .tun-markdown-table-value:empty) { display: none; }

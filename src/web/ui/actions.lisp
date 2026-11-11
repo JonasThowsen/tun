@@ -71,7 +71,9 @@ tunOnContent((root) => {
   transition-property: color, background-color, border-color, box-shadow, translate;
   transition-duration: var(--duration-fast);
   transition-timing-function: var(--ease);
-  &:focus-visible { border-color: var(--ring); box-shadow: var(--focus-ring); }
+  &:focus-visible { box-shadow: var(--focus-ring); }
+  /* Pressed shows at once, and eases back when let go. */
+  &:active { transition-duration: 0s; }
   &:active:not([aria-haspopup]) { translate: 0 1px; }
   &:disabled, &[aria-disabled='true'] { pointer-events: none; opacity: 0.5; }
   & .tun-icon:not([data-size]) {
@@ -85,7 +87,6 @@ tunOnContent((root) => {
     height: calc(var(--spacing) * 6);
     gap: var(--spacing);
     padding-inline: calc(var(--spacing) * 2);
-    border-radius: min(var(--radius-md), 8px);
     font-size: var(--text-xs);
     line-height: var(--text-xs--line-height);
     & .tun-icon:not([data-size]) {
@@ -96,7 +97,6 @@ tunOnContent((root) => {
   &[data-size='sm'] {
     height: var(--control-height-sm);
     gap: var(--spacing);
-    border-radius: min(var(--radius-md), 10px);
   }
   &:is([data-size='xs'], [data-size='sm']) {
     &:has(> [data-icon='start']) { padding-left: calc(var(--spacing) * 1.5); }
@@ -108,7 +108,6 @@ tunOnContent((root) => {
     width: calc(var(--spacing) * 6);
     height: calc(var(--spacing) * 6);
     padding: 0;
-    border-radius: min(var(--radius-md), 8px);
     & .tun-icon:not([data-size]) {
       width: calc(var(--spacing) * 3);
       height: calc(var(--spacing) * 3);
@@ -118,7 +117,6 @@ tunOnContent((root) => {
     width: var(--control-height-sm);
     height: var(--control-height-sm);
     padding: 0;
-    border-radius: min(var(--radius-md), 10px);
   }
   &[data-size='icon-lg'] {
     width: var(--control-height-lg);
@@ -135,11 +133,11 @@ tunOnContent((root) => {
       padding-inline: calc(var(--spacing) * 2);
     }
   }
-  /* The extra small sizes stay small on a touch screen, so an invisible
-     area around them takes the finger: as high as a control there, and at
-     least as wide. */
+  /* The sizes under a control's height stay small on a touch screen, so an
+     invisible area around them takes the finger: as high as a control
+     there (44px), and at least as wide. */
   @media (pointer: coarse) {
-    &:is([data-size='xs'], [data-size='icon-xs']) {
+    &:is([data-size='xs'], [data-size='sm'], [data-size='icon-xs'], [data-size='icon-sm']) {
       position: relative;
       &::before {
         content: '';
@@ -149,76 +147,57 @@ tunOnContent((root) => {
     }
   }
 
+  /* Under a pointer and while pressed, a tint of the text colour is laid
+     over the button's own ground, so every variant answers the same way. */
+  &:not([data-variant='primary']) {
+    @media (hover: hover) {
+      &:not([data-variant='link']):hover {
+        background-image: linear-gradient(var(--accent), var(--accent));
+      }
+    }
+    &:is(:active, [aria-expanded='true'], [aria-pressed='true'], [aria-current='page']) {
+      background-image: linear-gradient(var(--pressed), var(--pressed));
+    }
+  }
   &[data-variant='primary'] {
     background-color: var(--primary);
     color: var(--primary-foreground);
     @media (hover: hover) {
-      &:hover { background-color: color-mix(in oklab, var(--primary) 80%, transparent); }
+      &:hover { background-color: color-mix(in oklab, var(--primary) 82%, var(--background)); }
     }
+    &:active { background-color: color-mix(in oklab, var(--primary) 68%, var(--background)); }
   }
   &[data-variant='secondary'] {
     background-color: var(--secondary);
     color: var(--secondary-foreground);
-    @media (hover: hover) {
-      &:hover { background-color: color-mix(in oklch, var(--secondary), var(--foreground) 5%); }
-    }
-    &[aria-expanded='true'] { background-color: var(--secondary); }
-    &:is([aria-pressed='true'], [aria-current='page']) {
-      background-color: color-mix(in oklch, var(--secondary), var(--foreground) 10%);
-    }
   }
-  &[data-variant='outline'] {
-    border-color: light-dark(var(--border), var(--input));
-    background-color: light-dark(var(--background),
-                                 color-mix(in oklab, var(--input) 30%, transparent));
-    color: var(--foreground);
-    box-shadow: var(--shadow-xs);
-    @media (hover: hover) {
-      &:hover {
-        background-color: light-dark(var(--muted),
-                                     color-mix(in oklab, var(--input) 50%, transparent));
-      }
-    }
-    &:is([aria-expanded='true'], [aria-pressed='true'], [aria-current='page']) {
-      background-color: light-dark(var(--muted),
-                                   color-mix(in oklab, var(--input) 60%, transparent));
-    }
-    &:focus-visible { box-shadow: var(--focus-ring); }
-  }
-  &[data-variant='ghost'] {
+  /* Outline, and destructive with red words on the same ground and frame. */
+  &:is([data-variant='outline'], [data-variant='destructive']) {
+    border-color: var(--border);
+    background-color: var(--background);
     color: var(--foreground);
     @media (hover: hover) {
-      &:hover {
-        background-color: light-dark(var(--muted),
-                                     color-mix(in oklab, var(--muted) 50%, transparent));
-      }
+      &:hover { border-color: var(--border-strong); }
     }
-    &:is([aria-expanded='true'], [aria-pressed='true'], [aria-current='page']) {
-      background-color: var(--muted);
+    &:is(:active, [aria-expanded='true'], [aria-pressed='true'], [aria-current='page']) {
+      border-color: var(--border-strong);
     }
+  }
+  &[data-variant='destructive'] { color: var(--destructive); }
+  &[data-variant='ghost'] { color: var(--foreground); }
+  /* A button that is only an icon needs no box: no frame and no ground at
+     rest, so a row of them is not a row of boxes and the filled button
+     stands out.  Chosen, it keeps them; a pointer and a press still show. */
+  &[data-size^='icon'][data-variant='outline']:not([aria-expanded='true'], [aria-pressed='true'],
+                                                   [aria-current='page']) {
+    border-color: transparent;
+    background-color: transparent;
   }
   &[data-variant='link'] {
     color: var(--primary);
     text-underline-offset: 4px;
     @media (hover: hover) {
       &:hover { text-decoration-line: underline; }
-    }
-  }
-  &[data-variant='destructive'] {
-    background-color: light-dark(color-mix(in oklab, var(--destructive) 10%, transparent),
-                                 color-mix(in oklab, var(--destructive) 20%, transparent));
-    /* --destructive on its own tint is 4.4:1 in the light scheme; a little
-       of the text colour brings it over AA's 4.5:1. */
-    color: color-mix(in oklab, var(--destructive), var(--foreground) 15%);
-    @media (hover: hover) {
-      &:hover {
-        background-color: light-dark(color-mix(in oklab, var(--destructive) 20%, transparent),
-                                     color-mix(in oklab, var(--destructive) 30%, transparent));
-      }
-    }
-    &:focus-visible {
-      border-color: color-mix(in oklab, var(--destructive) 40%, transparent);
-      box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 20%, transparent);
     }
   }
 }")
@@ -288,13 +267,19 @@ and secondary) need.")
   align-items: stretch;
   /* A focused part's ring is drawn over its neighbours. */
   & > :focus-visible { position: relative; z-index: 1; }
+  /* The parts of a group share one frame, so an outline icon button in a
+     group keeps its frame and ground. */
+  & > .tun-button[data-size^='icon'][data-variant='outline'] {
+    border-color: var(--border);
+    background-color: var(--background);
+  }
   &:has(> .tun-button-group) { gap: calc(var(--spacing) * 2); }
   & > .tun-button-group-separator {
     flex-shrink: 0;
     align-self: stretch;
     width: 1px;
     margin-block: 1px;
-    background-color: var(--input);
+    background-color: var(--border);
   }
   /* On a filled primary button the line is a shade of the button itself. */
   &:has(> [data-variant='primary']) > .tun-button-group-separator {
@@ -306,10 +291,9 @@ and secondary) need.")
     align-items: center;
     gap: calc(var(--spacing) * 2);
     padding-inline: calc(var(--spacing) * 2.5);
-    border: 1px solid light-dark(var(--border), var(--input));
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
     background-color: var(--muted);
-    box-shadow: var(--shadow-xs);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
     font-weight: var(--font-weight-medium);
@@ -443,7 +427,7 @@ another site. Use the button with HREF when the link should look like a button."
   (:source "shadcn/ui typography (link), Basecoat's look")
   (:css "
 .tun-link {
-  border-radius: 2px;
+  border-radius: var(--radius-sm);
   color: var(--primary);
   font-weight: var(--font-weight-medium);
   text-decoration-line: underline;
@@ -456,6 +440,7 @@ another site. Use the button with HREF when the link should look like a button."
   @media (hover: hover) {
     &:hover { text-decoration-color: currentColor; }
   }
+  &:active { background-color: var(--pressed); transition-duration: 0s; }
   &[data-variant='muted'] {
     color: var(--muted-foreground);
     font-weight: inherit;
@@ -564,13 +549,14 @@ pressed together are a KBD with a KBD for each key inside.")
     (button (:variant :ghost) "Search" (kbd (:attributes '(:data-icon "end")) "/"))))
   `(:kbd ,(attrs (list :class "tun-kbd" :id id) attributes) ,@children))
 
-(define-component badge ((&key (variant :primary) icon id attributes) &rest children)
+(define-component badge ((&key (variant :neutral) icon id attributes) &rest children)
   (:group "Actions")
-  (:doc "A small label for a status or a category, such as «Confirmed» on an order. The
-variants success, warning, info and destructive are for status; primary, secondary and
-outline for anything else. The text says what it is, so colour is never all that tells them
-apart.")
-  (:source "Basecoat badge (Vega) with Tun's status colours")
+  (:doc "A small label for a status, such as «Confirmed» on an order: a soft, fully round pill
+in one of five tones, each with one meaning. Neutral (the default) is a normal state, such as
+a draft or an order in progress; info is sent or confirmed; success is done; warning is waiting
+on someone; destructive is failed or overdue. The variants primary, secondary and outline are
+the neutral tone. The text says what it is, so colour is never all that tells them apart.")
+  (:source "Basecoat badge (Vega) with Tun's status colours, as soft tones")
   (:css "
 .tun-badge {
   display: inline-flex;
@@ -582,8 +568,10 @@ apart.")
   height: calc(var(--spacing) * 5);
   padding: calc(var(--spacing) * 0.5) calc(var(--spacing) * 2);
   overflow: hidden;
-  border: 1px solid transparent;
   border-radius: var(--radius-full);
+  /* A tone tints; it never fills or frames. */
+  background-color: var(--muted);
+  color: var(--foreground);
   font-size: var(--text-xs);
   line-height: var(--text-xs--line-height);
   font-weight: var(--font-weight-medium);
@@ -594,55 +582,35 @@ apart.")
     height: calc(var(--spacing) * 3);
   }
   &:has(> .tun-icon:first-child) { padding-inline-start: calc(var(--spacing) * 1.5); }
-
-  &[data-variant='primary'] { background-color: var(--primary); color: var(--primary-foreground); }
-  &[data-variant='secondary'] {
-    background-color: var(--secondary);
-    color: var(--secondary-foreground);
-  }
-  &[data-variant='outline'] { border-color: var(--border); color: var(--foreground); }
-  &[data-variant='success'] {
-    border-color: color-mix(in oklab, var(--success) 20%, transparent);
-    background-color: var(--success-soft);
-    color: var(--success);
-  }
-  &[data-variant='warning'] {
-    border-color: color-mix(in oklab, var(--warning) 20%, transparent);
-    background-color: var(--warning-soft);
-    color: var(--warning);
-  }
-  &[data-variant='info'] {
-    border-color: color-mix(in oklab, var(--info) 20%, transparent);
-    background-color: var(--info-soft);
-    color: var(--info);
-  }
+  &[data-variant='info'] { background-color: var(--info-soft); color: var(--info); }
+  &[data-variant='success'] { background-color: var(--success-soft); color: var(--success); }
+  &[data-variant='warning'] { background-color: var(--warning-soft); color: var(--warning); }
   &[data-variant='destructive'] {
-    border-color: color-mix(in oklab, var(--destructive) 20%, transparent);
     background-color: var(--destructive-soft);
-    /* --destructive on --destructive-soft is 4.4:1 in the light scheme; a
-       little of the text colour brings it over AA's 4.5:1. */
-    color: color-mix(in oklab, var(--destructive), var(--foreground) 15%);
+    color: var(--destructive);
   }
 }")
   (:examples
-   ("Variants"
-    (badge () "New")
-    (badge (:variant :secondary) "Regular customer")
-    (badge (:variant :outline) "Draft")
+   ("The five tones"
+    (badge () "Draft")
+    (badge (:variant :info) "Quote sent")
     (badge (:variant :success) "Paid")
-    (badge (:variant :warning) "Overdue")
-    (badge (:variant :info) "Under review")
-    (badge (:variant :destructive) "Rejected"))
+    (badge (:variant :warning) "Waiting for the customer")
+    (badge (:variant :destructive) "Overdue"))
+   ("The older names, in the neutral tone"
+    (badge (:variant :primary) "New")
+    (badge (:variant :secondary) "Regular customer")
+    (badge (:variant :outline) "Archived"))
    ("An order's status"
-    (badge (:variant :outline :icon :file) "Draft")
+    (badge (:icon :file) "Draft")
     (badge (:variant :info :icon :send) "Quote sent")
-    (badge (:variant :success :icon :check) "Confirmed")
+    (badge (:variant :info :icon :check) "Confirmed")
     (badge (:variant :warning :icon :clock) "Waiting for the customer")
-    (badge (:variant :secondary :icon :receipt) "Invoiced")
+    (badge (:variant :success :icon :receipt) "Invoiced")
     (badge (:variant :destructive :icon :x) "Cancelled"))
    (("In a table row" :layout :stack)
     `(:p "Order 1042 · Hansen Plumbing Ltd · €12,500 "
-         ,(badge (:variant :success) "Confirmed"))))
+         ,(badge (:variant :info) "Confirmed"))))
   `(:span ,(attrs (list :class "tun-badge" :id id :data-variant (option-string variant))
                   attributes)
           ,@(when icon (list (icon (:name icon))))

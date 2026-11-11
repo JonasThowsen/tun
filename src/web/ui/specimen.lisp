@@ -62,19 +62,15 @@
       line-height: var(--text-xs--line-height);
       font-weight: var(--font-weight-medium);
       color: var(--muted-foreground);
-      text-transform: uppercase;
-      letter-spacing: 0.05em;
     }
     & a {
       display: block;
       text-decoration: none;
       padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
       border-radius: var(--radius-md);
-      @media (hover: hover) { &:hover { background-color: var(--muted); } }
-      &[aria-current='page'] {
-        background-color: var(--muted);
-        font-weight: var(--font-weight-medium);
-      }
+      @media (hover: hover) { &:hover { background-color: var(--accent); } }
+      &:active { background-color: var(--pressed); }
+      &[aria-current='page'] { background-color: var(--muted); }
     }
   }
   & .tun-specimen-main {

@@ -79,11 +79,10 @@ numbers or keywords."
     (loop for char across template
           do (if (char= char #\$) (write-string prefix out) (write-char char out)))))
 
-(defparameter +control-border+ "color-mix(in oklab, var(--foreground) 45%, var(--background))"
-  "The border of a control.  Basecoat's --input is a decoration colour (1.2:1 on
-the page); the edge of a text box, a checkbox or a switch shows where the
-control is, so it needs 3:1 against the page (WCAG 1.4.11).  This mix gives
-about 3.6:1 in both themes.")
+(defparameter +control-border+ "var(--input)"
+  "The border of a control.  The edge of a text box, a checkbox or a switch
+shows where the control is, so it is --input, 3:1 against the page and the
+chrome (WCAG 1.4.11), not the panels' thinner --border.")
 
 (defparameter +visually-hidden-css+ "
     position: absolute;
@@ -133,11 +132,9 @@ are the selectors of those states."
   (format nil "
   border: 1px solid ~a;
   border-radius: var(--radius-md);
-  background-color: light-dark(var(--background),
-                               color-mix(in oklab, var(--input) 30%, transparent));
+  background-color: var(--input-background);
   color: var(--foreground);
   font-size: var(--control-font-size);
-  box-shadow: var(--shadow-xs);
   outline: none;
   transition-property: color, border-color, box-shadow;
   transition-duration: var(--duration-fast);
@@ -182,17 +179,16 @@ the hint under the text."
     height: var(--tun-choice-size);
     margin-top: calc((1lh - var(--tun-choice-size)) / 2);
     border: 1px solid " +control-border+ ";
-    background-color: light-dark(var(--background),
-                                 color-mix(in oklab, var(--input) 30%, transparent));
-    box-shadow: var(--shadow-xs);
+    background-color: var(--input-background);
     outline: none;
     cursor: inherit;
     transition-property: background-color, border-color, box-shadow;
     transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease);
-    &:checked { border-color: var(--primary); background-color: var(--primary);
-      color: var(--primary-foreground); }
-    &:focus-visible { border-color: var(--ring); box-shadow: var(--focus-ring); }
+    /* What is on takes the accent. */
+    &:checked { border-color: var(--highlight); background-color: var(--highlight);
+      color: var(--highlight-foreground); }
+    &:focus-visible { box-shadow: var(--focus-ring); }
     &[aria-invalid='true']:not(:checked) { border-color: var(--destructive); }
     &[aria-invalid='true'] { box-shadow: " +invalid-ring+ "; }
     &:disabled { opacity: 0.5; }
@@ -402,11 +398,10 @@ stands at the end of the field's row. For a few answers, a select or radios are 
     overflow-y: auto;
     overscroll-behavior: contain;
     list-style: none;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background-color: var(--popover);
     color: var(--popover-foreground);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-      var(--shadow-md);
+    box-shadow: 0 0 0 1px var(--border), var(--shadow-md);
   }
   & .tun-combobox-option, & .tun-combobox-none {
     display: flex;
@@ -427,6 +422,7 @@ stands at the end of the field's row. For a few answers, a select or radios are 
     @media (hover: hover) {
       &:hover { background-color: var(--accent); color: var(--accent-foreground); }
     }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
   }
   & .tun-combobox-none { color: var(--muted-foreground); }
 }")
@@ -876,7 +872,7 @@ row is the target. The error message stands above the box.")
   min-width: 0;"
                      (choice-css "tun-checkbox") "
   & .tun-checkbox-input {
-    border-radius: 4px;
+    border-radius: var(--radius-sm);
     /* The tick is two borders of a box turned 45 degrees (GOV.UK), so it
        takes the colour of the text in both themes. */
     &:checked::after {
@@ -1127,7 +1123,6 @@ something, such as agreeing to terms.")
     border: 1px solid transparent;
     border-radius: var(--radius-full);
     background-color: " +control-border+ ";
-    box-shadow: var(--shadow-xs);
     outline: none;
     cursor: pointer;
     transition-property: background-color, box-shadow;
@@ -1143,12 +1138,12 @@ something, such as agreeing to terms.")
       pointer-events: none;
       transition: translate var(--duration) var(--ease);
     }
-    &:checked { background-color: var(--primary); }
+    &:checked { background-color: var(--highlight); }
     &:checked::before {
       translate: calc(var(--tun-switch-width) - var(--tun-switch-thumb) - 2px) 0;
-      background-color: light-dark(var(--background), var(--primary-foreground));
+      background-color: var(--highlight-foreground);
     }
-    &:focus-visible { border-color: var(--ring); box-shadow: var(--focus-ring); }
+    &:focus-visible { box-shadow: var(--focus-ring); }
     &:disabled { cursor: not-allowed; opacity: 0.5; }
   }
   &:has(> :disabled) > :is(.tun-switch-label, .tun-switch-description) { opacity: 0.5; }
@@ -1306,9 +1301,7 @@ is the only one on the page), and a link moves focus to the field.")
   background-color: var(--card);
   color: var(--card-foreground);
   outline: none;
-  &:focus-visible {
-    box-shadow: 0 0 0 3px color-mix(in oklab, var(--destructive) 25%, transparent);
-  }
+  &:focus-visible { box-shadow: var(--focus-ring); }
   & > .tun-error-summary-alert {
     display: grid;
     grid-template-columns: auto minmax(0, 1fr);
@@ -1345,6 +1338,7 @@ is the only one on the page), and a link moves focus to the field.")
     text-underline-offset: 4px;
     text-decoration-thickness: 1px;
     @media (hover: hover) { &:hover { text-decoration-thickness: 2px; } }
+    &:active { background-color: var(--pressed); }
   }
 }")
   (:script "
@@ -1448,6 +1442,7 @@ one under another.")
     text-decoration-line: underline;
     text-underline-offset: 4px;
     @media (hover: hover) { &:hover { text-decoration-thickness: 2px; } }
+    &:active { background-color: var(--pressed); }
   }
   @container (min-width: 30rem) {
     & > .tun-form-actions-row { flex-direction: row; flex-wrap: wrap; align-items: center; }

@@ -179,7 +179,7 @@ the message stays until the next page.")
   background-color: light-dark(var(--tun-flash-soft),
                                color-mix(in oklab, var(--tun-flash-soft) 60%, var(--card)));
   color: color-mix(in oklab, var(--tun-flash-tone) 80%, var(--foreground));
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-panel);
   font-size: var(--text-sm);
   line-height: var(--text-sm--line-height);
   font-weight: var(--font-weight-medium);
@@ -213,6 +213,7 @@ the message stays until the next page.")
     @media (hover: hover) {
       &:hover { background-color: color-mix(in oklab, var(--tun-flash-tone) 15%, transparent); }
     }
+    &:active { background-color: color-mix(in oklab, var(--tun-flash-tone) 25%, transparent); }
   }
 }")
   (:script "
@@ -289,7 +290,7 @@ action destroys nothing.")
   border-radius: var(--radius-xl);
   background-color: var(--card);
   color: var(--card-foreground);
-  box-shadow: var(--shadow-xs);
+  box-shadow: var(--shadow-panel);
   & .tun-confirm-panel-header {
     display: flex;
     align-items: center;
@@ -321,8 +322,8 @@ action destroys nothing.")
     display: grid;
     gap: calc(var(--spacing) * 3);
     color: var(--muted-foreground);
-    font-size: var(--text-sm);
-    line-height: var(--text-sm--line-height);
+    font-size: var(--text-running);
+    line-height: var(--text-running--line-height);
     text-wrap: pretty;
     overflow-wrap: break-word;
     & strong { color: var(--foreground); }
@@ -374,16 +375,6 @@ action destroys nothing.")
   }
   @container (min-width: 28rem) {
     & .tun-confirm-panel-actions { flex-direction: row; flex-wrap: wrap; }
-  }
-  /* The last step of a destructive action is the one place for a solid red
-     button (GOV.UK's warning button); the button component's destructive
-     variant is the softer one used everywhere else. */
-  &[data-variant='destructive'] .tun-confirm-panel-actions > button[type='submit'] {
-    background-color: var(--destructive);
-    color: var(--destructive-foreground);
-    @media (hover: hover) {
-      &:hover { background-color: color-mix(in oklab, var(--destructive) 88%, var(--foreground)); }
-    }
   }
 }")
   (:examples
@@ -500,7 +491,8 @@ length is unknown. Built on <progress>, which screen readers read themselves.")
     background-repeat: no-repeat;
     background-size: 40% 100%;
     background-position: 50% 0;
-    animation: tun-progress-slide 1.5s var(--ease) infinite;
+    /* A loop keeps an even easing of its own; --ease is for a change of state. */
+    animation: tun-progress-slide 1.5s ease-in-out infinite;
     @media (prefers-reduced-motion: reduce) {
       background-image: repeating-linear-gradient(
         -45deg, color-mix(in oklab, var(--primary) 35%, transparent) 0 6px, transparent 6px 12px);

@@ -194,6 +194,7 @@
                              (:file "ui-forms-tests")
                              (:file "ui-layout-tests")
                              (:file "ui-interaction-tests")
+                             (:file "ui-look-tests")
                              (:file "review-tests")
                              (:file "review2-tests")
                              (:file "slice1-review-tests")

@@ -273,14 +273,18 @@ shows above the columns, for example an error. Two boards on one page need an :i
     color: var(--card-foreground);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-                var(--shadow-xs);
-    &:has(.tun-board-card-title:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+    box-shadow: 0 0 0 1px var(--border), var(--shadow-panel);
+    &:has(.tun-board-card-title:focus-visible) {
+      box-shadow: 0 0 0 1px var(--border), var(--focus-ring);
+    }
     @media (hover: hover) {
       &:has(a.tun-board-card-title):hover {
-        box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 20%, transparent),
-                    var(--shadow-sm);
+        box-shadow: 0 0 0 1px var(--border-strong), var(--shadow-panel);
       }
+    }
+    /* Pressed on its link: the tint of the text colour over its ground. */
+    &:has(a.tun-board-card-title:active) {
+      background-image: linear-gradient(var(--pressed), var(--pressed));
     }
   }
   /* A card that can be dragged: a press must not select its text or open

@@ -66,9 +66,9 @@ in a field.")
   border-radius: var(--radius-xl) var(--radius-xl) 0 0;
   background-color: var(--popover);
   color: var(--popover-foreground);
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent), var(--shadow-lg);
+  font-size: var(--text-running);
+  line-height: var(--text-running--line-height);
+  box-shadow: 0 0 0 1px var(--border), var(--shadow-lg);
   /* Opening focuses the dialog itself; a ring around the whole of it would
      only be noise. */
   outline: none;
@@ -446,11 +446,10 @@ LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:lab
     overflow-y: auto;
     overscroll-behavior: contain;
     border: 0;
-    border-radius: var(--radius-md);
+    border-radius: var(--radius-lg);
     background-color: var(--popover);
     color: var(--popover-foreground);
-    box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-      var(--shadow-md);
+    box-shadow: 0 0 0 1px var(--border), var(--shadow-md);
     outline: none;
     opacity: 0;
     scale: 0.95;
@@ -502,6 +501,7 @@ LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:lab
     @media (hover: hover) {
       &:hover { background-color: var(--accent); color: var(--accent-foreground); }
     }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
     &:disabled, &[aria-disabled='true'] { pointer-events: none; opacity: 0.5; }
     & .tun-icon:not([data-size]) {
       width: calc(var(--spacing) * 4);
@@ -532,7 +532,6 @@ LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:lab
     color: var(--muted-foreground);
     font-family: var(--font-sans);
     font-size: var(--text-xs);
-    letter-spacing: 0.1em;
   }
   & .tun-dropdown-menu-heading {
     padding: calc(var(--spacing) * 1.5) calc(var(--spacing) * 2);
@@ -955,10 +954,12 @@ EXCLUSIVE only one entry is open at a time. Works without JavaScript.")
     list-style: none;
     cursor: pointer;
     outline: none;
-    transition-property: box-shadow, border-color;
+    transition-property: box-shadow, border-color, background-color;
     transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease);
     &::-webkit-details-marker { display: none; }
-    &:focus-visible { border-color: var(--ring); box-shadow: var(--focus-ring); }
+    &:focus-visible { box-shadow: var(--focus-ring); }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
     @media (hover: hover) {
       &:hover .tun-accordion-title {
         text-decoration-line: underline;
@@ -974,8 +975,8 @@ EXCLUSIVE only one entry is open at a time. Works without JavaScript.")
   & .tun-accordion-item[open] > .tun-accordion-trigger .tun-icon { rotate: 180deg; }
   & .tun-accordion-content {
     padding-bottom: calc(var(--spacing) * 4);
-    font-size: var(--text-sm);
-    line-height: var(--text-sm--line-height);
+    font-size: var(--text-running);
+    line-height: var(--text-running--line-height);
     & > * + * { margin-top: calc(var(--spacing) * 3); }
   }
   /* Opening slides where the browser can animate to height: auto; the
@@ -1102,7 +1103,7 @@ navigate between pages of their own. LABEL says what the tabs are about.")
     align-items: center;
     padding: 3px;
     overflow-x: auto;
-    border-radius: var(--radius-lg);
+    border-radius: var(--radius-md);
     background-color: var(--muted);
     color: var(--muted-foreground);
     scrollbar-width: none;
@@ -1118,9 +1119,8 @@ navigate between pages of their own. LABEL says what the tabs are about.")
     gap: calc(var(--spacing) * 1.5);
     padding: var(--spacing) calc(var(--spacing) * 2);
     border: 1px solid transparent;
-    border-radius: var(--radius-md);
-    color: light-dark(color-mix(in oklab, var(--foreground) 60%, transparent),
-                      var(--muted-foreground));
+    border-radius: var(--radius-sm);
+    color: var(--muted-foreground);
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
     font-weight: var(--font-weight-medium);
@@ -1129,20 +1129,23 @@ navigate between pages of their own. LABEL says what the tabs are about.")
     outline: none;
     transition-property: color, background-color, box-shadow, border-color;
     transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease);
     @media (hover: hover) { &:hover { color: var(--foreground); } }
-    &:focus-visible { border-color: var(--ring); box-shadow: var(--focus-ring); }
+    &:focus-visible { box-shadow: var(--focus-ring); }
     & .tun-icon:not([data-size]) {
       width: calc(var(--spacing) * 4);
       height: calc(var(--spacing) * 4);
     }
     &:has(> .tun-icon:first-child) { padding-inline-start: calc(var(--spacing) * 1.5); }
+    /* The chosen tab shows by its ground and frame, at the weight and size
+       of the others, so choosing one moves nothing. */
     &:is([aria-selected='true'], [aria-current='page']) {
-      border-color: light-dark(transparent, var(--input));
-      background-color: light-dark(var(--background),
-                                   color-mix(in oklab, var(--input) 30%, transparent));
+      border-color: var(--border);
+      background-color: var(--background);
       color: var(--foreground);
-      box-shadow: var(--shadow-sm);
+      box-shadow: var(--shadow-xs);
     }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
   }
   &[data-variant='line'] {
     & .tun-tabs-list {
@@ -1163,7 +1166,7 @@ navigate between pages of their own. LABEL says what the tabs are about.")
         height: 2px;
         background-color: var(--foreground);
         opacity: 0;
-        transition: opacity var(--duration-fast);
+        transition: opacity var(--duration-fast) var(--ease);
       }
       &:is([aria-selected='true'], [aria-current='page']) {
         border-color: transparent;
@@ -1171,16 +1174,15 @@ navigate between pages of their own. LABEL says what the tabs are about.")
         box-shadow: none;
         &::after { opacity: 1; }
       }
-      &:focus-visible { box-shadow: inset var(--focus-ring); }
+      &:focus-visible { box-shadow: var(--focus-ring-inset); }
     }
   }
   & .tun-tabs-panel {
-    font-size: var(--text-sm);
-    line-height: var(--text-sm--line-height);
+    font-size: var(--text-running);
+    line-height: var(--text-running--line-height);
     border-radius: var(--radius-sm);
     outline: none;
-    /* The panel's text runs to its edge, so its ring stands off a little. */
-    &:focus-visible { box-shadow: 0 0 0 4px var(--background), 0 0 0 6px var(--ring); }
+    &:focus-visible { box-shadow: var(--focus-ring); }
     & > * + * { margin-top: calc(var(--spacing) * 3); }
   }
   & .tun-tabs-heading {

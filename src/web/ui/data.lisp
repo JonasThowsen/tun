@@ -173,6 +173,7 @@ cards, for a value a phone can do without.")
     @media (hover: hover) {
       &:hover { text-decoration-line: underline; text-underline-offset: 4px; }
     }
+    &:active { background-color: var(--pressed); }
   }
   & th[aria-sort] .tun-table-sort .tun-icon { color: var(--foreground); }
   & :is(th, td)[data-align='center'] { text-align: center; }
@@ -190,10 +191,10 @@ cards, for a value a phone can do without.")
     white-space: normal;
   }
   @media (hover: hover) {
-    & tbody tr:not(.tun-table-empty):hover {
-      background-color: color-mix(in oklab, var(--muted) 50%, transparent);
-    }
+    & tbody tr:not(.tun-table-empty):hover { background-color: var(--accent); }
   }
+  /* A row that opens a record answers while it is pressed. */
+  & tbody tr[data-link]:active { background-color: var(--pressed); transition-duration: 0s; }
 
   /* A row with a link: the first cell's link covers the whole row, so the
      row is one target and the link's text is its name. */
@@ -212,7 +213,8 @@ cards, for a value a phone can do without.")
     text-underline-offset: 4px;
     outline: none;
     &::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
-    &:focus-visible::after { box-shadow: inset 0 0 0 2px var(--ring); }
+    /* The row fills its box, so its ring is drawn inside it. */
+    &:focus-visible::after { box-shadow: var(--focus-ring-inset); }
   }
 
   /* Narrow, as on a phone: each row is a card titled by its first cell, the
@@ -239,7 +241,7 @@ cards, for a value a phone can do without.")
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
       background-color: var(--card);
-      box-shadow: var(--shadow-xs);
+      box-shadow: var(--shadow-panel);
     }
     & tfoot tr { background-color: var(--muted); box-shadow: none; }
     & td {
@@ -388,8 +390,8 @@ row, and often a link to change the value. On a phone the name stands above the 
 .tun-summary-list {
   container: tun-summary-list / inline-size;
   width: 100%;
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
+  font-size: var(--text-running);
+  line-height: var(--text-running--line-height);
   & .tun-summary-list-row {
     display: grid;
     grid-template-columns: minmax(0, 1fr) auto;
@@ -423,6 +425,7 @@ row, and often a link to change the value. On a phone the name stands above the 
       @media (hover: hover) {
         &:hover { text-decoration-color: currentColor; }
       }
+      &:active { background-color: var(--pressed); }
     }
   }
   & .tun-summary-list-hidden {
@@ -477,13 +480,13 @@ button or a link in the top corner.")
   gap: calc(var(--spacing) * 6);
   padding-block: calc(var(--spacing) * 6);
   overflow: hidden;
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background-color: var(--card);
   color: var(--card-foreground);
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-              var(--shadow-xs);
+  font-size: var(--text-running);
+  line-height: var(--text-running--line-height);
+  box-shadow: var(--shadow-panel);
   & .tun-card-header {
     display: grid;
     grid-auto-rows: min-content;
@@ -531,22 +534,26 @@ button or a link in the top corner.")
   /* A card that is a link: the title's link covers the card. */
   &[data-variant='link'] {
     position: relative;
-    transition-property: background-color, box-shadow;
+    transition-property: background-color, border-color, box-shadow;
     transition-duration: var(--duration-fast);
     transition-timing-function: var(--ease);
     & :is(a, button, input, select, textarea, label):not(.tun-card-link) {
       position: relative;
       z-index: 1;
     }
+    /* A tint of the text colour over the card's ground, as a button has. */
     @media (hover: hover) {
       &:hover {
-        background-color: light-dark(color-mix(in oklab, var(--muted) 50%, var(--card)),
-                                     color-mix(in oklab, var(--muted) 60%, var(--card)));
-        box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 20%, transparent),
-                    var(--shadow-sm);
+        border-color: var(--border-strong);
+        background-image: linear-gradient(var(--accent), var(--accent));
       }
     }
-    &:has(.tun-card-link:focus-visible) { outline: 2px solid var(--ring); outline-offset: 2px; }
+    /* Pressed, unless the press is on a control of its own. */
+    &:active:not(:has(:is(a, button, input, select, textarea, label):not(.tun-card-link):active)) {
+      background-image: linear-gradient(var(--pressed), var(--pressed));
+      transition-duration: 0s;
+    }
+    &:has(.tun-card-link:focus-visible) { box-shadow: var(--focus-ring); }
   }
   & .tun-card-link {
     outline: none;
@@ -632,11 +639,11 @@ set CHANGE-TONE when up is bad, as for amounts outstanding.")
   gap: var(--spacing);
   min-width: 0;
   padding: calc(var(--spacing) * 5);
+  border: 1px solid var(--border);
   border-radius: var(--radius-xl);
   background-color: var(--card);
   color: var(--card-foreground);
-  box-shadow: 0 0 0 1px color-mix(in oklab, var(--foreground) 10%, transparent),
-              var(--shadow-xs);
+  box-shadow: var(--shadow-panel);
   & .tun-stat-label {
     display: flex;
     align-items: center;
@@ -960,8 +967,8 @@ Newest first or oldest first, but the same everywhere in the product.")
 .tun-timeline {
   display: flex;
   flex-direction: column;
-  font-size: var(--text-sm);
-  line-height: var(--text-sm--line-height);
+  font-size: var(--text-running);
+  line-height: var(--text-running--line-height);
   & .tun-timeline-entry {
     position: relative;
     display: grid;

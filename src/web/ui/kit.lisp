@@ -296,46 +296,78 @@ textarea { resize: vertical; }
 (defparameter +tokens-css+ "
 :root {
   color-scheme: light dark;
-  --background: light-dark(oklch(1 0 0), oklch(0.145 0 0));
-  --foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
-  --card: light-dark(oklch(1 0 0), oklch(0.205 0 0));
-  --card-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
-  --popover: light-dark(oklch(1 0 0), oklch(0.205 0 0));
-  --popover-foreground: light-dark(oklch(0.145 0 0), oklch(0.985 0 0));
-  --primary: light-dark(oklch(0.205 0 0), oklch(0.922 0 0));
-  --primary-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
-  --secondary: light-dark(oklch(0.97 0 0), oklch(0.269 0 0));
-  --secondary-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
-  --muted: light-dark(oklch(0.97 0 0), oklch(0.269 0 0));
-  --muted-foreground: light-dark(oklch(0.556 0 0), oklch(0.708 0 0));
-  --accent: light-dark(oklch(0.97 0 0), oklch(0.269 0 0));
-  --accent-foreground: light-dark(oklch(0.205 0 0), oklch(0.985 0 0));
-  --border: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 10%));
-  --input: light-dark(oklch(0.922 0 0), oklch(1 0 0 / 15%));
-  --ring: light-dark(oklch(0.708 0 0), oklch(0.556 0 0));
-  /* A chart's line (spec/ui.md 3): 4.4:1 on the light card, 4.9:1 on the dark. */
+  /* Three grounds (spec/ui.md 3): the page, the panels on it (cards,
+     dialogs, menus) and the chrome around it (the sidebar, the phone's top
+     bar, a strip of tabs).  A white page with grey chrome; in the dark the
+     page and its panels share one ground and the chrome is darker. */
+  --background: light-dark(#ffffff, #19191c);
+  --foreground: light-dark(#171717, #ededed);
+  --card: light-dark(#ffffff, #19191c);
+  --card-foreground: light-dark(#171717, #ededed);
+  --popover: light-dark(#ffffff, #19191c);
+  --popover-foreground: light-dark(#171717, #ededed);
+  --chrome: light-dark(#f6f6f7, #111113);
+  --chrome-border: light-dark(#0000000f, #ffffff12);
+  /* The main button is ink: the text colour as its fill. */
+  --primary: light-dark(#171717, #ededed);
+  --primary-foreground: light-dark(#ffffff, #19191c);
+  --secondary: light-dark(#f3f3f4, #222226);
+  --secondary-foreground: light-dark(#171717, #ededed);
+  --muted: light-dark(#f3f3f4, #222226);
+  /* One grey for quieter text: the text colour at 72 %, at least 6.5:1 on
+     every ground in both schemes. */
+  --muted-foreground: color-mix(in oklab, var(--foreground) 72%, transparent);
+  /* Under a pointer (shadcn's accent) and while pressed: tints of the text
+     colour, so they show on every ground. */
+  --accent: light-dark(#0000000d, #ffffff0f);
+  --accent-foreground: light-dark(#171717, #ededed);
+  --pressed: light-dark(color-mix(in oklab, var(--foreground) 8%, transparent),
+                        color-mix(in oklab, var(--foreground) 10%, transparent));
+  /* A group inside a panel stands on this instead of a frame of its own. */
+  --soft: color-mix(in oklab, var(--foreground) 5%, transparent);
+  /* One thin edge for controls and panels, and a stronger one beside it. */
+  --border: light-dark(#0000001f, #ffffff24);
+  --border-strong: light-dark(color-mix(in oklab, var(--foreground) 26%, transparent),
+                              color-mix(in oklab, var(--foreground) 30%, transparent));
+  /* The edge of a field, a box to tick and a switch, where the edge is all
+     there is of the control: 3:1 on the page and the chrome (WCAG 1.4.11). */
+  --input: light-dark(color-mix(in oklab, var(--foreground) 50%, transparent),
+                      color-mix(in oklab, var(--foreground) 40%, transparent));
+  --input-background: light-dark(#ffffff, #141417);
+  /* The accent, only for focus, for what is on, for what is selected and
+     for where a dragged thing will drop. */
+  --highlight: light-dark(#005ff2, #47a8ff);
+  --highlight-foreground: light-dark(#ffffff, #19191c);
+  --highlight-soft: light-dark(#f0f7ff, #06193a);
+  --ring: var(--highlight);
+  /* A chart's line (spec/ui.md 3): 4.4:1 on the light card, 4.8:1 on the dark. */
   --chart-1: light-dark(#2a78d6, #3987e5);
 
-  /* Status: the strong colour, text on it, and a tinted background. */
-  --info: light-dark(oklch(0.546 0.245 262.881), oklch(0.707 0.165 254.624));
-  --info-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
-  --info-soft: light-dark(oklch(0.97 0.014 254.604), oklch(0.282 0.091 267.935));
-  --success: light-dark(oklch(0.527 0.154 150.069), oklch(0.792 0.209 151.711));
-  --success-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
-  --success-soft: light-dark(oklch(0.982 0.018 155.826), oklch(0.266 0.065 152.934));
-  --warning: light-dark(oklch(0.555 0.163 48.998), oklch(0.828 0.189 84.429));
-  --warning-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
-  --warning-soft: light-dark(oklch(0.987 0.022 95.277), oklch(0.279 0.077 45.635));
-  --destructive: light-dark(oklch(0.577 0.245 27.325), oklch(0.704 0.191 22.216));
-  --destructive-foreground: light-dark(oklch(0.985 0 0), oklch(0.205 0 0));
-  --destructive-soft: light-dark(oklch(0.971 0.013 17.38), oklch(0.258 0.092 26.042));
+  /* Status: the strong colour, text on it, and a tinted background.  The
+     strong colour is also the text on the tinted background, at least 4.5:1
+     there and on the page. */
+  --info: light-dark(#005ff2, #47a8ff);
+  --info-foreground: light-dark(#ffffff, #19191c);
+  --info-soft: light-dark(#f0f7ff, #06193a);
+  --success: light-dark(#107d32, #00ac3a);
+  --success-foreground: light-dark(#ffffff, #19191c);
+  --success-soft: light-dark(#ecf6ef, #0b2615);
+  --warning: light-dark(#aa4d00, #ffae00);
+  --warning-foreground: light-dark(#ffffff, #19191c);
+  --warning-soft: light-dark(#fff4e5, #2e1d05);
+  --destructive: light-dark(#d8001b, #ff565f);
+  --destructive-foreground: light-dark(#ffffff, #19191c);
+  --destructive-soft: light-dark(#ffeeef, #330a11);
 
   --font-sans: ui-sans-serif, system-ui, -apple-system, 'Segoe UI', Roboto, 'Helvetica Neue',
     Arial, sans-serif;
   --font-mono: ui-monospace, SFMono-Regular, Menlo, Monaco, Consolas, 'Liberation Mono',
     monospace;
+  /* Meta text 0.75rem on 1rem; controls 0.875rem on 1.25rem; running text
+     0.875rem on 1.375rem. */
   --text-xs: 0.75rem; --text-xs--line-height: calc(1 / 0.75);
   --text-sm: 0.875rem; --text-sm--line-height: calc(1.25 / 0.875);
+  --text-running: 0.875rem; --text-running--line-height: calc(1.375 / 0.875);
   --text-base: 1rem; --text-base--line-height: 1.5;
   --text-lg: 1.125rem; --text-lg--line-height: calc(1.75 / 1.125);
   --text-xl: 1.25rem; --text-xl--line-height: calc(1.75 / 1.25);
@@ -345,27 +377,41 @@ textarea { resize: vertical; }
   --font-weight-semibold: 600; --font-weight-bold: 700;
 
   --spacing: 0.25rem;
-  --radius: 0.625rem;
-  --radius-sm: calc(var(--radius) - 4px);
-  --radius-md: calc(var(--radius) - 2px);
+  /* Two radii: a control's and a panel's.  A part inside a padded control
+     or menu takes the control's less its inset (-sm). */
+  --radius: 0.75rem;
+  --radius-sm: calc(var(--radius-md) - 0.125rem);
+  --radius-md: 0.5rem;
   --radius-lg: var(--radius);
-  --radius-xl: calc(var(--radius) + 4px);
+  --radius-xl: var(--radius);
   --radius-full: 9999px;
 
   --shadow-xs: 0 1px 2px 0 rgb(0 0 0 / 0.05);
   --shadow-sm: 0 1px 3px 0 rgb(0 0 0 / 0.1), 0 1px 2px -1px rgb(0 0 0 / 0.1);
   --shadow-md: 0 4px 6px -1px rgb(0 0 0 / 0.1), 0 2px 4px -2px rgb(0 0 0 / 0.1);
   --shadow-lg: 0 10px 15px -3px rgb(0 0 0 / 0.1), 0 4px 6px -4px rgb(0 0 0 / 0.1);
+  /* A panel on the page: barely lifted in the light, flat in the dark. */
+  --shadow-panel: 0 1px 2px light-dark(rgb(0 0 0 / 0.04), transparent),
+    0 2px 8px light-dark(rgb(0 0 0 / 0.03), transparent);
 
   --control-height: 2.25rem;
   --control-height-sm: 2rem;
   --control-height-lg: 2.5rem;
   --control-font-size: var(--text-sm);
-  --focus-ring: 0 0 0 3px color-mix(in oklab, var(--ring) 50%, transparent);
+  /* A gap in the ground's colour, then the accent, so the ring shows on
+     every ground and beside every edge. */
+  --focus-ring: 0 0 0 2px var(--background), 0 0 0 4px var(--ring);
+  /* Its twin inside a box that fills its row or strip, where a ring
+     outside would be cut off. */
+  --focus-ring-inset: inset 0 0 0 2px var(--ring);
 
-  --duration-fast: 120ms;
+  /* One easing for every change of state; no overshoot, which flickers on
+     colours.  Sheets open slower, and what closes leaves quicker. */
+  --ease: cubic-bezier(0.16, 1, 0.3, 1);
+  --duration-fast: 150ms;
   --duration: 200ms;
-  --ease: cubic-bezier(0.4, 0, 0.2, 1);
+  --duration-sheet: 280ms;
+  --duration-close: 160ms;
 
   --z-sticky: 40;
   --z-dropdown: 50;
@@ -385,13 +431,14 @@ textarea { resize: vertical; }
   }
 }
 @media (prefers-reduced-motion: reduce) {
-  :root { --duration-fast: 0ms; --duration: 0ms; }
+  :root { --duration-fast: 0ms; --duration: 0ms; --duration-sheet: 0ms; --duration-close: 0ms; }
 }
 ")
 
 (defparameter +base-css+ "
 body { min-height: 100dvh; background-color: var(--background); color: var(--foreground);
-  font-size: var(--text-base); -webkit-font-smoothing: antialiased;
+  font-size: var(--text-running); line-height: var(--text-running--line-height);
+  -webkit-font-smoothing: antialiased;
   -moz-osx-font-smoothing: grayscale; }
 h1 { font-size: var(--text-2xl); line-height: var(--text-2xl--line-height);
   font-weight: var(--font-weight-semibold); letter-spacing: -0.025em; }
@@ -407,7 +454,7 @@ code:not([class]) { border-radius: var(--radius-sm); background-color: var(--mut
   padding: 0.1em 0.3em; font-size: 0.875em; }
 button:not(:disabled), [role='button']:not(:disabled) { cursor: pointer; }
 :focus-visible { outline: 2px solid var(--ring); outline-offset: 2px; }
-::selection { background-color: color-mix(in oklab, var(--primary) 20%, transparent); }
+::selection { background-color: color-mix(in oklab, var(--highlight) 20%, transparent); }
 @media (prefers-reduced-motion: reduce) {
   *, ::before, ::after { animation-duration: 0.01ms !important;
     animation-iteration-count: 1 !important; transition-duration: 0.01ms !important;

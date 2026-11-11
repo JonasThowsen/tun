@@ -12,9 +12,10 @@ amounts and dates by its formats (`i18n.md`), 2026-10-27, core 2.0.0;
 `graph`, nodes and the edges between them (§6.3), 2026-11-10, core
 2.18.0; its list for narrow boxes, 2026-11-10, core 2.20.0; the home
 page a client names (§8, «Home»), 2026-11-11, core 2.21.0; the loading
-sign (§4.1), 2026-11-11, core 2.22.0. How every Tun page looks and
-behaves: the tokens, the components that are built from them, the
-specimen that shows them, and the rules a component follows. The
+sign (§4.1), 2026-11-11, core 2.22.0; the look and the states of the
+components (§2.1, §3, §6), 2026-11-11, core 2.25.0. How every Tun page
+looks and behaves: the tokens, the components that are built from them,
+the specimen that shows them, and the rules a component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
 are built from these components and nothing else.
 
@@ -32,6 +33,10 @@ source design system, and says which one:
 
 `reference/ui-sources.md` holds the licences and copyright lines these
 licences require, and which Tun file uses which source.
+
+The look of the grounds, the edges, the states and the motion (§2.1,
+§3) is Tun's own, after its owner's rules for an admin
+application of 2026-11-10 and 2026-11-11; the token names stay shadcn's.
 
 ## 2. Principles
 
@@ -64,6 +69,83 @@ licences require, and which Tun file uses which source.
   size, radius, shadow and duration. A literal value needs a reason in a
   comment.
 
+### 2.1 The look
+
+- **Three grounds.** The page (`--background`), the panels on it
+  (`--card`, `--popover`: cards, dialogs, menus) and the chrome around
+  it (`--chrome`, its edge `--chrome-border`): the sidebar, the phone's
+  top bar and its menu, a strip of tabs in the shell. In the light the
+  page and the panels are white and the chrome grey; in the dark the page
+  and the panels share one ground and the chrome is darker. A field
+  stands on `--input-background`.
+- **One thin edge.** Controls and panels have a 1px edge, `--border`;
+  `--border-strong` is the edge under a pointer and of what is chosen. A
+  field, a box to tick and a switch, whose edge is all there is of them,
+  take `--input`, 3:1 on the page and the chrome (WCAG 1.4.11). No edge
+  is wider than 1px but a mark (the tick of a checkbox, a graph node's
+  tone, the confirm panel's «!»).
+- **Two radii.** A control's, `--radius-md` (0.5rem), and a panel's,
+  `--radius-lg` and `--radius-xl` (0.75rem: cards, dialogs, menus and
+  popovers); a pill, a switch and an avatar are fully round
+  (`--radius-full`). A part inside a padded control or menu (a menu's
+  item, a segmented tab, a key cap, a checkbox) takes `--radius-sm`, the
+  control's less its inset (0.375rem). No box with an edge has a square
+  corner; the joined sides of a button group are the one exception.
+- **Text.** The text colour is `#171717`, `#ededed` in the dark. Running
+  text (a card's, a dialog's, a summary list's, a page's own) is 0.875rem
+  on a 1.375rem line (`--text-running`); a control's text 0.875rem on
+  1.25rem (`--text-sm`); meta text 0.75rem on 1rem (`--text-xs`); a field
+  keeps 1rem on a coarse pointer (§2). Quieter text is
+  `--muted-foreground`, the text colour at 72 %, never a second grey: at
+  least 6.5:1 on every ground in both schemes. No component writes text
+  in capitals (`text-transform: uppercase`) or letter-spaced
+  (`letter-spacing` above 0), the menu's «System» heading included.
+- **Ink and the accent.** The primary button is ink: the text colour as
+  its fill. The accent, `--highlight` (`#005ff2`, `#47a8ff` in the
+  dark), is only for focus (`--ring`), for what is on (a switch that is
+  on, a checked checkbox or radio), for what is selected (the selection
+  of text) and for where a dragged thing will drop (a board's column, a
+  file field).
+- **Focus.** A focused control shows `--focus-ring`, a 2px gap in the
+  ground's colour and a 2px ring in the accent (`0 0 0 2px GROUND, 0 0 0
+  4px ACCENT`), on every ground: the chrome sets the gap in its own
+  colour. A row or a strip of tabs that fills its box draws its ring
+  inside it (`--focus-ring-inset`, 2px of the accent), where a ring
+  outside would be cut off. A link in running text has the browser's
+  outline in the same shape: 2px of the accent, 2px off.
+- **Panels.** A card, a stat and a table's rows on a phone have the edge
+  and `--shadow-panel` (`0 1px 2px rgb(0 0 0 / .04), 0 2px 8px rgb(0 0 0
+  / .03)` in the light, none in the dark). A group inside a panel stands
+  on `--soft` (the text colour at 5 %) rather than a frame of its own: no
+  component draws a frame in a frame in its own markup.
+- **Pressed.** What a person taps answers while it is pressed
+  (`:active`), at once, with no transition into it: a button, a card
+  that is a link, a table row that is a link, a `nav-list` entry, a tab,
+  a `dropdown-menu` item, a `combobox` option, a sortable header, a
+  pagination link, an accordion's summary, a link (`link`, a
+  breadcrumb, a summary list's action, the links of `error-summary` and
+  `form-actions`), a `board` card and a `graph` node that are links, and
+  an attachment's tile. Every component with a style under a pointer has
+  one while pressed, but `tooltip`, which shows on hover. A checkbox, a
+  radio, a switch and a field answer with the browser's own change of
+  state and their focus ring. The tint is `--pressed`
+  (the text colour at 8 %, 10 % in the dark) over the control's own
+  ground; the primary button's fill turns lighter instead.
+- **Hover only where a pointer hovers.** Every `:hover` style is inside
+  `@media (hover: hover)`, so a phone never keeps one after a tap. Under
+  a pointer a control takes `--accent` (black at 5 %, white at 6 % in the
+  dark) over its ground.
+- **Choosing moves nothing.** A chosen or current item (the chosen tab,
+  the current `nav-list` entry, the current page of `pagination`, a
+  pressed toggle button, the active option of a `combobox` or a menu) has
+  the font weight, size, padding and edge width of its siblings, and
+  shows that it is chosen by its fill, its frame or a mark.
+- **Motion.** Changes of state ease with `--ease` over `--duration-fast`
+  or `--duration`; `--duration-sheet` and `--duration-close` are for
+  what opens as a sheet and what closes. Every duration is 0 under
+  `prefers-reduced-motion`. A loop (a spinner, the loading sign, an
+  agent's pulse) keeps an even easing of its own.
+
 ## 3. Tokens
 
 Tokens are CSS custom properties on `:root`, in the layer `tokens`. The
@@ -75,29 +157,61 @@ colours, sizes and motion.
   `--primary-foreground`, `--secondary`, `--secondary-foreground`,
   `--muted`, `--muted-foreground`, `--accent`, `--accent-foreground`,
   `--destructive`, `--destructive-foreground`, `--border`, `--input`,
-  `--ring`.
+  `--ring`. Tun adds `--chrome` and `--chrome-border` (the chrome's
+  ground and edge), `--input-background` (a field's ground),
+  `--border-strong`, `--pressed`, `--soft`, and `--highlight`,
+  `--highlight-foreground` and `--highlight-soft` (the accent, text on
+  it, and a tint of it). `--accent` keeps shadcn's meaning, the ground
+  under a pointer; `--ring` is `--highlight`.
+
+  | Token | Light | Dark |
+  |---|---|---|
+  | `--background`, `--card`, `--popover` | `#ffffff` | `#19191c` |
+  | `--chrome` | `#f6f6f7` | `#111113` |
+  | `--chrome-border` | `#0000000f` | `#ffffff12` |
+  | `--input-background` | `#ffffff` | `#141417` |
+  | `--foreground` | `#171717` | `#ededed` |
+  | `--muted-foreground` | the text colour at 72 % | the same |
+  | `--primary` | `#171717` | `#ededed` |
+  | `--secondary`, `--muted` | `#f3f3f4` | `#222226` |
+  | `--accent` | `#0000000d` | `#ffffff0f` |
+  | `--pressed` | the text colour at 8 % | at 10 % |
+  | `--soft` | the text colour at 5 % | the same |
+  | `--border` | `#0000001f` | `#ffffff24` |
+  | `--border-strong` | the text colour at 26 % | at 30 % |
+  | `--input` | the text colour at 50 % | at 40 % |
+  | `--highlight` | `#005ff2` | `#47a8ff` |
 - **Status:** for each of `info`, `success`, `warning` and `destructive`:
   `--STATUS` (icons, borders, text on the soft background),
   `--STATUS-foreground` (text on `--STATUS`) and `--STATUS-soft` (a tinted
-  background).
+  background). `--STATUS` is at least 4.5:1 on `--STATUS-soft` and on the
+  page, and `--STATUS-foreground` on `--STATUS`, in both schemes: info
+  `#005ff2` on `#f0f7ff` (`#47a8ff` on `#06193a`), success `#107d32` on
+  `#ecf6ef` (`#00ac3a` on `#0b2615`), warning `#aa4d00` on `#fff4e5`
+  (`#ffae00` on `#2e1d05`), destructive `#d8001b` on `#ffeeef`
+  (`#ff565f` on `#330a11`).
 - **Charts:** `--chart-1`, the colour of a chart's line, blue:
   `#2a78d6` on the light card (4.4:1 against white) and `#3987e5` on the
-  dark one (4.9:1 against `oklch(0.205 0 0)`), above the 3:1 WCAG asks of
+  dark one (4.8:1 against `#19191c`), above the 3:1 WCAG asks of
   a graphic. It is shadcn's token name, so a shadcn theme sets it too.
 - **Type:** `--font-sans`, `--font-mono`; `--text-xs`, `--text-sm`,
-  `--text-base`, `--text-lg`, `--text-xl`, `--text-2xl`, `--text-3xl`,
+  `--text-running`, `--text-base`, `--text-lg`, `--text-xl`, `--text-2xl`, `--text-3xl`,
   each with `--text-SIZE--line-height`; `--font-weight-normal`,
   `-medium`, `-semibold`, `-bold`.
 - **Space:** `--spacing` (0.25rem); a component writes
   `calc(var(--spacing) * N)` as Tailwind's `N` would be.
-- **Radius:** `--radius` and `--radius-sm`, `-md`, `-lg`, `-xl`, `-full`.
-- **Shadow:** `--shadow-xs`, `-sm`, `-md`, `-lg`.
+- **Radius:** `--radius` and `--radius-sm`, `-md`, `-lg`, `-xl`, `-full`:
+  `-md` 0.5rem, `-lg`, `-xl` and `--radius` 0.75rem, `-sm` 0.375rem (§2.1).
+- **Shadow:** `--shadow-xs`, `-sm`, `-md`, `-lg`, and `--shadow-panel`.
 - **Controls:** `--control-height` (2.25rem; 2.75rem on a coarse
   pointer), `--control-height-sm`, `--control-height-lg`,
   `--control-font-size` (0.875rem; 1rem on a coarse pointer).
-- **Focus:** `--focus-ring`, the box-shadow of a focused control.
-- **Motion:** `--duration-fast`, `--duration`, `--ease`; all 0 under
-  `prefers-reduced-motion`.
+- **Focus:** `--focus-ring`, the box-shadow of a focused control,
+  `0 0 0 2px var(--background), 0 0 0 4px var(--ring)`, and
+  `--focus-ring-inset`, `inset 0 0 0 2px var(--ring)`.
+- **Motion:** `--ease` `cubic-bezier(0.16, 1, 0.3, 1)`, `--duration-fast`
+  150ms, `--duration` 200ms, `--duration-sheet` 280ms, `--duration-close`
+  160ms; all 0 under `prefers-reduced-motion`.
 - **Layers above the page:** `--z-sticky`, `--z-dropdown`, `--z-dialog`,
   `--z-toast`.
 
@@ -433,6 +547,32 @@ is disabled.
 `dialog` with `:shortcut` opens on that key from anywhere on the page;
 Ctrl is Cmd on a Mac, and a key without Ctrl is left to a field being
 typed in. `showModal` focuses the control that has `autofocus`.
+
+`button` keeps its variants. `:primary` is ink, the one main step of a
+view. `:outline` has the page's ground and the edge; `:destructive` is
+red words (`--destructive`) on that same ground and edge, never a red or
+pink fill, and under a pointer and pressed it is the outline's with the
+red words; a confirm panel's last step is that button too. `:secondary`
+is a grey fill, `:ghost` has neither ground nor edge, `:link` is words.
+A button that is only an icon (`:size` `:icon`, `:icon-xs`, `:icon-sm`
+or `:icon-lg`) of the variants `:outline` and `:ghost` has no frame and
+no ground at rest, so a row of them is not a row of boxes; a pointer, a
+press and focus still show. `:ghost` has neither at any size; an
+`:outline` one pressed (`aria-pressed`), current (`aria-current`) or
+open (`aria-expanded`) has its frame and ground again. This is
+decided by the `data-size` and `data-variant` it writes, never by its
+content; in a `button-group` the parts keep the group's frame. `:primary`
+keeps its fill at every size. On a coarse pointer every button is a
+target of at least 44px each way: the sizes under a control's height
+(`:xs`, `:sm`, `:icon-xs`, `:icon-sm`) keep their look and take the
+finger in an invisible area around them.
+
+`badge` is one soft, fully round pill: a tinted ground, no frame, text at
+least 4.5:1 on it, in five tones, each with one meaning: `:neutral` (the
+default) a normal state, such as a draft or an order in progress;
+`:info` sent or confirmed; `:success` done; `:warning` waiting on
+someone; `:destructive` failed or overdue. `:primary`, `:secondary` and
+`:outline`, the variants it had, are the neutral tone.
 
 `button` with `:shortcut` (`"Ctrl+K"` or `"/"`, as a dialog's) shows
 that shortcut, and does nothing on it itself: the dialog or script the
@@ -1376,6 +1516,37 @@ form of `field`s with an `error-summary`, a confirmation is a
   the answer; staff pages, `/login` and the manifest keep
   `application-title`; two applications served at once each show their
   own answer, and a change to the store shows on the next request.
+- `tests/ui-look-tests.lisp` (§2.1, §3): the token values of §3 in both
+  schemes; every edge in the stylesheet 1px but the marks named in §2.1;
+  every radius a token, `0` (a button group's joins) or `inherit`, and
+  the radius tokens' values; no `text-transform: uppercase` and no
+  positive `letter-spacing`; `--focus-ring`'s shape, and every
+  `:focus-visible` box-shadow one of the two rings; every `:hover` inside
+  `(hover: hover)`; no rule whose selector chooses (`aria-selected`,
+  `aria-current`, `aria-pressed`, `aria-checked`, `aria-expanded`,
+  `aria-sort`, `:checked`) sets a font weight, a font size, a padding,
+  a margin, a width, a height or an edge's width, but on a mark
+  (`::before`, `::after`); every transition's duration a token; the
+  destructive button with no fill and the confirm panel without a red
+  one; an icon-only outline button frameless by its attributes; and the
+  contrast, computed from the token values, of the text, the muted text
+  and the accent on the page, the panels, the chrome and a field's
+  ground, of each badge tone's text on its ground and of
+  `--STATUS-foreground` on `--STATUS`, in light and dark.
+- `checks/showcase/checks/ui-look.py` (§2.1), on the specimen (`/ui/NAME`):
+  at 390 and 1280 px, light and dark, every box with an edge on all four
+  sides has no square corner (a button group's inner sides excepted);
+  pressing each tab of `tabs` leaves every tab's box where it was;
+  the chosen tab, the current `nav-list` entry and the current page of
+  `pagination` have the weight of their siblings; on a phone every
+  button of the specimen's `button` page is a target of at least 44px
+  each way; the destructive button has the page's ground and red words;
+  on `/ui/button` the icon-only outline «Edit» has a transparent edge and
+  ground at rest, and the current page «2» (outline, `:icon`,
+  `aria-current`) its edge; on `/ui/button-group` an icon-only outline
+  part keeps its edge and ground; a focused button shows the two-ring shadow; the app shell's
+  sidebar stands on `--chrome` and the menu's headings are not in
+  capitals on a staff page; and no page scrolls sideways.
 - `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
   sign hidden and `aria-hidden`, and an empty `role="status"` region
   with «Loading…» in the page's language to say; the script and the
