@@ -1159,6 +1159,53 @@ form of `field`s with an `error-summary`, a confirmation is a
      to `/`.
   5. A client with no `:home` and no method of its own, whose modules
      have none, sends everyone where Tun's default (1) does, as before.
+- **Public pages.** A page a customer opens without signing in (a
+  quote, a feedback form, an unsubscribe link) is registered by a module
+  or a client with `(register-public-page PREFIX HANDLER)`, in `TUN`.
+  1. It serves `/PREFIX` and every path under it to anyone, signed in or
+     not, with `Referrer-Policy: no-referrer`. HANDLER is called with
+     METHOD (`:get` or `:post`), the path's parts after the prefix, the
+     posted form as a JSON object, and a session, a JSON object the
+     orders module keeps for an offer, which a client ignores. No
+     transaction is open around it (a module's handler opens its own),
+     and it returns `(values STATUS TITLE BODY)`, BODY a list of
+     components under a page header with TITLE. An operation
+     error it does not catch is shown as an alert with status 422. A
+     second registration of the same prefix is refused.
+  2. **The frame.** The page is an `app-shell` without the menu (above,
+     «The frame»), its title linking to the page itself: `/PREFIX/ID`
+     for every step under it. The title is what
+     `(public-page-title APPLICATION PREFIX)` answers, its first letter
+     the mark, and the document's `<title>` is «TITLE – that answer».
+     Every answer of the page, its own 404 or 410 and the 422 above
+     included, has that frame.
+  3. **The seam.** `public-page-title`, a generic function in `TUN`,
+     answers the name a customer sees: Tun's own method, the least
+     specific, answers `(application-title APPLICATION)`, so without
+     another a public page shows what it always did. A module
+     specialises it on its mixin, and a client on its application class
+     or a feature, which wins over a module's and reaches it with
+     `(call-next-method)`; PREFIX lets a method answer for some pages and
+     pass on for others. It is asked once for each answer of a public
+     page, after HANDLER, in a read transaction with the request's
+     application bound and `*actor*` the request's (NIL for someone not
+     signed in), so it may read the store and the tenant's settings;
+     nothing is kept between requests.
+
+     ```lisp
+     (defmethod public-page-title ((app company-module) prefix)
+       (declare (ignore prefix))
+       (or (company-name) (call-next-method)))
+     ```
+  4. **Fallbacks.** An answer is trimmed of surrounding whitespace and
+     written as text, escaped. NIL, an empty or a blank answer gives
+     `application-title`. Any other answer that is not text, or a method
+     that signals an error, gives `application-title` too and is written
+     to the server's error output with the prefix; the page answers as
+     it would without the method.
+  5. Only public pages use it: staff pages, sign-in, setup, the web
+     app's manifest and every text that names the application keep
+     `application-title`.
 
 ### 8.1 Answering htmx
 
@@ -1317,6 +1364,18 @@ form of `field`s with an `error-summary`, a confirmation is a
   application does not enable or one the actor's role is refused is not
   taken, and the option or the default is; a `next` kept still wins; a
   `:home` that is not such a path is refused when compiled.
+- `tests/public-title-tests.lisp` (§8, «Public pages»): without a
+  method, a public page's title, mark and `<title>` are
+  `application-title`'s; `public-page-title` and `register-public-page`
+  are in `TUN`; a module's method answers and a client's wins over it,
+  with `call-next-method`, for the prefixes it chooses, reading the
+  store; the answer is escaped and trimmed; NIL and blank answers fall
+  back silently, a non-text answer and an error fall back and are
+  written to the error output, and the page answers as without the
+  method; a 404, a 410 and the 422 of an uncaught operation error have
+  the answer; staff pages, `/login` and the manifest keep
+  `application-title`; two applications served at once each show their
+  own answer, and a change to the store shows on the next request.
 - `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
   sign hidden and `aria-hidden`, and an empty `role="status"` region
   with «Loading…» in the page's language to say; the script and the
@@ -1340,6 +1399,11 @@ form of `field`s with an `error-summary`, a confirmation is a
   it; at 390 px, an employee opening `/` and an admin signing in land
   there, the admin goes on to «Graph» after «Done», and a sign-in from
   a page returns to that page.
+- `checks/showcase/checks/public-page-title.py`: at 390 and 1280 px,
+  the showcase's `/quote/q1` shows its setting's company name as the
+  shell's title, its first letter as the mark and in the tab's title;
+  `/notice` and a staff page show the application's title; nothing
+  scrolls sideways.
 - `tests/web-app-tests.lisp`: the `:web-app` options and icons are
   checked; the manifest, the icons, the offline page and the service
   worker are served without a login, with their types and cache

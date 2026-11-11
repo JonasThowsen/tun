@@ -154,3 +154,15 @@
   ("The part has loaded." "Delen er lastet.")
   ("This page waited ~d ms." "Denne siden ventet ~d ms.")
   ("A part that loads by itself…" "En del som laster av seg selv …"))
+
+;;; The public pages (public.lisp)
+
+(define-translations "nb"
+  ("Your quote" "Ditt tilbud")
+  ("Garden party, 14 June" "Hagefest 14. juni")
+  ("Tent, tables and chairs for 40 guests, delivered and collected."
+   "Telt, bord og stoler til 40 gjester, levert og hentet.")
+  ("Page not found" "Fant ikke siden")
+  ("Check the link in the email." "Sjekk lenken i e-posten.")
+  ("Opening hours" "Åpningstider")
+  ("Monday to Friday, 8 to 16." "Mandag til fredag, 8 til 16."))

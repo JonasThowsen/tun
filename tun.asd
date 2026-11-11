@@ -176,6 +176,7 @@
                              (:file "outbound-tests")
                              (:file "program-tests")
                              (:file "web-app-tests")
+                             (:file "public-title-tests")
                              (:file "mail-tests")
                              (:file "mail-html-tests")
                              (:file "push-tests")

@@ -420,6 +420,53 @@ policy admits them, or a resource) and it is on this site and not `/`;
 otherwise Tun takes `:home`, else its own default, and says why in the
 server's output. A `next` from the login still wins.
 
+### Public pages
+
+A page a customer opens without signing in, such as a quote or a form,
+is registered with `(register-public-page PREFIX HANDLER)` (`spec/ui.md`
+§8, «Public pages»). HANDLER gets the method, the path's parts after
+the prefix, the posted form as JSON and a fourth argument a client
+ignores, and returns `(values STATUS TITLE BODY)` as a page does:
+
+```lisp
+(register-public-page "notice"
+  (lambda (method parts form session)
+    (declare (ignore method parts form session))
+    (values 200 (tr "Opening hours") (list '(:p "Mon–Fri 8–16")))))
+```
+
+No transaction is open around HANDLER; a page that reads records, such
+as the orders module's offer, is a module's, which opens its own.
+
+Its frame has no menu; its title, the mark beside it and the end of the
+tab's title are what `(public-page-title APPLICATION PREFIX)` answers,
+`application-title` unless a module or the client says otherwise. A
+client serving many companies' customers answers the company's name,
+so a customer sees «Lindenhof Services», not the application's name;
+staff pages, sign-in and everything else keep `application-title`. The
+method runs for each answer of a public page in a read transaction with
+the tenant's application bound, so it may read the tenant's settings.
+A module answers on its mixin, for every public page of its client:
+
+```lisp
+(define-setting "company.name"
+    (:type "string" :nullable t :description "The company's name, as customers see it"))
+
+(defun company-name ()
+  (setting-value-at-use "company.name"))
+
+(defmethod public-page-title ((app company-module) prefix)
+  (declare (ignore prefix))
+  (or (company-name) (call-next-method)))
+```
+
+A client's method on its application class wins over a module's, and
+gets it with `(call-next-method)`; PREFIX (`"quote"`, `"offer"`) lets a
+method answer for some pages only. NIL or blank text gives
+`application-title`; so does an answer that is not text or a method that
+signals, which is written to the server's error output and never breaks
+the customer's page.
+
 ### Installing as an app
 
 `(:web-app ...)` in `define-application` lets people install the client

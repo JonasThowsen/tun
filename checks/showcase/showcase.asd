@@ -18,6 +18,7 @@
                (:file "welcome")
                (:file "wait")
                (:file "application")
+               (:file "public")
                (:file "nb")))
 
 (defsystem "showcase/tests"

@@ -18,7 +18,7 @@
   (:export #:render-screen #:section #:json-table #:entity-detail #:web-resources
            #:application-pages
            #:define-page #:web-call #:error-alert #:timestamp-text #:htmx-request-p
-           #:staff-page-extras #:home-path #:preload-request-p #:decline-preload
+           #:staff-page-extras #:home-path #:public-page-title #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
            #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
            #:page-texts))
@@ -238,8 +238,9 @@ after it keeps it (spec/ui.md 4.1)."
 (defvar *public-session-sequence* 0)
 (defstruct public-session (sequence 0) (created-at (now)) last-used-at (values (jobj)) (lock (sb-thread:make-mutex :name "public session")))
 (defun register-public-page (prefix handler)
-  "A public HTML port: handler(method, path parts, form JSON, session JSON)
-returns status, heading and an escaped HTML tree. Duplicate prefixes fail."
+  "A public HTML port (spec/ui.md 8, «Public pages»): handler(method, path
+parts, form JSON, session JSON) returns status, heading and an escaped HTML
+tree. Duplicate prefixes fail."
   (when (gethash prefix *public-pages*) (extension-error "Public page ~a is already registered" prefix))
   (setf (gethash prefix *public-pages*) handler))
 (defparameter +public-session-limit+ 10000)
@@ -293,7 +294,8 @@ menu, its title linking back to the page itself."
                   (values 422 (tr "The message could not be saved")
                           (list (ui:alert (:variant :destructive)
                                           (operation-error-message e))))))
-            (respond status heading body :guest t :home (public-home parts))))))))
+            (respond status heading body :guest t :home (public-home parts)
+                                         :site-title (public-title (first parts)))))))))
 
 (defun public-home (parts)
   "Where the title of the public page at PARTS leads: the page itself, as
@@ -409,6 +411,40 @@ the checks of spec/i18n.md 3.7."
 ;;; Request context
 
 (defvar *web-app* nil)
+
+(defgeneric public-page-title (application prefix)
+  (:documentation "The name a customer sees on APPLICATION's public page registered at
+PREFIX (spec/ui.md 8, «Public pages»): the frame's title, its mark and the
+end of the document's title.  A module specialises it on its mixin and a
+client on its application class; a method that does not decide for PREFIX
+returns (CALL-NEXT-METHOD).  It runs in a read transaction with the
+request's application bound.  NIL or blank text means no answer.  The
+default, the least specific method, answers APPLICATION-TITLE.")
+  (:method (application prefix)
+    (declare (ignore prefix))
+    (application-title application)))
+(register-extension-protocol
+ 'public-page-title "screen" :point "public_page_title"
+ :description "A module or the client names what customers see as the title of public pages, such as the company's name.")
+
+(defun public-title (prefix)
+  "The title of the public page at PREFIX: what PUBLIC-PAGE-TITLE answers,
+trimmed, else APPLICATION-TITLE.  An answer that is not text, or a method
+that signals an error, is written to the error output and never breaks
+the customer's page (spec/ui.md 8, «Public pages»)."
+  (let ((fallback (application-title *web-app*)))
+    (flet ((refused (what)
+             (format *error-output* "~&;; tun web: the title of the public page ~s: ~a; ~
+                                     taking the application's title~%" prefix what)
+             fallback))
+      (multiple-value-bind (answer failure)
+          (handler-case (with-transaction (:read) (public-page-title *web-app* prefix))
+            (error (e) (values nil e)))
+        (cond (failure (refused (format nil "~a signalled ~a" (type-of failure) failure)))
+              ((null answer) fallback)
+              ((not (stringp answer)) (refused (format nil "~s is not text" answer)))
+              (t (let ((text (string-trim '(#\Space #\Tab #\Newline #\Return) answer)))
+                   (if (string= text "") fallback text))))))))
 
 (defun web-actor ()
   "Values the actor of this request and its credential (spec/auth.md 3.3):
@@ -547,12 +583,14 @@ the kernel's pages; then, under «System», the pages about the system."
   "Every entry of the staff menu, in its order."
   (loop for group in (navigation) append (getf group :items)))
 
-(defun page-frame (body &key guest (home "/") (width :default))
+(defun page-frame (body &key guest (home "/") (width :default) site-title)
   "BODY inside the app-shell, WIDTH wide: with the menu and the actor for
 staff, without for someone not logged in or a GUEST page (whose title links
-to HOME).  A staff page's links and forms go through htmx (spec/ui.md 4.1);
-another page's do not, so signing in leaves for the provider's page."
-  (let ((title (application-title *web-app*)))
+to HOME).  The shell's title is SITE-TITLE, a public page's
+(PUBLIC-TITLE), else the application's.  A staff page's links and forms go
+through htmx (spec/ui.md 4.1); another page's do not, so signing in leaves
+for the provider's page."
+  (let ((title (or site-title (application-title *web-app*))))
     (if (and *actor* (not guest))
         (apply #'ui:app-shell* (list :title title :home "/" :nav-groups (navigation)
                                      :current (hunchentoot:script-name*)
@@ -566,14 +604,15 @@ another page's do not, so signing in leaves for the provider's page."
                (append body (staff-page-extras *web-app*)))
         (apply #'ui:app-shell* (list :title title :home home :width width) body))))
 
-(defun page-document (title frame)
-  "The whole HTML document of a page titled TITLE around FRAME."
+(defun page-document (title frame &optional site-title)
+  "The whole HTML document of a page titled TITLE around FRAME, the
+document's title ending in SITE-TITLE, else the application's."
   (list (trusted "<!doctype html>")
         `(:html (:@ :lang ,(page-language))
                 (:head (:meta (:@ :charset "utf-8"))
                        (:meta (:@ :name "viewport" :content "width=device-width, initial-scale=1"))
                        (:meta (:@ :name "htmx-config" :content ,(ui:htmx-config)))
-                       (:title ,title " – " ,(application-title *web-app*))
+                       (:title ,title " – " ,(or site-title (application-title *web-app*)))
                        ,@(web-app-head)
                        (:link (:@ :rel "stylesheet" :href ,(ui:stylesheet-path)))
                        (:script (:@ :defer t :src ,(ui:htmx-path)))
@@ -586,17 +625,20 @@ another page's do not, so signing in leaves for the provider's page."
     (if (stringp language) language "en")))
 
 (defun respond (status title body &key description actions breadcrumbs guest (home "/")
-                                    (width :default))
+                                    (width :default) site-title)
   "Answer STATUS with the page TITLE: a page header (with DESCRIPTION,
 ACTIONS and BREADCRUMBS) and then BODY, a list of nodes, in the frame
-PAGE-FRAME chooses, WIDTH wide."
+PAGE-FRAME chooses, WIDTH wide, named SITE-TITLE when it is given (a public
+page's) and else for the application."
   (setf (hunchentoot:return-code*) status
         (hunchentoot:content-type*) "text/html; charset=utf-8")
   (let ((header (ui:page-header* (list :title title :description description
                                        :actions actions :breadcrumbs breadcrumbs))))
     (sb-ext:string-to-octets
      (render-html (page-document title (page-frame (cons header body)
-                                                   :guest guest :home home :width width)))
+                                                   :guest guest :home home :width width
+                                                   :site-title site-title)
+                                 site-title))
      :external-format :utf-8)))
 
 (defun respond-fragment (status body)

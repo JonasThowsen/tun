@@ -116,7 +116,10 @@ the listed symbols (the same symbol objects, not copies)."
   (#:tun.web
    #:render-screen #:section #:json-table #:entity-detail
    #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras #:home-path
-   #:preload-request-p #:decline-preload)
+   #:preload-request-p #:decline-preload
+   ;; pages a customer opens without signing in, and the name they see
+   ;; there (spec/ui.md 8, «Public pages»)
+   #:register-public-page #:public-page-title)
   ;; Mail: queued in the caller's write, delivered after it commits, its
   ;; HTML a node tree that render-mail also previews (spec/mail.md), and
   ;; whom to send it to (spec/auth.md 2).  A client
