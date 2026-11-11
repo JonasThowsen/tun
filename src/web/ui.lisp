@@ -222,15 +222,15 @@ after it keeps it (spec/ui.md 4.1)."
                 (values (error-status (operation-error-code e))
                         (if (htmx-request-p) :fragment (translate (staff-page-title page)))
                         (list (error-alert (operation-error-json e))))))
-          (destructuring-bind (&key description actions breadcrumbs trigger) header
+          (destructuring-bind (&key description meta actions breadcrumbs trigger) header
             (when trigger
               (setf (hunchentoot:header-out "HX-Trigger") trigger))
             (cond ((eql status 303) (see-other title))
                   ((eql status 301) (moved-permanently title))
                   ((eq title :declined) (answer-declined-preload))
                   ((eq title :fragment) (respond-fragment status body))
-                  (t (respond status title body :description description :actions actions
-                                                :breadcrumbs breadcrumbs
+                  (t (respond status title body :description description :meta meta
+                                                :actions actions :breadcrumbs breadcrumbs
                                                 :width (staff-page-width page))))))))))
 
 (defvar *public-sessions* (make-hash-table :test 'equal))
@@ -624,15 +624,16 @@ document's title ending in SITE-TITLE, else the application's."
   (let ((language (current-language)))
     (if (stringp language) language "en")))
 
-(defun respond (status title body &key description actions breadcrumbs guest (home "/")
+(defun respond (status title body &key description meta actions breadcrumbs guest (home "/")
                                     (width :default) site-title)
-  "Answer STATUS with the page TITLE: a page header (with DESCRIPTION,
-ACTIONS and BREADCRUMBS) and then BODY, a list of nodes, in the frame
+  "Answer STATUS with the page TITLE: a page header (with DESCRIPTION, which
+only a client's page passes on, META, ACTIONS and BREADCRUMBS) and then
+BODY, a list of nodes, in the frame
 PAGE-FRAME chooses, WIDTH wide, named SITE-TITLE when it is given (a public
 page's) and else for the application."
   (setf (hunchentoot:return-code*) status
         (hunchentoot:content-type*) "text/html; charset=utf-8")
-  (let ((header (ui:page-header* (list :title title :description description
+  (let ((header (ui:page-header* (list :title title :description description :meta meta
                                        :actions actions :breadcrumbs breadcrumbs))))
     (sb-ext:string-to-octets
      (render-html (page-document title (page-frame (cons header body)
@@ -985,42 +986,64 @@ to first, and not their own ids."
           (record-table items (element-columns class items)))
         `(:p ,(tr "None.")))))
 
+(defun record-sections (entries)
+  "A record's sections, each entry (ID TITLE CONTENT), after a row of links
+to them when there are three or more (spec/ui.md 8)."
+  (let ((sections (mapcar (lambda (entry)
+                            (destructuring-bind (id title content) entry
+                              (ui:section* (list :title title :id id) content)))
+                          entries)))
+    (if (>= (length entries) 3)
+        (cons (ui:section-links
+               (:label (tr "On this page")
+                :items (mapcar (lambda (entry)
+                                 (list :label (second entry)
+                                       :href (format nil "#~a" (first entry))))
+                               entries)))
+              sections)
+        sections)))
+
 (defun entity-detail (class json)
   "Generic detail view of an entity's JSON: the fields that have a value in
 a summary list (each value marked with data-field), lists of records as
-tables, and computed JSON folded away below."
+tables, and computed JSON folded away below, each in a section with an id,
+after links to them when there are three or more."
   (let ((class (if (symbolp class) (find-entity-class class) class)))
-    (list
-     (section (tr "Details")
-              (ui:summary-list
-               (:rows (loop for column in (summary-columns class)
-                            for type = (column-type column)
-                            for value = (jget json (column-name column))
-                            unless (or (empty-value-p type value)
-                                       (and (json-array-p value) (zerop (length value))))
-                            collect (list (column-label column)
-                                          `(:span (:@ :data-field ,(column-name column))
-                                                  ,(value-markup type (column-name column)
-                                                                 value :link t
-                                                                 :context (column-context column))))))))
-     (loop for field in (entity-fields class)
-           when (row-list-p (field-type field))
-           collect (section (if (field-label field)
+    (record-sections
+     (append
+      (list
+       (list "record-details" (tr "Details")
+             (ui:summary-list
+              (:rows (loop for column in (summary-columns class)
+                           for type = (column-type column)
+                           for value = (jget json (column-name column))
+                           unless (or (empty-value-p type value)
+                                      (and (json-array-p value) (zerop (length value))))
+                             collect (list (column-label column)
+                                           `(:span (:@ :data-field ,(column-name column))
+                                                   ,(value-markup
+                                                     type (column-name column) value :link t
+                                                     :context (column-context column)))))))))
+      (loop for field in (entity-fields class)
+            when (row-list-p (field-type field))
+              collect (list (format nil "record-~a" (field-json-name field))
+                            (if (field-label field)
                                 (translate-in-context (field-label field)
                                                       (field-context class field))
                                 (field-json-name field))
                             (list-field-view (field-type field)
                                              (jget json (field-json-name field)))))
-     (let ((derived (loop for computed in (entity-computed-fields class)
-                          for value = (jget json (computed-field-json-name computed))
-                          when (and (typep (computed-field-type computed) 'json-type)
-                                    (json-value-shown-p value))
-                          collect (list :title (translate (computed-field-label computed))
-                                        :content (json-view value)))))
-       ;; Folded away: what the record's modules work out from it, which
-       ;; matters now and then rather than every time.
-       (when derived
-         (section (tr "More about this record") (ui:accordion (:items derived))))))))
+      (let ((derived (loop for computed in (entity-computed-fields class)
+                           for value = (jget json (computed-field-json-name computed))
+                           when (and (typep (computed-field-type computed) 'json-type)
+                                     (json-value-shown-p value))
+                             collect (list :title (translate (computed-field-label computed))
+                                           :content (json-view value)))))
+        ;; Folded away: what the record's modules work out from it, which
+        ;; matters now and then rather than every time.
+        (when derived
+          (list (list "record-more" (tr "More about this record")
+                      (ui:accordion (:items derived))))))))))
 
 (defun json-value-shown-p (value)
   (not (or (null value) (json-null-p value))))
@@ -1630,9 +1653,10 @@ after a refused submission, the form with VALUES and ERROR-JSON."
                                    (screen (resource-detail-screen resource)
                                            (resource-detail-key resource) record))
                              (render-resource-extras *web-app* (resource-entity resource) record))
-                     :description (when (stringp status-value)
-                                    (status-badge status-value
-                                                  (format nil "~a.status" (entity-json-name class))))
+                     :meta (when (stringp status-value)
+                             (list (status-badge status-value
+                                                 (format nil "~a.status"
+                                                         (entity-json-name class)))))
                      :breadcrumbs (record-breadcrumbs resource title)
                      :actions actions))))))
 

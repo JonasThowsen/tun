@@ -61,8 +61,9 @@ a dash for none.  A time the clock shows twice is the earlier instant."
 (defun attempts-text (job)
   (tr "~d of ~d" (jget job "attempts") (jget job "max_attempts")))
 
-(defun jobs-table (jobs &key (empty (tr "No jobs.")))
-  (ui:table (:columns (list (tr "Kind") (tr "Queue") (tr "State") (tr "Arguments") (tr "Attempts")
+(defun jobs-table (jobs &key (empty (tr "No jobs.")) caption)
+  (ui:table (:caption caption
+             :columns (list (tr "Kind") (tr "Queue") (tr "State") (tr "Arguments") (tr "Attempts")
                             (tr "When") (tr "Last error"))
                       :rows (mapcar (lambda (job)
                                       (list (jget job "kind") (jget job "queue")
@@ -92,7 +93,8 @@ a dash for none.  A time the clock shows twice is the earlier instant."
       (ui:stat (:label (tr "Failed in the last day") :value (jget last-day "failed") :icon :ban)))))
 
 (defun queues-table (summary)
-  (ui:table (:columns (list (tr "Queue") (tr ("Limit" :context "queue")) (tr "Waiting")
+  (ui:table (:caption (tr "How many jobs each queue runs at once, and what is waiting.")
+             :columns (list (tr "Queue") (tr ("Limit" :context "queue")) (tr "Waiting")
                             (tr "Later") (tr "Running") (tr "Oldest waiting"))
                       :rows (mapcar (lambda (queue)
                                       (list (jget queue "name") (jget queue "limit")
@@ -103,7 +105,8 @@ a dash for none.  A time the clock shows twice is the earlier instant."
                       :empty (tr "No queues."))))
 
 (defun processes-table (summary)
-  (ui:table (:columns (list (tr "Process") (tr "Started") (tr "Alive") (tr "Running now"))
+  (ui:table (:caption (tr "The processes that run jobs. A process that is not alive has had its jobs taken over.")
+             :columns (list (tr "Process") (tr "Started") (tr "Alive") (tr "Running now"))
                       :rows (mapcar (lambda (process)
                                       (list (tr "~a~:[~; (this one)~]" (jget process "id")
                                                 (eq t (jget process "own")))
@@ -121,16 +124,12 @@ a dash for none.  A time the clock shows twice is the earlier instant."
     (values 200 (tr "Jobs")
             (list (dashboard-nav :overview)
                   (overview-stats summary)
-                  (ui:section (:title (tr "Queues")
-                                      :description (tr "How many jobs each queue runs at once, and what is waiting."))
+                  (ui:section (:title (tr "Queues"))
                     (queues-table summary))
-                  (ui:section (:title (tr "Processes")
-                                      :description (tr "The processes that run jobs. A process that is not alive has had its jobs taken over."))
+                  (ui:section (:title (tr "Processes"))
                     (processes-table summary))
                   (ui:section (:title (tr "Recent failures"))
-                    (jobs-table failed :empty (tr "No job has failed."))))
-            (list :description
-                  (tr "The background jobs: what is waiting, running and failed, and the schedules.")))))
+                    (jobs-table failed :empty (tr "No job has failed.")))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The jobs, one state at a time
@@ -149,9 +148,9 @@ a dash for none.  A time the clock shows twice is the earlier instant."
             (list (dashboard-nav :jobs)
                   (state-tabs state counts)
                   (jobs-table (items-of (read-result "jobs_list" "state" state))
-                              :empty (tr "No jobs that are ~(~a~)." (state-label state))))
-            (list :description (tr "The last 100 jobs in the state, newest first.")
-                  :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
+                              :empty (tr "No jobs that are ~(~a~)." (state-label state))
+                              :caption (tr "The last 100 jobs in the state, newest first.")))
+            (list :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
                                      (list :label (state-label state)))))))
 
 ;;; ------------------------------------------------------------------
@@ -236,7 +235,8 @@ a dash for none.  A time the clock shows twice is the earlier instant."
     (values 200 (tr "Schedules")
             (list (dashboard-nav :schedules)
                   (when error (tun.web:error-alert error))
-                  (ui:table (:columns (list (tr "Schedule") (tr "When") (tr "Cron") (tr "Job")
+                  (ui:table (:caption (tr "The jobs queued by the clock, in local time, and the triggers, which queue a job for each record that meets a condition.")
+                             :columns (list (tr "Schedule") (tr "When") (tr "Cron") (tr "Job")
                                             (tr "Last") (tr "Next") "")
                                       :rows (mapcar (lambda (schedule)
                                                       (list (schedule-name-cell schedule)
@@ -250,8 +250,7 @@ a dash for none.  A time the clock shows twice is the earlier instant."
                                                                          (tr "Run now"))))
                                                     schedules)
                                       :empty (tr "No schedules."))))
-            (list :description (tr "The jobs queued by the clock, in local time, and the triggers, which queue a job for each record that meets a condition.")
-                  :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
+            (list :breadcrumbs (list (list :label (tr "Jobs") :href "/jobs")
                                      (list :label (tr "Schedules")))))))
 
 ;;; ------------------------------------------------------------------

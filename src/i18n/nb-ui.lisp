@@ -196,6 +196,8 @@
   ;; Layout and navigation
   ("Breadcrumbs"
    "Brødsmuler")
+  ("More actions"
+   "Flere handlinger")
   ("Back to ~a"
    "Tilbake til ~a")
   ("Signed in as"

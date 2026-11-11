@@ -15,7 +15,11 @@ page a client names (§8, «Home»), 2026-11-11, core 2.21.0; the loading
 sign (§4.1), 2026-11-11, core 2.22.0; the look and the states of the
 components (§2.1, §3, §6), 2026-11-11, core 2.25.0; the dialog as a
 sheet on a phone, the motion of what opens, `confirm-dialog` and the
-flash as a toast (§2.1, §3, §6), 2026-11-11, core 2.26.0. How every Tun page
+flash as a toast (§2.1, §3, §6), 2026-11-11, core 2.26.0; the page
+header's row and its «more» menu, `section-links`, the record's facts by
+spacing, `tabs` on the page's ground, the shell and the theme colours on
+the chrome, and no description in Tun's own pages (§4.2, §6, §8),
+2026-11-11, core 2.27.0. How every Tun page
 looks and behaves: the tokens, the components that are built from them,
 the specimen that shows them, and the rules a component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
@@ -401,7 +405,7 @@ Without it, no page links a manifest and nothing is installed.
 
 ```lisp
 (:web-app :short-name "Saker"
-          :theme-color "#ffffff" :dark-theme-color "#0a0a0a"
+          :theme-color "#f6f6f7" :dark-theme-color "#111113"
           :background-color "#ffffff"
           :icons "icons/")
 ```
@@ -410,8 +414,10 @@ Without it, no page links a manifest and nothing is installed.
   file that holds `define-application`. `:short-name`, the name under
   the icon, is at most 12 characters, and defaults to the application's
   title. The colours are `#rgb` or `#rrggbb`. The theme colours are the
-  browser's bar in light and dark mode, and they default to the design
-  system's background, `#ffffff` and `#0a0a0a`. `:background-color` is
+  browser's bar in light and dark mode, and they default to the chrome's
+  ground (`--chrome`), `#f6f6f7` and `#111113`, the ground of the shell's
+  top bar, so the phone's status bar and the top bar are one surface.
+  `:background-color` is
   the screen shown while the app starts, and it defaults to `#ffffff`.
   A wrong option is an error when the form is compiled.
 - **The icons.** The directory holds `icon.svg`, `icon-192.png`
@@ -540,7 +546,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Data (`data`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
-| Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
+| Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `section-links`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
 `files.md` §6, `markdown`, text written in Markdown, in §6.2, and
@@ -802,6 +808,76 @@ followed by its first and last value, joined by a catalogued word: en
 «EQNR.OL: 412.30 to 430.00», nb «EQNR.OL: 412,30 til 430,00». With one
 point it is a dot; with none it draws nothing and its label is L and
 «No data».
+
+`page-header` is the top of a page: its breadcrumbs, the title, the
+page's one `h1`, and the page's actions (`:actions`, a list of nodes) in
+one row beside the title, at every width, a phone's too. The actions
+stand at the right edge of the header and never wrap; a long title wraps
+beside them. The filled actions, a `button` of the `:primary` variant
+alone or as the one button of a form (the one next step), come last, in
+the markup as on the screen; the others keep the order the page gave.
+`:meta` (live facts: a status badge, a count) is a row under the title's;
+`:description`, a sentence under the title, is for a client that wants
+one (§8: Tun's own pages have none).
+
+- **When the actions do not fit on a phone.** The header reckons, when it
+  is rendered, whether its actions fit beside the title on a 320 px phone,
+  whose content is 18rem wide: an icon button is 2.75rem, a button with
+  words 1.25rem and 0.5rem a character of its words, and 1.375rem for
+  each icon, a form or a `dropdown-menu` its button's, anything else 6rem,
+  with 0.5rem between two actions; the title keeps 0.75rem a character of
+  its words, at most 6rem; they fit when the actions, the title's room and
+  1rem between them come to 18rem or less. A word of the title longer than
+  its room breaks. When they do not, every action
+  that is a `button` or a form holding one button, other than the filled
+  ones, folds into one «More actions» («Flere handlinger») `dropdown-menu`
+  standing before the filled actions: a `:ghost` button showing only
+  `:ellipsis`, with the menu at its end. Each folded action is an item
+  with its words (else its `aria-label`), its first icon, its link, its
+  other attributes (`hx-*`, a confirm), destructive when it was; a form's
+  item is a submit button naming the form (`form`), which keeps its place
+  in the row and gets an id when it has none. When even then they do not
+  fit, a filled action with an icon shows its icon alone, its words still
+  its name. An action of another kind (a `dropdown-menu`, any other
+  markup) never folds. This holds below 40rem of the header's own width
+  (it is a container): there the folded actions are hidden from the row
+  and the menu shows; from 40rem every action shows and the menu does
+  not. The menu is the popover a `dropdown-menu` is, so it opens and its
+  items work without JavaScript.
+
+A `dropdown-menu` item's `:icon` is an icon's name or an icon already
+made, as the header's folded items carry the action's own.
+
+`section-links` gives a page read as a whole a row of links to its
+sections: `(section-links (:label "On this page" :items '((:label
+"Details" :href "#details") ...)))`, a `nav` named LABEL holding plain
+links to the sections' ids. The row is one line: wider than its box, it
+scrolls sideways inside it, and the page does not. Where scripts run, the
+link of the section in view, the last whose top has passed the top of the
+content (under the shell's top bar on a phone), else the first, or, at
+the foot of the page, the section a followed link named while its top is
+in the window, has `aria-current="location"`, shown by the text colour and an underline at
+the weight, size and padding of the others; it follows the scroll and a
+followed link. Without JavaScript the links move the page and none is
+marked. Tabs are for parts seen one at a time; what is read together is
+one page with section links.
+
+`summary-list`, a record's facts, sets them apart by space alone: no line
+or box between its rows, and no padding or edge of its own, so its edges
+line up with the header and the sections. Narrower than 30rem (its own
+width) a row is the label, in `--muted-foreground`, beside the value,
+with the action under the value; from 30rem the rows stand in two
+columns, a row's label above its value and its action beside the label.
+
+`tabs`, segmented (the default), is a strip with a 1px `--border` frame
+on the ground it stands on, the page, a card or the chrome, and its
+chosen tab a `--secondary` ground with the `--border` edge. A strip of
+`:line` tabs, links too, keeps each tab its own width from the start of
+the row.
+
+`app-shell`'s top bar, its menu on a phone and its sidebar stand on
+`--chrome` itself, with a 1px `--chrome-border` edge; the page is on
+`--background`; the phone menu's dim is `--overlay`.
 
 ### 6.1 The board
 
@@ -1265,8 +1341,15 @@ form of `field`s with an `error-summary`, a confirmation is a
   the way grows to pass it on. The shell sets `--tun-fill-align:
   stretch` and `--tun-fill-max-height: none` on it, which the board
   uses to stretch its columns and drop their own limit.
-- **The page header on a phone.** The title and the actions share one
-  row when they fit, centred on it; otherwise the actions go below.
+- **The page header.** The title and the actions share one row on every
+  screen (§6, `page-header`); on a phone the actions that do not fit fold
+  into the «More actions» menu. No page Tun generates or ships (the
+  generated lists, records and forms, sign-in and setup, access,
+  settings, the offline page, the modules' pages) puts a `:description`
+  under a page's or a section's title; what such a sentence said that a
+  person needs stands where it is used: in a card's text or an alert,
+  or, when it says what a list or a block holds, as the table's caption
+  or the code block's title.
 - **The frame.** A staff page is an `app-shell` with the menu, the actor
   and «Sign out» («Logg ut»). Its content is at most 72rem wide, 84rem from a
   1440 px window, centred, with more space at the sides the wider the
@@ -1291,10 +1374,12 @@ form of `field`s with an `error-summary`, a confirmation is a
   record's name (else its id, linked to its page), then its status as a
   `badge`, the records it refers to by their names, its first date, its
   total, and its other inputs. No records is an `empty-state`.
-- **A record.** A `page-header` (breadcrumbs, the status as a badge, the
-  status operations as buttons, or a `dropdown-menu` when there are more
-  than two), a `summary-list` of the fields that have a value, a `table`
-  per list of records, and computed JSON in an `accordion`.
+- **A record.** A `page-header` (breadcrumbs, the status as a badge in
+  its `:meta`, the status operations as buttons, or a `dropdown-menu`
+  when there are more than two), a `summary-list` of the fields that have
+  a value, a `table` per list of records, and computed JSON in an
+  `accordion`, each in a section with an id; with three sections or
+  more, `section-links` to them first.
 - **Forms.** A control per input, chosen by its type: text, e-mail,
   number, date, a `select` or `radios` (four choices or fewer, required)
   for an enum, `checkboxes` for a list of an enum, a `checkbox` for a
@@ -1342,7 +1427,7 @@ form of `field`s with an `error-summary`, a confirmation is a
      post's files arrive in FORM as `files.md` §6.2 says.
   3. It returns `(values STATUS TITLE BODY)`, BODY a list of components
      shown under a page header with TITLE, and may add a fourth value, a
-     plist of the header's `:description`, `:actions` and
+     plist of the header's `:description`, `:meta`, `:actions` and
      `:breadcrumbs`. `(values 303 PATH)` sends the browser to PATH, as a
      successful post should.
   4. `web-call TOOL ARGUMENTS` calls an operation as the logged-in
@@ -1700,6 +1785,37 @@ form of `field`s with an `error-summary`, a confirmation is a
   not while pointed at, a warning staying; under reduced motion nothing
   moving; without JavaScript the flash in the page and a dialog's form
   posting.
+- `tests/ui-header-tests.lisp` (§4.2, §6 `page-header`, `section-links`,
+  `summary-list`, `tabs`, `app-shell`, §8): the header's row and the
+  filled actions last in the markup; which actions fold for which titles
+  and actions, the menu's items (words, icon, link, form, attributes,
+  destructive) in English and Norwegian, a filled action's icon alone,
+  nothing folding of another kind; `:meta`; the shell's grounds and edges
+  and the menu's dim; the theme colours' defaults equal to `--chrome`'s
+  two values in the stylesheet; `section-links`' markup and its marked
+  link's CSS; the facts' CSS without lines; `tabs`' frame and chosen
+  ground; no call in `src/` and `modules/` (but `src/web/ui/`) of
+  `page-header`, `section`, `respond` or `guest-page`, of `page-header*`
+  or `section*` with a literal plist, or a page's fourth value, holding
+  `:description` with any value but the variable `description` passed on
+  (`respond` passes a client page's on); a client's description still
+  rendered; the generated record's status in `:meta`; the flash after an
+  account is created in the page's flow.
+- `checks/showcase/checks/ui-header.py`, on the specimen and the
+  showcase: at 390, 360 and 320 px a long title, and a title of one long
+  word, with three actions on one
+  row with the «More actions» button and the filled action, the filled
+  action's right edge the header's, no other action shown, the menu
+  holding the folded actions, and with JavaScript off the menu opening;
+  at 1280 px every action shown, no menu; `/items` keeping its three
+  actions on the title's row on a phone; the top bar's ground equal to
+  the `theme-color` of the active scheme, light and dark, and the
+  sidebar's to `--chrome`; `section-links` one line scrolling in its own
+  box, its link marked as the page scrolls and when followed, at the
+  others' weight, and none marked without JavaScript; the facts in one
+  column on a phone and two on a desktop, without an edge, in line with
+  the header; the chosen segmented tab's ground unlike the page's, light
+  and dark; no page scrolling sideways.
 - `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
   sign hidden and `aria-hidden`, and an empty `role="status"` region
   with «Loading…» in the page's language to say; the script and the

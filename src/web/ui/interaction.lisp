@@ -746,7 +746,7 @@ document.addEventListener('htmx:confirm', (event) => {
                  (list :href (unless disabled href) :aria-disabled (when disabled "true"))
                  (list :type "button" :disabled disabled))
              attributes)
-     ,@(when icon (list (icon* (list :name icon))))
+     ,@(when icon (list (if (consp icon) icon (icon* (list :name icon)))))
      (:span (:@ :class "tun-dropdown-menu-text") ,label)
      ,@(when shortcut `((:kbd (:@ :class "tun-dropdown-menu-shortcut") ,shortcut)))))
 
@@ -771,7 +771,8 @@ document.addEventListener('htmx:confirm', (event) => {
   (:doc "A button that opens a list of actions, for choices that do not fit as buttons of
 their own. LABEL is the button's text; with an icon size (:size :icon) only ICON shows, and
 LABEL becomes the button's name for screen readers. Each entry of ITEMS is (:label :href :icon
-:shortcut :variant :disabled :attributes), :separator or (:group HEADING :items (...)).")
+:shortcut :variant :disabled :attributes), :separator or (:group HEADING :items (...)); an
+item's ICON is an icon's name or an icon already made.")
   (:source "Basecoat dropdown menu (Vega), on the Popover API")
   (:css "
 .tun-dropdown-menu {
@@ -1444,16 +1445,19 @@ navigate between pages of their own. LABEL says what the tabs are about.")
   min-width: 0;
   flex-direction: column;
   gap: calc(var(--spacing) * 2);
+  /* A strip in a frame on whatever ground it stands on: the page, a card
+     or the chrome. */
   & .tun-tabs-list {
     display: flex;
     width: fit-content;
     max-width: 100%;
     height: var(--control-height);
     align-items: center;
-    padding: 3px;
+    gap: 2px;
+    padding: 2px;
     overflow-x: auto;
+    border: 1px solid var(--border);
     border-radius: var(--radius-md);
-    background-color: var(--muted);
     color: var(--muted-foreground);
     scrollbar-width: none;
     & li { display: flex; height: 100%; flex: 1 0 auto; }
@@ -1490,9 +1494,8 @@ navigate between pages of their own. LABEL says what the tabs are about.")
        of the others, so choosing one moves nothing. */
     &:is([aria-selected='true'], [aria-current='page']) {
       border-color: var(--border);
-      background-color: var(--background);
+      background-color: var(--secondary);
       color: var(--foreground);
-      box-shadow: var(--shadow-xs);
     }
     &:active { background-color: var(--pressed); transition-duration: 0s; }
   }
@@ -1501,9 +1504,11 @@ navigate between pages of their own. LABEL says what the tabs are about.")
       width: 100%;
       gap: var(--spacing);
       padding: 0;
+      border: 0;
       border-radius: 0;
-      background-color: transparent;
       box-shadow: inset 0 -1px var(--border);
+      /* Each tab its own width, side by side from the start of the row. */
+      & li { flex-grow: 0; }
     }
     & .tun-tabs-tab {
       flex-grow: 0;

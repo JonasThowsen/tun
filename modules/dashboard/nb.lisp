@@ -83,8 +83,6 @@
    "Siste feil")
   ("No job has failed."
    "Ingen jobber har feilet.")
-  ("The background jobs: what is waiting, running and failed, and the schedules."
-   "Bakgrunnsjobbene: hva som venter, kjører og feilet, og tidsplanene.")
   ("No jobs that are ~(~a~)."
    "Ingen jobber som ~(~a~).")
   ("The last 100 jobs in the state, newest first."
@@ -141,8 +139,8 @@
    "Antall")
   ("Last seen"
    "Sist sett")
-  ("Errors the code did not mean, grouped by cause: what happened, where, how many times and when. A resolved error that happens again is open again."
-   "Feil koden ikke mente, gruppert etter årsak: hva som skjedde, hvor, hvor mange ganger og når. En løst feil som skjer igjen, blir åpen.")
+  ("A resolved error that happens again is open again."
+   "En løst feil som skjer igjen, blir åpen.")
   ("No occurrences."
    "Ingen forekomster.")
   ("Mark as resolved"

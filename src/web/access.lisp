@@ -36,11 +36,10 @@ sign-ins, which are not audited (spec/auth.md 3.5)."
   (when *request-record*
     (set-request-outcome *request-record* "rejected" :code :unauthenticated :message message)))
 
-(defun guest-page (status title form-card aside &key description)
+(defun guest-page (status title form-card aside)
   "A narrow page for someone not logged in: FORM-CARD and below it the card
 ASIDE that explains it."
-  (respond status title (list form-card aside)
-           :description description :guest t :home "/login" :width :narrow))
+  (respond status title (list form-card aside) :guest t :home "/login" :width :narrow))
 
 ;;; ------------------------------------------------------------------
 ;;; The page to return to after logging in (spec/auth.md 3.4)
@@ -87,8 +86,7 @@ sign-in (spec/auth.md 3.4); each returns to NEXT."
 (defun login-page (status &key error next)
   (guest-page status (tr "Sign in")
               (login-card error next)
-              (or (claimed-login-hint next) (no-account-yet))
-              :description (tr "Sign in to ~a." (application-title *web-app*))))
+              (or (claimed-login-hint next) (no-account-yet))))
 
 (defun claimed-login (raw next)
   "GET /login?actor=role:name on a server with claimed identity, returning
@@ -263,9 +261,9 @@ email comes from the provider."
                   (setup-actions))))
      (ui:card (:title (tr "What happens now?") :heading-level 2)
        (ui:stack (:gap :sm)
+         `(:p ,(tr "Tun has no administrator yet."))
          `(:p ,(tr "The account you make here can create the other accounts and the access tokens."))
-         `(:p ,(tr "The link works only until the first administrator is made."))))
-     :description (tr "Tun has no administrator yet."))))
+         `(:p ,(tr "The link works only until the first administrator is made.")))))))
 
 (defun handle-setup (method code)
   (cond ((not (tun.auth:setup-code-valid-p code)) (not-found-page))
@@ -397,15 +395,17 @@ FORM; else NIL."
               `(:p ,(tr "~a has no account, and so no tokens." (actor-string *actor*)))))
       (let ((mine (form-failure failed "tokens_create")))
         (list (when (tun.auth:oauth-strategy *web-app*)
-                (ui:section (:title (tr "Connect without a token")
-                             :description (tr "Claude Code and other MCP clients that can do OAuth sign in as you through WorkOS, without a token."))
+                (ui:section (:title (tr "Connect without a token"))
+                  (ui:alert (:variant :info)
+                    (tr "Claude Code and other MCP clients that can do OAuth sign in as you through WorkOS, without a token."))
                   (ui:code-block (:title (tr "For Claude Code")
                                   :copy-label (tr "Copy the command"))
                                  (claude-command))))
-              (ui:section (:title (tr "My tokens") :description (own-tokens-text))
+              (ui:section (:title (tr "My tokens"))
                 (token-table (items "tokens_list" "account_id" (jget account "id"))))
               (operation-form (find-operation-by-tool "tokens_create") "/access/tokens"
                               :title (tr "New token for me") :submit (tr "Create token")
+                              :description (own-tokens-text)
                               :omit '("account_id")
                               :error-json (second mine) :values (third mine))))))
 
@@ -421,12 +421,13 @@ FORM; else NIL."
   (let ((agents (agent-choices accounts))
         (account-form (form-failure failed "accounts_create"))
         (agent-form (form-failure failed "tokens_create:agent")))
-    (list (ui:section (:title (tr "Accounts")
-                       :description (tr "People sign in with ~a, agents with tokens."
-                                        (ways-to-sign-in)))
+    (list (ui:section (:title (tr "Accounts"))
             (accounts-table accounts))
           (operation-form (find-operation-by-tool "accounts_create") "/access/accounts"
                           :title (tr "New account") :submit (tr "Create account")
+                          :description (when (tun.auth:identity-providers)
+                                         (tr "People sign in with ~a, agents with tokens."
+                                             (ways-to-sign-in)))
                           :error-json (second account-form) :values (third account-form))
           (section (tr "All access tokens") (token-table (items "tokens_list") :accounts t))
           (if agents
@@ -486,11 +487,13 @@ without one, through OAuth; for every folder on the machine, since without
         (token-shown-before))))
 
 (defun provider-notice (json)
-  (ui:flash () (tr "The account is created. ~a signs in with ~a with the email ~a."
+  ;; What the new person signs in with, which is read and passed on: it
+  ;; stays in the page rather than leaving as a toast.
+  (ui:flash (:toast nil) (tr "The account is created. ~a signs in with ~a with the email ~a."
                    (jget json "name") (ways-to-sign-in) (jget json "email"))))
 
 (defun invitation-notice (json)
-  (ui:flash () (tr "The account is created, and ~a has been sent an invitation at ~a."
+  (ui:flash (:toast nil) (tr "The account is created, and ~a has been sent an invitation at ~a."
                    (jget json "name") (jget json "email"))))
 
 (defun constant-notice (text)

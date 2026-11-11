@@ -49,7 +49,8 @@ that kind; a dash for none."
   (format nil "/log?selection=~a~@[&kind=~a~]" selection kind))
 
 (defun requests-table (requests)
-  (ui:table (:columns (list (tr "When") (tr "Request kind") (tr "What") (tr "Actor") (tr "Outcome")
+  (ui:table (:caption (tr "The last ~d requests the process has in memory, newest first. They are not stored: after a restart the list begins again, and errors are in “Errors”." +log-rows+)
+             :columns (list (tr "When") (tr "Request kind") (tr "What") (tr "Actor") (tr "Outcome")
                             (tr ("Duration" :context "time taken")))
                       :rows (mapcar (lambda (request)
                                       (list (when-text (jget request "at"))
@@ -96,8 +97,7 @@ that kind; a dash for none."
                   (when inflight
                     (ui:section (:title (tr "In progress"))
                       (inflight-table inflight)))
-                  (requests-table requests))
-            (list :description (tr "The last ~d requests the process has in memory, newest first. They are not stored: after a restart the list begins again, and errors are in “Errors”." +log-rows+)))))
+                  (requests-table requests)))))
 
 ;;; ------------------------------------------------------------------
 ;;; One request
@@ -112,10 +112,11 @@ the request's."
                                :value-text (tr "~d%" percent))))
         (ms-text duration))))
 
-(defun steps-table (request)
+(defun steps-table (request &key caption)
   (let ((steps (subseq-at-most (items-of request "steps") +shown-steps+))
         (total (jget request "total_ms")))
-    (ui:table (:columns (list (tr "Start") (tr "Step") (tr "Name")
+    (ui:table (:caption caption
+               :columns (list (tr "Start") (tr "Step") (tr "Name")
                               (tr ("Duration" :context "time taken")) (tr "Detail"))
                         :rows (mapcar (lambda (entry)
                                         (list (ms-text (jget entry "started_ms"))
@@ -156,14 +157,14 @@ the request's."
                                                         (text-or-dash (jget policy "actor_role")))))))
                   (ui:section (:title (tr "Input"))
                     (ui:code-block (:wrap t) (to-json-string (jget request "input"))))
-                  (ui:section (:title (tr "Steps")
-                                      :description (tr "In time order, each step's time against the whole request's~@[; ~d more steps were not kept~]."
-                                                       (and (integerp dropped) dropped)))
-                    (steps-table request))
+                  (ui:section (:title (tr "Steps"))
+                    (steps-table request
+                                 :caption (tr "In time order, each step's time against the whole request's~@[; ~d more steps were not kept~]."
+                                              (and (integerp dropped) dropped))))
                   (when backtrace
-                    (ui:section (:title (tr "Backtrace")
-                                        :description (tr "Where the error happened, innermost first."))
-                      (ui:code-block () (format nil "~{~a~^~%~}" backtrace)))))
+                    (ui:section (:title (tr "Backtrace"))
+                      (ui:code-block (:title (tr "Where the error happened, innermost first."))
+                                     (format nil "~{~a~^~%~}" backtrace)))))
             (list :breadcrumbs (list (list :label (tr "Log") :href "/log")
                                      (list :label (jget request "request_id")))))))
 

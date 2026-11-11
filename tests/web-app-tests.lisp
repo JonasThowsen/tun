@@ -128,7 +128,7 @@ removed when OCTETS is NIL."
                         (nth-value 1 (web-request port "/settings" :jar (web-login port "admin:root")))))
       (is (search "<link rel=\"manifest\" href=\"/manifest.webmanifest\">" body))
       (is (search "<meta name=\"theme-color\" media=\"(prefers-color-scheme: light)\" content=\"#fafafa\">" body))
-      (is (search "<meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#0a0a0a\">" body))
+      (is (search "<meta name=\"theme-color\" media=\"(prefers-color-scheme: dark)\" content=\"#111113\">" body))
       (is (cl-ppcre:scan "<link rel=\"icon\" type=\"image/svg\\+xml\" href=\"/assets/icon-[0-9a-f]{12}\\.svg\">" body))
       (is (cl-ppcre:scan "<link rel=\"icon\" type=\"image/png\" sizes=\"192x192\" href=\"/assets/icon-192-[0-9a-f]{12}\\.png\">" body))
       (is (cl-ppcre:scan "<link rel=\"apple-touch-icon\" sizes=\"180x180\" href=\"/assets/apple-touch-icon-[0-9a-f]{12}\\.png\">" body))

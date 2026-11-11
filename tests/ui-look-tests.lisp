@@ -484,9 +484,10 @@ wider edge: the tick of a checkbox, a graph node's tone, the confirm panel's !."
 
 (test the-shell-stands-on-the-chrome
   (let ((css (tun.ui:component-css (tun.ui:find-component "app-shell"))))
-    (is (search "background-color: color-mix(in oklab, var(--chrome) 95%, transparent);" css)
-        "the top bar")
-    (is (search "background-color: var(--chrome);" css) "the sidebar and the phone's menu")
+    (is (not (search "color-mix(in oklab, var(--chrome)" css))
+        "the top bar is the chrome itself, the installed app's theme colour")
+    (is (<= 2 (cl-ppcre:count-matches "background-color: var\\(--chrome\\);" css))
+        "the top bar, the sidebar and the phone's menu")
     (is (search "border-right: 1px solid var(--chrome-border);" css))
     (is (search "border-bottom: 1px solid var(--chrome-border);" css))))
 

@@ -66,7 +66,8 @@
      (offer-facts quote snapshot)
      (ui:section (:title (tr "This is included"))
                  (offer-lines snapshot))
-     (ui:section (:title (tr "Would you like to go ahead?") :description who)
+     (ui:section (:title (tr "Would you like to go ahead?"))
+                 (ui:alert (:variant :info) who)
                  (offer-answer-form quote)))))
 
 (defun offer-gate (quote &key error)

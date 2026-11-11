@@ -41,6 +41,8 @@
    "Ingen.")
   ("Details"
    "Opplysninger")
+  ("On this page"
+   "På denne siden")
   ("More about this record"
    "Mer om posten")
   ("There is no ~(~a~) yet."
@@ -155,8 +157,6 @@
    "Ingen konto ennå?")
   ("An administrator gives you access with your email address. Sign in with it afterwards."
    "En administrator gir deg tilgang med e-postadressen din. Logg inn med den etterpå.")
-  ("Sign in to ~a."
-   "Logg inn i ~a.")
   ("Invalid actor"
    "Ugyldig aktør")
   ("Use"
@@ -264,8 +264,6 @@
 (define-translations "nb"
   ("You are offline"
    "Du er frakoblet")
-  ("The page could not be fetched. Try again when you are online."
-   "Siden kunne ikke hentes. Prøv igjen når du er på nett.")
   ("Try again"
    "Prøv igjen")
   ("You have a new notification"

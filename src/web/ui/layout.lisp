@@ -377,39 +377,194 @@ CURRENT is marked; when there is none, the nearest link above it is (/customers 
                (mapcar (lambda (group) (nav-list-group group marked mark)) groups)))))
 
 ;;; ------------------------------------------------------------------
+;;; The page header's actions (spec/ui.md 6, page-header)
+;;;
+;;; The header reads the actions it is given as markup: a button (the
+;;; button component, a link or a button), a form holding one, or anything
+;;; else.  It reckons whether they fit beside the title on the narrowest
+;;; phone, and when they do not, folds the buttons that are not filled into
+;;; a «More actions» menu, which the CSS shows only on a phone.
+
+(defun node-attributes (node)
+  "The attribute plist of the markup NODE, (TAG (:@ ...) CHILD...), or NIL."
+  (let ((second (and (consp node) (second node))))
+    (and (consp second) (eq (first second) :@) (rest second))))
+
+(defun node-children (node)
+  "The children of the markup NODE."
+  (if (node-attributes node) (cddr node) (rest node)))
+
+(defun node-tag (node)
+  (and (consp node) (keywordp (first node)) (first node)))
+
+(defun node-with-attributes (node &rest plist)
+  "NODE with PLIST's attributes added, replacing any of the same name."
+  (list* (first node) (attrs (node-attributes node) plist) (node-children node)))
+
+(defun node-text (node)
+  "The words in NODE: its text, without icons and key caps."
+  (cond ((stringp node) node)
+        ((numberp node) (princ-to-string node))
+        ((member (node-tag node) '(:svg :kbd)) "")
+        ((node-tag node) (format nil "~{~a~}" (mapcar #'node-text (node-children node))))
+        ((consp node) (format nil "~{~a~}" (mapcar #'node-text node)))
+        (t "")))
+
+(defun squeezed-text (text)
+  "TEXT trimmed, its runs of white space one space."
+  (format nil "~{~a~^ ~}" (uiop:split-string (string-trim '(#\Space #\Tab #\Newline) text)
+                                             :separator '(#\Space #\Tab #\Newline))))
+
+(defun button-node-p (node)
+  (and (member (node-tag node) '(:a :button))
+       (equal (getf (node-attributes node) :class) "tun-button")))
+
+(defun form-button (node)
+  "The one button of NODE when it is a form holding one button, else NIL."
+  (when (eq (node-tag node) :form)
+    (let ((buttons (remove-if-not #'button-node-p (node-children node))))
+      (and buttons (null (rest buttons)) (first buttons)))))
+
+(defun action-button (node)
+  "The button the header action NODE is, or holds as a form; else NIL."
+  (if (button-node-p node) node (form-button node)))
+
+(defun filled-action-p (node)
+  "True for an action that is the filled (primary) button, the one next step."
+  (let ((button (action-button node)))
+    (and button (equal (getf (node-attributes button) :data-variant) "primary"))))
+
+(defun button-label (button)
+  "What BUTTON says: its words, else its aria-label."
+  (let ((words (squeezed-text (node-text button))))
+    (if (plusp (length words)) words (or (getf (node-attributes button) :aria-label) ""))))
+
+(defun button-width (button)
+  "How wide BUTTON is on a phone, reckoned in rem (spec/ui.md 6, page-header)."
+  (let ((size (or (getf (node-attributes button) :data-size) "")))
+    (if (and (>= (length size) 4) (string= "icon" size :end2 4))
+        2.75
+        (+ 1.25
+           (* 1.375 (count :svg (node-children button) :key #'node-tag))
+           (* 0.5 (length (squeezed-text (node-text button))))))))
+
+(defun action-width (node)
+  "How wide the header action NODE is on a phone, in rem: a button's or a
+form's button's, a menu's button's, anything else 6rem."
+  (let ((button (or (action-button node)
+                    (and (eq (node-tag node) :div)
+                         (equal (getf (node-attributes node) :class) "tun-dropdown-menu")
+                         (find-if #'button-node-p (node-children node))))))
+    (if button (button-width button) 6)))
+
+(defun actions-fit-p (title widths)
+  "True when actions WIDTHS wide (rem) fit beside TITLE on a 320px phone,
+whose content is 18rem wide: the title keeps the room of its words, at most
+6rem, and 1rem between it and the actions."
+  (<= (+ (reduce #'+ widths)
+         (* 0.5 (max 0 (1- (length widths))))
+         1
+         (min 6 (* 0.75 (length (squeezed-text (node-text title))))))
+      18))
+
+(defun folded-item (node form-id)
+  "The «More actions» menu's item for the header action NODE, whose form,
+when it is one, has FORM-ID."
+  (let* ((button (action-button node))
+         (attributes (node-attributes button)))
+    (list :label (button-label button)
+          :icon (find :svg (node-children button) :key #'node-tag)
+          :href (getf attributes :href)
+          :variant (when (equal (getf attributes :data-variant) "destructive") :destructive)
+          :disabled (or (getf attributes :disabled)
+                        (equal (getf attributes :aria-disabled) "true"))
+          :attributes (append (when form-id (list :type "submit" :form form-id))
+                              (loop for (key value) on attributes by #'cddr
+                                    unless (member key '(:class :id :data-variant :data-size
+                                                         :aria-label :aria-keyshortcuts :href
+                                                         :aria-disabled :disabled))
+                                      append (list key value))))))
+
+(defun compact-action (node)
+  "The filled action NODE showing its icon alone on a phone, when it has one."
+  (let ((button (action-button node)))
+    (cond ((not (find :svg (node-children button) :key #'node-tag)) node)
+          ((eq node button) (node-with-attributes node :data-tun-compact t))
+          (t (list* (first node) (cons :@ (node-attributes node))
+                    (mapcar (lambda (child)
+                              (if (eq child button)
+                                  (node-with-attributes child :data-tun-compact t)
+                                  child))
+                            (node-children node)))))))
+
+(defun header-actions (title actions)
+  "The header's row of ACTIONS beside TITLE: the others, then the «More
+actions» menu when some fold, then the filled ones (spec/ui.md 6)."
+  (let* ((actions (remove nil actions))
+         (filled (remove-if-not #'filled-action-p actions))
+         (others (remove-if #'filled-action-p actions)))
+    (if (actions-fit-p title (mapcar #'action-width actions))
+        (append others filled)
+        (let* ((foldable (remove-if-not #'action-button others))
+               (forms (mapcar (lambda (node)
+                                (and (eq (node-tag node) :form)
+                                     (or (getf (node-attributes node) :id)
+                                         (element-id "tun-page-header-form"))))
+                              foldable))
+               (kept (remove-if #'action-button others))
+               (fits (actions-fit-p title (append (mapcar #'action-width kept)
+                                                  (when foldable (list 2.75))
+                                                  (mapcar #'action-width filled)))))
+          (append (mapcar (lambda (node)
+                            (let ((form-id (let ((at (position node foldable)))
+                                             (and at (nth at forms)))))
+                              (cond ((not (member node foldable)) node)
+                                    (form-id (node-with-attributes node :id form-id
+                                                                        :data-tun-folded t))
+                                    (t (node-with-attributes node :data-tun-folded t)))))
+                          others)
+                  (when foldable
+                    (list `(:div (:@ :class "tun-page-header-more")
+                                 ,(dropdown-menu* (list :label (tr "More actions") :size :icon
+                                                        :variant :ghost :icon :ellipsis
+                                                        :align :end
+                                                        :items (mapcar #'folded-item
+                                                                       foldable forms))))))
+                  (if fits filled (mapcar #'compact-action filled)))))))
+
+;;; ------------------------------------------------------------------
 ;;; The top of a page and its sections
 
-(define-component page-header ((&key title description breadcrumbs actions id attributes)
+(define-component page-header ((&key title description meta breadcrumbs actions id attributes)
                                &rest children)
   (:group "Layout and navigation")
   (:doc "The top of a page: breadcrumbs (BREADCRUMBS, or as children), the title as the only
-h1, a short description and the page's actions (ACTIONS, a list of buttons). The actions
-stand to the right of the title when they fit beside it, on a phone too, and under it
-otherwise.")
-  (:source "shadcn/ui dashboard page heading, in Basecoat's tokens")
+h1 and the page's actions (ACTIONS, a list of buttons) beside it on one row, a phone's too, the
+filled button (the one next step) last at the right edge. On a phone the actions that do not
+fit fold into a «More actions» menu. META is a row of live facts under the title, such as a
+status badge; DESCRIPTION a sentence under it, which Tun's own pages do not use.")
+  (:source "shadcn/ui dashboard page heading, in Basecoat's tokens; the owner's rules for an
+admin application, 2026-11")
   (:css "
 .tun-page-header {
+  container: tun-page-header / inline-size;
   display: flex;
   flex-direction: column;
   gap: calc(var(--spacing) * 3);
+  /* The title and the actions share one row at every width: the actions
+     at the right edge, never wrapping; the title wraps beside them. */
   & .tun-page-header-row {
     display: flex;
-    flex-wrap: wrap;
     align-items: flex-start;
     justify-content: space-between;
     gap: calc(var(--spacing) * 4);
-    @media (max-width: 40rem) { align-items: center; }
   }
-  /* The text takes the row and the actions wrap below it when both do
-     not fit.  On a phone the text is as wide as it needs, so a short
-     title and its actions share one row. */
   & .tun-page-header-text {
     display: flex;
-    flex: 1 1 24rem;
+    flex: 1 1 0;
     flex-direction: column;
     gap: calc(var(--spacing) * 1.5);
     min-width: 0;
-    @media (max-width: 40rem) { flex-basis: auto; }
   }
   & .tun-page-header-title {
     font-size: var(--text-2xl);
@@ -419,35 +574,84 @@ otherwise.")
     overflow-wrap: anywhere;
   }
   & .tun-page-header-description { color: var(--muted-foreground); max-width: 65ch; }
-  & .tun-page-header-actions {
+  & .tun-page-header-meta {
     display: flex;
     flex-wrap: wrap;
     align-items: center;
     gap: calc(var(--spacing) * 2);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    color: var(--muted-foreground);
   }
-  @media (min-width: 48rem) {
+  /* The actions stand on the title's first line: a control is as high as
+     that line, near enough, so the two are centred on each other. */
+  & .tun-page-header-actions {
+    display: flex;
+    flex-shrink: 0;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    min-height: var(--text-2xl--line-height);
+  }
+  & .tun-page-header-more { display: none; }
+  /* A phone: what folds hides from the row and the menu holds it; a filled
+     action that must give room shows its icon alone, its words its name. */
+  @container tun-page-header (width < 40rem) {
+    & .tun-page-header-actions > [data-tun-folded] { display: none; }
+    & .tun-page-header-more { display: contents; }
+    & .tun-page-header-actions [data-tun-compact] {
+      width: var(--control-height);
+      padding: 0;
+      gap: 0;
+      font-size: 0;
+    }
+  }
+  @container tun-page-header (width >= 48rem) {
     & .tun-page-header-title {
       font-size: var(--text-3xl);
       line-height: var(--text-3xl--line-height);
     }
+    & .tun-page-header-actions { min-height: var(--text-3xl--line-height); }
   }
 }")
   (:examples
-   (("With breadcrumbs, a description and actions" :layout :stack)
+   (("With breadcrumbs, live facts and actions" :layout :stack)
     (page-header (:title "Ole Hansen Ltd"
-                         :description "A customer since March 2021. Invoiced monthly, 14 days."
+                         :meta (list (badge (:variant :success) "Active")
+                                     "Customer since March 2021")
                          :breadcrumbs '((:label "Customers" :href "/customers")
                                         (:label "Ole Hansen Ltd"))
                          :actions (list (button (:variant :outline :icon :pencil) "Edit")
                                         (button (:icon :plus) "New order")))))
    (("Only a title" :layout :stack)
     (page-header (:title "Customers")))
-   (("A long title" :layout :stack)
+   (("A long title and three actions: on a phone, «More actions»" :layout :stack)
     (page-header (:title "Quote 2024-031: A summer party with a tent for Fjord Catering"
                          :breadcrumbs '((:label "Quotes" :href "/quotes")
                                         (:label "Quote 2024-031"))
-                         :actions (list (button (:variant :outline) "Preview")
-                                        (button (:icon :send) "Send to the customer"))))))
+                         :actions (list (button (:icon :send) "Send to the customer")
+                                        (button (:variant :outline :icon :eye
+                                                 :href "/quotes/2024-031/preview")
+                                                "Preview")
+                                        `(:form (:@ :method "post"
+                                                    :action "/quotes/2024-031/withdraw")
+                                                ,(button (:type "submit" :variant :destructive
+                                                          :icon :trash)
+                                                         "Withdraw"))))))
+   (("A title of one long word" :layout :stack)
+    (page-header (:title "Leveringsbetingelsesdokumentasjonsoversikten"
+                         :actions (list (button (:variant :outline :icon :copy) "Duplicate")
+                                        (button (:variant :outline :icon :download) "Export")
+                                        (button (:icon :pencil) "Edit")))))
+   (("Icon actions that fit" :layout :stack)
+    (page-header (:title "Items"
+                         :actions (list (button (:variant :outline :size :icon :label "Search"
+                                                 :icon :search))
+                                        (button (:variant :outline :size :icon :label "Filter"
+                                                 :icon :funnel))
+                                        (button (:icon :plus) "New item")))))
+   (("With a description, for a client that wants one" :layout :stack)
+    (page-header (:title "Ole Hansen Ltd"
+                         :description "A customer since March 2021. Invoiced monthly, 14 days."))))
   (check-type title (not null))
   `(:header ,(attrs (list :class "tun-page-header" :id id) attributes)
             ,@(when breadcrumbs (list (breadcrumbs (:items breadcrumbs))))
@@ -458,15 +662,20 @@ otherwise.")
                         ,@(when description
                             (list `(:p (:@ :class "tun-page-header-description")
                                        ,description))))
-                  ,@(when actions
-                      (list `(:div (:@ :class "tun-page-header-actions") ,@actions))))))
+                  ,@(when (remove nil actions)
+                      (list `(:div (:@ :class "tun-page-header-actions")
+                                   ,@(header-actions title actions)))))
+            ,@(let ((meta (if (or (node-tag meta) (stringp meta)) (list meta) (remove nil meta))))
+                (when meta
+                  (list `(:div (:@ :class "tun-page-header-meta") ,@meta))))))
 
 (define-component section ((&key title description actions (level 2) id attributes)
                            &rest children)
   (:group "Layout and navigation")
-  (:doc "A part of a page with a heading of its own (h2, or h3 with LEVEL 3), a short
-description and actions that concern only this part. In an app-shell or a stack the sections
-get room between them.")
+  (:doc "A part of a page with a heading of its own (h2, or h3 with LEVEL 3) and actions that
+concern only this part. In an app-shell or a stack the sections get room between them. ID lets
+section-links lead to it. DESCRIPTION, a sentence under the heading, is for a client that
+wants one; Tun's own pages do not use it.")
   (:source "Basecoat card header (Vega), without the card")
   (:css "
 .tun-section {
@@ -513,7 +722,7 @@ get room between them.")
   }
 }")
   (:examples
-   (("With a description and an action" :layout :stack)
+   (("With an action, and a description for a client that wants one" :layout :stack)
     (section (:title "Contacts"
                      :description "The first gets order confirmations and invoices by email."
                      :actions (list (button (:variant :outline :size :sm :icon :user-plus)
@@ -543,6 +752,150 @@ get room between them.")
                    ,@(when actions
                        (list `(:div (:@ :class "tun-section-actions") ,@actions))))
              ,@children))
+
+(define-component section-links ((&key label items id attributes))
+  (:group "Layout and navigation")
+  (:doc "A row of links to the sections of a page read as a whole, such as a record's details,
+lines and history: ITEMS is a list of (:label TEXT :href \"#ID\"), LABEL names the row for
+screen readers. The row stays one line and scrolls sideways on a phone. Where scripts run, the
+link of the section in view is marked. Use tabs only for parts seen one at a time.")
+  (:source "GOV.UK contents list; the owner's rules for an admin application, 2026-11")
+  (:css "
+.tun-section-links {
+  min-width: 0;
+  /* One line that scrolls in its own box.  The box reaches a link's
+     padding past the row's edges, so the first link's words line up with
+     the page's edge, and keeps 4px inside it, the focus ring's reach, so
+     the ring is not cut off. */
+  & ul {
+    display: flex;
+    gap: var(--spacing);
+    margin: -4px calc(var(--spacing) * -2.5 - 4px);
+    padding: 4px;
+    overflow-x: auto;
+    overscroll-behavior-x: contain;
+    scrollbar-width: none;
+    white-space: nowrap;
+  }
+  & li { flex-shrink: 0; }
+  & a {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height-sm);
+    padding-inline: calc(var(--spacing) * 2.5);
+    border-radius: var(--radius-md);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-weight: var(--font-weight-medium);
+    text-decoration-line: underline;
+    text-decoration-color: transparent;
+    text-decoration-thickness: 2px;
+    text-underline-offset: calc(var(--spacing) * 1.5);
+    outline: none;
+    transition-property: color, background-color, text-decoration-color, box-shadow;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease);
+    &:focus-visible { box-shadow: var(--focus-ring); }
+    @media (hover: hover) {
+      &:hover { background-color: var(--accent); color: var(--foreground); }
+    }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
+    /* The section in view: the text colour and an underline, at the weight
+       and size of the others, so marking it moves nothing. */
+    &[aria-current] { color: var(--foreground); text-decoration-color: currentColor; }
+    @media (pointer: coarse) { min-height: var(--control-height); }
+  }
+}")
+  (:script "
+// The link of the section in view: the last section whose top has passed
+// the top of the content, where following its link puts it (its
+// scroll-margin-top, under a sticky header), else the first.  At the foot
+// of the page, where the last sections cannot reach the top, the section a
+// followed link named when its top is in the window.
+const linksOf = (nav) => [...nav.querySelectorAll('a[href^=\"#\"]')]
+  .map((link) => ({ link, target: document.getElementById(
+    decodeURIComponent(link.getAttribute('href').slice(1))) }))
+  .filter(({ target }) => target);
+const inView = (entries) => {
+  let current = entries[0];
+  for (const entry of entries) {
+    const top = entry.target.getBoundingClientRect().top;
+    if (top <= parseFloat(getComputedStyle(entry.target).scrollMarginTop) + 1) current = entry;
+  }
+  const root = document.documentElement;
+  if (root.scrollTop > 0 && innerHeight + root.scrollTop >= root.scrollHeight - 2) {
+    const shown = entries.filter(({ target }) => {
+      const top = target.getBoundingClientRect().top;
+      return top >= 0 && top < innerHeight;
+    });
+    current = shown.find(({ target }) => '#' + target.id === location.hash) || current;
+  }
+  return current;
+};
+// The marked link in sight in its row, which scrolls sideways; the page
+// itself is not moved.
+const showInRow = (link) => {
+  const row = link.closest('ul');
+  const box = link.getBoundingClientRect();
+  const inside = row.getBoundingClientRect();
+  if (box.left < inside.left) row.scrollLeft -= inside.left - box.left;
+  else if (box.right > inside.right) row.scrollLeft += box.right - inside.right;
+};
+const mark = () => {
+  for (const nav of document.querySelectorAll('[data-tun-section-links]')) {
+    const entries = linksOf(nav);
+    if (entries.length === 0) continue;
+    const current = inView(entries);
+    for (const { link } of entries) {
+      if (link === current.link) {
+        if (!link.hasAttribute('aria-current')) {
+          link.setAttribute('aria-current', 'location');
+          showInRow(link);
+        }
+      } else link.removeAttribute('aria-current');
+    }
+  }
+};
+let pending = false;
+const later = () => {
+  if (pending) return;
+  pending = true;
+  requestAnimationFrame(() => { pending = false; mark(); });
+};
+document.addEventListener('scroll', later, { passive: true });
+window.addEventListener('resize', later);
+window.addEventListener('hashchange', later);
+tunOnContent(later);")
+  (:examples
+   (("A record's sections" :layout :stack)
+    (section-links (:label "On this page"
+                    :items '((:label "Details" :href "#order-details")
+                             (:label "Order lines" :href "#order-lines")
+                             (:label "Delivery" :href "#order-delivery")
+                             (:label "Invoices and payments" :href "#order-invoices")
+                             (:label "History" :href "#order-history"))))
+    (stack (:gap :xl)
+           (section (:title "Details" :id "order-details")
+                    (summary-list (:rows '(("Customer" "Hansen Bakery Ltd")
+                                           ("Ordered" "3 October 2026")
+                                           ("Reference" "Spring fair")))))
+           (section (:title "Order lines" :id "order-lines")
+                    '(:p "Wheat flour 25 kg, 10 sacks.")
+                    '(:p "Rye flour 25 kg, 4 sacks."))
+           (section (:title "Delivery" :id "order-delivery")
+                    '(:p "Storgata 12, 0155 Oslo, on 18 October before 7 am."))
+           (section (:title "Invoices and payments" :id "order-invoices")
+                    '(:p "Invoice 2026-118, €12,450, due on 30 October."))
+           (section (:title "History" :id "order-history")
+                    '(:p "Created by Kari Nordmann on 3 October 2026.")))))
+  (unless (and label items)
+    (error "Section links need :label, what the row is, and :items"))
+  `(:nav ,(attrs (list :class "tun-section-links" :id id :aria-label label
+                       :data-tun-section-links t)
+                 attributes)
+         (:ul ,@(loop for item in items
+                      collect `(:li (:a (:@ :href ,(getf item :href)) ,(getf item :label)))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The frame of a staff page
@@ -644,8 +997,9 @@ a wide overview.")
     top: 0;
     z-index: var(--z-sticky);
     border-bottom: 1px solid var(--chrome-border);
-    background-color: color-mix(in oklab, var(--chrome) 95%, transparent);
-    backdrop-filter: blur(8px);
+    /* The chrome itself, not a tint: an installed app's theme colour is
+       this ground, so the phone's status bar and the bar are one surface. */
+    background-color: var(--chrome);
   }
   & .tun-app-shell-bar {
     display: flex;
@@ -704,8 +1058,7 @@ a wide overview.")
       @starting-style { translate: -100% 0; }
     }
     &::backdrop {
-      /* A scrim is black in both themes, as Basecoat's. */
-      background-color: rgb(0 0 0 / 0.5);
+      background-color: var(--overlay);
       opacity: 0;
       transition: opacity var(--duration) var(--ease),
                   display var(--duration) allow-discrete,
@@ -840,7 +1193,6 @@ a wide overview.")
       border-bottom: 0;
       border-right: 1px solid var(--chrome-border);
       background-color: var(--chrome);
-      backdrop-filter: none;
     }
     & .tun-app-shell-bar { flex-shrink: 0; padding-inline: calc(var(--spacing) * 3); }
     & .tun-app-shell-bar > [popovertarget] { display: none; }
@@ -945,24 +1297,20 @@ wide.addEventListener('change', () => {
                        :user "admin:jonas"
                        :logout-action "/logout")
                (page-header (:title "Ole Hansen Ltd"
-                                    :description "A customer since March 2021. Invoiced monthly."
+                                    :meta (list (badge (:variant :success) "Active")
+                                                "Customer since March 2021")
                                     :breadcrumbs '((:label "Customers" :href "/customers")
                                                    (:label "Ole Hansen Ltd"))
                                     :actions (list (button (:variant :outline :icon :pencil)
                                                            "Edit")
                                                    (button (:icon :plus) "New order"))))
                (section (:title "Contact")
-                        (grid (:min :sm)
-                              (stack (:gap :xs)
-                                     '(:strong "Kari Nordmann")
-                                     '(:span "Managing director")
-                                     '(:span "kari@example.com · 912 34 567"))
-                              (stack (:gap :xs)
-                                     '(:strong "Invoice address")
-                                     '(:span "Storgata 12")
-                                     '(:span "0155 Oslo"))))
+                        (summary-list (:rows '(("Contact" "Kari Nordmann, managing director")
+                                               ("Email" "kari@example.com")
+                                               ("Phone" "912 34 567")
+                                               ("Invoice address"
+                                                ((:p "Storgata 12") (:p "0155 Oslo")))))))
                (section (:title "Latest orders"
-                                :description "Orders from the last 90 days."
                                 :actions (list (button (:variant :outline :size :sm
                                                                  :href "/orders?customer=42")
                                                        "Show all")))
@@ -975,7 +1323,7 @@ wide.addEventListener('change', () => {
                                         '(:strong "€4,800"))))))
    (("Without a user and a menu, narrow" :layout :stack)
     (app-shell (:title "Nordvik Rentals" :width :narrow)
-               (page-header (:title "Sign in" :description "Sign in to Nordvik Rentals."))
+               (page-header (:title "Sign in"))
                (card ()
                      (form-actions ()
                        (button (:type "submit" :icon :log-in) "Sign in"))))))

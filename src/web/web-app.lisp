@@ -90,9 +90,7 @@ not logged in, whoever asks, since the worker keeps it."
   (let ((*actor* nil))
     (render-html
      (page-document (tr "You are offline")
-                    (page-frame (list (ui:page-header*
-                                       (list :title (tr "You are offline")
-                                             :description (tr "The page could not be fetched. Try again when you are online.")))
+                    (page-frame (list (ui:page-header (:title (tr "You are offline")))
                                       ;; An empty href is the address the page is shown at.
                                       (ui:cluster ()
                                         (ui:button (:href "" :icon :refresh-cw) (tr "Try again"))))

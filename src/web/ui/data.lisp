@@ -383,39 +383,47 @@ cards, for a value a phone can do without.")
 
 (define-component summary-list ((&key rows (action (tr "Change")) id attributes))
   (:group "Data")
-  (:doc "The details of one record, such as a customer or an order: a name and a value per
-row, and often a link to change the value. On a phone the name stands above the value.")
+  (:doc "The facts of one record, such as a customer or an order: a name and a value per
+row, and often a link to change the value. Set apart by space alone: on a phone the name
+stands beside the value, from 30rem the facts stand in two columns, each name above its
+value.")
   (:source "GOV.UK summary list, Basecoat look")
   (:css "
 .tun-summary-list {
   container: tun-summary-list / inline-size;
+  /* The facts are set apart by space alone, no line or box between them:
+     one column on a phone, two from 30rem (a column is at least half the
+     row less the gap, and at least 14rem). */
+  display: grid;
+  grid-template-columns: repeat(auto-fit,
+                                minmax(max(14rem, calc((100% - var(--spacing) * 8) / 2)), 1fr));
+  column-gap: calc(var(--spacing) * 8);
+  row-gap: calc(var(--spacing) * 3);
   width: 100%;
   font-size: var(--text-running);
   line-height: var(--text-running--line-height);
+  /* On a phone the label stands beside the value, the action under it. */
   & .tun-summary-list-row {
     display: grid;
-    grid-template-columns: minmax(0, 1fr) auto;
-    grid-template-areas: 'key action' 'value value';
+    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-areas: 'key value' '. action';
+    align-items: baseline;
     column-gap: calc(var(--spacing) * 4);
     row-gap: var(--spacing);
-    padding-block: calc(var(--spacing) * 3);
-    border-bottom: 1px solid var(--border);
-    &:first-child { padding-top: 0; }
-    &:last-child { padding-bottom: 0; border-bottom: 0; }
+    min-width: 0;
   }
   & .tun-summary-list-key {
     grid-area: key;
     color: var(--muted-foreground);
-    font-weight: var(--font-weight-medium);
   }
   & .tun-summary-list-value {
     grid-area: value;
+    min-width: 0;
     overflow-wrap: anywhere;
     & > p + p { margin-top: var(--spacing); }
   }
   & .tun-summary-list-action {
     grid-area: action;
-    text-align: end;
     & a {
       font-weight: var(--font-weight-medium);
       text-decoration-line: underline;
@@ -428,6 +436,17 @@ row, and often a link to change the value. On a phone the name stands above the 
       &:active { background-color: var(--pressed); }
     }
   }
+  /* In two columns a fact's label stands above its value, its action
+     beside the label. */
+  @container tun-summary-list (width >= 30rem) {
+    & .tun-summary-list-row {
+      grid-template-columns: minmax(0, 1fr) auto;
+      grid-template-areas: 'key action' 'value value';
+      align-content: start;
+      row-gap: calc(var(--spacing) * 0.5);
+    }
+    & .tun-summary-list-action { text-align: end; }
+  }
   & .tun-summary-list-hidden {
     position: absolute;
     width: 1px;
@@ -435,12 +454,6 @@ row, and often a link to change the value. On a phone the name stands above the 
     overflow: hidden;
     clip-path: inset(50%);
     white-space: nowrap;
-  }
-  @container tun-summary-list (width >= 32rem) {
-    & .tun-summary-list-row {
-      grid-template-columns: minmax(0, 1fr) minmax(0, 2fr) minmax(4rem, auto);
-      grid-template-areas: 'key value action';
-    }
   }
 }")
   (:examples

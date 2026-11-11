@@ -337,7 +337,15 @@ once the person agrees. Without JavaScript the control acts as it is.
 ```
 
 `(values 303 PATH)` to htmx becomes `HX-Location`, and a fourth value
-`(:trigger "name")` sends `HX-Trigger`. `ui:board` (`spec/ui.md` §6.1)
+`(:trigger "name")` sends `HX-Trigger`. The fourth value also holds the
+page header's `:actions` (the filled button, the one next step, stands
+last at the right edge; on a phone the others fold into a «More actions»
+menu when they do not fit beside the title), `:breadcrumbs`, `:meta`
+(live facts under the title, such as a status badge) and `:description`
+(Tun's own pages have none). A long page read as a whole starts with
+`(ui:section-links (:label "På denne siden" :items '((:label "Detaljer"
+:href "#detaljer") ...)))`, links to its sections' ids, rather than
+`ui:tabs`, which show one part at a time. `ui:board` (`spec/ui.md` §6.1)
 is a board of cards in columns whose cards move by a «Flytt til» menu or
 by dragging, posting `card` and `column` to its `:action`. A page under
 «System» in the menu, rather than with the business's work, is defined
@@ -492,12 +500,13 @@ holds `define-application`, with `icon.svg`, `icon-192.png`,
 file is compiled, so the compiled client holds them; the build's sources
 must include the directory, as `tun new`'s flake does for `icons/`. The rest is
 optional: the name under the icon (at most 12 characters; the title by
-default), the browser's bar in light and dark mode, and the start
-screen's colour.
+default), the browser's bar in light and dark mode (by default the
+shell's top bar, `#f6f6f7` and `#111113`, so a phone's status bar and the
+bar are one surface), and the start screen's colour.
 
 ```lisp
 (define-application notes-client ()
-  (:web-app :short-name "Notater" :theme-color "#ffffff" :dark-theme-color "#0a0a0a"
+  (:web-app :short-name "Notater" :theme-color "#f6f6f7" :dark-theme-color "#111113"
             :background-color "#ffffff" :icons "icons/")
   (:default-initargs :name "Notater for Fjord AS"))
 ```

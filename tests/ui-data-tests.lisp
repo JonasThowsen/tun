@@ -379,9 +379,9 @@ aria-current=\"page\", in any order."
     (is (search "min-height: calc(100dvh - var(--spacing) * 14 - 1px)" css))
     (is (search "--tun-fill-max-height: none" css))
     (is (search "min-height: 20rem" css)))
-  (is (search "@media (max-width: 40rem) { flex-basis: auto; }"
-              (tun.ui:component-css (tun.ui:find-component "page-header")))
-      "on a phone a short title and its actions share a row"))
+  (let ((css (tun.ui:component-css (tun.ui:find-component "page-header"))))
+    (is (search "flex: 1 1 0;" css) "the title takes the room the actions leave")
+    (is (search "flex-shrink: 0;" css) "and the actions share its row on a phone too")))
 
 (test dragging-a-card-stops-the-columns-snapping-and-pages-them-by-touch
   (let ((board (tun.ui:find-component "board")))
