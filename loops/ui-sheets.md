@@ -2,7 +2,7 @@
 
 - loop: ui-sheets
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 7af7e5a8b7774e357cbf7604de92315805f19caa
 - item: sak_fbhn0jva0dezp35v
 - estimate: 2h 3h30m 6h
@@ -265,6 +265,12 @@ Mode: reviewed. A core change, a minor version.
 - **Core version 2.26.0**: a new token, a new component, function and
   option, new behaviour; no call shape changes.
 
+## Actuals
+
+```json
+{"loop":"ui-sheets","title":"ui-sheets: a dialog is a bottom sheet on a phone, what opens moves into place, one confirm","repository":"tun","mode":"reviewed","stage":"done","item":"sak_fbhn0jva0dezp35v","tags":["kind:ui","core","module:ui"],"like":["tun/ui-look"],"started":"2026-11-11 21:14","ended":"2026-11-11 23:33","minutes":{"total":139,"waiting_person":0,"waiting_reviewer":6,"working":133,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":120,"likely":210,"worst":360,"at":"brief"},"latest_estimate":{"best":120,"likely":210,"worst":360,"at":"brief"},"within_estimate":true,"ratio":0.66,"verify":{"rounds":4,"failed":1},"changes":{"A":2,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-11 21:14  started, reviewed
@@ -420,3 +426,5 @@ Mode: reviewed. A core change, a minor version.
   - **The accordion** is left alone, as decided at gate A.
   
   **Minor, no change needed:** the open‑state screenshots were taken by the builder's own script, not by `bin/tun loop show`, as the Log says.
+- 2026-11-11 23:33  pushed 95b381a to Tun's main, core 2.26.0
+- 2026-11-11 23:33  finished at tun 95b381a
