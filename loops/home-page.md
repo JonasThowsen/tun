@@ -2,7 +2,7 @@
 
 - loop: home-page
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 6805e42bf050cbfacf92000b8871ca770ca7b71d
 - item: sak_kkjhmzdebpadhtxf
 - tags: kind:ui core module:web
@@ -158,6 +158,12 @@ where `/` and a sign-in lead.
   set the variable, then reported its own test loop there and failed on
   the tracker's log. A test that wants a tracker sets one.
 
+## Actuals
+
+```json
+{"loop":"home-page","title":"A client names the page that / and a sign-in lead to","repository":"tun","mode":"reviewed","stage":"done","item":"sak_kkjhmzdebpadhtxf","tags":["kind:ui","core","module:web"],"like":["client-modules","login-return","customers-update"],"started":"2026-11-11 09:19","ended":"2026-11-11 09:54","minutes":{"total":35,"waiting_person":0,"waiting_reviewer":3,"working":32,"drafted":15,"person_at_gates":null,"agent":null},"estimate":{"best":60,"likely":120,"worst":240,"at":"brief"},"latest_estimate":{"best":60,"likely":120,"worst":240,"at":"brief"},"within_estimate":false,"ratio":0.29,"verify":{"rounds":2,"failed":1},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-11 09:19  started, reviewed
@@ -272,3 +278,5 @@ where `/` and a sign-in lead.
   **Not blocking:**
   - `spec/ui.md`, in §8 «Home» item 4: the line "page the application serves and ACTOR's role opens: a staff page (`define-page`, …" is wider than the rest of the file. It is the same kind of wrapping I noted at gate A.
   - In the showcase's «Welcome» card the «Done» button sits right under the paragraph, with almost no space between them at both widths.
+- 2026-11-11 09:54  pushed fa86575 to Tun's main, core 2.21.0
+- 2026-11-11 09:54  finished at tun fa86575
