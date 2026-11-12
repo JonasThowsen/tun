@@ -2,7 +2,7 @@
 
 - loop: search-reads
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 020a117bab0eda1cecd5e260039b5650ee3adae9
 - item: sak_080kaagbp404981d
 - estimate: 1h30m 2h15m 4h
@@ -275,6 +275,12 @@ own speed test answered with medians of 48–67 ms on this loaded machine
 from round 2's only in `tests/search-tests.lisp`, the spec and this
 record, none of which a client loads.
 
+## Actuals
+
+```json
+{"loop":"search-reads","title":"What a large client's search contributors needed from Tun's search","repository":"tun","mode":"reviewed","stage":"done","item":"sak_080kaagbp404981d","tags":[],"like":["tun/ui-search"],"started":"2026-11-12 13:19","ended":"2026-11-12 14:47","minutes":{"total":88,"waiting_person":0,"waiting_reviewer":4,"working":84,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":135,"worst":240,"at":"brief"},"latest_estimate":{"best":90,"likely":135,"worst":240,"at":"brief"},"within_estimate":false,"ratio":0.65,"verify":{"rounds":3,"failed":1},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 13:19  started, reviewed
@@ -404,3 +410,4 @@ record, none of which a client loads.
   **Note (not blocking)**
   
   - At 390 px the result's line is still cut off at «+47 412…», so only the start of the mark shows. The line was cut off this way before this change too.
+- 2026-11-12 14:47  finished at tun 525ce40f
