@@ -510,9 +510,14 @@ window.htmx?.registerExtension('tun', {
   // A morph (hx-swap innerMorph) makes each element's attributes the
   // answer's: a dialog the person opened, which the server's markup has
   // closed, stays open, such as a list's «Filters» sheet (spec/ui.md 6).
+  // So does what a component's script set up once it ran: its mark
+  // (data-tun-ready), and the parts it took out of the form because it
+  // stands in for them (a choice's find field, data-tun-choice-off).
   htmx_before_morph_attr(element, detail) {
-    return !(element instanceof HTMLDialogElement && detail.attrName === 'open'
-             && detail.newValue === null);
+    if (element instanceof HTMLDialogElement && detail.attrName === 'open'
+        && detail.newValue === null) return false;
+    if (detail.attrName === 'data-tun-ready' && detail.newValue === null) return false;
+    return !(detail.attrName === 'form' && element.hasAttribute('data-tun-choice-off'));
   },
 });
 

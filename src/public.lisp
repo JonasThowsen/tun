@@ -116,7 +116,9 @@ the listed symbols (the same symbol objects, not copies)."
    ;; and the one rule they match by (spec/ui.md 6.4)
    #:search-records #:search-query #:search-query-text #:search-query-kinds
    #:search-query-wants-p #:search-match #:search-result #:make-search-result #:search-entity
-   #:search-among #:search-replacements #:search-phone-forms)
+   #:search-among #:search-replacements #:search-phone-forms
+   ;; choosing one record among many by typing (spec/ui.md 6, choice-input)
+   #:choice-matches #:read-choice)
   ;; Writes, guarded: an extension's own fields and records only
   (#:tun.guarded #:insert #:save)
   ;; The web UI: screens a client can override, and its own pages, built
@@ -124,7 +126,10 @@ the listed symbols (the same symbol objects, not copies)."
   (#:tun.web
    #:render-screen #:section #:json-table #:entity-detail
    #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras #:home-path
-   #:preload-request-p #:decline-preload #:query-values
+   #:preload-request-p #:decline-preload #:query-values #:query-address
+   ;; what a choice's address answers, and its find step without scripts
+   ;; (spec/ui.md 6, choice-input)
+   #:choice-answer #:choice-find
    ;; pages a customer opens without signing in, and the name they see
    ;; there (spec/ui.md 8, «Public pages»)
    #:register-public-page #:public-page-title)

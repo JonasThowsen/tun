@@ -89,7 +89,12 @@ files' count and its status (spec/ui.md 6, section, summary-list, note)."
                                               (date-text (jget card "reported_on"))
                                               "–"))
                                     (list (tr "Estimate")
-                                          (if (integerp estimate) (money-text estimate) "–")))))
+                                          (if (integerp estimate) (money-text estimate) "–"))
+                                    (list (tr "Customer")
+                                          (let ((customer (jget card "customer")))
+                                            (or (and (stringp customer)
+                                                     (customer-name-of customer))
+                                                "–"))))))
       (ui:note () (tr "A change to the card shows on the board at once.")))))
 
 (defun card-page (id &key error (status 200))
@@ -129,28 +134,48 @@ files' count and its status (spec/ui.md 6, section, summary-list, note)."
                                              (jget (jget json "error") "message")))
         (values 303 (format nil "/items/~a" id)))))
 
-(defun report-form (&key values json)
-  "«New item»: a title and screenshots, VALUES the posted form and JSON a
-refusal of it."
-  `(:form (:@ :method "post" :action "/items/new" :enctype "multipart/form-data" :novalidate t)
-          ,(ui:stack (:gap :lg)
-             (when json (error-alert json))
-             (ui:text-input (:label (tr "Title") :name "title"
-                             :value (and values (jget values "title"))
-                             :error (and json (field-message json "title"))))
-             (ui:file-input (:label (tr "Screenshots") :name "files" :optional t
-                             :hint (tr "Paste a screenshot, drag files here or choose them.")
-                             :error (and json (field-message json "screenshots"))))
-             (ui:cluster () (ui:button (:type "submit") (tr "Report the item"))))))
+(defun report-form (&key values json customer-error)
+  "«New item»: a title, the customer it is for and screenshots, VALUES the
+posted form, JSON a refusal of it and CUSTOMER-ERROR the customer's."
+  (let* ((customer (and values (jget values "customer")))
+         (customer (and (stringp customer) (plusp (length customer)) customer))
+         (find (and values (choice-find values "customer"))))
+    `(:form (:@ :method "post" :action "/items/new" :enctype "multipart/form-data" :novalidate t)
+            ,(ui:stack (:gap :lg)
+               (when json (error-alert json))
+               (ui:text-input (:label (tr "Title") :name "title"
+                               :value (and values (jget values "title"))
+                               :error (and json (field-message json "title"))))
+               ;; One of hundreds, found by typing (spec/ui.md 6, choice-input).
+               (ui:choice-input (:label (tr "Customer") :name "customer" :id "card-customer"
+                                 :optional t :source "/cards/customers" :value customer :find find
+                                 :options (customer-options customer find)
+                                 :error (or customer-error
+                                            (and json (field-message json "customer")))))
+               (ui:file-input (:label (tr "Screenshots") :name "files" :optional t
+                               :hint (tr "Paste a screenshot, drag files here or choose them.")
+                               :error (and json (field-message json "screenshots"))))
+               (ui:cluster () (ui:button (:type "submit") (tr "Report the item")))))))
 
 (defun report-card (form)
-  "Report the card FORM describes, with its screenshots, and show it."
-  (multiple-value-bind (json code)
-      (web-call "cards_create" (jobj "title" (jget form "title")
-                                     "screenshots" (or (jget form "files") (jarr '()))))
-    (if code
-        (values 422 (tr "New item") (list (report-form :values form :json json)))
-        (values 303 (format nil "/items/~a" (jget json "id"))))))
+  "Report the card FORM describes, with its customer and its screenshots,
+and show it; a find step for the customer shows the form again with what it
+found, and a customer that is none is refused at its field."
+  (if (choice-find form "customer")
+      (values 200 (tr "New item") (list (report-form :values form)))
+      (multiple-value-bind (customer problem) (read-choice (jget form "customer")
+                                                           #'customer-name-of)
+        (if problem
+            (values 422 (tr "New item")
+                    (list (report-form :values form :customer-error (princ-to-string problem))))
+            (multiple-value-bind (json code)
+                (web-call "cards_create"
+                          (apply #'jobj "title" (jget form "title")
+                                 "screenshots" (or (jget form "files") (jarr '()))
+                                 (and customer (list "customer" customer))))
+              (if code
+                  (values 422 (tr "New item") (list (report-form :values form :json json)))
+                  (values 303 (format nil "/items/~a" (jget json "id")))))))))
 
 (defun search-dialog ()
   "The search the header's «Search» opens, on Ctrl+K too, as a tracker's does."

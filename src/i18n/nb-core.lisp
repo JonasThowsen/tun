@@ -97,6 +97,8 @@
    "sø")
   ("must be a date, such as ~a"
    "må være en dato, som ~a")
+  ("must be one of the choices"
+   "må være et av valgene")
   ("must be a time of day, such as ~a"
    "må være et klokkeslett, som ~a")
   ("From ~a"

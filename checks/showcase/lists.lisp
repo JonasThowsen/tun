@@ -1,7 +1,9 @@
 ;;;; lists.lisp -- /cards, the cards as a list with its toolbar (spec/ui.md 6,
-;;;; list-toolbar, table): a search and a filter of each kind, and a sort by
-;;;; title or estimate, applied on the server from the address; and /days,
-;;;; the cards by the day each was reported on, with a period.
+;;;; list-toolbar, table): a search and a filter of each kind, a customer
+;;;; found by typing among all of them, and a sort by title or estimate,
+;;;; applied on the server from the address; /cards/customers, what the
+;;;; customer's choice asks (choice-input); and /days, the cards by the day
+;;;; each was reported on, with a period.
 
 (in-package #:showcase)
 
@@ -11,13 +13,38 @@
                                  (jobj "entity" "card" "record_id" (jget card "id")))
                        "items" #()))))
 
+(defun customer-rows ()
+  "Every customer a card may be for, by name, as JSON objects."
+  (coerce (jget (web-call "cards_customers" (jobj)) "items" #()) 'list))
+
+(defun customer-name-of (id)
+  "The name of the customer ID, or NIL when there is none."
+  (multiple-value-bind (json code) (web-call "customers_get" (jobj "id" id))
+    (and (null code) (jget json "name"))))
+
+(defun customer-matches (text &optional chosen)
+  "The customers TEXT finds, as a choice's options, without CHOSEN's."
+  (remove chosen (choice-matches text (customer-rows)
+                                 :text (lambda (row) (jget row "name"))
+                                 :identifiers (lambda (row) (list (jget row "email"))))
+          :key #'first :test #'equal))
+
+(defun customer-options (id find)
+  "The options a choice of a customer knows: the chosen customer ID, and
+what FIND, a find step's text, found."
+  (let ((name (and id (customer-name-of id))))
+    (append (when name (list (list id name)))
+            (when find (customer-matches find id)))))
+
 (defun card-matches-p (card query)
   "Whether CARD is in the list the toolbar's address QUERY asks for."
   (let ((text (first (query-values query "q")))
         (statuses (query-values query "status"))
         (estimate (first (query-values query "estimate")))
-        (files (query-values query "files")))
+        (files (query-values query "files"))
+        (customer (first (query-values query "customer"))))
     (and (or (null text) (search (string-downcase text) (string-downcase (jget card "title"))))
+         (or (null customer) (equal (jget card "customer") customer))
          (or (null statuses) (member (jget card "status") statuses :test #'equal))
          (or (null estimate)
              (eq (integerp (jget card "estimate_minor")) (equal estimate "with")))
@@ -31,25 +58,18 @@ direction, \"asc\" or \"desc\"."
     (values (and (member key '("title" "estimate") :test #'equal) key)
             (if (equal direction "desc") "desc" "asc"))))
 
-(defun address-text (text)
-  "TEXT written for an address's query: the characters that mean something
-there as %XX, the rest as they are, which the browser encodes."
-  (with-output-to-string (out)
-    (loop for char across text
-          do (if (find char " %&+#=?/")
-                 (format out "%~2,'0X" (char-code char))
-                 (write-char char out)))))
-
 (defun cards-href (query &key sort direction)
   "The address of /cards with QUERY's search and filters, every key named,
 and the sort SORT in DIRECTION."
-  (format nil "/cards?q=~a~{&status=~a~}&status=&estimate=~a&files=~@[true~]~@[&sort=~a~]~
-~@[&direction=~a~]"
-          (address-text (or (first (query-values query "q")) ""))
-          (query-values query "status")
-          (or (first (query-values query "estimate")) "")
-          (query-values query "files")
-          sort (and sort direction)))
+  (query-address "/cards"
+                 (list (cons "q" (or (first (query-values query "q")) ""))
+                       (cons "status" (query-values query "status"))
+                       (cons "status" "")
+                       (cons "estimate" (or (first (query-values query "estimate")) ""))
+                       (cons "files" (if (query-values query "files") "true" ""))
+                       (cons "customer" (or (first (query-values query "customer")) ""))
+                       (cons "sort" sort)
+                       (cons "direction" (and sort direction)))))
 
 (defun sorted-cards (cards query)
   "CARDS in the order QUERY's sort asks for, else as they come."
@@ -65,24 +85,41 @@ and the sort SORT in DIRECTION."
                         (t cards))))
       (if (and key (equal direction "desc")) (reverse sorted) sorted))))
 
-(defun cards-toolbar (query)
-  "The toolbar of /cards, as QUERY has it, keeping its sort."
+(defun cards-toolbar (query cards)
+  "The toolbar of /cards, as QUERY has it, keeping its sort; CARDS, every
+card, have a customer filter when any of them is for a customer, or the
+address names one."
   (ui:list-toolbar (:action "/cards" :id "cards-toolbar"
                     :keep (multiple-value-bind (key direction) (card-sort query)
                             (when key (list (list "sort" key) (list "direction" direction))))
                     :search (list :name "q" :label (tr "Search the cards")
                                   :value (first (query-values query "q")))
-                    :filters (list (list :name "status" :label (tr "Status") :kind :several
-                                         :choices (mapcar (lambda (key)
-                                                            (list key (column-title key)))
-                                                          +columns+)
-                                         :value (query-values query "status"))
-                                   (list :name "estimate" :label (tr "Estimate") :kind :one
-                                         :choices (list (list "with" (tr "With an estimate"))
-                                                        (list "without" (tr "Without an estimate")))
-                                         :value (first (query-values query "estimate")))
-                                   (list :name "files" :label (tr "With files") :kind :toggle
-                                         :value (and (query-values query "files") t))))))
+                    :filters (remove
+                              nil
+                              (list (list :name "status" :label (tr "Status") :kind :several
+                                          :choices (mapcar (lambda (key)
+                                                             (list key (column-title key)))
+                                                           +columns+)
+                                          :value (query-values query "status"))
+                                    (list :name "estimate" :label (tr "Estimate") :kind :one
+                                          :choices (list (list "with" (tr "With an estimate"))
+                                                         (list "without"
+                                                               (tr "Without an estimate")))
+                                          :value (first (query-values query "estimate")))
+                                    (list :name "files" :label (tr "With files") :kind :toggle
+                                          :value (and (query-values query "files") t))
+                                    (let ((id (first (query-values query "customer")))
+                                          (find (first (query-values query "customer-find"))))
+                                      ;; One of hundreds, found by typing (spec/ui.md 6,
+                                      ;; list-toolbar, «A record to choose»).
+                                      (when (or id (some (lambda (card)
+                                                           (stringp (jget card "customer")))
+                                                         cards))
+                                        (list :name "customer" :label (tr "Customer")
+                                              :kind :choice :all (tr "Every customer")
+                                              :source "/cards/customers"
+                                              :value id :find find
+                                              :choices (customer-options id find)))))))))
 
 (defun cards-table (cards query)
   "The table of CARDS, sorted as QUERY says, its headers' links keeping the
@@ -107,16 +144,24 @@ toolbar's filters."
 (define-page cards-list-page ("cards" :title "Cards" :icon :funnel :policy :employee)
     (method path form query)
   (declare (ignore form))
-  (if (or path (eq method :post))
-      (values 404 (tr "Cards") (list (ui:alert (:variant :warning :title (tr "Page not found")))))
-      (let ((cards (remove-if-not (lambda (card) (card-matches-p card query))
-                                  (coerce (jget (web-call "cards_list" (jobj)) "items") 'list))))
-        (values 200 (tr "Cards")
-                (list (ui:stack (:gap :md)
-                        (cards-toolbar query)
-                        (if cards
-                            (cards-table (sorted-cards cards query) query)
-                            (ui:empty-state (:icon :search :title (tr "No card matches"))))))))))
+  (cond
+    ((and (equal path '("customers")) (eq method :get))
+     ;; What a customer's choice asks as one types (spec/ui.md 6,
+     ;; «Answering a choice»), by the search's rule.
+     (choice-answer query (customer-rows)
+                    :text (lambda (row) (jget row "name"))
+                    :identifiers (lambda (row) (list (jget row "email")))))
+    ((or path (eq method :post))
+     (values 404 (tr "Cards") (list (ui:alert (:variant :warning :title (tr "Page not found"))))))
+    (t
+     (let* ((all (coerce (jget (web-call "cards_list" (jobj)) "items") 'list))
+            (cards (remove-if-not (lambda (card) (card-matches-p card query)) all)))
+       (values 200 (tr "Cards")
+               (list (ui:stack (:gap :md)
+                       (cards-toolbar query all)
+                       (if cards
+                           (cards-table (sorted-cards cards query) query)
+                           (ui:empty-state (:icon :search :title (tr "No card matches")))))))))))
 
 ;;; /days: the cards by the day they were reported on, a period among the
 ;;; toolbar's filters (spec/ui.md 6, list-toolbar, «A period»).

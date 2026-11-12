@@ -30,7 +30,10 @@ the whole application, its rule, `search-results`, `search-dialog` and
 the dialog's `:size :large` (§6, §6.4, §8, §9), 2026-11-12, core 2.31.0;
 a summary list's label column, a section's `:meta`, `note`, the marks
 of a result found by its second line, and the specimen's theme switch
-(§6, §6.4, §7, §8), 2026-11-12, core 2.32.0.
+(§6, §6.4, §7, §8), 2026-11-12, core 2.32.0; `choice-input`,
+`choice-options`, a list's `:choice` filter, answering and reading a
+choice, `query-address`, and the specimen's options (§6, §7, §8, §9),
+2026-11-12, core 2.34.0.
 How every Tun page looks and behaves: the tokens, the components that
 are built from them, the specimen that shows them, and the rules a
 component follows. The
@@ -554,7 +557,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Group (file in `src/web/ui/`) | Components |
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
-| Forms (`forms`, `fields`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input`, `date-input`, `time-input`, `money-input` |
+| Forms (`forms`, `fields`, `choice`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `choice-input`, `choice-options`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input`, `date-input`, `time-input`, `money-input` |
 | Data (`data`, `toolbar`, `board`, `files`, `charts`, `markdown`, `graph`, `search`) | `table`, `list-toolbar`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph`, `search-results`, `search-dialog` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
@@ -583,7 +586,149 @@ exactly one option, and enabled again as soon as it does; the server
 still checks the value. `:button`, such as the form's submit button,
 stands at the end of the field's row. Without the script the field is a text input
 with the browser's own list of the options (`<datalist>`), and nothing
-is disabled.
+is disabled. To choose a record and send its id, the form's field is
+`choice-input` (below); `combobox` stays the text field whose answer is
+the text.
+
+`choice-input` chooses one record among many by typing and posts its
+value, an id, under NAME, showing the chosen record's text:
+
+```lisp
+(choice-input (:label "Customer" :name "customer_id" :value "cus_12"
+               :options '(("cus_12" "Kari Nordmann") ("cus_31" "Bjørn Åsen"))
+               :source "/orders/customers"))
+```
+
+- **The options.** OPTIONS are `(VALUE TEXT)` pairs, as `select` takes
+  them. Without SOURCE they are every choice and come with the page (a
+  few dozen at most); typing narrows them in the browser by the search's
+  rule (§6.4) as far as it applies to texts alone: every word typed,
+  folded, a part of the option's text, in any order, kept in the order
+  given. With SOURCE, a path on the site, the options are asked for as
+  one types, and OPTIONS hold only those the page knows now: the chosen
+  one, and the matches of a find step (below). VALUE is the chosen value,
+  its text the option's of that value; a VALUE not among OPTIONS is shown
+  as nothing chosen.
+- **The value.** One element posts the value: a `select` named NAME (its
+  id the field's, «Choose» («Velg»), or PLACEHOLDER, its empty first
+  option, then OPTIONS, VALUE selected). Where scripts run the script
+  hides it (`hidden`, so it still posts) and sets it; a chosen asked
+  option the select does not hold is added to it as an `option`. The page
+  checks what is posted with `read-choice` (below), the same way whether
+  scripts ran or not.
+- **The field where scripts run.** A button that reads as a field (the
+  control's look, §2.1, its height, a chevron at the end) shows the
+  chosen option's text, or PLACEHOLDER («Choose») muted. It is named by
+  LABEL and the text (`aria-labelledby`), carries `aria-haspopup="dialog"`,
+  `aria-expanded` and the hint and error (`aria-describedby`,
+  `aria-invalid`); the field's label is given to it (`for`). While an
+  option is chosen a clear button, «×» («Clear LABEL», «Fjern LABEL»
+  to a screen reader), at least 2rem wide (the control's height
+  on a coarse pointer), stands at the end inside the field: it empties
+  the value, shows PLACEHOLDER, fires `change` on the select and gives the
+  focus to the field's button.
+- **The list.** The button opens a popover (`popover="auto"`,
+  `role="dialog"` named LABEL) holding a text field and the options. The
+  text field is `role="combobox"` with `aria-expanded="true"`,
+  `aria-controls` the list, `aria-autocomplete="list"` and
+  `aria-activedescendant` the active option, `autocomplete="off"`; it is
+  no field of the form (`form` names no form), so it never posts. The
+  list is `choice-options`: a `listbox` of `option`s. Opening puts the
+  focus in the text field, empty, the chosen option active and in sight.
+  Typing narrows (or asks, below) and makes the first option active.
+- **The keys.** ↓ and ↑ move the active option (`aria-selected="true"`),
+  going round at the ends; Home and End, while an option is active, go to
+  the first and the last; Enter chooses the active option, else the
+  first, and an Enter typed before the answer for what the field holds
+  has come waits for it and chooses its first; Escape closes the list
+  without choosing. A tap or a click on an option chooses it. Choosing
+  sets the value, shows its text in the button, closes the list, gives the
+  focus to the button and fires `change` on the select. Escape, a press
+  outside and the close button close it, the focus back on the button.
+- **The look of an option.** At least 2.25rem high, 2.75rem on a coarse
+  pointer, the text wrapping. The active option has the ground of an
+  option under a pointer (`--accent`) and the frame of what is chosen, 1px
+  of `--border-strong` inside it, at the weight, size and padding of the
+  others; the chosen option has a check mark at its end; pressed it takes
+  `--pressed` at once; under a pointer `--accent` where a pointer
+  hovers. «Choosing moves nothing» (§2.1).
+- **Asking.** With SOURCE, the text field carries `hx-get=SOURCE`, name
+  `q`, `hx-trigger="input changed delay:150ms, tun-choice-ask"`,
+  `hx-target` the list's box, `hx-swap innerHTML` and
+  `hx-sync="this:replace"`: htmx waits for a pause of 150 ms after the
+  last key and drops a request a newer one replaces. The list asks once
+  when it first opens, for an empty text (`tun-choice-ask`). An answer
+  whose text (`data-tun-choice-query`) is not what the field holds now is
+  not shown; an answer that fails shows «The choices could not be loaded.
+  Try again.» («Valgene kunne ikke hentes. Prøv igjen.») in the list.
+  SOURCE answers under the authority of the person signed in (it is a
+  page of the client's, `define-page`, with its policy), with
+  `choice-answer` (below).
+- **Where it opens.** From 40rem of the window: under the field, the text
+  field first, as wide as the field and at least 18rem, inside the
+  window; when there is less room under the field than its list needs and
+  more above it, above the field, the text field last, next to the field.
+  It rises 0.25rem and fades in over `--duration-fast`, and sinks and
+  fades over `--duration-close`. The list scrolls in its own box, at most
+  18rem high. Below 40rem: a floating sheet, as a filter's popover is
+  (`list-toolbar`), at the bottom of the part of the window a keyboard
+  leaves (`--tun-visual-bottom`, which the script writes while it is open
+  as it does for a dialog), 0.75rem from the window's sides and above the
+  bottom's safe area, every corner `--radius-xl`, over the `--overlay`
+  dim, headed by LABEL and a close button, then the text field, then the
+  list, `min(24rem, the visible window less 2rem)` high from the moment it
+  opens, so the text field never moves as the options change; it rises
+  from below over `--duration`. So at 320, 360 and 390 px the text field
+  and the list stand above the keyboard.
+- **Without JavaScript.** The select is the field. With SOURCE, a text
+  field «Find» («Finn») named `NAME-find` and a «Find» button (`name
+  tun-find`, value NAME, `formnovalidate`) stand under it: the form posts,
+  the page sees the find step with `(choice-find FORM NAME)`, which gives
+  the text typed, and shows the form again, nothing saved, with `:find`
+  that text and OPTIONS the chosen one and the matches (`choice-matches`);
+  the select then holds them, and a line under the find field says
+  «3 found» («3 treff»), or «Nothing matches «TEXT»» («Ingen treff på
+  «TEXT»»). Where
+  scripts run the find field and its button are hidden and taken out of
+  the form (a `form` naming no form), so they never post.
+- `:hint`, `:error`, `:required`, `:optional`, `:disabled`,
+  `:label-hidden` and `:id` are `select`'s.
+
+`choice-options` is the list of a choice: `(choice-options (:query TEXT
+:options OPTIONS :more N :value VALUE))`, a `ul` (`role="listbox"`,
+`data-tun-choice-query` TEXT) of an `li` (`role="option"`,
+`data-value`) per option, the one of VALUE with its check mark; then,
+with N above 0, a line that is no option, «12 more. Type to narrow them.»
+(«12 til. Skriv for å snevre inn.»); with no options, «No match»
+(«Ingen treff»). It is what SOURCE answers.
+
+**Answering a choice.** Three functions in `TUN`:
+
+- `(choice-matches TEXT ROWS &key value text names texts identifiers
+  keep (limit 20))` answers the options of ROWS for TEXT and how many
+  more match: two values, a list of `(VALUE TEXT)` and a count. ROWS are
+  records, JSON objects or property lists in the order the page wants
+  them (by name, say); VALUE and TEXT are functions of a row (VALUE by
+  default its id, as `search-among`'s); NAMES (by default its TEXT),
+  TEXTS and IDENTIFIERS are `search-match`'s (§6.4), so a choice finds
+  what the search finds: «bjorn ase» finds «Bjørn Åsen». A blank TEXT
+  matches every row KEEP keeps, in ROWS' order; any other the rows that
+  match, best score first and in ROWS' order among equals. At most LIMIT
+  are answered; the count is the rest.
+- `(choice-answer QUERY ROWS &rest KEYS)`, for SOURCE's page: QUERY its
+  query parameters, the text its `q`; it answers `choice-matches`' LIMIT
+  as `choice-options`, with the rest as its «more» line: the fragment to
+  htmx, and a page titled «Choices» («Valg») holding the list to any other
+  request. It returns the page's values.
+- `(read-choice TEXT OPTIONS)` checks a posted value: OPTIONS a list of
+  `(VALUE TEXT)` or a function of a value that answers its text or NIL
+  (one that reads the record, for an asked choice). Values, as
+  `read-date-text`'s: the value, NIL and its text when it is one of
+  them; NIL alone for an empty or missing value; NIL and the message
+  «must be one of the choices» («må være et av valgene») for any other.
+- `(choice-find FORM NAME)` is the text typed in NAME's find field when
+  FORM, a posted form, is NAME's find step (its «Find» was pressed), an
+  empty text when nothing was typed, and NIL for any other submission.
 
 `date-input` is a text field a person types a date in, as they write it,
 with a calendar where scripts run: `(date-input (:label "Delivery" :name
@@ -674,7 +819,8 @@ typed in.
 - **The keyboard.** Below 40rem a dialog that holds a text field (an
   `input` that takes text), a `textarea` or a `combobox` is as tall as
   it may be from the moment it opens, so the on-screen keyboard moves
-  only its bottom edge. While a modal dialog is open, the script writes
+  only its bottom edge. While a modal dialog is open (or a popover one
+  types in, a choice's list or a list filter's choices), the script writes
   how far the visible part of the window (the visual viewport) is from
   the window's top and bottom as `--tun-visual-top` and
   `--tun-visual-bottom` on `<html>`, and the dialog stands between
@@ -875,7 +1021,8 @@ shows before it runs. `flash` is a message carried over a redirect.
   several, VALUE a list) or `:toggle` (on or off, VALUE true or false;
   on, it sends `NAME=true`); CHOICES are `(VALUE LABEL)` pairs, as
   `radios` takes them. A period is `(:kind :period :label :names (FROM
-  TO) :value (FROM-VALUE TO-VALUE) [:quick] [:errors])` (below).
+  TO) :value (FROM-VALUE TO-VALUE) [:quick] [:errors])`, and a record
+  found by typing `(:kind :choice ...)` (below).
 - **Every key, every time.** A `:one` filter's first choice is «All»
   («Alle»), or ALL, of empty value; a `:several` filter's boxes and a
   toggle's box come after a hidden field of the same name and empty
@@ -907,7 +1054,8 @@ shows before it runs. `flash` is a message carried over a redirect.
   window; it rises 0.25rem and fades in over `--duration-fast`, and sinks
   and fades over `--duration-close`. Below 40rem of the window's width it
   is a floating sheet instead: at the bottom of the window, 0.75rem from
-  its sides and above the bottom's safe area, every corner
+  its sides and above the bottom's safe area (and above a keyboard while
+  one types in it, `--tun-visual-bottom`, §6 `dialog`), every corner
   `--radius-xl`, headed by LABEL and a close button, over the
   `--overlay` dim, rising from below over `--duration`.
 - **Applied at once.** Where scripts run, a choice, a toggle and a clear
@@ -962,6 +1110,32 @@ shows before it runs. `flash` is a message carried over a redirect.
   sheet it is a row as the others, its quick choices and fields under it.
   Without JavaScript the popover opens, a quick choice is a link, and
   «Apply» submits the dates typed.
+- **A record to choose.** A filter of KIND `:choice`, `(:name :label
+  :kind :choice :choices CHOICES :value VALUE [:source PATH] [:all]
+  [:find TEXT])`, is one of many found by typing, as `choice-input`
+  finds it: CHOICES `(VALUE LABEL)` pairs, every choice without SOURCE,
+  and with it those the page knows (the chosen one, and a find step's
+  matches); SOURCE answers as `choice-input`'s does (`choice-answer`). Its
+  address is a `:one` filter's, `NAME=VALUE`, one key, in every
+  submission, clear and «Reset», so an address written for a `:one`
+  filter of that key reads the same; `:one` stays for a short list. Its
+  button says LABEL, or in use «LABEL: TEXT», TEXT the chosen choice's
+  label, at the weight, size and height of one not in use, with its
+  clear. Its popover (a floating sheet on a phone, above the keyboard as
+  `choice-input`'s) holds the text field and `choice-options`, as
+  `choice-input`'s list does, with its keys and its asking; the value is
+  a `select` named NAME, «All» (ALL) its empty first option, hidden where
+  scripts run. A choice sets it and submits at once, closing the popover
+  with the focus on its button, as a `:one` filter's. In the «Filters»
+  sheet it is a row as the others: its LABEL, value and clear, and under
+  them the text field and the list in place, the list scrolling in its
+  own box of at most 15rem; no popover or sheet opens over the sheet, so
+  the sheet's Tab, Escape and focus stay the sheet's (§6 `dialog`); a
+  choice applies at once and the sheet stays open. Without JavaScript the
+  select is in the popover, and with SOURCE a text field «Find»
+  (`NAME-find`): «Apply» sends both, and the page gives `:find` the text
+  (`(first (query-values query "NAME-find"))`) and CHOICES its matches,
+  so the select holds them on the next page.
 
 `flash` is a toast where the browser runs scripts. It stands over the
 page, out of its flow: below 40rem at the bottom, 1rem from the
@@ -1859,6 +2033,10 @@ for the results as one types and a box under it that holds them:
   the browser. It stands in the specimen's top bar right after the
   title, at the start of the row, so a toast (`flash`), which stands at
   the top right from 40rem, never covers it on a wide screen.
+- `/ui/choice-input/options?q=TEXT` answers the specimen's asked
+  choices as `choice-answer` does, from a fixed list of made-up
+  customers, so its asked examples ask a real address; the standalone
+  files cannot ask.
 - `bin/ui-specimen [DIR]` writes the specimen as standalone files (the
   CSS and script inline): `index.html` and `NAME.html` for each
   component.
@@ -2009,7 +2187,13 @@ form of `field`s with an `error-summary`, a confirmation is a
      An operation error the page does not catch is shown as that alert,
      with the code's status. `timestamp-text`, `date-text`,
      `money-text` and `number-text` write a value as the generated pages
-     do (`i18n.md` §6.2).
+     do (`i18n.md` §6.2). `(query-address PATH PAIRS)` writes an
+     address: PATH and PAIRS, `(KEY . VALUE)` conses, as its query, each
+     key and value percent-encoded as UTF-8 (as Tun writes its own
+     links); a VALUE that is a list gives the key once for each of its
+     values, NIL leaves the pair out and an empty text keeps it, as a
+     cleared filter is named; after `?`, or `&` when PATH has a query
+     already, and PATH alone without pairs.
   5. Evaluating the definition again, in a running server too, replaces
      the page; another definition with the same prefix is refused, as
      two modules' pages are.
@@ -2155,8 +2339,16 @@ form of `field`s with an `error-summary`, a confirmation is a
 - Charts other than one line over time: several series in one chart
   (comparing shares, a moving average), bars, areas, stacks, scatter, and
   a chart's own time range control.
-- A combobox whose values differ from the texts it shows, or that asks
-  the server for its options. A date and a time in one field, a time
+- A generated form's reference (an id of another record) and a generated
+  list's id input as a `choice-input` and a `:choice` filter: they stay a
+  `select` of the first 100 records and no filter (§8). Asking a list
+  operation for a choice's options finds by that operation's own `query`
+  rule (`customers_list` by a part of the name or the email), not the
+  search's, so «bjorn ase» would not find «Bjørn Åsen» there.
+- Near matches in a choice for a word typed wrong (as in the search),
+  and muted text inside a table cell: a cell holds its value in the text
+  colour (a quieter fact is a column of its own, or `:narrow nil`).
+- A date and a time in one field, a time
   picker, week numbers in the calendar, and a choice of the week's first
   day or of month-first dates.
 - htmx's own extensions (server-sent events, the head merge,
@@ -2572,5 +2764,38 @@ form of `field`s with an `error-summary`, a confirmation is a
   marking «ex» in each customer's line; at 1280 px the specimen's toast
   and theme switch not overlapping, and «Dark» pressed while the toast
   shows turning the page dark; no page scrolling sideways.
+- `tests/ui-choice-tests.lisp` (§6 `choice-input`, `choice-options`,
+  «Answering a choice», `list-toolbar`'s `:choice`, §7, §8
+  `query-address`): the field's select, button, clear, popover, text
+  field and list, their ids, roles and ARIA, the chosen text and the
+  placeholder, in English and Norwegian; SOURCE's attributes and the find
+  field; the list's options, check mark, «more» line and «No match»;
+  `choice-matches` for a blank text in the rows' order, by the rule
+  («bjorn ase», a word's start, an identifier), best first and the rows'
+  order among equals, LIMIT and the count, KEEP; `read-choice` over
+  pairs and over a function, empty, unknown, and its message in
+  Norwegian; `choice-find`; `choice-answer`'s fragment and page; the
+  `:choice` filter's button, summary, select, clear, «Reset» and its
+  address equal to a `:one` filter's, its row in the sheet; the CSS of the
+  active option without a change of weight, size, padding or edge, the
+  sheet below 40rem above `--tun-visual-bottom`; the specimen's address;
+  `query-address`' encoding, lists, NIL and empty values and an address
+  with a query.
+- `checks/showcase/checks/ui-choice.py`, on the showcase's `/cards` (with
+  hundreds of customers), its «New item» form and the specimen: typing
+  narrowing the list only after the pause, one request per pause; a slow
+  answer overtaken by a newer one never shown; the arrows, Home and End,
+  Enter choosing the active option, Escape closing with the focus back;
+  the posted form carrying the id; the clear emptying it; the active
+  option at the others' weight and size; at 1280 px the list under the
+  field, and above it, the text field last, when there is no room under
+  it, its motion's properties and durations; at 390, 360 and 320 px the
+  floating sheet inside the window and its text field and list above a
+  simulated keyboard; the `:choice` filter changing the address to the id
+  and the list, an address written for a `:one` filter read the same, its
+  row in the «Filters» sheet choosing with the sheet open and the focus
+  in it; without JavaScript the select posting an id, the find step
+  listing the matches and the toolbar's «Apply»; no page scrolling
+  sideways.
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

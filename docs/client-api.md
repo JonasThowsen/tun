@@ -465,6 +465,43 @@ text on to an operation (`spec/ui.md` §6, `spec/i18n.md` §5.4, §6.2).
 (ui:money-input (:label "Pris" :name "pris" :value (or (jget form "pris") price-minor)))
 ```
 
+To choose one record among many by typing, a form's field is
+`ui:choice-input`, which posts the record's id under its name, and a
+list's filter is a filter of the kind `:choice`, whose address is that of
+a `:one` filter of the same key (`spec/ui.md` §6). With a few dozen
+options they come with the page as `:options` (or `:choices`); with many
+the field asks `:source`, a page of yours that answers with
+`choice-answer`, under the person's own authority, matching by the
+search's rule:
+
+```lisp
+(define-page customer-choices ("kundevalg" :navigation nil) (method path form query)
+  (declare (ignore method path form))
+  (choice-answer query (select 'customer :order-by '(("name" :asc)))
+                 :text #'customer-name :identifiers (lambda (c) (list (customer-email c)))))
+
+(ui:choice-input (:label "Kunde" :name "customer_id" :source "/kundevalg"
+                  :value customer-id
+                  :options (append (when customer-id (list (list customer-id customer-name)))
+                                   matches)
+                  :find (choice-find form "customer_id")))
+```
+
+Read what is posted with `(read-choice TEXT OPTIONS)`, OPTIONS the pairs
+or a function from an id to its name (NIL when there is none): as
+`read-date-text`, the id (and its name as a third value), NIL for nothing
+chosen, or NIL and the message for the field.
+Without JavaScript an asked field is a «Finn» step: `(choice-find form
+NAME)` gives the text typed when its «Finn» was pressed; show the form
+again with `:find` that text and the matches of `(choice-matches TEXT
+ROWS ...)` among `:options`, saving nothing. A toolbar's `:choice` filter
+does the same from `(first (query-values query "NAME-find"))`.
+
+`(query-address PATH PAIRS)` writes a link with a query: `(query-address
+"/orders" '(("q" . "kari nord") ("status" . "") ("tag" "a" "b")))` is
+`/orders?q=kari%20nord&status=&tag=a&tag=b`; a NIL value leaves its pair
+out.
+
 ### The home page
 
 `/` and a sign-in that was not started from a page lead to the first

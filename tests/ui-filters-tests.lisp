@@ -166,10 +166,10 @@
       (is (duration-p "var(--duration-fast)") "it opens over --duration-fast")
       (is (duration-p "var(--duration)" "max-width: 39.99rem") "a floating sheet on a phone"))
     (is (find-if (lambda (d) (and (string= "inset" (declaration-property d))
-                                  (string= "auto calc(var(--spacing) * 3) calc(var(--spacing) * 3 + env(safe-area-inset-bottom))"
+                                  (string= "auto calc(var(--spacing) * 3) calc(var(--spacing) * 3 + max(var(--tun-visual-bottom, 0px), env(safe-area-inset-bottom)))"
                                            (declaration-value d))))
                  declarations)
-        "0.75rem from the window's sides and above the safe area")))
+        "0.75rem from the window's sides and above the safe area, and a keyboard")))
 
 (test the-toolbar-folds-below-40rem-of-its-own-width-and-only-with-scripts
   (let ((css (tun.ui:component-css (tun.ui:find-component "list-toolbar"))))

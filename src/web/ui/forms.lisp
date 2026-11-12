@@ -377,7 +377,8 @@ when users fill in their own details.")
 customer or a product by its name. OPTIONS is a list of texts; the value sent is the text in
 the field. With STRICT the form's submit buttons wait until the field holds one of the
 options; the page must still check the value. BUTTON, such as the form's submit button,
-stands at the end of the field's row. For a few answers, a select or radios are better.")
+stands at the end of the field's row. For a few answers, a select or radios are better; to
+choose a record and send its id, a choice-input.")
   (:source "WAI-ARIA combobox pattern (list autocomplete); Basecoat combobox (Vega), its look")
   (:css "
 .tun-combobox {

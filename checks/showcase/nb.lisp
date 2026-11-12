@@ -29,6 +29,13 @@
    "Skjermbilder eller andre filer som viser saken: PNG, JPEG, WebP, GIF eller PDF.")
   ("Move card" "Flytt kort")
   ("Before the card" "Før kortet")
+  ("The customer the work is for." "Kunden arbeidet er for.")
+  ("Customers to choose" "Kunder å velge")
+  ("Every customer a card may be for, by name: what a card's customer field and
+the cards' customer filter find among (spec/ui.md 6, choice-input)."
+   "Alle kunder et kort kan være for, etter navn: det et korts kundefelt og kortenes
+kundefilter finner blant (spec/ui.md 6, choice-input).")
+  ("Every customer" "Alle kunder")
   ("The card it goes directly above; without one, it goes last."
    "Kortet det skal stå rett over; uten står det nederst."))
 

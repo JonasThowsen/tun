@@ -21,7 +21,7 @@
            #:staff-page-extras #:home-path #:public-page-title #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
            #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
-           #:page-texts #:query-values))
+           #:page-texts #:query-values #:query-address #:choice-answer #:choice-find))
 
 (in-package #:tun.web)
 
@@ -181,12 +181,29 @@ a key given more than once."
 
 (defun pairs-query (pairs)
   "PAIRS, (KEY . VALUE) conses, as a query string: a list of values gives
-the key once for each."
+the key once for each, a NIL value leaves its pair out."
   (format nil "~{~a~^&~}"
           (loop for (key . value) in pairs
                 append (loop for each in (if (listp value) value (list value))
-                             collect (format nil "~a=~a" (hunchentoot:url-encode key :utf-8)
-                                             (hunchentoot:url-encode each :utf-8))))))
+                             collect (format nil "~a=~a"
+                                             (hunchentoot:url-encode (princ-to-string key) :utf-8)
+                                             (hunchentoot:url-encode (princ-to-string each)
+                                                                     :utf-8))))))
+
+(defun query-address (path pairs)
+  "PATH with PAIRS, (KEY . VALUE) conses, as its query, each key and value
+percent-encoded as UTF-8, as Tun writes its own links (spec/ui.md 8): a
+VALUE that is a list gives the key once for each of its values, NIL leaves
+the pair out and an empty text keeps it, as a cleared filter is named.  The
+pairs follow ?, or & when PATH has a query already; without pairs, PATH
+alone."
+  (check-type path string)
+  (let ((query (pairs-query pairs)))
+    (cond ((zerop (length query)) path)
+          ((find #\? path) (format nil "~a~:[&~;~]~a" path
+                                   (member (char path (1- (length path))) '(#\? #\&))
+                                   query))
+          (t (format nil "~a?~a" path query)))))
 
 (defun remember-query (page prefix query)
   "Keep what QUERY gives PAGE's remembered keys for the person signed in, when
@@ -1992,9 +2009,60 @@ uncached, so a page rendered before a deploy still gets styles."
                                                          "no-store"))
       (sb-ext:string-to-octets content :external-format :utf-8))))
 
+(defun choice-answer (query rows &rest keys &key (limit 20) &allow-other-keys)
+  "What a choice's SOURCE answers (spec/ui.md 6, «Answering a choice»): the
+options of ROWS for QUERY's q, a page's query parameters, as CHOICE-MATCHES
+finds them with KEYS, at most LIMIT and the rest counted, as
+CHOICE-OPTIONS.  Returns a page's values: the fragment to an htmx request
+for part of a page, a page «Choices» holding the list to any other."
+  (let ((text (or (first (query-values query "q")) "")))
+    (multiple-value-bind (options more)
+        (apply #'choice-matches text rows :limit limit keys)
+      (let ((list (ui:choice-options (:query text :options options :more more
+                                       :label (tr "Choices")))))
+        (if (htmx-request-p)
+            (values 200 :fragment (list list))
+            (values 200 (tr "Choices") (list list)))))))
+
+(defun choice-find (form name)
+  "The text typed in the choice NAME's find field when FORM, a posted form
+as a JSON object, is its find step (its «Find» was pressed): an empty text
+when nothing was typed; NIL for any other submission (spec/ui.md 6,
+choice-input)."
+  (when (equal (jget form "tun-find") name)
+    (let ((text (jget form (format nil "~a-find" name))))
+      (if (stringp text) (string-trim " " text) ""))))
+
+(defparameter +specimen-customers+
+  '("Nordvik Bakery Ltd" "Hansen Plumbing" "Fjord Events" "Berg Catering" "Bjørn Åsen"
+    "Kari Hansen" "Café Øst" "Tromsø Bicycle Workshop" "The Corner Bakery" "Fjord Coffee Ltd"
+    "Ola Nordmann" "Åsgard Stage Hire" "Lillehammer Lights" "Bergen Sound and Light"
+    "Hamar Tent Rental" "Molde Music Festival" "Oslo Party Supplies" "Stavanger Staging"
+    "Drammen Drinks" "Kristiansand Catering" "Bodø Bouncy Castles" "Ålesund Events"
+    "Narvik Northern Lights Tours" "Fredrikstad Fireworks")
+  "The made-up customers the specimen's asked choices find (spec/ui.md 7).")
+
+(defun specimen-choices (query)
+  "/ui/choice-input/options: the specimen's made-up customers for QUERY's q,
+answered as CHOICE-ANSWER answers, without a page around them."
+  (multiple-value-bind (options more)
+      (choice-matches (or (first (query-values query "q")) "")
+                      (loop for name in +specimen-customers+
+                            for n from 1
+                            collect (list :id (format nil "cus_~d" n) :name name))
+                      :text (lambda (row) (getf row :name)) :limit 8)
+    (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
+    (sb-ext:string-to-octets
+     (render-html (ui:choice-options (:query (or (first (query-values query "q")) "")
+                                      :options options :more more)))
+     :external-format :utf-8)))
+
 (defun serve-specimen (parts)
   "/ui and /ui/NAME: the design system's specimen (spec/ui.md 7), or NIL."
   (let ((component (and (second parts) (ui:find-component (second parts)))))
+    (when (equal (rest parts) '("choice-input" "options"))
+      (return-from serve-specimen
+        (specimen-choices (query-object (hunchentoot:get-parameters*)))))
     (when (and (null (cddr parts))
                (or (null (second parts))
                    (and component (not (ui:component-internal-p component)))))

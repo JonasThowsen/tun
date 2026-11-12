@@ -81,3 +81,40 @@ Jonas is an admin, who can set it back to English on «Innstillinger»."
   "Three cards in New."
   (dotimes (i 3)
     (create-card (format nil "Item ~d" (1+ i)))))
+
+(defparameter +first-names+
+  '("Anna" "Erik" "Ingrid" "Lars" "Marit" "Nils" "Ole" "Sigrid" "Tor" "Unni"
+    "Vidar" "Astrid" "Geir" "Hilde" "Jon" "Kristin" "Magnus" "Randi" "Svein" "Turid")
+  "First names the choices scenario's customers are made of; none of them is
+Bjørn, so «bjorn» finds Bjørn Åsen first.")
+
+(defparameter +last-names+
+  '("Berg" "Dahl" "Eide" "Haugen" "Holm" "Johansen" "Lie" "Moe" "Nilsen" "Olsen"
+    "Pedersen" "Rud" "Solberg" "Strand" "Tveit" "Vik" "Wold" "Aas" "Bakke" "Fjeld")
+  "Last names the choices scenario's customers are made of.")
+
+(define-scenario choices (:actors ("employee:anna" "admin:jonas"))
+  "The default scenario's cards and customers, 400 customers more (every
+first name of +FIRST-NAMES+ with every last name of +LAST-NAMES+) and Bjørn
+Åsen, so a choice of a customer asks the server as one types (spec/ui.md 6,
+choice-input); three cards more are for a customer: two for Bjørn Åsen,
+one for Nordvik Bakery Ltd."
+  (board-of-items)
+  (some-customers)
+  (let ((bjorn (tun:jget (call-ok "customers_create" "employee:anna" "name" "Bjørn Åsen"
+                                  "email" "bjorn@asen.example")
+                         "id"))
+        (nordvik (tun:jget (aref (tun:jget (call-ok "customers_list" "employee:anna"
+                                                    "query" "Nordvik")
+                                           "items")
+                                 0)
+                           "id")))
+    (dolist (first +first-names+)
+      (dolist (last +last-names+)
+        (call-ok "customers_create" "employee:anna" "name" (format nil "~a ~a" first last)
+                 "email" (format nil "~(~a.~a~)@example.com" first last))))
+    (loop for (title customer) in (list (list "Lights for the summer party" bjorn)
+                                        (list "Sound for the summer party" bjorn)
+                                        (list "Bread van signage" nordvik))
+          do (call-ok "cards_create" "employee:anna" "title" title
+                      "reported_on" +reported-on+ "customer" customer))))

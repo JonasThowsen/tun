@@ -326,17 +326,20 @@ const hold = () => {
   }
 };
 
-// The keyboard (spec/ui.md 6): while a modal dialog is open, how far the
-// visible part of the window is from its top and its bottom, which a
-// dialog stands between, so a keyboard laid over the page (Safari) or
-// shrinking only what is visible (Chrome on Android) never covers it.
-// Nothing while the page is zoomed in, where the visible part is meant to
-// be smaller, and nothing once no dialog is open.
+// The keyboard (spec/ui.md 6): while a modal dialog is open, or a popover
+// one types in (marked data-tun-keyboard: a choice's list, a list filter's
+// choices), how far the visible part of the window is from its top and its
+// bottom, which a dialog and such a popover stand between, so a keyboard
+// laid over the page (Safari) or shrinking only what is visible (Chrome on
+// Android) never covers it.  Nothing while the page is zoomed in, where
+// the visible part is meant to be smaller, and nothing once none is open.
+const typedIn = () => [...document.querySelectorAll('[data-tun-keyboard]')].filter(tunPopoverOpen);
 const fit = () => {
   const root = document.documentElement;
   const viewport = window.visualViewport;
   let inset = null;
-  if (viewport && modals().length > 0 && Math.abs((viewport.scale ?? 1) - 1) <= 0.01) {
+  if (viewport && (modals().length > 0 || typedIn().length > 0)
+      && Math.abs((viewport.scale ?? 1) - 1) <= 0.01) {
     const top = Math.max(0, Math.round(viewport.offsetTop || 0));
     const bottom = Math.max(0, Math.round(root.clientHeight - top - viewport.height));
     if (top > 1 || bottom > 1) inset = { top, bottom };
@@ -346,7 +349,7 @@ const fit = () => {
     root.style.setProperty('--tun-visual-bottom', `${inset.bottom}px`);
     // The field being typed in stays in sight above the keyboard.
     const field = document.activeElement;
-    if (field instanceof Element && field.closest('dialog[open]')
+    if (field instanceof Element && field.closest('dialog[open], [data-tun-keyboard]')
         && field.matches('input, textarea, [contenteditable]'))
       field.scrollIntoView({ block: 'nearest' });
   } else {
@@ -357,8 +360,12 @@ const fit = () => {
 window.visualViewport?.addEventListener('resize', fit);
 window.visualViewport?.addEventListener('scroll', fit);
 document.addEventListener('focusin', (event) => {
-  if (event.target instanceof Element && event.target.closest('dialog[open]')) fit();
+  if (event.target instanceof Element
+      && event.target.closest('dialog[open], [data-tun-keyboard]')) fit();
 });
+document.addEventListener('toggle', (event) => {
+  if (event.target instanceof Element && event.target.matches('[data-tun-keyboard]')) fit();
+}, true);
 
 // A dialog opens and closes by its open attribute, whoever sets it: the
 // browser's invoker commands, showModal from a script, a form's method=dialog.

@@ -658,6 +658,74 @@ record policies decide what the actor finds."
                   :id #'entity-id :score score)))
 
 ;;; ------------------------------------------------------------------
+;;; A choice: one record among many found by typing (spec/ui.md 6,
+;;; choice-input), by the same rule as the search
+
+(defparameter +choice-limit+ 20
+  "The most options a choice shows for what was typed.")
+
+(defun choice-ranked (query rows text-of names texts identifiers)
+  "The ROWS QUERY matches by the rule, the best first and in ROWS' order
+among equals."
+  (with-fold-buffer
+    (let ((scored
+            (loop for row in rows
+                  for score = (search-match query
+                                            :names (if names
+                                                       (funcall names row)
+                                                       (list (funcall text-of row)))
+                                            :texts (and texts (funcall texts row))
+                                            :identifiers (and identifiers
+                                                              (funcall identifiers row)))
+                  when score collect (cons score row))))
+      (mapcar #'cdr (stable-sort scored #'> :key #'car)))))
+
+(defun choice-matches (text rows &key value ((:text text-of)) names texts identifiers keep
+                                      (limit +choice-limit+))
+  "The options of ROWS for TEXT, what was typed into a choice, and how many
+more match: two values, a list of (VALUE TEXT) and a count (spec/ui.md 6,
+«Answering a choice»).  ROWS are records, JSON objects or property lists in
+the order the page wants them.  VALUE and :TEXT are functions of a row,
+VALUE by default its id (ROW-ID); NAMES (by default its :TEXT), TEXTS and
+IDENTIFIERS are SEARCH-MATCH's, so a choice finds what the search finds.
+KEEP, a function of a row, says which are offered.  A blank TEXT matches
+every kept row, in ROWS' order; any other the rows that match, the best
+score first and in ROWS' order among equals.  At most LIMIT are answered."
+  (unless text-of
+    (error "choice-matches needs :text, a function from a row to its text"))
+  (check-type limit (integer 1))
+  (let* ((query (make-search-query (or text "")))
+         (kept (if keep (remove-if-not keep rows) rows))
+         (matched (if (and (null (search-query-words query))
+                           (zerop (length (search-query-identifier query))))
+                      kept
+                      (choice-ranked query kept text-of names texts identifiers))))
+    (values (loop for row in matched
+                  repeat limit
+                  collect (list (princ-to-string (if value (funcall value row) (row-id row)))
+                                (princ-to-string (funcall text-of row))))
+            (max 0 (- (length matched) limit)))))
+
+(defun read-choice (text options)
+  "TEXT, the value a choice posted, checked against OPTIONS: a list of (VALUE
+TEXT) pairs, or a function of a value that answers its text, or NIL when it
+is none (spec/ui.md 6, «Answering a choice»).  Values, as the other readers
+of what is posted: the value, NIL and its text when it is one of them; NIL
+alone for an empty or missing value; NIL and a message for the field for
+any other."
+  (let ((value (and text (string-trim '(#\Space #\Tab) (princ-to-string text)))))
+    (if (or (null value) (zerop (length value)))
+        nil
+        (let ((found (if (functionp options)
+                         (funcall options value)
+                         (second (find value options
+                                       :key (lambda (option) (princ-to-string (first option)))
+                                       :test #'string=)))))
+          (if found
+              (values value nil (princ-to-string found))
+              (values nil (deferred-tr "must be one of the choices")))))))
+
+;;; ------------------------------------------------------------------
 ;;; The seam
 
 (defgeneric search-records (application query actor)

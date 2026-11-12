@@ -263,4 +263,17 @@
   ("No results for «~a»"
    "Ingen treff på «~a»")
   ("The search failed. Try again."
-   "Søket feilet. Prøv igjen."))
+   "Søket feilet. Prøv igjen.")
+  ;; A choice
+  ("~a more. Type to narrow them."
+   "~a til. Skriv for å snevre inn.")
+  ("The choices could not be loaded. Try again."
+   "Valgene kunne ikke hentes. Prøv igjen.")
+  ("Find"
+   "Finn")
+  ("~d found"
+   "~d treff")
+  ("Nothing matches «~a»"
+   "Ingen treff på «~a»")
+  ("Choices"
+   "Valg"))

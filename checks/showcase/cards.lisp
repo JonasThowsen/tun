@@ -13,6 +13,8 @@
    (reported-on :type date :label "Reported on")
    (estimate-minor :type money :label "Estimate"
                    :description "What the work is expected to cost.")
+   (customer :type (id customer) :label "Customer"
+             :description "The customer the work is for.")
    (place :type (string :max 1000) :input nil :label "Place"
           :description "The rank key the card is sorted by in its column.")))
 
@@ -65,6 +67,15 @@ bottom.")
     (setf (card-place card) (place-before card status before)
           (card-status card) status)
     (save card)))
+
+(define-operation cards-customers ()
+    (:kind :read :policy :employee :title "Customers to choose"
+     :description "Every customer a card may be for, by name: what a card's customer field and
+the cards' customer filter find among (spec/ui.md 6, choice-input).")
+  (jobj "items" (jarr (mapcar (lambda (customer)
+                                (jobj "id" (entity-id customer) "name" (customer-name customer)
+                                      "email" (customer-email customer)))
+                              (sort (select 'customer) #'string-lessp :key #'customer-name)))))
 
 (define-operation cards-list ()
     (:entity card :kind :read :policy :employee :title "Cards"
