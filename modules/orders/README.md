@@ -133,7 +133,9 @@ The application's one search (spec/ui.md §6.4) finds orders, kind
 `order` («Order»): by their customer's name, their delivery address and
 their id, scoring as their customer would less 15, so a customer comes
 before its orders. Each result is titled by the customer's name, its line
-its status and its event date, and it leads to `/orders/ID`.
+its status and its event date, and it leads to `/orders/ID`. It reads
+only each order's customer, delivery address, status and event date, and
+each customer's name, never an order's lines.
 
 `orders_summary` counts all orders: `total`, `not_started`, `active`,
 `awaiting_quote` (`quote_sent` with a quote awaiting a response),

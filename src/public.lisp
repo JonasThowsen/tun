@@ -115,7 +115,8 @@ the listed symbols (the same symbol objects, not copies)."
    ;; the application's one search: what of the client's records it finds,
    ;; and the one rule they match by (spec/ui.md 6.4)
    #:search-records #:search-query #:search-query-text #:search-query-kinds
-   #:search-query-wants-p #:search-match #:search-result #:make-search-result #:search-entity)
+   #:search-query-wants-p #:search-match #:search-result #:make-search-result #:search-entity
+   #:search-among #:search-replacements #:search-phone-forms)
   ;; Writes, guarded: an extension's own fields and records only
   (#:tun.guarded #:insert #:save)
   ;; The web UI: screens a client can override, and its own pages, built

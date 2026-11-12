@@ -386,6 +386,11 @@ input, excluding request_key and confirmation_token."
                             ,@(call-methods after :after))
                           result))))))
 
+(defvar *protocol-method-module* nil
+  "While a method of a TRACED-PROTOCOL generic function runs, the module that
+owns it: \"core\", a module's name or \"client\" (METHOD-MODULE); NIL outside
+one.  The search asks it which contributor is reading (spec/ui.md 6.4).")
+
 (define-method-combination traced-protocol ()
   ((around (:around))
    (before (:before))
@@ -400,19 +405,23 @@ record among its arguments (CALL-WITH-CORE-FIELDS-UNCHANGED)."
   (let ((protocol (json-name-of (closer-mop:generic-function-name generic-function))))
     (labels ((traced (method phase order)
                `(make-method
-                 (with-step (:hook :name ,(format nil "~a:~a" protocol (method-owner-name method))
-                             :source ,(method-source method) :order ,order :detail ,phase)
-                   (call-method ,method))))
+                 (let ((*protocol-method-module* ,(method-module method)))
+                   (with-step (:hook :name ,(format nil "~a:~a" protocol (method-owner-name method))
+                               :source ,(method-source method) :order ,order :detail ,phase)
+                     (call-method ,method)))))
              (chain (methods order)
                ;; The primary chain: CALL-NEXT-METHOD in one method calls the
                ;; next, which is itself traced.
                (when methods
                  `(make-method
-                   (with-step (:hook :name ,(format nil "~a:~a" protocol (method-owner-name (first methods)))
-                               :source ,(method-source (first methods)) :order ,order :detail "primary")
-                     (call-method ,(first methods)
-                                  ,(let ((next (chain (rest methods) (1+ order))))
-                                     (and next (list next)))))))))
+                   (let ((*protocol-method-module* ,(method-module (first methods))))
+                     (with-step (:hook :name ,(format nil "~a:~a" protocol
+                                                      (method-owner-name (first methods)))
+                                 :source ,(method-source (first methods)) :order ,order
+                                 :detail "primary")
+                       (call-method ,(first methods)
+                                    ,(let ((next (chain (rest methods) (1+ order))))
+                                       (and next (list next))))))))))
       (let* ((main `(call-method ,(chain primary 1)))
              (form (if (or before after)
                        `(multiple-value-prog1

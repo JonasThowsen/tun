@@ -269,10 +269,57 @@ CONNECTION for the presence KEY; true when it answered true."
               collect (loop for field across fields
                             collect (cl-postgres:next-field field)))))
 
+(defun utf-8-string (octets)
+  "OCTETS, UTF-8 as Postgres sends a text (valid, since the database's encoding
+is UTF8), as a string."
+  (declare (optimize (speed 3) (safety 1))
+           (type (simple-array (unsigned-byte 8) (*)) octets))
+  (let* ((size (length octets))
+         ;; One character for each byte that does not continue one.
+         (string (make-string (loop for byte across octets
+                                    count (/= (logand byte #xC0) #x80))))
+         (end 0)
+         (at 0))
+    (declare (type fixnum size end at))
+    (flet ((next (offset)
+             (logand (aref octets (+ at offset)) #x3F)))
+      (declare (inline next))
+      (loop while (< at size)
+            do (let ((byte (aref octets at)))
+                 (multiple-value-bind (code length)
+                     (cond ((< byte #x80) (values byte 1))
+                           ((< byte #xE0) (values (logior (ash (logand byte #x1F) 6) (next 1)) 2))
+                           ((< byte #xF0) (values (logior (ash (logand byte #x0F) 12)
+                                                          (ash (next 1) 6) (next 2))
+                                                  3))
+                           (t (values (logior (ash (logand byte #x07) 18) (ash (next 1) 12)
+                                              (ash (next 2) 6) (next 3))
+                                      4)))
+                   (setf (schar string end) (code-char code))
+                   (incf end)
+                   (incf at length)))))
+    string))
+
+(defun read-text-octets (stream size)
+  "A text value of SIZE bytes from STREAM, in Postgres's binary form, which
+for text is its UTF-8: read at once and decoded in one pass."
+  (let ((octets (make-array size :element-type '(unsigned-byte 8))))
+    (read-sequence octets stream)
+    (utf-8-string octets)))
+
+(defparameter *sql-readers*
+  (let ((table (cl-postgres:copy-sql-readtable (cl-postgres:default-sql-readtable))))
+    (cl-postgres:set-sql-reader 25 #'read-text-octets :table table :binary-p t)
+    table)
+  "cl-postgres's readers as Tun reads its columns: its own, but TEXT (oid 25)
+taken whole rather than a byte at a time, which made reading long texts,
+such as every record a search reads, most of a read's time.")
+
 (defun send-statement (sql params reader)
   "SQL's result on this thread's connection, read by READER: prepared when
 there are PARAMS, else as one simple query."
-  (let ((handle (connection-handle *connection*)))
+  (let ((handle (connection-handle *connection*))
+        (cl-postgres:*sql-readtable* *sql-readers*))
     (if params
         (cl-postgres:exec-prepared handle (prepared-name *connection* sql)
                                    (mapcar #'sql-parameter params) reader)
@@ -462,6 +509,12 @@ values once the commit is durable."
   "Stored fields except id (id has its own column)."
   (class-sql-columns (class-sql class)))
 
+(defun partial-column-list (fields)
+  "The columns a read of FIELDS selects: seq, id and theirs, as ROW->ENTITY's are."
+  (join-strings (list* "\"seq\"" "\"id\"" (mapcar (lambda (f) (quote-ident (field-json-name f)))
+                                                  fields))
+                ", "))
+
 (defun row->entity (class row)
   (let ((instance (make-instance class)))
     (setf (entity-id instance) (second row))
@@ -588,8 +641,9 @@ a write the policy refuses leaves nothing behind (spec/store.md 6.5)."
     (format nil "~a ~a" (quote-ident field)
             (ecase direction (:asc "ASC NULLS FIRST") (:desc "DESC NULLS LAST")))))
 
-(defmethod store-select ((store postgres-store) class-name &key where order-by limit offset)
+(defmethod store-select ((store postgres-store) class-name &key where order-by limit offset fields)
   (let* ((class (find-class class-name))
+         (partial (and fields (partial-fields class fields)))
          (params (list '()))
          (where-sql (compile-where class where params))
          (order (mapcar (lambda (spec) (order-term class spec))
@@ -598,9 +652,14 @@ a write the policy refuses leaves nothing behind (spec/store.md 6.5)."
         (record-condition class (1+ (length (car params))))
       (let ((sql (format nil "SELECT ~a FROM ~a AS this WHERE ~a~@[ AND ~a~] ~
                               ORDER BY ~{~a~^, ~}~@[ LIMIT ~d~]~@[ OFFSET ~d~]"
-                         (class-sql-column-list (class-sql class)) (table-name class) where-sql
-                         condition order limit offset)))
-        (mapcar (lambda (row) (row->entity class row))
+                         (if fields
+                             (partial-column-list partial)
+                             (class-sql-column-list (class-sql class)))
+                         (table-name class) where-sql condition order limit offset)))
+        (mapcar (lambda (row)
+                  (if fields
+                      (partial-record class (second row) partial (cddr row))
+                      (row->entity class row)))
                 (apply #'query sql (append (reverse (car params)) values)))))))
 
 (defmethod store-runs-queries-p ((store postgres-store))

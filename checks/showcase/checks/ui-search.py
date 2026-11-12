@@ -197,6 +197,14 @@ def results(t):
     t.check(state(page)["titles"][:1] == ["Bjørn Åsen"], "the start of a phone number finds it")
     meta = page.locator("dialog#tun-search .tun-search-results-meta").first.text_content()
     t.check(meta.startswith("Customer · "), f"its line starts with its kind: {meta}")
+    page.fill(FIELD, "")
+    page.keyboard.type("41234567")
+    wait_shown(page, "41234567")
+    meta_marks = page.evaluate(
+        "() => [...document.querySelectorAll('dialog#tun-search .tun-search-results-meta mark')]"
+        ".map((m) => m.textContent)")
+    t.check(state(page)["titles"][:1] == ["Bjørn Åsen"] and meta_marks[:1] == ["412 34 567"],
+            f"«41234567» finds «+47 412 34 567» by its national number, marked: {meta_marks}")
 
 
 def keys(t):
@@ -395,6 +403,11 @@ def pictures(t):
             page.keyboard.press("ArrowDown")
             page.wait_for_timeout(300)
             page.screenshot(path=str(t.out / f"ui-search-results-{width}-{scheme}.png"))
+            page.fill(FIELD, "")
+            page.keyboard.type("41234567")
+            wait_shown(page, "41234567")
+            page.wait_for_timeout(300)
+            page.screenshot(path=str(t.out / f"ui-search-phone-{width}-{scheme}.png"))
             page.fill(FIELD, "")
             page.keyboard.type("zebra")
             wait_shown(page, "zebra")

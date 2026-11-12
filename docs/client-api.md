@@ -527,6 +527,41 @@ match shows why it was found in the line under it: its `:meta` marked,
 or else what it matched (`search-entity` works it out;
 `make-search-result` takes it as `:matched`).
 
+Reading thousands of records whole is slow when they hold much the
+search does not need (an order's lines): `:fields` makes `search-entity`
+read only the fields its functions use, and a contributor that reads its
+own rows, through a `define-query`, matches them with `search-among`,
+which takes the same keys over rows:
+
+```lisp
+(define-query item-search-rows ()
+    (:returns (:rows (id :type string) (title :type string) (number :type string)))
+  "SELECT id, title, number FROM {item} ORDER BY seq")
+
+(search-among query (item-search-rows)
+              :kind "item" :label (tr "Item") :icon :list-checks
+              :title (lambda (row) (jget row "title"))
+              :identifiers (lambda (row) (list (jget row "number")))
+              :href (lambda (row) (format nil "/items/~a" (jget row "id"))))
+```
+
+A phone number is found by its national number when it is given as
+identifiers through `search-phone-forms`: `:identifiers (lambda (c)
+(list* (contact-email c) (search-phone-forms (contact-phone c))))`.
+
+A module or a client that shows a kind its own way, in place of a
+module's (its own page for a customer, say), says so with
+`search-replacements`, so that module's contributor reads nothing of
+that kind:
+
+```lisp
+(defmethod search-replacements ((app tracker))
+  (append '(("customer" "customers")) (call-next-method)))
+```
+
+Only the named module's results of that kind go; every other
+contributor's, the client's own among them, stay.
+
 A page's own dialog with `:shortcut "Ctrl+K"`, from
 `staff-page-extras` or in its content, still opens on Ctrl K: it comes
 before the search's dialog in the page.

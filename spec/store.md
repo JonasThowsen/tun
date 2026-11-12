@@ -95,6 +95,23 @@ parameter is refused at start.
       before, or in the same transaction as, its first change an older
       major cannot read.
     - The memory store keeps no history and is not affected.
+11. **Some fields.** `(select CLASS :fields FIELDS ...)`, FIELDS a list of
+    the entity's stored fields' JSON names, reads only those (Postgres and
+    SQLite select only their columns, and no other field is decoded): each
+    record it answers holds them and its id, and every other field is
+    unbound, so a function that reads one fails at once, and the record
+    cannot be saved (saving reads every field). It is for reading many
+    records cheaply, as the search does (`ui.md` §6.4); WHERE, ORDER-BY,
+    LIMIT, OFFSET and the record policies apply as without it. An unknown
+    or unstored name is an error, as in WHERE. Under `eval` (`core.md`
+    §8.3), whose record policies the kernel checks on whole records,
+    FIELDS is ignored. Without FIELDS, `select` reads whole records as
+    before. The store port's `store-select` takes the same `:fields`.
+12. **Text in one read.** Postgres sends a TEXT value in its binary form,
+    which is its UTF-8; the adapter reads its bytes at once and decodes
+    them in one pass, rather than a byte at a time as cl-postgres does,
+    so reading many long texts (a search's) costs little more than
+    sending them. The values are the same strings.
 
 ## 3. Two processes on one Postgres database
 
@@ -311,6 +328,9 @@ apart from the read condition; fields only some roles see.
   (through `bin/with-postgres`), including the ledger invariant under
   concurrency, restart durability, additive migration, and two applications
   writing to one Postgres database at once.
+- `tests/search-tests.lisp` covers §2 item 11 on each store: the fields
+  read, the others unbound, `save` failing on a record so read, WHERE and
+  ORDER-BY with it, an unknown field refused.
 - `tests/query-tests.lisp` covers §5 on Postgres: the text rules, both
   kinds of result, parameters and NULL, a write transaction's own rows,
   the start check refusing each kind of problem, and the call refused on

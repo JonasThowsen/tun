@@ -185,8 +185,9 @@ the same records again and again."
         ((and (realp a) (realp b)) (< a b))
         (t (string< (princ-to-string a) (princ-to-string b)))))
 
-(defmethod store-select ((store memory-store) class-name &key where order-by limit offset)
+(defmethod store-select ((store memory-store) class-name &key where order-by limit offset fields)
   (let* ((class (find-class class-name))
+         (partial (and fields (partial-fields class fields)))
          (entries (remove-if-not (lambda (e) (matches-p class (car e) (cdr e) where))
                                  (reverse (table store class-name))))
          (order (append order-by '(("seq" :asc)))))
@@ -202,7 +203,14 @@ the same records again and again."
                                finally (return nil)))))
     (when offset (setf entries (nthcdr offset entries)))
     (when limit (setf entries (subseq entries 0 (min limit (length entries)))))
-    (mapcar (lambda (e) (row->entity class-name (car e) (cdr e))) entries)))
+    (if fields
+        (mapcar (lambda (e)
+                  (let ((row (cdr e)))
+                    (partial-record class (gethash "id" row) partial
+                                    (mapcar (lambda (field) (gethash (field-json-name field) row))
+                                            partial))))
+                entries)
+        (mapcar (lambda (e) (row->entity class-name (car e) (cdr e))) entries))))
 
 ;;; Files' content (spec/files.md 5.1), kept apart from the rows as the
 ;;; Postgres store keeps it in a table of its own.
@@ -255,5 +263,6 @@ the same records again and again."
   (format nil "READ CONTENT ~a ~d ~d" id start length))
 (define-traced-store-call store-delete-content ((store memory-store) id)
   (format nil "DELETE CONTENT ~a" id))
-(define-traced-store-call store-select ((store memory-store) class-name &key where order-by limit offset)
-  (progn where order-by limit offset (format nil "SELECT ~(~a~)" class-name)))
+(define-traced-store-call store-select ((store memory-store) class-name
+                                        &key where order-by limit offset fields)
+  (progn where order-by limit offset (format nil "SELECT ~(~a~)~@[ ~{~a~^, ~}~]" class-name fields)))

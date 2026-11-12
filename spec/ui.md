@@ -1614,6 +1614,27 @@ search answers a person's page, the dialog's results and an agent's
   QUERY)` to skip a kind the caller did not ask for (only the `search`
   tool asks for some kinds; the page and the dialog ask for all).
   `introspect_extensions` lists the seam.
+- **Answering a kind in place of a module.** `(search-replacements
+  APPLICATION)`, a generic function in `TUN` with the `traced-protocol`
+  combination, answers a list of `(KIND MODULE)`, each saying that
+  APPLICATION answers KIND itself and that MODULE's contributor does not:
+  KIND a kind's key, MODULE a module's name as a lowercase string, as
+  `introspect_extensions` shows it (`"customers"`). Tun's own method, the
+  least specific, answers none, so every contributor answers as before. A
+  module specialises it on its mixin and a client on its application
+  class or a feature, each appending to `(call-next-method)`'s, as a
+  module that shows a kind its own way (its own page, its own names)
+  replaces a module it builds on. While MODULE's method of
+  `search-records` runs, `(search-query-wants-p QUERY KIND)` is false, so
+  `search-entity`, `search-among` and every contributor that asks it
+  read nothing of KIND, for every role; a result of KIND that MODULE's
+  method makes all the same is dropped. Nothing else is: MODULE's other
+  kinds, and every other contributor's results of KIND (another module's,
+  the client's), are kept, so a module silences only the one contributor
+  of the one kind it names, and the client, which cannot be named, is
+  never silenced. An entry whose MODULE is not a loaded module is ignored
+  and written to the server's error output. `introspect_extensions`
+  lists the methods, each with its place in the source.
 - **A result** is `(make-search-result :kind KIND :label LABEL :icon
   ICON :title TITLE :meta META :href HREF :score SCORE :id ID)`: KIND a
   short key in English (`"customer"`), LABEL its word in the page's
@@ -1622,7 +1643,19 @@ search answers a person's page, the dialog's results and an agent's
   date), HREF the record's page, SCORE what the rule gave it, ID the
   record's id. `(search-entity QUERY ENTITY ...)` makes a kind's results
   from the records of an entity: it reads them, scores each by the rule
-  and answers the five best.
+  and answers the five best. With `:fields`, a list of the entity's
+  field names, it reads only those fields of each record (`store.md` §2,
+  item 11; the fields' JSON names, `'("name" "email")`), and its
+  functions must read no other. `(search-among QUERY
+  ROWS ...)` does the same for ROWS a contributor has read itself, as
+  records, as the JSON objects a `define-query` of rows answers, or as
+  property lists: it takes `search-entity`'s keys (`:keep`, `:kind`,
+  `:label`, `:icon`, `:title`, `:names`, `:texts`, `:identifiers`,
+  `:meta`, `:href`, `:score`), each a function of a row, and `:id`, the
+  row's id (by default a record's id, a JSON object's `"id"` or a
+  property list's `:id`), takes ROWS in the order read, oldest first,
+  and answers the five best as `search-entity` does, its `matched` too.
+  `search-entity` is `select` and `search-among`.
 - **Only what ACTOR may open.** Tun keeps a result only when its HREF is
   a path on the site whose page ACTOR's role opens, as the home page's
   (§8, «Home»): a staff page (`define-page`: the client's, the kernel's,
@@ -1671,6 +1704,22 @@ matched, an identifier and the name before the rest. In full:
   start from three characters on: the start of a number counts (an
   order's, a phone's), the start of an email does not, so «kari» ranks
   Kari's name above another customer whose email starts so.
+- **Phone numbers.** A contributor gives a phone number as identifiers
+  through `(search-phone-forms TEXT)`, which answers TEXT and, when TEXT
+  is written with its country code, its national number and that number
+  with a leading 0 when it has none: «+47 912 34 567» answers it,
+  «91234567» and «091234567», so «91234567», «912 34 567» and «912 34»
+  find it as an identifier whole or by its start, and «030 1234567»
+  finds «+49 30 1234567». TEXT is written with its country code when it
+  starts with «+» or «00» and holds only digits, spaces and «- . ( ) /»;
+  the code is as E.164 gives it by its first digits (1 and 7 are one
+  digit; 20, 27, 30–34, 36, 39, 40, 41, 43–49, 51–58, 60–66, 81, 82,
+  84, 86, 90–95 and 98 are two; all others three), and a «(0)» after it
+  belongs to the national number. Any other TEXT answers itself alone, so
+  a number stored without its code is found as before; NIL or an empty
+  TEXT answers nothing. The forms are whole identifiers: the rule does
+  not change, and no identifier is found from its middle («34567» finds
+  none of these). The customers module gives its phones so.
 - **The score.** The best of: 100 what was typed is an identifier; 90
   it holds a digit and is the start of one; 80 a name is what was typed; 60 a name starts
   with it; 45 every word starts a word of the names; 25 every word is
@@ -1689,7 +1738,9 @@ matched, an identifier and the name before the rest. In full:
   match in the line under the title: the words are marked the same way
   in each META text, and a META text that is an identifier found whole
   or by its start (an email, a phone number written otherwise, «41234567»
-  for «412 34 567») is marked over the characters it covers. When no
+  for «412 34 567») is marked over the characters it covers, a number
+  with its country code over its national part when that found it
+  («+47 <mark>912 34 567</mark>» for «91234567»). When no
   META text holds a mark, the result carries what it was found by
   (MATCHED), the first of its names, texts and identifiers that holds a
   mark, and the line shows it right after the kind's word, marked:
@@ -1704,10 +1755,22 @@ matched, an identifier and the name before the rest. In full:
 - **What it costs.** `search-entity` reads every record of its entity
   once per search, in the read transaction, and matches in Lisp: on
   Postgres one `SELECT` of the table per kind, without an index, so the
-  cost grows with the records, as `customers_list`'s query does. The
-  dialog asks only from two characters and after a pause of 150 ms, so
-  a person typing asks once per pause. A search of 2000 customers
-  answers within 100 ms on the server, in memory and on Postgres.
+  cost grows with the records, as `customers_list`'s query does;
+  `:fields` keeps it to the columns the kind needs. The rule itself costs
+  little for a record it does not find: `search-match` folds each name
+  and text into one buffer per search, without the index of each
+  character (only the marks of the results shown need those), leaves a
+  text unfolded when none of its characters folds to a word's first,
+  stops folding a record's texts once every word is found, compares an
+  identifier character by character as it folds, and folds the names
+  into texts of their own only for a record every word was found in, the
+  only ones it scores. The dialog asks only from two characters and
+  after a pause of 150 ms, so a person typing asks once per pause. A
+  search of 2000 customers answers within 100 ms on the server, in
+  memory and on Postgres, and so does one of 2000 customers, 2000 orders
+  and 2000 records with long texts, every kind together (its test's
+  limit is 90 ms: under the rule, with room over what was measured on a
+  loaded machine).
 
 **The search page.** `/search?q=TEXT`, a kernel page for `:viewer`s and
 up: a `page-header` «Search», a GET form (`role="search"`) with the
@@ -2460,6 +2523,22 @@ form of `field`s with an `error-summary`, a confirmation is a
   the page, the fragment and the `search` tool answering the same for
   one query; the CSS of the marked row, the mark and the large dialog;
   2000 customers searched within 100 ms, in memory and on Postgres.
+  `search-replacements`: in `TUN`, traced and listed; with a feature
+  answering customers in place of the customers module, no select of a
+  customer and no query of their table for an admin, an employee or a
+  viewer, the feature's customers found and the module's not, and
+  without it one select a search; a replaced module's result made
+  without asking dropped, its other kinds and other contributors' kept,
+  an entry naming no module written out and ignored. `select`'s
+  `:fields` on each store, and `search-entity` with it. `search-among`
+  over records, JSON objects and property lists. A property test of the
+  fast rule against the plain one (2.32.0's code, in the test): folds,
+  scores, marks and results the same over thousands of random records
+  and queries. The phone forms of numbers from four countries and one
+  without a code, found by their national numbers and not from their
+  middle, and the national part marked in a result's line. 2000
+  customers, 2000 orders and 2000 records with long texts searched
+  within the test's limit, in memory and on Postgres.
 - `checks/showcase/checks/ui-search.py` (§6.4), on the showcase, whose
   cards and customers are found: Ctrl K and ⌘ K open the dialog with
   the focus in the field, the caps read «⌘» on a Mac; at 1280 px the

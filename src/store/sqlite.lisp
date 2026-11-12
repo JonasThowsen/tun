@@ -342,6 +342,12 @@ return its values once the batch is durable."
 (defun column-list (class)
   (class-sql-column-list (class-sql class)))
 
+(defun partial-column-list (fields)
+  "The columns a read of FIELDS selects: seq, id and theirs, as ROW->ENTITY's are."
+  (join-strings (list* "\"seq\"" "\"id\"" (mapcar (lambda (f) (quote-ident (field-json-name f)))
+                                                  fields))
+                ", "))
+
 (defun row->entity (class row)
   (let ((instance (make-instance class)))
     (setf (entity-id instance) (second row))
@@ -411,8 +417,9 @@ return its values once the batch is durable."
             (:null (format nil "~a IS NULL" (col (first args))))
             (:not-null (format nil "~a IS NOT NULL" (col (first args)))))))))
 
-(defmethod store-select ((store sqlite-store) class-name &key where order-by limit offset)
+(defmethod store-select ((store sqlite-store) class-name &key where order-by limit offset fields)
   (let* ((class (find-class class-name))
+         (partial (and fields (partial-fields class fields)))
          (params (list '()))
          (where-sql (compile-where class where params))
          (order (append order-by '(("seq" :asc))))
@@ -421,14 +428,18 @@ return its values once the batch is durable."
                           (offset (format nil " LIMIT -1 OFFSET ~d" offset))
                           (t "")))
          (sql (format nil "SELECT ~a FROM ~a WHERE ~a ORDER BY ~{~a~^, ~}~a"
-                      (column-list class) (table-name class) where-sql
+                      (if fields (partial-column-list partial) (column-list class))
+                      (table-name class) where-sql
                       (mapcar (lambda (o)
                                 (where-field class (first o))
                                 (format nil "~a ~a" (quote-ident (first o))
                                         (ecase (second o) (:asc "ASC") (:desc "DESC"))))
                               order)
                       limit-sql)))
-    (mapcar (lambda (row) (row->entity class row))
+    (mapcar (lambda (row)
+              (if fields
+                  (partial-record class (second row) partial (cddr row))
+                  (row->entity class row)))
             (apply #'query sql (reverse (car params))))))
 
 ;;; ------------------------------------------------------------------

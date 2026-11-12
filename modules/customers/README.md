@@ -174,6 +174,10 @@ README §3).
 
 The application's one search (spec/ui.md §6.4) finds customers, kind
 `customer` («Customer»): by name, by email, and by email or phone written
-whole (a phone's start too, from three digits); an erased customer is not
-found. Each result's line is its email and phone, and it leads to
-`/customers/ID`.
+whole (a phone's start too, from three digits), a phone stored with its
+country code by its national number too («91234567» finds «+47 912 34
+567»); an erased customer is not found. Each result's line is its email
+and phone, and it leads to `/customers/ID`. It reads only the name,
+email, phone and erasure of each customer. A module or the client that
+shows customers its own way says so with `search-replacements`
+(`("customer" "customers")`), and this module then reads none.

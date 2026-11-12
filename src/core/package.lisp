@@ -98,7 +98,8 @@
    #:make-search-result #:search-result-kind #:search-result-label #:search-result-icon
    #:search-result-title #:search-result-meta #:search-result-href #:search-result-score
    #:search-result-id #:search-result-matched #:search-excerpt #:search-entity
-   #:search-contributors-p #:search-order
+   #:search-contributors-p #:search-order #:search-among #:search-replacements
+   #:search-phone-forms
    ;; deadlines
    #:*deadline-ms* #:*watchdog-grace-ms* #:deadline-exceeded #:*deadline* #:check-deadline
    #:deadline-remaining-ms #:sleep-with-deadline #:without-deadline-interrupts #:*interruptible* #:with-deadline
@@ -107,7 +108,7 @@
    #:store #:*store* #:*transaction-mode* #:*under-eval* #:*writes-refused* #:*now-function*
    #:store-open #:store-close #:store-migrate #:store-call-in-transaction #:store-insert
    #:store-update #:store-delete #:store-find #:store-select #:store-lock-row #:store-description
-   #:store-claim-presence #:store-present-p #:store-presences
+   #:store-claim-presence #:store-present-p #:store-presences #:partial-fields #:partial-record
    #:+core-major-module+ #:newer-database #:ensure-core-major #:check-core-major
    #:database-unreachable #:database-unreachable-reason
    #:core-major-mark #:running-major #:highest-major

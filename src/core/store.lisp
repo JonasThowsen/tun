@@ -57,13 +57,17 @@ and a JSON array of applied migrations ({id, applied_at, statement})."))
 (defgeneric store-update (store entity))
 (defgeneric store-delete (store class-name id))
 (defgeneric store-find (store class-name id))
-(defgeneric store-select (store class-name &key where order-by limit offset))
+(defgeneric store-select (store class-name &key where order-by limit offset fields)
+  (:documentation "The records of CLASS-NAME WHERE says, in ORDER-BY's order, from OFFSET
+and at most LIMIT.  FIELDS, a list of stored fields' JSON names (PARTIAL-FIELDS
+checks them), reads only those: each record holds them and its id, every
+other field unbound (spec/store.md 2, item 11)."))
 (defmethod store-find :around ((store store) class-name id)
   (declare (ignore store class-name id))
   (let ((record (call-next-method)))
     (and record (or (not *under-eval*) (entity-readable-p record *actor*)) record)))
-(defmethod store-select :around ((store store) class-name &key where order-by limit offset)
-  (declare (ignore store class-name where order-by limit offset))
+(defmethod store-select :around ((store store) class-name &key where order-by limit offset fields)
+  (declare (ignore store class-name where order-by limit offset fields))
   (let ((records (call-next-method)))
     (if *under-eval* (remove-if-not (lambda (record) (entity-readable-p record *actor*)) records) records)))
 (defgeneric store-runs-queries-p (store)
@@ -89,8 +93,8 @@ record policy and STORE cannot apply it (spec/store.md 6.7)."
 (defmethod store-find :before ((store store) class-name id)
   (declare (ignore id))
   (check-record-policy-store store class-name))
-(defmethod store-select :before ((store store) class-name &key where order-by limit offset)
-  (declare (ignore where order-by limit offset))
+(defmethod store-select :before ((store store) class-name &key where order-by limit offset fields)
+  (declare (ignore where order-by limit offset fields))
   (check-record-policy-store store class-name))
 (defmethod store-insert :before ((store store) entity)
   (check-record-policy-store store (class-name (class-of entity))))
@@ -348,10 +352,41 @@ entities get their revision incremented here: every accepted update counts."
   (or (fetch class-name id)
       (record-not-found class-name id)))
 
-(defun select (class-name &key where order-by limit offset)
+;;; Reading some fields (spec/store.md 2, item 11)
+
+(defun partial-fields (class names)
+  "The stored fields of CLASS that NAMES, JSON names, name, without the id
+(every record holds it) and each once; an error for a name that is not a
+stored field of CLASS."
+  (loop for name in (remove-duplicates names :test #'string=)
+        for field = (find-field class name)
+        unless (or (string= name "id") (and field (field-stored-p field)))
+          do (error "Unknown field ~s in a read of ~a" name (entity-json-name class))
+        unless (string= name "id")
+          collect field))
+
+(defun partial-record (class id fields values)
+  "A record of CLASS holding ID and, for each of FIELDS, its stored value in
+VALUES decoded; every other field is unbound, so reading one fails and the
+record cannot be saved."
+  (closer-mop:ensure-finalized class)
+  (let ((record (allocate-instance class)))
+    (setf (entity-id record) id)
+    (loop for field in fields
+          for value in values
+          do (setf (field-value record field) (db->type (field-type field) value)))
+    record))
+
+(defun select (class-name &key where order-by limit offset fields)
+  "The records of CLASS-NAME WHERE says, in ORDER-BY's order (insertion order
+last), from OFFSET and at most LIMIT, in the current transaction.  FIELDS, a
+list of stored fields' JSON names, reads only those, every other field of each
+record unbound (spec/store.md 2, item 11); under eval, which checks record
+policies on whole records, whole records are read."
   (assert-in-transaction)
   (check-deadline)
-  (store-select *store* class-name :where where :order-by order-by :limit limit :offset offset))
+  (store-select *store* class-name :where where :order-by order-by :limit limit :offset offset
+                                   :fields (and (not *under-eval*) fields)))
 
 (defun select-one (class-name &key where order-by)
   (first (select class-name :where where :order-by order-by :limit 1)))

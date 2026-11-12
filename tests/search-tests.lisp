@@ -479,3 +479,598 @@ actor answering results, or NIL for none.")
     (with-test-app () (measure "memory"))
     (when (postgres-available-p)
       (with-test-app (:db (scratch-postgres "search_speed")) (measure "postgres")))))
+
+
+;;; ------------------------------------------------------------------
+;;; The plain rule, as core 2.32.0 had it, which the faster rule must
+;;; answer the same as (search-reads, criterion 4)
+
+(defun plain-words (query)
+  (remove "" (uiop:split-string (search-fold (search-query-text query)) :separator " ")
+          :test #'string=))
+
+(defun plain-identifier-key (text)
+  (remove-if (lambda (c) (find c " +-.#()/")) (search-fold text)))
+
+(defun plain-word-start-p (folded index)
+  (or (zerop index) (not (alphanumericp (char folded (1- index))))))
+
+(defun plain-word-starts-p (word folded)
+  (loop for start = (search word folded) then (search word folded :start2 (1+ start))
+        while start
+        thereis (plain-word-start-p folded start)))
+
+(defun plain-folded-texts (texts)
+  (loop for text in texts
+        when (and (stringp text) (plusp (length text)))
+          collect (search-fold text)))
+
+(defun plain-identifier-score (query identifiers)
+  (let* ((key (plain-identifier-key (search-query-text query)))
+         (number (find-if #'digit-char-p key)))
+    (when (plusp (length key))
+      (loop with best = nil
+            for identifier in identifiers
+            when (and (stringp identifier) (plusp (length identifier)))
+              do (let ((candidate (plain-identifier-key identifier)))
+                   (cond ((string= key candidate) (return 100))
+                         ((and number (>= (length key) 3) (< (length key) (length candidate))
+                               (string= key candidate :end2 (length key)))
+                          (setf best 90))))
+            finally (return best)))))
+
+(defun plain-names-score (query names)
+  (let ((whole (search-fold (search-query-text query)))
+        (words (plain-words query)))
+    (flet ((in-names-p (test)
+             (every (lambda (word) (some (lambda (name) (funcall test word name)) names))
+                    words)))
+      (cond ((member whole names :test #'string=) 80)
+            ((some (lambda (name) (and (<= (length whole) (length name))
+                                       (string= whole name :end2 (length whole))))
+                   names)
+             60)
+            ((in-names-p #'plain-word-starts-p) 45)
+            ((in-names-p (lambda (word name) (search word name))) 25)
+            (t 10)))))
+
+(defun plain-search-match (query &key names texts identifiers)
+  (let* ((names (plain-folded-texts names))
+         (all (append names (plain-folded-texts texts)))
+         (words (plain-words query))
+         (by-words (and words
+                        (every (lambda (word) (some (lambda (text) (search word text)) all))
+                               words)
+                        (plain-names-score query names))))
+    (let ((by-identifier (plain-identifier-score query identifiers)))
+      (if (and by-words by-identifier) (max by-words by-identifier) (or by-identifier by-words)))))
+
+(defun plain-identifier-mark-range (query text)
+  (let ((key (plain-identifier-key (search-query-text query))))
+    (when (plusp (length key))
+      (multiple-value-bind (folded from) (search-fold text)
+        (let ((kept (loop for char across folded
+                          for index from 0
+                          unless (find char " +-.#()/") collect (cons char (aref from index)))))
+          (when (and (<= (length key) (length kept))
+                     (every (lambda (char pair) (char= char (car pair))) key kept)
+                     (or (= (length key) (length kept))
+                         (and (find-if #'digit-char-p key) (>= (length key) 3))))
+            (cons (cdr (first kept)) (1+ (cdr (nth (1- (length key)) kept))))))))))
+
+(defun plain-word-mark-ranges (query text)
+  (multiple-value-bind (folded from) (search-fold text)
+    (let ((ranges '()))
+      (dolist (word (plain-words query))
+        (let ((start (or (loop for at = (search word folded) then (search word folded :start2 (1+ at))
+                               while at
+                               when (plain-word-start-p folded at) return at)
+                         (search word folded))))
+          (when start
+            (let ((end (+ start (length word))))
+              (push (cons (aref from start)
+                          (if (< end (length folded)) (aref from end) (length text)))
+                    ranges)))))
+      (let ((joined '()))
+        (dolist (range (sort ranges #'< :key #'car) (nreverse joined))
+          (if (and joined (<= (car range) (cdr (first joined))))
+              (setf (cdr (first joined)) (max (cdr range) (cdr (first joined))))
+              (push (cons (car range) (cdr range)) joined)))))))
+
+(defun plain-mark-ranges (query text &key identifier)
+  (or (plain-word-mark-ranges query text)
+      (let ((range (and identifier (plain-identifier-mark-range query text))))
+        (and range (list range)))))
+
+(defun plain-search-results (query rows &key names texts identifiers title (less 0))
+  "2.32.0's SEARCH-ENTITY over ROWS: (TITLE SCORE MATCHED) of the five best."
+  (let ((scored '()))
+    (dolist (row rows)
+      (let ((match (plain-search-match query :names (funcall names row) :texts (funcall texts row)
+                                             :identifiers (funcall identifiers row))))
+        (when match (push (cons (- match less) row) scored))))
+    (loop for (points . row) in (stable-sort scored #'> :key #'car)
+          repeat 5
+          collect (list (funcall title row) points
+                        (tun.core::search-matched-text query (funcall title row) '()
+                                             (remove-if-not #'stringp
+                                                            (append (funcall names row)
+                                                                    (funcall texts row)
+                                                                    (funcall identifiers row))))))))
+
+(defparameter +search-random-pieces+
+  #("Nord" "nordvik" "AAsen" "aa" "a" "Bjørn" "kafé" "Kafe" "SO-1042" "1042" "412 34 567" "x"
+    "Gården" "post@nord.example" "#7" "(22)" "  " "ab" "Ha" "rose bush" "ROSE" "Straße" "ß"
+    "Æble" "œuvre" "Łódź" "ﬁne" "Ωmega" "Жук" "ı" "þing" "e" "-" "." "/" "Saab" "aaa"
+    "Cafe" "50%" "90" "7" "Ola" "ola-nordmann" "Øst")
+  "What the random texts and queries of the rule's property test are made of: words
+folded and not, letters beyond Latin, signs, digits and runs of spaces and «a».")
+
+(defun random-piece-text (random &key (most 3))
+  (with-output-to-string (out)
+    (loop repeat (1+ (random most random))
+          for first = t then nil
+          do (unless first
+               (write-string (case (random 6 random)
+                               (0 "  ") (1 (string #\Tab)) (2 (string (code-char #xA0)))
+                               (3 "") (t " "))
+                             out))
+             (write-string (aref +search-random-pieces+
+                                 (random (length +search-random-pieces+) random))
+                           out)
+             (when (zerop (random 8 random))
+               (write-char (code-char #x301) out)))))
+
+(test the-faster-rule-answers-as-the-plain-rule
+  (let ((random (sb-ext:seed-random-state 2330))
+        (compared 0))
+    (dotimes (i 3000)
+      (let* ((names (loop repeat (1+ (random 2 random)) collect (random-piece-text random)))
+             (texts (loop repeat (random 3 random) collect (random-piece-text random)))
+             (identifiers (loop repeat (random 3 random) collect (random-piece-text random :most 2)))
+             (own (append names texts identifiers))
+             (typed (if (zerop (random 3 random))
+                        (random-piece-text random :most 2)
+                        (let ((text (nth (random (length own) random) own)))
+                          (subseq text 0 (min (length text) (+ 2 (random 12 random)))))))
+             (query (q typed)))
+        (dolist (text own)
+          (is (string= (search-fold text) (tun.core::fold-to-string text))
+              "the fold of ~s" text))
+        (is (eql (plain-search-match query :names names :texts texts :identifiers identifiers)
+                 (search-match query :names names :texts texts :identifiers identifiers))
+            "«~a» against ~s ~s ~s" typed names texts identifiers)
+        (unless (some #'tun.core::phone-national-start own)
+          (incf compared)
+          (dolist (text own)
+            (is (equal (plain-mark-ranges query text :identifier t)
+                       (search-mark-ranges query text :identifier t))
+                "the marks of «~a» in ~s" typed text)))))
+    (is (> compared 2700) "most records were compared whole: ~d" compared)))
+
+(test search-among-finds-as-the-plain-rule-in-the-same-order
+  (let ((random (sb-ext:seed-random-state 4106)))
+    (dotimes (i 600)
+      (let* ((rows (loop for n below 12
+                         collect (jobj "id" (format nil "r~d" n)
+                                       "name" (random-piece-text random)
+                                       "text" (random-piece-text random)
+                                       "number" (random-piece-text random :most 1))))
+             (query (q (random-piece-text random :most 2)))
+             (names (lambda (row) (list (jget row "name"))))
+             (texts (lambda (row) (list (jget row "text"))))
+             (identifiers (lambda (row) (list (jget row "number"))))
+             (title (lambda (row) (jget row "name"))))
+        (unless (some (lambda (row) (some #'tun.core::phone-national-start
+                                          (list (jget row "name") (jget row "text")
+                                                (jget row "number"))))
+                      rows)
+          (is (equal (plain-search-results query rows :names names :texts texts
+                                                      :identifiers identifiers :title title :less 3)
+                     (mapcar (lambda (result)
+                               (list (search-result-title result) (search-result-score result)
+                                     (search-result-matched result)))
+                             (search-among query rows :kind "row" :title title :names names
+                                                      :texts texts :identifiers identifiers
+                                                      :href (constantly "/x")
+                                                      :score (lambda (score) (- score 3)))))
+              "«~a»" (search-query-text query)))))))
+
+;;; ------------------------------------------------------------------
+;;; Rows (criterion 3)
+
+(test search-among-takes-records-json-objects-and-property-lists
+  (let ((plists (list (list :id "p1" :name "Kari Nordmann" :number "SO-1042")
+                      (list :id "p2" :name "Ola Nordmann" :number "SO-1043"))))
+    (flet ((found (rows &rest keys)
+             (mapcar (lambda (result)
+                       (list (search-result-title result) (search-result-score result)
+                             (search-result-id result) (search-result-href result)))
+                     (apply #'search-among (q "nordmann") rows :kind "row" :href (constantly "/x")
+                            keys))))
+      (is (equal '(("Ola Nordmann" 45 "p2" "/x") ("Kari Nordmann" 45 "p1" "/x"))
+                 (found plists :title (lambda (row) (getf row :name))))
+          "property lists, the newest first among equals, the id by :id")
+      (is (equal '(("Ola Nordmann" 45 "p2" "/x") ("Kari Nordmann" 45 "p1" "/x"))
+                 (found (mapcar (lambda (row) (jobj "id" (getf row :id) "name" (getf row :name)))
+                                plists)
+                        :title (lambda (row) (jget row "name"))))
+          "JSON objects, the id by \"id\"")
+      (is (equal '(("Kari Nordmann" 45 "K" "/x"))
+                 (found plists :title (lambda (row) (getf row :name))
+                               :keep (lambda (row) (string= "p1" (getf row :id)))
+                               :id (lambda (row) (string-upcase (subseq (getf row :name) 0 1)))))
+          "KEEP, and ID's own function")
+      (is (null (apply #'search-among (q "nordmann" :kinds '("order")) plists
+                       (list :kind "row" :title #'identity :href (constantly "/x"))))
+          "a kind not asked for")
+      (let ((result (first (search-among (q "so-1042") plists
+                                         :kind "row" :title (lambda (row) (getf row :name))
+                                         :identifiers (lambda (row) (list (getf row :number)))
+                                         :href (constantly "/x")))))
+        (is (equal "SO-1042" (search-result-matched result)) "what it was found by")
+        (is (eql 100 (search-result-score result)))))
+    (with-test-app ()
+      (call-ok "customers_create" "employee:anna" "name" "Kari Nordmann" "email" "kari@example.no")
+      (with-application (*app*)
+        (as-actor ("employee:anna")
+          (let ((result (first (search-among (q "kari") (select 'tun.customers:customer)
+                                             :kind "customer" :title #'tun.customers:customer-name
+                                             :href (constantly "/x")))))
+            (is (equal "Kari Nordmann" (search-result-title result)))
+            (is (string-prefix-p "cus" (search-result-id result)) "a record's id")))))))
+
+;;; ------------------------------------------------------------------
+;;; Some fields (criterion 2)
+
+(defun call-on-every-store (name function)
+  "Call FUNCTION in a fresh application on the memory store, SQLite and, when
+the test server is there, Postgres, with the store's name."
+  (with-test-app () (funcall function "memory"))
+  (with-test-app (:db (namestring (scratch-path name))) (funcall function "sqlite"))
+  (when (postgres-available-p)
+    (with-test-app (:db (scratch-postgres name)) (funcall function "postgres"))))
+
+(test select-reads-only-the-fields-it-is-given
+  (call-on-every-store
+   "search_fields"
+   (lambda (store)
+     (call-ok "customers_create" "employee:anna" "name" "Ola Hansen" "email" "ola@example.no"
+              "phone" "+47 412 34 567")
+     (call-ok "customers_create" "employee:anna" "name" "Kari Nordmann" "email" "kari@example.no")
+     (with-application (*app*)
+       (as-actor ("employee:anna")
+         (let ((read (select 'tun.customers:customer :fields '("name" "phone")
+                                                     :order-by '(("name" :asc)))))
+           (is (equal '("Kari Nordmann" "Ola Hansen") (mapcar #'tun.customers:customer-name read))
+               "~a: the fields, in ORDER-BY's order" store)
+           (is (equal '(nil "+47 412 34 567") (mapcar #'tun.customers:customer-phone read))
+               "~a: a field read empty is NIL" store)
+           (is (every (lambda (customer) (string-prefix-p "cus" (entity-id customer))) read)
+               "~a: the id" store)
+           (is (not (slot-boundp (first read) 'tun.customers::email)) "~a: the others unbound"
+               store)
+           (signals unbound-slot (tun.customers:customer-email (first read))))
+         (is (equal '("Ola Hansen")
+                    (mapcar #'tun.customers:customer-name
+                            (select 'tun.customers:customer :fields '("name" "id")
+                                                            :where '(:= "email" "ola@example.no"))))
+             "~a: WHERE on a field not read" store)
+         (signals error (select 'tun.customers:customer :fields '("nope")))
+         (is (= 2 (length (select 'tun.customers:customer :fields '("name"))))))
+       (let ((partial (as-actor ("employee:anna")
+                        (first (select 'tun.customers:customer :fields '("name"))))))
+         (signals error (as-actor ("system" :write) (save partial)))
+         (is (equal "Ola Hansen"
+                    (as-actor ("employee:anna")
+                      (tun.customers:customer-name (fetch 'tun.customers:customer
+                                                          (entity-id partial)))))
+             "~a: nothing was saved" store))))))
+
+;;; ------------------------------------------------------------------
+;;; Answering a kind in place of a module (criterion 1)
+
+(defvar *search-reads* :off
+  "While a list, the reads the store is asked for, newest first: (CLASS-NAME
+MODULE FIELDS) for a select, (SQL MODULE) for a query, MODULE the one whose
+method of a traced protocol runs and FIELDS the fields the select read, NIL
+for whole records.")
+
+(defmethod store-select :around (store class-name &rest keys &key &allow-other-keys)
+  (declare (ignore store))
+  (unless (eq *search-reads* :off)
+    (push (list class-name tun.core::*protocol-method-module* (getf keys :fields))
+          *search-reads*))
+  (call-next-method))
+
+(defmethod store-query :around (store sql parameters)
+  (declare (ignore store parameters))
+  (unless (eq *search-reads* :off)
+    (push (list sql tun.core::*protocol-method-module*) *search-reads*))
+  (call-next-method))
+
+(defvar *search-replacing* '(("customer" "customers"))
+  "What SEARCH-REPLACING-FEATURE's SEARCH-REPLACEMENTS answers.")
+
+(defvar *search-replacing-extra* nil
+  "When true, SEARCH-REPLACING-FEATURE also makes results as if the customers
+module made them without asking.")
+
+(defclass search-replacing-feature () ()
+  (:documentation "A client's feature that finds customers its own way, for
+employees and up, in place of the customers module's."))
+
+(defmethod search-replacements ((app search-replacing-feature))
+  (append *search-replacing* (call-next-method)))
+
+(defmethod search-records ((app search-replacing-feature) query actor)
+  (append (when (actor-permits-p actor :employee)
+            (search-entity query 'tun.customers:customer
+                           :fields '("name") :kind "customer" :label "Customer"
+                           :title (lambda (customer)
+                                    (format nil "Own ~a" (tun.customers:customer-name customer)))
+                           :href (lambda (customer)
+                                   (format nil "/test-search-page/~a" (entity-id customer)))))
+          (when *search-replacing-extra*
+            (let ((tun.core::*protocol-method-module* "customers"))
+              (list (test-result "unasked customer" "/test-search-page/1" :kind "customer")
+                    (test-result "unasked thing" "/test-search-page/2"))))
+          (call-next-method)))
+
+(define-application search-replacing-app (search-replacing-feature))
+
+(defun reads-searching (actor text)
+  "The titles ACTOR's search for TEXT finds, and the reads it made."
+  (let ((*search-reads* '()))
+    (let ((titles (search-as actor text)))
+      (values titles (prog1 *search-reads* (setf *search-reads* :off))))))
+
+(defun customer-reads (reads &optional module)
+  "The reads of READS of the customers, by a select or a query, by MODULE if given."
+  (remove-if-not (lambda (read)
+                   (destructuring-bind (what by &optional fields) read
+                     (declare (ignore fields))
+                     (and (if (stringp what)
+                              (search "customers" what)
+                              (eq what 'tun.customers:customer))
+                          (or (null module) (equal module by)))))
+                 reads))
+
+(defun every-search-store (name function)
+  "Call FUNCTION in SEARCH-REPLACING-APP in memory and, when the test server
+is there, on Postgres."
+  (with-test-app (:class 'search-replacing-app) (funcall function "memory"))
+  (when (postgres-available-p)
+    (with-test-app (:class 'search-replacing-app :db (scratch-postgres name))
+      (funcall function "postgres"))))
+
+(test a-kind-answered-in-place-of-a-module-is-not-read-by-it-for-any-role
+  (every-search-store
+   "search_replaced"
+   (lambda (store)
+     (call-ok "customers_create" "employee:anna" "name" "Kari Nordmann" "email" "kari@example.no")
+     (dolist (actor '("admin:jonas" "employee:anna" "viewer:vera"))
+       (multiple-value-bind (titles reads) (reads-searching actor "kari")
+         (is (null (customer-reads reads "customers"))
+             "~a ~a: the customers module reads no customer: ~s" store actor reads)
+         (if (equal actor "viewer:vera")
+             (progn (is (null titles) "~a: the viewer finds no customer: ~s" store titles)
+                    (is (null (customer-reads reads "client"))
+                        "~a: nor does the feature, for a viewer" store))
+             (is (equal '("Own Kari Nordmann") titles) "~a ~a: ~s" store actor titles))))
+     (let ((*search-replacing* '()))
+       (dolist (actor '("admin:jonas" "employee:anna" "viewer:vera"))
+         (multiple-value-bind (titles reads) (reads-searching actor "kari")
+           (is (= 1 (length (customer-reads reads "customers")))
+               "~a ~a: without it, the module reads the customers once a search" store actor)
+           (is (member "Kari Nordmann" titles :test #'equal) "~a ~a: ~s" store actor titles)))))))
+
+(test a-replacement-silences-only-the-module-and-kind-it-names
+  (with-test-app (:class 'search-replacing-app)
+    (call-ok "customers_create" "employee:anna" "name" "Kari Nordmann" "email" "kari@example.no")
+    (let ((*search-replacing-extra* t))
+      (is (equal '("unasked thing" "Own Kari Nordmann") (search-as "employee:anna" "kari"))
+          "the module's result of the kind dropped, its other kind and the client's kept"))
+    (let ((*error-output* (make-string-output-stream))
+          (*search-replacing* '(("customer" "client") ("customer" "no_such_module") "junk")))
+      (is (equal '("Kari Nordmann" "Own Kari Nordmann") (search-as "employee:anna" "kari"))
+          "an entry naming no loaded module silences nothing")
+      (let ((said (get-output-stream-string *error-output*)))
+        (is (search "ignored the replacement (\"customer\" \"client\")" said) "~a" said)
+        (is (search "no_such_module" said))
+        (is (search "\"junk\"" said))))
+    (is (find "search_replacements"
+              (coerce (jget (call-ok "registry_describe" "admin:jonas") "extension_points") 'list)
+              :key (lambda (item) (jget item "name")) :test #'equal)
+        "the registry names the seam")
+    (is (find-if (lambda (item) (and (equal "search_replacements" (jget item "target"))
+                                     (equal "seam" (jget item "kind"))))
+                 (coerce (jget (call-ok "introspect_extensions" "admin:jonas") "items") 'list))
+        "introspect_extensions lists the seam, and with it a client's methods"))
+  (is (find-symbol "SEARCH-REPLACEMENTS" '#:tun))
+  (is (find-symbol "SEARCH-AMONG" '#:tun))
+  (is (find-symbol "SEARCH-PHONE-FORMS" '#:tun))
+  (is (eq 'traced-protocol (sb-pcl::method-combination-type-name
+                            (sb-mop:generic-function-method-combination #'search-replacements)))))
+
+(test the-customers-and-orders-modules-read-only-the-fields-they-use
+  (with-test-app ()
+    (let ((customer (jget (call-ok "customers_create" "employee:anna" "name" "Kari Nordmann"
+                                   "email" "kari@example.no")
+                          "id"))
+          (product (jget (call-ok "products_create" "employee:anna" "name" "Telt" "kind" "rental"
+                                  "unit" "stk" "unit_price_minor" 1000 "stock_tracked" nil
+                                  "units_owned" 2)
+                         "id")))
+      (call-ok "orders_create" "employee:anna" "customer_id" customer
+               "lines" (jarr (list (jobj "product_id" product "quantity" 1))))
+      (multiple-value-bind (titles reads) (reads-searching "employee:anna" "kari")
+        (is (equal '("Kari Nordmann" "Kari Nordmann") titles) "the customer and its order")
+        (flet ((selects (module class)
+                 (mapcar #'third (remove-if-not (lambda (read)
+                                                  (and (eq class (first read))
+                                                       (equal module (second read))))
+                                                reads))))
+          (is (equal '(("name" "email" "phone" "erased"))
+                     (selects "customers" 'tun.customers:customer))
+              "the customers module: ~s" reads)
+          (is (equal '(("customer_id" "delivery_address" "status" "event_date"))
+                     (selects "orders" 'tun.orders:order))
+              "the orders module's orders: ~s" reads)
+          (is (equal '(("name")) (selects "orders" 'tun.customers:customer))
+              "the orders module's customers' names: ~s" reads))))))
+
+;;; ------------------------------------------------------------------
+;;; Phone numbers (criterion 6)
+
+(test a-phone-with-its-country-code-is-found-by-its-national-number
+  (is (equal '("+47 912 34 567" "91234567" "091234567") (search-phone-forms "+47 912 34 567")))
+  (is (equal '("0047 912 34 567" "91234567" "091234567") (search-phone-forms "0047 912 34 567")))
+  (is (equal '("+44 (0)20 7946 0958" "02079460958")
+             (search-phone-forms "+44 (0)20 7946 0958"))
+      "«(0)» belongs to the national number")
+  (is (equal '("412 34 567") (search-phone-forms "412 34 567")) "no country code")
+  (is (equal '("+47") (search-phone-forms "+47")) "no number after the code")
+  (is (equal '("+47 kontor") (search-phone-forms "+47 kontor")) "not a number")
+  (is (null (search-phone-forms nil)))
+  (is (null (search-phone-forms "")))
+  (flet ((finds (typed stored)
+           (search-match (q typed) :identifiers (search-phone-forms stored))))
+    (dolist (typed '("91234567" "912 34 567" "+47 912 34 567" "4791234567"))
+      (is (eql 100 (finds typed "+47 912 34 567")) "«~a» is it" typed))
+    (is (eql 90 (finds "912 34" "+47 912 34 567")) "the start of the national number")
+    (is (eql 100 (finds "030 1234567" "+49 30 1234567")) "Germany, with the trunk's 0")
+    (is (eql 100 (finds "301234567" "+49 30 1234567")))
+    (is (eql 100 (finds "020 7946 0958" "+44 20 7946 0958")) "the United Kingdom")
+    (is (eql 100 (finds "(212) 555-0100" "+1 212 555 0100")) "the United States")
+    (is (eql 100 (finds "06 1234 5678" "+39 06 1234 5678")) "Italy keeps its 0")
+    (is (eql 100 (finds "41234567" "412 34 567")) "no country code: itself")
+    (is (eql 90 (finds "412 34" "412 34 567")) "and its start")
+    (dolist (stored '("+47 912 34 567" "+49 30 1234567" "+44 20 7946 0958" "+1 212 555 0100"
+                      "412 34 567"))
+      (dolist (typed '("34567" "1234"))
+        (is (null (finds typed stored)) "«~a» does not find ~a from its middle" typed stored))))
+  (is (equal '((4 . 14)) (search-mark-ranges (q "91234567") "+47 912 34 567" :identifier t))
+      "the national part marked")
+  (is (equal '((4 . 7) (8 . 10)) (search-mark-ranges (q "912 34") "+47 912 34 567" :identifier t))
+      "words found are marked as words, as before")
+  (is (equal '((4 . 14)) (search-mark-ranges (q "091234567") "+47 912 34 567" :identifier t)))
+  (is (equal '((1 . 14)) (search-mark-ranges (q "4791234567") "+47 912 34 567" :identifier t)))
+  (is (null (search-mark-ranges (q "34567") "+47 912 34 567" :identifier t)))
+  (let ((html (tun.html:render-html
+               (tun.ui:search-results (:query "91234567"
+                                       :items '((:kind "customer" :label "Customer" :icon :users
+                                                 :title "Bjørn Åsen"
+                                                 :meta ("bjorn@asen.example" "+47 912 34 567")
+                                                 :href "/customers/c1")))))))
+    (is (search "+47 <mark>912 34 567</mark>" html) "the line marks it: ~a" html))
+  (with-test-app ()
+    (call-ok "customers_create" "employee:anna" "name" "Bjørn Åsen" "email" "bjorn@asen.example"
+             "phone" "+47 912 34 567")
+    (call-ok "customers_create" "employee:anna" "name" "Hans Müller" "email" "hans@example.de"
+             "phone" "+49 30 1234567")
+    (is (equal '("Bjørn Åsen") (search-as "employee:anna" "91234567")) "the customers module")
+    (is (equal '("Bjørn Åsen") (search-as "employee:anna" "912 34 567")))
+    (is (equal '("Hans Müller") (search-as "employee:anna" "030 1234567")))
+    (is (null (search-as "employee:anna" "34567")))))
+
+;;; ------------------------------------------------------------------
+;;; Speed of every kind together (criterion 5)
+
+(defparameter +search-body-words+
+  #("leie" "telt" "bord" "stoler" "lys" "scene" "levering" "henting" "faktura" "avtale"
+    "bryllup" "konfirmasjon" "jubileum" "sommerfest" "julebord" "gulv" "varme" "strøm"
+    "parkering" "nøkkel" "kontakt" "adresse" "tidspunkt" "rigging" "nedrigg" "pris")
+  "The words the long texts of the speed test are made of.")
+
+(defun long-text (random words)
+  "A text of WORDS words drawn by RANDOM from +SEARCH-BODY-WORDS+."
+  (format nil "~{~a~^ ~}" (loop repeat words
+                                collect (aref +search-body-words+
+                                              (random (length +search-body-words+) random)))))
+
+(defun inquiry-search-results (query actor)
+  "A client's inquiries in the search, read through SEARCH-ENTITY with only
+the fields it matches and shows."
+  (declare (ignore actor))
+  (search-entity query 'tun.inbox:inquiry
+                 :fields '("subject" "body" "from_name" "from_email")
+                 :kind "inquiry" :label "Inquiry" :icon :mail
+                 :title #'tun.inbox:inquiry-subject
+                 :texts (lambda (inquiry) (list (tun.inbox:inquiry-body inquiry)))
+                 :identifiers (lambda (inquiry) (list (tun.inbox:inquiry-from-email inquiry)))
+                 :meta (lambda (inquiry) (list (tun.inbox:inquiry-from-name inquiry)))
+                 :href (lambda (inquiry) (format nil "/test-search-page/~a" (entity-id inquiry)))))
+
+(defun many-of-every-kind (count)
+  "COUNT customers with a phone with its country code, COUNT orders of them
+with the six lines of an order made through orders_create, and COUNT inquiries
+whose text is 200 words long."
+  (let* ((first (jget (call-ok "customers_create" "employee:anna" "name" "Model Kunde"
+                               "email" "model@example.no")
+                      "id"))
+         (product (jget (call-ok "products_create" "employee:anna" "name" "Telt" "kind" "rental"
+                                 "unit" "stk" "unit_price_minor" 1000 "stock_tracked" nil
+                                 "units_owned" 50)
+                        "id"))
+         (model (jget (call-ok "orders_create" "employee:anna" "customer_id" first
+                               "event_date" "2026-12-12"
+                               "lines" (jarr (loop for quantity from 1 to 6
+                                                   collect (jobj "product_id" product
+                                                                 "quantity" quantity))))
+                      "id"))
+         (random (sb-ext:seed-random-state 3300)))
+    (with-application (*app*)
+      (as-actor ("system" :write)
+        (let ((lines (tun.orders:order-lines (fetch 'tun.orders:order model)))
+              (ids '()))
+          (dotimes (i count)
+            (let ((customer (make-instance 'tun.customers:customer
+                                           :name (format nil "Kunde ~d Nordmann" i)
+                                           :email (format nil "kunde~d@example.no" i)
+                                           :phone (format nil "+47 9~2,'0d ~2,'0d ~3,'0d"
+                                                          (mod i 100) (mod (floor i 100) 100) i))))
+              (insert customer)
+              (push (entity-id customer) ids)))
+          (dolist (id ids)
+            (insert (make-instance 'tun.orders:order
+                                   :customer-id id :lines lines
+                                   :delivery-address (format nil "Storgata ~d, Oslo"
+                                                             (random 200 random)))))
+          (dotimes (i count)
+            (insert (make-instance 'tun.inbox:inquiry
+                                   :subject (format nil "Forespørsel ~d om ~a" i (long-text random 2))
+                                   :body (long-text random 200)
+                                   :from-name (format nil "Avsender ~d" i)
+                                   :from-email (format nil "avsender~d@example.no" i)))))))))
+
+(defun time-search-as-ms (actor text)
+  "The server's time for the search tool as ACTOR with TEXT, in milliseconds."
+  (let ((start (get-internal-real-time)))
+    (call-ok "search" actor "query" text)
+    (/ (* 1000 (- (get-internal-real-time) start)) internal-time-units-per-second)))
+
+(defparameter +search-every-kind-limit-ms+ 90
+  "The median a search of every kind may take in the speed test: under the 100
+ms rule, with room over what this loop measured on Postgres while other suites
+ran beside it (loops/search-reads.md, criterion 5).")
+
+(test every-kind-of-two-thousand-records-is-searched-within-the-limit
+  (let ((*search-test-results* #'inquiry-search-results))
+    (flet ((measure (label)
+             (many-of-every-kind 2000)
+             (is (equal '("Kunde 1999 Nordmann")
+                        (search-as "employee:anna" "999 19 1999" "kinds" (jarr '("customer"))))
+                 "~a: a customer by the start of its national number" label)
+             (time-search-as-ms "employee:anna" "kunde")      ; once to warm up
+             (dolist (text '("kunde 1999" "nordmann" "julebord rigging" "zebra" "912 19"))
+               (let ((times (sort (loop repeat 9 collect (time-search-as-ms "employee:anna" text))
+                                  #'<)))
+                 (format t "~&;; search of every kind, 2000 of each, ~a, «~a»: ~{~,1f~^ ~} ms~%"
+                         label text (mapcar #'float times))
+                 (is (< (fifth times) +search-every-kind-limit-ms+)
+                     "~a «~a»: ~,1f ms" label text (float (fifth times)))))))
+      (with-test-app (:class 'search-test-app) (measure "memory"))
+      (when (postgres-available-p)
+        (with-test-app (:class 'search-test-app :db (scratch-postgres "search_every_kind"))
+          (measure "postgres"))))))

@@ -187,15 +187,19 @@ the count is the number of orders currently completed (README §3)."
 
 (defmethod search-records ((application customers-module) query actor)
   ;; spec/ui.md 6.4: customers by name, and by their email and phone,
-  ;; written however; an erased customer is not found.
+  ;; written however, a phone with its country code by its national number
+  ;; too; an erased customer is not found.  Only the fields it matches and
+  ;; shows are read.
   (declare (ignore actor))
   (append (search-entity query 'customer
+                         :fields '("name" "email" "phone" "erased")
                          :keep (lambda (customer) (not (customer-erased customer)))
                          :kind "customer" :label (tr "Customer") :icon :users
                          :title #'customer-name
                          :texts (lambda (customer) (list (customer-email customer)))
                          :identifiers (lambda (customer)
-                                        (list (customer-email customer) (customer-phone customer)))
+                                        (list* (customer-email customer)
+                                               (search-phone-forms (customer-phone customer))))
                          :meta (lambda (customer)
                                  (list (customer-email customer) (customer-phone customer)))
                          :href (lambda (customer) (format nil "/customers/~a" (entity-id customer))))

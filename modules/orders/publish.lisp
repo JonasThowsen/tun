@@ -14,15 +14,18 @@
                                             "reason" reason))))))
 
 (defmethod search-records ((application orders-module) query actor)
-  ;; spec/ui.md 6.4: an order by its customer's name and its id, as its
-  ;; customer would score, less 15, so the customer comes before it.
+  ;; spec/ui.md 6.4: an order by its customer's name, its delivery address
+  ;; and its id, as its customer would score, less 15, so the customer comes
+  ;; before it.  Only the fields it matches and shows are read: an order's
+  ;; lines are much of what reading it whole costs.
   (declare (ignore actor))
   (append (when (search-query-wants-p query "order")
             (let ((names (make-hash-table :test 'equal)))
-              (dolist (customer (select 'customer))
+              (dolist (customer (select 'customer :fields '("name")))
                 (setf (gethash (entity-id customer) names) (customer-name customer)))
               (flet ((customer-of (order) (or (gethash (order-customer-id order) names) "")))
                 (search-entity query 'order
+                               :fields '("customer_id" "delivery_address" "status" "event_date")
                                :kind "order" :label (tr "Order") :icon :shopping-cart
                                :title #'customer-of
                                :identifiers (lambda (order) (list (entity-id order)))
