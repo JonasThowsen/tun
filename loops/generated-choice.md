@@ -2,7 +2,7 @@
 
 - loop: generated-choice
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 4c5f137d4b07a67ff85a3b55ea5173fe8ecc06cd
 - item: sak_639q2yc1sgsr8qpt
 - estimate: 2h 3h30m 6h
@@ -269,6 +269,12 @@ list-toolbar at 390 and 1280 px, and «New item» at 320 and 390 px from
 meetings' list, form, field, chosen field and filter at 390 and 1280 px,
 light and dark, the four customers' field, and the shown pages).
 
+## Actuals
+
+```json
+{"loop":"generated-choice","title":"Generated pages find a record by typing, and a file field that fits a 320 px phone","repository":"tun","mode":"reviewed","stage":"done","item":"sak_639q2yc1sgsr8qpt","tags":["kind:ui","core","module:ui"],"like":["tun/ui-choice"],"started":"2026-11-12 17:56","ended":"2026-11-12 19:10","minutes":{"total":74,"waiting_person":0,"waiting_reviewer":3,"working":71,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":120,"likely":210,"worst":360,"at":"brief"},"latest_estimate":{"best":120,"likely":210,"worst":360,"at":"brief"},"within_estimate":false,"ratio":0.35,"verify":{"rounds":2,"failed":1},"changes":{"A":2,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 17:56  started, reviewed
@@ -415,3 +421,4 @@ light and dark, the four customers' field, and the shown pages).
   **Not blocking:**
   - `spec/files.md` (`diff.patch:584-586`) says the browser's text is «cut at its end». Chrome actually cuts it in the middle («No fi…hosen» in the 320 px shot). The wording could say only that it is shortened.
   - The test for criterion 3 could also assert that no operation is called.
+- 2026-11-12 19:10  finished at tun cdb0d325
