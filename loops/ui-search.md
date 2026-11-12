@@ -2,7 +2,7 @@
 
 - loop: ui-search
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: af2003dcf2f75e5e1214d34812fdcb6f0ebfb997
 - item: sak_jtrmh62tdgnxwjgq
 - estimate: 2h 3h 5h
@@ -213,6 +213,12 @@ full text of long texts, search history, filters inside the search.
 - **Spec**: `spec/ui.md` §6.4 (new), §6 (`dialog`'s size, the set), §8
   (the frame), §9, §10; `docs/client-api.md` «The search».
 
+## Actuals
+
+```json
+{"loop":"ui-search","title":"One search for the whole application, opened with Ctrl K","repository":"tun","mode":"reviewed","stage":"done","item":"sak_jtrmh62tdgnxwjgq","tags":["kind:ui","module:search"],"like":["tun/ui-fields","tun/ui-filters"],"started":"2026-11-12 06:23","ended":"2026-11-12 08:46","minutes":{"total":143,"waiting_person":0,"waiting_reviewer":5,"working":138,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":120,"likely":180,"worst":300,"at":"brief"},"latest_estimate":{"best":120,"likely":180,"worst":300,"at":"brief"},"within_estimate":true,"ratio":0.79,"verify":{"rounds":7,"failed":4},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 06:23  started, reviewed
@@ -357,3 +363,4 @@ full text of long texts, search history, filters inside the search.
   
   - `modules/orders/publish.lisp:615`: the comment says an order is found «by its customer's name and its id». The code also matches the delivery address (line 627), so the comment should say that too.
   - Criterion 11 asks for the box to stay the same «with the most the showcase finds (its two kinds, five of each)». The browser check measures it with «item», which finds five cards and no customers. The size can't actually grow, because the CSS test pins a fixed height and makes only the results scroll. Still, a query that fills both kinds would test that wording literally.
+- 2026-11-12 08:46  finished at tun 2094a439
