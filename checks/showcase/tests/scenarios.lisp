@@ -46,17 +46,25 @@ REPORTED-ON, with ESTIMATE in minor units when given, and return its id."
                                           "status" "new" "before" first)))
 
 (defun some-customers ()
-  "Make the customers the generated list at /customers shows."
-  (loop for (name email) in '(("Nordvik Bakery Ltd" "post@nordvik.example")
-                              ("Hansen Plumbing" "kari@hansen.example")
-                              ("Fjord Events" "booking@fjord.example")
-                              ("Berg Catering" "mat@berg.example"))
-        do (call-ok "customers_create" "employee:anna" "name" name "email" email)))
+  "Make the customers the generated list at /customers shows, and a meeting
+with each of the first two, which the generated list at /meetings shows."
+  (let ((ids (loop for (name email) in '(("Nordvik Bakery Ltd" "post@nordvik.example")
+                                         ("Hansen Plumbing" "kari@hansen.example")
+                                         ("Fjord Events" "booking@fjord.example")
+                                         ("Berg Catering" "mat@berg.example"))
+                   collect (tun:jget (call-ok "customers_create" "employee:anna"
+                                              "name" name "email" email)
+                                     "id"))))
+    (call-ok "meetings_create" "employee:anna" "name" "Bread van signage"
+             "customer" (first ids) "day" "2026-11-20")
+    (call-ok "meetings_create" "employee:anna" "name" "Pipes for the new shop"
+             "customer" (second ids) "day" "2026-11-24")))
 
 (define-scenario default (:actors ("employee:anna" "admin:jonas"))
   "25 cards in New, with an urgent one put first, three planned and one done;
 «Export to accounting» has an estimate, and a screenshot and a PDF
-attached; four customers.  Jonas is an admin, who can change the settings."
+attached; four customers, and a meeting with each of the first two.
+Jonas is an admin, who can change the settings."
   (board-of-items)
   (some-customers))
 
@@ -98,7 +106,7 @@ Bjørn, so «bjorn» finds Bjørn Åsen first.")
 first name of +FIRST-NAMES+ with every last name of +LAST-NAMES+) and Bjørn
 Åsen, so a choice of a customer asks the server as one types (spec/ui.md 6,
 choice-input); three cards more are for a customer: two for Bjørn Åsen,
-one for Nordvik Bakery Ltd."
+one for Nordvik Bakery Ltd; and a meeting with Bjørn Åsen."
   (board-of-items)
   (some-customers)
   (let ((bjorn (tun:jget (call-ok "customers_create" "employee:anna" "name" "Bjørn Åsen"
@@ -117,4 +125,6 @@ one for Nordvik Bakery Ltd."
                                         (list "Sound for the summer party" bjorn)
                                         (list "Bread van signage" nordvik))
           do (call-ok "cards_create" "employee:anna" "title" title
-                      "reported_on" +reported-on+ "customer" customer))))
+                      "reported_on" +reported-on+ "customer" customer))
+    (call-ok "meetings_create" "employee:anna" "name" "Lights for the summer party"
+             "customer" bjorn "day" "2026-12-04")))

@@ -5,7 +5,7 @@
 (defsystem "showcase"
   :description "Pages for Tun's browser checks."
   :version "0.1.0"
-  :depends-on ("tun" "tun-customers")
+  :depends-on ("tun" "tun-customers" "tun-meetings")
   :serial t
   :components ((:file "package")
                (:file "cards")

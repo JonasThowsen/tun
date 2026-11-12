@@ -21,6 +21,8 @@
    "Du har ikke tilgang til dette")
   ("Not found"
    "Finnes ikke")
+  ("Choose one of the choices."
+   "Velg et av valgene.")
   ("Someone else has changed this"
    "Noen andre har endret dette")
   ("The form has already been sent"

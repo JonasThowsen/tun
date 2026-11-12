@@ -108,6 +108,9 @@ def run(t):
     # 2. A mouse button pressed loads at once, before the pointer has rested.
     follow(page, menu(page, "Items"), "/items")
     seen.clear()
+    # The menu may be longer than the window: the mouse presses where the
+    # link is shown.
+    menu(page, "Access").scroll_into_view_if_needed()
     box = menu(page, "Access").bounding_box()
     page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2)
     page.mouse.down()

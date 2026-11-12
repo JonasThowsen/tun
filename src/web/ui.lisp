@@ -814,9 +814,19 @@ label's context when one word needs two translations (spec/i18n.md 3.1)."
          (timestamp-text value))
         (t (princ-to-string value))))
 
-(defvar *reference-labels* nil
-  "For this request: entity class name -> ((id . label) ...), read once
-through the entity's list operation.")
+;;; Choosing a record (spec/ui.md 8, «Choosing a record»): the records of
+;;; an entity a person may choose, by their text, read once a request and
+;;; shared by the generated form's field, the list's filter, /choices/ENTITY
+;;; and every place a page names a referenced record.
+
+(defparameter +choices-with-the-page+ 30
+  "The most records a generated field or filter holds with the page; with
+more it asks /choices/ENTITY as one types.")
+
+(defvar *record-choices* nil
+  "For this request: entity class name -> (ROWS . TEXTS), the records the
+actor may choose as RECORD-CHOICES reads them and their texts by id, or NIL
+when the actor may choose none.")
 
 (defun list-tool-for (class)
   "The operation that lists the records of CLASS: its read tool named *_list."
@@ -828,24 +838,75 @@ through the entity's list operation.")
                   (string= "_list" tool :start2 (- (length tool) 5))))))
     (find-if #'lists-p (visible-operations *web-app*))))
 
-(defun reference-labels (class)
-  "(id . label) of the records of CLASS the actor may list, at most 100:
-their name, else their id."
-  (let ((cache (or *reference-labels* (setf *reference-labels* (make-hash-table)))))
-    (multiple-value-bind (labels found) (gethash (class-name class) cache)
-      (if found
-          labels
-          (setf (gethash (class-name class) cache)
-                (let ((op (list-tool-for class)))
-                  (when op
-                    (map 'list #'record-label
-                         (jget (web-call (operation-tool op) (jobj "limit" 100))
-                               "items" #())))))))))
+(defun reference-class (type)
+  "The entity class the id TYPE refers to, or NIL."
+  (and (typep type 'id-type) (id-references type)
+       (find-entity-class (id-references type) nil)))
 
-(defun record-label (item)
-  "(id . label) of the JSON record ITEM: its name, else its id."
-  (let ((name (jget item "name")))
-    (cons (jget item "id") (if (stringp name) name (jget item "id")))))
+(defun choice-operation (class)
+  "CLASS's list operation when the actor's role is one its policy admits,
+else NIL: who may choose among CLASS's records."
+  (let ((op (and class *actor* (list-tool-for class))))
+    (and op (actor-permits-p *actor* (operation-policy op)) op)))
+
+(defun record-name-field (class)
+  "CLASS's stored text field name, or NIL: what names its records."
+  (let ((field (find-field class "name")))
+    (and field (field-stored-p field) (typep (field-type field) 'string-type) field)))
+
+(defun read-record-choices (class)
+  "(ID TEXT) of every record of CLASS the actor reaches, TEXT its name when
+filled, else its id, in the order of their names: one read of their id and
+name, under the record policies."
+  (let ((field (record-name-field class)))
+    (with-transaction (:read)
+      (mapcar (lambda (record)
+                (let ((name (and field (field-value record field))))
+                  (list (entity-id record)
+                        (if (and (stringp name) (plusp (length name))) name (entity-id record)))))
+              (select (class-name class)
+                      :fields (list (if field "name" "id"))
+                      :order-by (and field '(("name" :asc))))))))
+
+(defun record-choices-entry (class)
+  (let ((cache (or *record-choices* (setf *record-choices* (make-hash-table)))))
+    (multiple-value-bind (entry found) (gethash (class-name class) cache)
+      (if found
+          entry
+          (setf (gethash (class-name class) cache)
+                (when (choice-operation class)
+                  (let ((rows (read-record-choices class))
+                        (texts (make-hash-table :test 'equal)))
+                    (dolist (row rows) (setf (gethash (first row) texts) (second row)))
+                    (cons rows texts))))))))
+
+(defun record-choices (class)
+  "The records of CLASS the actor may choose, (ID TEXT) in the order of
+their names, read once a request; NIL when the actor may choose none."
+  (car (record-choices-entry class)))
+
+(defun record-choice-text (class id)
+  "The text of the record ID of CLASS when the actor may choose it, else NIL."
+  (let ((entry (record-choices-entry class)))
+    (and entry (values (gethash id (cdr entry))))))
+
+(defun record-choice-matches (rows text &key without)
+  "The (ID TEXT) options among ROWS that TEXT finds by the search's rule,
+the name its text and the id its identifier, without the one of WITHOUT."
+  (remove without (choice-matches text rows :value #'first :text #'second
+                                            :identifiers (lambda (row) (list (first row))))
+          :key #'first :test #'equal))
+
+(defun choices-path (class)
+  "The address that answers the choices of CLASS's records as one types."
+  (format nil "/choices/~a" (entity-json-name class)))
+
+(defun known-choices (class value find)
+  "What an asked choice of CLASS knows: the chosen record VALUE when the
+actor may choose it, then what FIND, a find step's text, found."
+  (let ((text (and value (record-choice-text class value))))
+    (append (when text (list (list value text)))
+            (when find (record-choice-matches (record-choices class) find :without value)))))
 
 (defun record-path (entity id)
   "The detail page of record ID of ENTITY (a class name), or NIL when it has none."
@@ -859,7 +920,7 @@ their name, else their id."
   "The record ID that a field of the id TYPE refers to, by its name; with
 LINK, a link to its page when it has one."
   (let* ((class (find-entity-class (id-references type) nil))
-         (label (or (and class (cdr (assoc id (reference-labels class) :test #'equal))) id))
+         (label (or (and class (record-choice-text class id)) id))
          (path (and link class (record-path (class-name class) id))))
     (if path (ui:link (:href path) label) label)))
 
@@ -1165,10 +1226,23 @@ parameters.  A parameter named like a draft field takes that field's place
   "True for a list input whose items are records, entered as rows."
   (and (typep type 'list-type) (symbolp (list-element type))))
 
-(defun reference-options (type)
-  "(id . label) choices for an id field that references an entity, read through its list operation."
-  (let ((class (and (id-references type) (find-entity-class (id-references type) nil))))
-    (and class (reference-labels class))))
+(defun posted-find (name values)
+  "The text typed in the choice NAME's find field when VALUES, the posted
+form, is its find step, else NIL (CHOICE-FIND of a posted alist)."
+  (when (equal (posted "tun-find" values) name)
+    (string-trim " " (or (posted (format nil "~a-find" name) values) ""))))
+
+(defun reference-choice (class common value required find)
+  "The field that chooses a record of CLASS (spec/ui.md 8, «Choosing a
+record»): every record the actor may choose with the page when they are
+few, else asked from CLASS's address, knowing VALUE and what FIND found."
+  (let* ((rows (record-choices class))
+         (given (<= (length rows) +choices-with-the-page+)))
+    (ui:choice-input* (append (list :value value :required required
+                                    :options (if given rows (known-choices class value find))
+                                    :source (unless given (choices-path class))
+                                    :find (unless given find))
+                              common))))
 
 (defun control-id (form-id name)
   "The id of the control NAME in the form FORM-ID: lines[0][quantity] in
@@ -1272,15 +1346,15 @@ An amount is written as a person writes it, with the currency beside it."
                                    :optional optional :choices (enum-choices (list-element type))
                                    :selected (posted-all name values))))
             ((typep type 'id-type)
-             (let ((choices (reference-options type)))
-               (cond (choices
-                      (choose (mapcar (lambda (choice) (list (car choice) (cdr choice))) choices)))
-                     ((and (id-references type) (find-entity-class (id-references type) nil))
-                      ;; Nothing to choose from yet: the id can still be typed.
-                      (let ((class (find-entity-class (id-references type))))
-                        (ui:text-input* (append (list :value value :required required :width 30
-                                                      :hint (nothing-yet class))
-                                                common))))
+             (let ((class (reference-class type)))
+               (cond ((and class (record-choices class))
+                      (reference-choice class common (if (blank-p value) nil value) required
+                                        (posted-find name values)))
+                     (class
+                      ;; Nothing to choose from: the id can still be typed.
+                      (ui:text-input* (append (list :value value :required required :width 30
+                                                    :hint (nothing-yet class))
+                                              common)))
                      (t (text :width 30)))))
             ((money-field-p type)
              (ui:money-input* (append common (list :value value :required required))))
@@ -1559,7 +1633,8 @@ or a filter's kind, or NIL when it does not."
            :search)
           ((typep type 'enum-type) :one)
           ((and (typep type 'list-type) (typep (list-element type) 'enum-type)) :several)
-          ((typep type 'boolean-type) :toggle))))
+          ((typep type 'boolean-type) :toggle)
+          ((choice-operation (reference-class type)) :choice))))
 
 (defun list-filter-context (resource name)
   "ENTITY.FIELD for the input NAME when RESOURCE's entity has such a field,
@@ -1611,7 +1686,19 @@ are shown at a period's fields."
                                       arguments)))))
           (:toggle
            (push (list :name name :label label :kind :toggle :value (and values t)) filters)
-           (when values (setf arguments (list* name t arguments)))))))
+           (when values (setf arguments (list* name t arguments))))
+          (:choice
+           ;; spec/ui.md 8, «Choosing a record»: addressed as a :one filter.
+           (let* ((class (reference-class type))
+                  (rows (record-choices class))
+                  (given (<= (length rows) +choices-with-the-page+))
+                  (find (unless given
+                          (first (query-values query (format nil "~a-find" name))))))
+             (push (list :name name :label label :kind :choice :value (first values)
+                         :choices (if given rows (known-choices class (first values) find))
+                         :source (unless given (choices-path class)) :find find)
+                   filters)
+             (when values (setf arguments (list* name (first values) arguments))))))))
     (setf filters (nreverse filters))
     (when period
       (let ((values (mapcar (lambda (name) (first (query-values query name))) period)))
@@ -1785,19 +1872,54 @@ is given, and its create form."
                         (list (ui:button (:href "#new" :icon :plus)
                                          (translate (operation-title create-op))))))))
 
+(defun choice-refusals (op params)
+  "The refusal of the posted form PARAMS of OP, as an operation's error
+document, when an id posted for a choice of a record is none of the
+records the actor may choose (spec/ui.md 8, «Choosing a record»), a row's
+of a list of records too; else NIL."
+  (let ((refused '()))
+    (flet ((check (spec name path)
+             (let ((class (reference-class (spec-type spec))))
+               (when (and class (record-choices class))
+                 (multiple-value-bind (value problem)
+                     (read-choice (posted name params)
+                                  (lambda (id) (record-choice-text class id)))
+                   (declare (ignore value))
+                   (when problem
+                     (push (jobj "field" path "message" (princ-to-string problem)) refused)))))))
+      (dolist (spec (operation-inputs op))
+        (let ((name (spec-name spec)))
+          (if (row-list-p (spec-type spec))
+              (loop for row below (row-count name params)
+                    do (dolist (input (element-inputs (spec-type spec)))
+                         (check input (format nil "~a[~d][~a]" name row (spec-name input))
+                                (format nil "~a[~d].~a" name row (spec-name input)))))
+              (check spec name name)))))
+    (when refused
+      (jobj "error" (jobj "code" "invalid_input"
+                          "message" (tr "Choose one of the choices.")
+                          "fields" (jarr (nreverse refused)))))))
+
 (defun handle-resource (resource method)
   (or (require-login)
       (if (eq method :post)
           (let* ((op (find-operation-by-tool (resource-create-tool resource)))
                  (params (hunchentoot:post-parameters*))
-                 (args (form-arguments op params)))
-            (multiple-value-bind (json code) (web-call (resource-create-tool resource) args)
-              (if code
-                  (resource-page resource :error-json json :values params
-                                 :status (error-status code))
-                  (see-other (if (resource-detail-screen resource)
-                                 (format nil "~a/~a" (resource-path resource) (jget json "id"))
-                                 (resource-path resource))))))
+                 (refused (choice-refusals op params)))
+            (cond
+              ;; A choice's «Find» without scripts: the form again with what
+              ;; it found, nothing saved.
+              ((posted "tun-find" params) (resource-page resource :values params))
+              (refused (resource-page resource :error-json refused :values params :status 422))
+              (t
+               (multiple-value-bind (json code)
+                   (web-call (resource-create-tool resource) (form-arguments op params))
+                 (if code
+                     (resource-page resource :error-json json :values params
+                                    :status (error-status code))
+                     (see-other (if (resource-detail-screen resource)
+                                    (format nil "~a/~a" (resource-path resource) (jget json "id"))
+                                    (resource-path resource))))))))
           (resource-page resource))))
 
 (defun record-title (class record id)
@@ -2042,20 +2164,38 @@ choice-input)."
     "Narvik Northern Lights Tours" "Fredrikstad Fireworks")
   "The made-up customers the specimen's asked choices find (spec/ui.md 7).")
 
+(define-page record-choices-page ("choices" :title "Choices" :icon :list :policy :viewer
+                                            :navigation nil)
+    (method path form query)
+  ;; /choices/ENTITY (spec/ui.md 8, «Choosing a record»): the records of
+  ;; ENTITY the person may choose, for what is typed, as CHOICE-ANSWER
+  ;; answers them.
+  (let* ((class (and (eq method :get) (= 1 (length path))
+                     (find-entity-by-json-name (first path))))
+         (op (and class (list-tool-for class))))
+    (cond ((null op)
+           (values 404 (if (htmx-request-p) :fragment (tr "Choices"))
+                   (list (ui:alert (:variant :warning :title (tr "Not found"))))))
+          ((not (choice-operation class))
+           (values 403 (if (htmx-request-p) :fragment (tr "No access"))
+                   (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
+                           (tr "The page needs a role other than yours.")))))
+          (t (choice-answer query (record-choices class)
+                            :value #'first :text #'second
+                            :identifiers (lambda (row) (list (first row))))))))
+
 (defun specimen-choices (query)
   "/ui/choice-input/options: the specimen's made-up customers for QUERY's q,
-answered as CHOICE-ANSWER answers, without a page around them."
-  (multiple-value-bind (options more)
-      (choice-matches (or (first (query-values query "q")) "")
-                      (loop for name in +specimen-customers+
-                            for n from 1
-                            collect (list :id (format nil "cus_~d" n) :name name))
-                      :text (lambda (row) (getf row :name)) :limit 8)
-    (setf (hunchentoot:content-type*) "text/html; charset=utf-8")
-    (sb-ext:string-to-octets
-     (render-html (ui:choice-options (:query (or (first (query-values query "q")) "")
-                                      :options options :more more)))
-     :external-format :utf-8)))
+answered by CHOICE-ANSWER, eight at a time so its 24 show the «more» line:
+the list alone to htmx, a page to any other request."
+  (multiple-value-bind (status title body)
+      (choice-answer query (loop for name in +specimen-customers+
+                                 for n from 1
+                                 collect (list :id (format nil "cus_~d" n) :name name))
+                     :text (lambda (row) (getf row :name)) :limit 8)
+    (if (eq title :fragment)
+        (respond-fragment status body)
+        (respond status title body :guest t))))
 
 (defun serve-specimen (parts)
   "/ui and /ui/NAME: the design system's specimen (spec/ui.md 7), or NIL."
@@ -2074,7 +2214,7 @@ answered as CHOICE-ANSWER answers, without a page around them."
 
 (defmethod tun.http:dispatch-web ((acceptor tun.http:tun-acceptor) method path)
   (let ((*web-app* (tun.http:acceptor-application acceptor))
-        (*reference-labels* nil))
+        (*record-choices* nil))
     (with-application (*web-app*)
       (setf (hunchentoot:header-out "Content-Security-Policy") (page-security-policy))
       (multiple-value-bind (actor credential) (web-actor)

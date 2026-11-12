@@ -38,6 +38,9 @@ is how many files the field takes.")
   (:css (concatenate 'string "
 .tun-file-input {
   display: grid;
+  /* One column as wide as the field's, never the control's own width: the
+     browser's file control is wider than a 320 px phone's column. */
+  grid-template-columns: minmax(0, 1fr);
   gap: calc(var(--spacing) * 2);
   padding: calc(var(--spacing) * 3);
   border: 1px dashed " +control-border+ ";
@@ -51,6 +54,8 @@ is how many files the field takes.")
   }
   &:has([aria-invalid='true']) { border-color: var(--destructive); }
   & .tun-file-input-control {
+    width: 100%;
+    min-width: 0;
     max-width: 100%;
     font-size: var(--control-font-size);
     color: var(--muted-foreground);

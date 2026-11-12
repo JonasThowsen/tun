@@ -38,7 +38,7 @@
   (let ((*web-app* (tun.http:acceptor-application acceptor)))
     (with-application (*web-app*)
       (let ((*actor* (web-actor))
-            (*reference-labels* nil)
+            (*record-choices* nil)
             (*locale* (or *locale* (request-locale))))
         (respond status (tr "The form was not sent")
                  (list (ui:alert (:variant (if (= status 503) :warning :destructive)

@@ -690,10 +690,13 @@ document.addEventListener('htmx:after:swap', (event) => {
     (choice-input (:label "Warehouse" :name "warehouse" :id "specimen-disabled" :value "drammen"
                    :disabled t
                    :options '(("drammen" "Drammen") ("oslo" "Oslo")))))
-   (("A find step without scripts" :layout :stack)
+   ;; Chosen, so that where scripts run, which hide the find step, it does
+   ;; not read as an empty field.
+   (("After a find step, which shows without scripts" :layout :stack)
     (choice-input (:label "Customer" :name "customer_id" :id "specimen-found" :find "hansen"
-                   :source "/ui/choice-input/options"
-                   :options '(("cus_2" "Hansen Plumbing") ("cus_6" "Kari Hansen"))))))
+                   :value "cus_5" :source "/ui/choice-input/options"
+                   :options '(("cus_5" "Bjørn Åsen") ("cus_2" "Hansen Plumbing")
+                              ("cus_6" "Kari Hansen"))))))
   (require-label 'choice-input label)
   (unless name (error "choice-input needs :name, the key its value is posted under"))
   (dolist (option options)

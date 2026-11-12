@@ -2,7 +2,8 @@
 
 Status: v1, built 2026-10-26, core 1.20.0; `attachments-of` and files in a
 dialog, core 1.21.0; the viewer centred, core 1.21.1; its copy in the
-page's language (`i18n.md`), core 2.0.0. How a record carries files,
+page's language (`i18n.md`), core 2.0.0; the control inside its column
+on a narrow phone, core 2.35.0. How a record carries files,
 such as a screenshot on a reported issue: which records may, which files
 are taken and what is stripped from them, how a person attaches them in
 a form (choosing, dragging, pasting), how an agent attaches them through
@@ -508,6 +509,10 @@ A form control (`ui.md` §6, Skjema) for one or more files:
   `method="post"` and `enctype="multipart/form-data"`; `enctype` is
   allowed in extension output (`tun.html`). `:max` (default 10) is the
   most files the control takes.
+- The zone, and the browser's control in it, are never wider than the
+  field's column: the control narrows with it, the browser's text
+  beside its button cut at its end, so on a phone of 320 px the page
+  does not scroll sideways.
 - **With JavaScript:**
   - a file chosen in the control, dropped on the zone, or pasted is
     added to what is chosen: a paste (`paste` with files in its

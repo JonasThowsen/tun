@@ -209,6 +209,7 @@
                              (:file "search-tests")
                              (:file "ui-nits-tests")
                              (:file "ui-choice-tests")
+                             (:file "generated-choice-tests")
                              (:file "review-tests")
                              (:file "review2-tests")
                              (:file "slice1-review-tests")

@@ -418,7 +418,7 @@
           (is (search (period-text "2026-07-01" nil) typed) "the button says it")
           (is (search "name=\"from\" value=\"1.7.2026\"" typed) "the field holds what the address does"))
         (let ((page (nth-value 1 (web-request port "/orders?status=completed&from=2026-07-01" :jar jar))))
-          (is (search "href=\"/orders?status=&amp;dateless=&amp;tag=&amp;from=&amp;to=\"" page)
+          (is (search "href=\"/orders?customer_id=&amp;status=&amp;dateless=&amp;tag=&amp;from=&amp;to=\"" page)
               "«Reset» clears the period too"))
         (let ((page (nth-value 1 (web-request port "/orders?from=31.11.2026" :jar jar))))
           (is (search "tun-alert" page) "the list's refusal")

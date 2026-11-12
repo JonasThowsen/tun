@@ -256,7 +256,8 @@
           (is (search "<form class=\"tun-list-toolbar\"" page))
           (is (html-has page "name=\"status\" value=\"quote_sent\"" "name=\"dateless\" value=\"true\""
                         "name=\"tag\" value=\"rental\""))
-          (is (not (search "name=\"customer_id\" value=" page)) "an id is not offered")
+          (is (search "data-tun-list-toolbar-filter=\"customer_id\"" page)
+              "a customer's id is a :choice filter (spec/ui.md 8, «Choosing a record»)")
           (is (not (search "tun-list-toolbar-department" page)) "nor other text")
           (is (not (search "name=\"limit\"" page)) "nor the limit")
           (is (and (search draft page) (search sent page))))
@@ -268,7 +269,7 @@
           (is (cl-ppcre:scan "value=\"quote_sent\" checked" page)))
         (let ((page (nth-value 1 (web-request port "/orders?status=completed" :jar jar))))
           (is (search "Nothing matches" page) "a list filtered to nothing says so")
-          (is (search "href=\"/orders?status=&amp;dateless=&amp;tag=&amp;from=&amp;to=\"" page)
+          (is (search "href=\"/orders?customer_id=&amp;status=&amp;dateless=&amp;tag=&amp;from=&amp;to=\"" page)
               "with «Reset» naming every key"))
         (let ((page (nth-value 1 (web-request port "/orders?status=bogus" :jar jar))))
           (is (search "<form class=\"tun-list-toolbar\"" page) "a refused value keeps the toolbar")

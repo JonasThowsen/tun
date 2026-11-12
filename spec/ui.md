@@ -33,7 +33,9 @@ of a result found by its second line, and the specimen's theme switch
 (§6, §6.4, §7, §8), 2026-11-12, core 2.32.0; `choice-input`,
 `choice-options`, a list's `:choice` filter, answering and reading a
 choice, `query-address`, and the specimen's options (§6, §7, §8, §9),
-2026-11-12, core 2.34.0.
+2026-11-12, core 2.34.0; the generated pages choosing a record by
+typing, `/choices/ENTITY`, and the specimen's choice answered by
+`choice-answer` (§7, §8, §9), 2026-11-12, core 2.35.0.
 How every Tun page looks and behaves: the tokens, the components that
 are built from them, the specimen that shows them, and the rules a
 component follows. The
@@ -2034,9 +2036,12 @@ for the results as one types and a box under it that holds them:
   title, at the start of the row, so a toast (`flash`), which stands at
   the top right from 40rem, never covers it on a wide screen.
 - `/ui/choice-input/options?q=TEXT` answers the specimen's asked
-  choices as `choice-answer` does, from a fixed list of made-up
-  customers, so its asked examples ask a real address; the standalone
-  files cannot ask.
+  choices with `choice-answer`, from a fixed list of made-up customers,
+  eight at a time so its 24 show the «more» line, so its asked examples
+  ask a real address; the standalone files cannot ask. The example of a
+  find step has a customer chosen, so where scripts run it shows a
+  chosen field rather than an empty one; its «Find» step shows without
+  scripts.
 - `bin/ui-specimen [DIR]` writes the specimen as standalone files (the
   CSS and script inline): `index.html` and `NAME.html` for each
   component.
@@ -2101,16 +2106,19 @@ form of `field`s with an `error-summary`, a confirmation is a
   Above it stands a `list-toolbar` (§6) of what its list operation can
   filter by: an input named `query` or `q` of text is the search, an
   enum a `:one` filter, a list of an enum a `:several` filter, a boolean
-  a `:toggle`, and two date inputs named `from` and `to`, `since` and
-  `until`, `from_date` and `to_date`, or `start_date` and `end_date` (the
-  first such pair) one `:period` filter, «Period» («Periode»), after the
-  others; ids, other dates, numbers, other text and `limit` are not
-  offered. A period's values go to the operation as the address gives
-  them, read there, and one it refuses shows its error at its field too. The address's keys are those inputs' names, as an agent
-  passes them (`/orders?status=draft&dateless=true`), and the list
-  operation is called with what the address gives, so a value it refuses
-  shows as its error. An operation with none of these inputs gives no
-  toolbar. The list's rows, its first 100 records, come in the page's
+  a `:toggle`, the id of a record the person may choose a `:choice`
+  filter (below, «Choosing a record»), and two date inputs named `from`
+  and `to`, `since` and `until`, `from_date` and `to_date`, or
+  `start_date` and `end_date` (the first such pair) one `:period`
+  filter, «Period» («Periode»), after the others; other ids, other
+  dates, numbers, other text and `limit` are not offered. A period's
+  values go to the operation as the address gives them, read there, and
+  one it refuses shows its error at its field too. The address's keys
+  are those inputs' names, as an agent passes them
+  (`/orders?status=draft&dateless=true&customer_id=cus_12`), and the
+  list operation is called with what the address gives, an id as it is
+  given, so a value it refuses shows as its error. An operation with
+  none of these inputs gives no toolbar. The list's rows, its first 100 records, come in the page's
   answer: nothing loads after it, and it does not page yet (§9). The
   toolbar is
   part of the generated screen: a client's
@@ -2126,7 +2134,8 @@ form of `field`s with an `error-summary`, a confirmation is a
 - **Forms.** A control per input, chosen by its type: text, e-mail,
   number, date, a `select` or `radios` (four choices or fewer, required)
   for an enum, `checkboxes` for a list of an enum, a `checkbox` for a
-  boolean, a `select` of the records an id refers to, a `textarea` for
+  boolean, a `choice-input` of the records an id refers to (below,
+  «Choosing a record»), a `textarea` for
   long text and JSON, an amount (`money`) as a person writes it in the
   page's language, with the currency beside it (`i18n.md` §5.4), and a
   `fieldset` per row of a list of records, its optional inputs folded
@@ -2141,6 +2150,71 @@ form of `field`s with an `error-summary`, a confirmation is a
   phone. A refused submission keeps what was typed, puts each field's
   error at the field and lists them in an `error-summary` that links to
   them.
+- **Choosing a record.** An input that is the id of a record of another
+  entity (`(id customer)`), in a generated form and as a generated
+  list's filter, chooses among that entity's records by typing, under
+  the authority of the person signed in.
+  1. **Who chooses among which.** The entity's list operation (its read
+     operation whose tool ends in `_list`) decides it: a person whose
+     role that operation's policy admits chooses among every record of
+     the entity that its record policies let them read (`store.md` §6),
+     not the operation's first page; the operation itself is not called.
+     For anyone else, and for an entity without a list operation, the
+     input is a text field for the id, as before, and no filter.
+  2. **A record's text** is what the generated pages show for it
+     wherever they name it (a table's cell, a record's details, the
+     field, the filter's button): its `name` field when the entity
+     stores one and it is filled, else its id. Only a record the person
+     may choose (1) is named: one a record policy hides from them, or of
+     an entity whose list operation's policy does not admit them, is
+     shown by its id, never by its name. The names a page shows are read
+     once for each entity it names records of, in the same read as a
+     choice's (4), so with 2000 records they add less than 50 ms to the
+     page. A choice finds a record
+     by the search's rule (§6.4) with that text as its one name and its
+     id as its one identifier: «bjorn ase» finds «Bjørn Åsen», and a
+     pasted id its record; no other field is read or searched. The
+     records come in the order of their names (the store's order of the
+     `name` field), or as they were made when there is none. Tun has no
+     seam for a module to give an entity another text or more fields to
+     be found by (§9); a module or client that wants one writes its own
+     page with `choice-input` and an address of its own that answers with
+     `choice-answer`.
+  3. **Few or many.** When the person may choose among at most 30
+     records, the field and the filter hold all of them with the page
+     (`choice-input`'s and a `:choice` filter's options without SOURCE,
+     narrowed in the browser; without JavaScript a `select` of them,
+     as before). With more, they ask `/choices/ENTITY` as one types
+     (SOURCE), and the page holds only the chosen record and, after a
+     «Find» step, what it found.
+  4. **The address.** `/choices/ENTITY?q=TEXT`, ENTITY the entity's JSON
+     name (`/choices/customer`), is a kernel page for `:viewer`s and up,
+     out of the menu. It answers with `choice-answer` from the records
+     of (1) and (2): the first 20 by the rule, the rest counted, the
+     fragment to htmx and a page «Choices» («Valg») to any other request.
+     A person whose role the list operation's policy does not admit gets
+     403; an entity that does not exist or has no list operation, a path
+     without ENTITY or with more, and a POST get 404. It reads the
+     records once, their id and `name` alone (`select`'s `:fields`,
+     `store.md` §2, item 11); with 2000 records it answers within 100 ms
+     on the server, in memory and on Postgres.
+  5. **The form.** The field is a `choice-input` named as the input,
+     required as it is. Without JavaScript a many-records field has its
+     «Find» step: the form is shown again with the matches in its select
+     and «N found», nothing saved, with status 200. Before the operation
+     is called, every posted id of such a field, a row's of a list of
+     records too (an order's lines), is checked with `read-choice`
+     against the records the person may choose: an id that is none of
+     them (one that does not exist, or one a record policy hides from
+     the person) is refused at its field, «must be one of the choices»
+     («må være et av valgene»), in the form's `error-summary`, with
+     status 422, and the operation is not called.
+  6. **The list's filter.** A `:choice` filter labelled as the input,
+     its address a `:one` filter's of the input's name
+     (`customer_id=cus_12`), its «Find» text `NAME-find`; «Reset» names
+     it too. Its button names the chosen record's text; an id in the
+     address that is none of the person's choices is passed to the
+     operation as given (above) and its button shows the id.
 - **Values.** In the page's language and the tenant's currency and time
   zone (`i18n.md` §5.4, §6.2), the page's language being the tenant's: amounts as `€12,450.00` or `12 450,00 kr`,
   dates as `21 Oct 2026` or `21.10.2026`, instants in the tenant's time
@@ -2339,12 +2413,11 @@ form of `field`s with an `error-summary`, a confirmation is a
 - Charts other than one line over time: several series in one chart
   (comparing shares, a moving average), bars, areas, stacks, scatter, and
   a chart's own time range control.
-- A generated form's reference (an id of another record) and a generated
-  list's id input as a `choice-input` and a `:choice` filter: they stay a
-  `select` of the first 100 records and no filter (§8). Asking a list
-  operation for a choice's options finds by that operation's own `query`
-  rule (`customers_list` by a part of the name or the email), not the
-  search's, so «bjorn ase» would not find «Bjørn Åsen» there.
+- A seam for a module to give the generated pages' choice of a record
+  (§8, «Choosing a record») another text than its name, or more of its
+  fields to find it by (an email, a number), or to keep some records out
+  of it (an erased customer); and a choice among more than one entity's
+  records.
 - Near matches in a choice for a word typed wrong (as in the search),
   and muted text inside a table cell: a cell holds its value in the text
   colour (a quieter fact is a column of its own, or `:narrow nil`).
@@ -2797,5 +2870,31 @@ form of `field`s with an `error-summary`, a confirmation is a
   in it; without JavaScript the select posting an id, the find step
   listing the matches and the toolbar's «Apply»; no page scrolling
   sideways.
+- `tests/generated-choice-tests.lisp` (§8 «Choosing a record», §7):
+  `/choices/ENTITY`'s fragment and page, its order, LIMIT and count, its
+  403, 404s and POST; on Postgres the record policies deciding what it
+  answers, what a form's field may post and which records a cell names;
+  one read of the id and `name` alone; its time with 2000 records in
+  memory and on Postgres, and what the names add to the orders' pages;
+  a record's text in a table and on a record's page past the first 100,
+  and an id for a record the person may not choose;
+  the generated form's field with every record at 30 and asking at 31,
+  in a row of a list of records too, its find step saving nothing and an
+  id that is none of the choices refused at its field without calling
+  the operation; the generated list's `:choice` filter, its address, the
+  list it gives and «Reset»; an entity the person may not list or that
+  has no list operation as before; the specimen's address answered by
+  `choice-answer`.
+- `checks/showcase/checks/generated-choice.py`, on the showcase's
+  generated «Meetings» (a resource of the showcase's, each meeting for a
+  customer): with 405 customers the form's field asking as one types,
+  «bjorn ase» finding «Bjørn Åsen», Enter choosing and saving a meeting
+  for him; the list's filter choosing a customer into the address and
+  the list; without JavaScript the find step, saving and «Apply»; the
+  file field of «New item» at 320, 360 and 390 px inside its column with
+  no page scrolling sideways; the specimen's find-step example chosen.
+  `generated-choice-few.py`, with the default scenario's four
+  customers: every one in the field and the filter, narrowed in the
+  browser with no request.
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

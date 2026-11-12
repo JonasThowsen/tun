@@ -497,6 +497,15 @@ again with `:find` that text and the matches of `(choice-matches TEXT
 ROWS ...)` among `:options`, saving nothing. A toolbar's `:choice` filter
 does the same from `(first (query-values query "NAME-find"))`.
 
+The generated pages do all of this themselves for an input that is the
+id of another entity's record (`(id customer)`): the form's field and
+the list's filter choose among the records the person may read by the
+entity's list operation's policy and its record policies, found by
+their `name` (else their id), all with the page up to 30 and asked from
+`/choices/ENTITY` beyond, and a posted id is checked before the
+operation is called (`spec/ui.md` §8, «Choosing a record»). A page of
+yours may ask `/choices/customer` too.
+
 `(query-address PATH PAIRS)` writes a link with a query: `(query-address
 "/orders" '(("q" . "kari nord") ("status" . "") ("tag" "a" "b")))` is
 `/orders?q=kari%20nord&status=&tag=a&tag=b`; a NIL value leaves its pair
