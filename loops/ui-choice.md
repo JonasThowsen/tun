@@ -2,7 +2,7 @@
 
 - loop: ui-choice
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 5cc7d9b9cad0d685df6e3c870abf5d08c523163f
 - item: sak_3a9y1xn7rf5kz47g
 - estimate: 3h 5h 9h
@@ -296,6 +296,12 @@ ms limit, at a load average of 16 with another builder's suite and
 preview running); run alone the suite passed with medians of 35–40 ms,
 and round 4 passed whole. This loop changes no code the test runs.
 
+## Actuals
+
+```json
+{"loop":"ui-choice","title":"Choosing one record among many by typing: a form field and a list filter that send an id","repository":"tun","mode":"reviewed","stage":"done","item":"sak_3a9y1xn7rf5kz47g","tags":["kind:ui","core","module:ui"],"like":["tun/ui-fields"],"started":"2026-11-12 16:03","ended":"2026-11-12 17:50","minutes":{"total":107,"waiting_person":0,"waiting_reviewer":3,"working":104,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"latest_estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"within_estimate":false,"ratio":0.36,"verify":{"rounds":4,"failed":3},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 16:03  started, reviewed
@@ -412,3 +418,4 @@ and round 4 passed whole. This loop changes no code the test runs.
   **Small things, not blocking**
   - `src/web/ui.lisp:2009-2024` (`specimen-choices`) repeats `choice-answer`'s work with an unexplained `:limit 8` instead of calling it. A comment or a call to `choice-answer` would be clearer.
   - The specimen's «A find step without scripts» example looks like a plain empty field when scripts run (`desktop-ui-choice-input.png`). It only shows its find step with scripts off.
+- 2026-11-12 17:50  finished at tun b17306f9
