@@ -199,6 +199,7 @@
                              (:file "ui-sheets-tests")
                              (:file "ui-header-tests")
                              (:file "ui-filters-tests")
+                             (:file "ui-lists-tests")
                              (:file "review-tests")
                              (:file "review2-tests")
                              (:file "slice1-review-tests")

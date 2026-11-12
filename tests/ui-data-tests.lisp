@@ -25,15 +25,17 @@ aria-current=\"page\", in any order."
 ;;; ------------------------------------------------------------------
 ;;; Table
 
-(test every-table-cell-carries-its-column-header-as-a-label
+(test every-table-cell-holds-its-value-under-its-column-header
   (let ((html (order-table)))
     (is (= 3 (count-matches "<th scope=\"col\"" html)) "the headers are column headers")
-    (dolist (header '("Ordre" "Kunde" "Beløp"))
-      (is (= 2 (count-matches (format nil "<span class=\"tun-table-label\">~a</span>" header)
-                              html))
-          "each of the two rows labels its ~a cell" header))
-    (is (search "<td data-align=\"end\"><span class=\"tun-table-label\">Beløp</span>" html)
-        "an amount is aligned to the end, label and all")))
+    (is (search (concatenate 'string "<td><span class=\"tun-table-lead\">"
+                             "<span class=\"tun-table-value\">10482</span></span></td>"
+                             "<td><span class=\"tun-table-value\">Fjordkaffe AS</span></td>")
+                html)
+        "the first cell's value in its lead, the next cell's alone, each marked")
+    (is (search "<td data-align=\"end\"><span class=\"tun-table-value\">4 380,00 kr</span></td>"
+                html)
+        "an amount is aligned to the end")))
 
 (test a-row-with-a-link-links-its-first-cell-only
   (let ((html (order-table :row-href (lambda (row) (format nil "/ordre/~a" (first row))))))
@@ -52,7 +54,8 @@ aria-current=\"page\", in any order."
                                                ("10481" "11.10.2026" "128 950,00 kr")))))))
     (is (= 3 (count-matches "data-narrow=\"false\"" html))
         "the header and both of its cells")
-    (is (search "<td data-narrow=\"false\"><span class=\"tun-table-label\">Dato</span>" html))
+    (is (search "<td data-narrow=\"false\"><span class=\"tun-table-value\">12.10.2026</span>"
+                html))
     (is (null (search "data-narrow=\"true\"" html)) "the other columns carry nothing"))
   (signals error (tun.ui:table (:columns '(("Ordre" :phone nil)) :rows '()))
            "an option the column does not take"))
@@ -67,7 +70,9 @@ aria-current=\"page\", in any order."
   (let ((html (tun.html:render-html
                (tun.ui:table (:columns '("Faktura" "Kunde" "Forfall") :rows '()
                                        :empty "Ingen fakturaer.")))))
-    (is (search "<tr class=\"tun-table-empty\"><td colspan=\"3\">Ingen fakturaer.</td>" html))
+    (is (search (concatenate 'string "<tr class=\"tun-table-empty\"><td colspan=\"3\">"
+                             "<div class=\"tun-table-empty-text\">Ingen fakturaer.</div></td>")
+                html))
     (is (search "<th scope=\"col\">Faktura</th>" html) "the headers stay")))
 
 (test a-hidden-caption-still-names-the-table

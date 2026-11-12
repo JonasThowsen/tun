@@ -21,7 +21,10 @@ spacing, `tabs` on the page's ground, the shell and the theme colours on
 the chrome, and no description in Tun's own pages (§4.2, §6, §8),
 2026-11-11, core 2.27.0; a list's toolbar, `list-toolbar`, its filters in
 the address, a repeated query key and the generated list's filters (§6,
-§8), 2026-11-12, core 2.28.0. How every Tun page
+§8), 2026-11-12, core 2.28.0; every table's rows on a phone, in a box
+that scrolls sideways, a row that leads somewhere pressed as one target,
+and a page title's long word hyphenated (§2.1, §6, §8), 2026-11-12, core
+2.29.0. How every Tun page
 looks and behaves: the tokens, the components that are built from them,
 the specimen that shows them, and the rules a component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
@@ -121,7 +124,7 @@ application of 2026-11-10 and 2026-11-11; the token names stay shadcn's.
   inside it (`--focus-ring-inset`, 2px of the accent), where a ring
   outside would be cut off. A link in running text has the browser's
   outline in the same shape: 2px of the accent, 2px off.
-- **Panels.** A card, a stat and a table's rows on a phone have the edge
+- **Panels.** A card, a stat and a table on a phone have the edge
   and `--shadow-panel` (`0 1px 2px rgb(0 0 0 / .04), 0 2px 8px rgb(0 0 0
   / .03)` in the light, none in the dark). A group inside a panel stands
   on `--soft` (the text colour at 5 %) rather than a frame of its own: no
@@ -710,16 +713,60 @@ and a tap or a click anywhere on it follows the link, except on the
 controls in it (links, buttons, fields, text areas, selects and
 labels), which stay above the link and work as themselves.
 
-`table` keeps its columns on a wide screen and shows each row as a card
-on a narrow one. A column given `:sort KEY` has a header that is a link
-to `:sort-href` (a function of the key and `"asc"` or `"desc"`, or a
-format string): ascending, or descending when it is sorted ascending
-already, with an arrow, and `aria-sort` on the column `:sorted :asc` or
-`:desc`. The page sorts the rows; the link reloads it, so sorting works
-without JavaScript. On a narrow screen the sortable headers stay, as a
-row of links above the cards. A column given `:narrow nil` is left out
-of the cards, and kept in the table on a wide screen: a page says which
-columns a phone can do without. `confirm-panel` is the form a `:confirm` operation
+`table` keeps its columns at every width, a phone's too: no row turns
+into a card. Its rows stand in a box of their own that scrolls sideways
+when the columns do not fit, never the page; a soft shadow at an edge
+of the box says there is more beyond it, and none shows at the very
+start or end, since the covers that hide it scroll with the rows. The
+first column names the record. Amounts and numbers are right-aligned
+with `:align :end`, and every figure is tabular.
+
+- **On a phone**, below 36rem of the table's own width (it is a
+  container), the box is one panel (§2.1): the edge, `--radius-lg` and
+  `--shadow-panel` on `--card`, the row of headers on top and a 1px
+  line between rows. A row is one line of cells, 2.25rem high, and at
+  least 2.75rem on a coarse pointer when it leads somewhere. The first
+  column's text wraps, a word broken where it must be, to at most two
+  lines, and what is left is cut with «…»; it takes at most half the
+  table's width, and 16rem, so the next columns start in sight; up to
+  that it keeps its own width, so a short name never wraps, and where the
+  columns do not fit then, the box scrolls. Every
+  other cell keeps to one line, unless its column is `:wrap`. A column
+  given `:narrow nil` is left out there, for a value a phone can do
+  without; the others keep the order the page gives them, so a page
+  puts first what a phone should see without scrolling.
+- **A row that leads somewhere** (`:row-href`, a list parallel to the
+  rows or a function of a row) has one link, the text of its first
+  cell, whose box covers the row: a tap or a click anywhere on the row
+  follows it, without JavaScript too, and the keyboard reaches it in
+  one stop, its focus ring drawn inside the row (`--focus-ring-inset`).
+  The row takes `--pressed` while its link is pressed, at once, and
+  `--accent` under a pointer only where a pointer hovers. A link, a
+  button, a field or a label in a cell stands above the row's link and
+  works as itself: a click on it does not follow the row, and pressing
+  it does not press the row.
+- **Sorting.** A column given `:sort KEY` has a header that is a link
+  to `:sort-href` (a function of the key and `"asc"` or `"desc"`, or a
+  format string): ascending, or descending when it is sorted ascending
+  already, with an arrow, and `aria-sort` on the column `:sorted :asc`
+  or `:desc`. The page sorts the rows; the link reloads it, so the
+  address holds the sort and sorting works without JavaScript. A page
+  with a `list-toolbar` keeps its filters in its sort links and its sort
+  in the toolbar's `:keep`. The sorted column's header has the weight of
+  the others; its arrow, in the text colour where the others' are muted,
+  marks it.
+- **Empty.** A table of no rows keeps its headers and says EMPTY in one
+  row across them, in sight in the box at its left however wide the
+  columns.
+- **The rows come with the page.** A table's rows are in the page's
+  answer; it loads nothing after it, and has no stand-in while it loads.
+  A page that shows a list a part at a time gives one way to the rest,
+  under the rows: `pagination`, or one «load more» link, never both.
+  While a request for the
+  list runs (a filter, a sort, a search), the rows stay where they are
+  until the answer replaces them, and the loading sign (§4.1) shows.
+
+`confirm-panel` is the form a `:confirm` operation
 shows before it runs. `flash` is a message carried over a redirect.
 
 `list-toolbar` is a list's one search and its filters, above the list:
@@ -894,7 +941,7 @@ small tooltip), drawn as plain SVG by Tun.
 `sparkline` is a value over time in a line of text: `(sparkline (:points
 POINTS :label L :digits D))`, POINTS and D as `line-chart` takes them,
 no axes and no text, 6rem wide and as high as a line of the text around
-it (`1lh`), such as in a table cell or a table's card on a phone, its
+it (`1lh`), such as in a table cell, its
 line 1.5px in `--chart-1`. It has `role="img"` and an `aria-label` of L
 followed by its first and last value, joined by a catalogued word: en
 «EQNR.OL: 412.30 to 430.00», nb «EQNR.OL: 412,30 til 430,00». With one
@@ -920,7 +967,8 @@ one (§8: Tun's own pages have none).
   with 0.5rem between two actions; the title keeps 0.75rem a character of
   its words, at most 6rem; they fit when the actions, the title's room and
   1rem between them come to 18rem or less. A word of the title longer than
-  its room breaks. When they do not, every action
+  its room breaks, with a hyphen where the page's language (`lang`) has
+  one for it (`hyphens: auto`), else anywhere. When they do not, every action
   that is a `button` or a form holding one button, other than the filled
   ones, folds into one «More actions» («Flere handlinger») `dropdown-menu`
   standing before the filled actions: a `:ghost` button showing only
@@ -1474,7 +1522,10 @@ form of `field`s with an `error-summary`, a confirmation is a
   passes them (`/orders?status=draft&dateless=true`), and the list
   operation is called with what the address gives, so a value it refuses
   shows as its error. An operation with none of these inputs gives no
-  toolbar. The toolbar is part of the generated screen: a client's
+  toolbar. The list's rows, its first 100 records, come in the page's
+  answer: nothing loads after it, and it does not page yet (§9). The
+  toolbar is
+  part of the generated screen: a client's
   `render-screen` method for the list shows it only through
   `call-next-method`. A list filtered to nothing says «Nothing matches»
   («Ingen treff») with «Reset».
@@ -1694,6 +1745,7 @@ form of `field`s with an `error-summary`, a confirmation is a
   from the texts it shows, or that asks the server for its options.
 - htmx's own extensions (server-sent events, the head merge,
   morphing).
+- Paging the generated list: it shows its first 100 records.
 - Path patterns with typed parameters for pages (`/saker/:item`), and
   links that name their page (`docs/roadmap.md`).
 
@@ -1949,6 +2001,29 @@ form of `field`s with an `error-summary`, a confirmation is a
   a floating popover inside the window, and no page scrolling sideways;
   without JavaScript, at 390 px every filter's button shown, a popover
   opening and «Apply» filtering the list.
+- `tests/ui-lists-tests.lisp` (§2.1, §6 `table`, §8 «Lists»): a
+  table's cells hold their content and no card's labels; the first
+  cell's text in its own part, the row's one link in it; `:narrow nil`
+  marked on a column's header and cells; the empty row's text in its
+  part; the CSS of a phone's panel, its lead of two lines, the pressed
+  row only while its link is pressed and at once, the hover where a
+  pointer hovers, the edge shadows, and no card layout left; the old
+  options accepted; a page title's `hyphens: auto`; the generated list's
+  rows in the page's first answer, with no part that loads after it.
+- `checks/showcase/checks/ui-lists.py` (§6 `table`), on the specimen's
+  `/ui/table` and the showcase's `/cards`: at 390, 360 and 320 px no page
+  scrolling sideways, the table's box at the toolbar's and the header's
+  left and right edges, a row's cells on one line, a link row at least
+  44px and eight rows of `/cards` at most 448px high, the amounts'
+  right edges equal, the lead at most two lines and the amount column
+  reached by scrolling the table's box; at 1280 px every column in sight;
+  a row's link covering the row, the row pressed at once, a focused row
+  showing the inset ring, an inner link followed without the row and an
+  inner menu's button opening its menu without the row; a sort link
+  changing the address, keeping the toolbar's filters, the rows staying
+  and the loading sign showing while a slow sort or filter answer comes,
+  and the sorted header at the others' weight; without JavaScript a
+  tap on a row and a sort link working.
 - `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
   sign hidden and `aria-hidden`, and an empty `role="status"` region
   with «Loading…» in the page's language to say; the script and the

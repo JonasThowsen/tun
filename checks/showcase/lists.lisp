@@ -1,6 +1,6 @@
 ;;;; lists.lisp -- /cards, the cards as a list with its toolbar (spec/ui.md 6,
-;;;; list-toolbar): a search and a filter of each kind, applied on the
-;;;; server from the address.
+;;;; list-toolbar, table): a search and a filter of each kind, and a sort by
+;;;; title or estimate, applied on the server from the address.
 
 (in-package #:showcase)
 
@@ -22,9 +22,53 @@
              (eq (integerp (jget card "estimate_minor")) (equal estimate "with")))
          (or (null files) (card-files-p card)))))
 
+(defun card-sort (query)
+  "The sort QUERY asks for: its key, \"title\" or \"estimate\", or NIL, and its
+direction, \"asc\" or \"desc\"."
+  (let ((key (first (query-values query "sort")))
+        (direction (first (query-values query "direction"))))
+    (values (and (member key '("title" "estimate") :test #'equal) key)
+            (if (equal direction "desc") "desc" "asc"))))
+
+(defun address-text (text)
+  "TEXT written for an address's query: the characters that mean something
+there as %XX, the rest as they are, which the browser encodes."
+  (with-output-to-string (out)
+    (loop for char across text
+          do (if (find char " %&+#=?/")
+                 (format out "%~2,'0X" (char-code char))
+                 (write-char char out)))))
+
+(defun cards-href (query &key sort direction)
+  "The address of /cards with QUERY's search and filters, every key named,
+and the sort SORT in DIRECTION."
+  (format nil "/cards?q=~a~{&status=~a~}&status=&estimate=~a&files=~@[true~]~@[&sort=~a~]~
+~@[&direction=~a~]"
+          (address-text (or (first (query-values query "q")) ""))
+          (query-values query "status")
+          (or (first (query-values query "estimate")) "")
+          (query-values query "files")
+          sort (and sort direction)))
+
+(defun sorted-cards (cards query)
+  "CARDS in the order QUERY's sort asks for, else as they come."
+  (multiple-value-bind (key direction) (card-sort query)
+    (let ((sorted (cond ((equal key "title")
+                         (stable-sort (copy-list cards) #'string-lessp
+                                      :key (lambda (card) (jget card "title"))))
+                        ((equal key "estimate")
+                         (stable-sort (copy-list cards) #'<
+                                      :key (lambda (card)
+                                             (let ((estimate (jget card "estimate_minor")))
+                                               (if (integerp estimate) estimate -1)))))
+                        (t cards))))
+      (if (and key (equal direction "desc")) (reverse sorted) sorted))))
+
 (defun cards-toolbar (query)
-  "The toolbar of /cards, as QUERY has it."
+  "The toolbar of /cards, as QUERY has it, keeping its sort."
   (ui:list-toolbar (:action "/cards" :id "cards-toolbar"
+                    :keep (multiple-value-bind (key direction) (card-sort query)
+                            (when key (list (list "sort" key) (list "direction" direction))))
                     :search (list :name "q" :label (tr "Search the cards")
                                   :value (first (query-values query "q")))
                     :filters (list (list :name "status" :label (tr "Status") :kind :several
@@ -39,15 +83,25 @@
                                    (list :name "files" :label (tr "With files") :kind :toggle
                                          :value (and (query-values query "files") t))))))
 
-(defun cards-table (cards)
-  (ui:table (:caption (tr "Cards") :caption-hidden t
-             :columns (list (tr "Title") (tr "Status") (list (tr "Estimate") :width :min))
-             :rows (mapcar (lambda (card)
-                             (let ((estimate (jget card "estimate_minor")))
-                               (list (jget card "title") (column-title (jget card "status"))
-                                     (if (integerp estimate) (money-text estimate) ""))))
-                           cards)
-             :row-href (mapcar (lambda (card) (format nil "/items/~a" (jget card "id"))) cards))))
+(defun cards-table (cards query)
+  "The table of CARDS, sorted as QUERY says, its headers' links keeping the
+toolbar's filters."
+  (multiple-value-bind (key direction) (card-sort query)
+    (flet ((sorted (name) (when (equal key name) (if (equal direction "desc") :desc :asc))))
+      (ui:table (:caption (tr "Cards") :caption-hidden t
+                 :columns (list (list (tr "Title") :sort "title" :sorted (sorted "title"))
+                                (tr "Status")
+                                (list (tr "Estimate") :width :min :align :end :sort "estimate"
+                                                      :sorted (sorted "estimate")))
+                 :sort-href (lambda (sort direction)
+                              (cards-href query :sort sort :direction direction))
+                 :rows (mapcar (lambda (card)
+                                 (let ((estimate (jget card "estimate_minor")))
+                                   (list (jget card "title") (column-title (jget card "status"))
+                                         (if (integerp estimate) (money-text estimate) ""))))
+                               cards)
+                 :row-href (mapcar (lambda (card) (format nil "/items/~a" (jget card "id")))
+                                   cards))))))
 
 (define-page cards-list-page ("cards" :title "Cards" :icon :funnel :policy :employee)
     (method path form query)
@@ -60,5 +114,5 @@
                 (list (ui:stack (:gap :md)
                         (cards-toolbar query)
                         (if cards
-                            (cards-table cards)
+                            (cards-table (sorted-cards cards query) query)
                             (ui:empty-state (:icon :search :title (tr "No card matches"))))))))))

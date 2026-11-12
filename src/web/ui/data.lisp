@@ -14,8 +14,7 @@
   "COLUMN of a table, a header string or a list (HEADER &key ALIGN WIDTH WRAP
 SORT SORTED NARROW), as a plist with every option.  SORT is the key the page
 sorts the column by; SORTED is :ASC or :DESC on the column the rows are
-sorted by.  NARROW NIL leaves the column out of the cards a narrow screen
-shows."
+sorted by.  NARROW NIL leaves the column out on a phone."
   (destructuring-bind (header &key (align :start) width wrap sort sorted (narrow t))
       (if (listp column) column (list column))
     (check-type header string)
@@ -56,25 +55,24 @@ with an arrow; aria-sort says how the rows are sorted."
 
 (defun table-cell-attributes (column)
   "The attributes a header or data cell of COLUMN carries for its alignment,
-width and wrapping, and whether a narrow screen leaves it out."
+width and wrapping, and whether a phone leaves it out."
   (destructuring-bind (&key align width wrap narrow &allow-other-keys) column
     (list :data-align (unless (eq align :start) (option-string align))
           :data-width (option-string width)
           :data-wrap (when wrap "true")
           :data-narrow (unless narrow "false"))))
 
-(defun table-cell (column content &optional href)
-  "A data cell of COLUMN holding CONTENT.  The cell carries its column's header
-as a label, which is shown when rows are cards on a narrow screen.  With HREF
-the content is the link that the whole row leads to."
-  `(:td ,(attrs (table-cell-attributes column))
-        (:span (:@ :class "tun-table-label") ,(getf column :header))
-        (:span (:@ :class "tun-table-value")
-               ,(if href
-                    `(:a (:@ :class "tun-table-row-link" :href ,href)
-                         ,content
-                         ,(icon (:name :chevron-right)))
-                    content))))
+(defun table-cell (column content &key lead href)
+  "A data cell of COLUMN holding CONTENT, marked as the cell's value: a page's
+tests and checks find a value by its mark.  The LEAD cell, the row's first,
+holds it in a part of its own, which a phone keeps to two lines; with HREF
+the content is the link the whole row leads to."
+  (let ((value `(:span (:@ :class "tun-table-value")
+                       ,(if href
+                            `(:a (:@ :class "tun-table-row-link" :href ,href) ,content)
+                            content))))
+    `(:td ,(attrs (table-cell-attributes column))
+          ,(if lead `(:span (:@ :class "tun-table-lead") ,value) value))))
 
 (defun table-row (columns cells &optional href)
   (unless (= (length cells) (length columns))
@@ -84,7 +82,7 @@ the content is the link that the whole row leads to."
         ,@(loop for column in columns
                 for cell in cells
                 for first = t then nil
-                collect (table-cell column cell (when first href)))))
+                collect (table-cell column cell :lead first :href (when first href)))))
 
 (defun table-row-hrefs (row-href rows)
   "The link of each of ROWS: ROW-HREF is NIL, a list parallel to ROWS, or a
@@ -98,20 +96,39 @@ function from a row (its cells) to its URL or NIL."
 (define-component table ((&key columns rows row-href sort-href footer caption caption-hidden
                                (empty (tr "No entries.")) id attributes))
   (:group "Data")
-  (:doc "A list of records, such as orders, customers or invoices. The first column is what
-identifies the record: on a narrow screen it becomes the title of a card, and the other
-values stand with their column's name. With ROW-HREF the whole row is a link to the record;
-amounts and numbers are right-aligned with :align :end. A column with :sort KEY can be
-sorted: its header becomes a link to SORT-HREF (a function of the key and \"asc\" or
-\"desc\", or a format string), and :sorted :asc or :desc shows how the rows are sorted. The
-page sorts; the table only shows the headers. A column with :narrow nil is left out of the
-cards, for a value a phone can do without.")
-  (:source "Basecoat table (Vega); cards on a phone after GOV.UK and Aksel")
+  (:doc "A list of records, such as orders, customers or invoices. Every column stays at every
+width: the rows scroll sideways in their own box when they do not fit, a shadow at an edge
+with more beyond it, and on a phone the box is one panel of dense rows. The first column
+names the record; put first what a phone should see. With ROW-HREF the whole row is a link
+to the record; amounts and numbers are right-aligned with :align :end. A column with :sort
+KEY can be sorted: its header becomes a link to SORT-HREF (a function of the key and
+\"asc\" or \"desc\", or a format string), and :sorted :asc or :desc shows how the rows are
+sorted. The page sorts; the table only shows the headers. A column with :narrow nil is left
+out on a phone, for a value a phone can do without.")
+  (:source "Basecoat table (Vega); dense rows that scroll on a phone after the owner's rules
+for an admin application, 2026-11")
   (:css "
 .tun-table {
   container: tun-table / inline-size;
   width: 100%;
-  overflow-x: auto;
+  /* The rows' own box scrolls sideways, never the page.  A soft shadow at
+     an edge says there is more beyond it: the two covers scroll with the
+     rows and hide the shadows at the very start and end. */
+  & .tun-table-box {
+    overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    /* Literal sizes: the covers are wider than the shadows they hide. */
+    background:
+      linear-gradient(to right, var(--card) 30%, transparent) left / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--card) 30%, transparent) right / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,
+                      color-mix(in oklab, var(--foreground) 16%, transparent), transparent)
+        left / 0.875rem 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%,
+                      color-mix(in oklab, var(--foreground) 16%, transparent), transparent)
+        right / 0.875rem 100% no-repeat scroll;
+    background-color: var(--card);
+  }
   & table {
     width: 100%;
     caption-side: top;
@@ -173,7 +190,7 @@ cards, for a value a phone can do without.")
     @media (hover: hover) {
       &:hover { text-decoration-line: underline; text-underline-offset: 4px; }
     }
-    &:active { background-color: var(--pressed); }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
   }
   & th[aria-sort] .tun-table-sort .tun-icon { color: var(--foreground); }
   & :is(th, td)[data-align='center'] { text-align: center; }
@@ -183,24 +200,34 @@ cards, for a value a phone can do without.")
   & th[data-width='md'] { width: 10rem; }
   & th[data-width='lg'] { width: 16rem; }
   & td[data-wrap] { min-width: 12rem; white-space: normal; }
-  & .tun-table-label, & .tun-table-row-link .tun-icon { display: none; }
   & .tun-table-empty td {
     padding-block: calc(var(--spacing) * 8);
     color: var(--muted-foreground);
     text-align: center;
     white-space: normal;
   }
+  /* What the empty row says stays in the box's visible part, however wide
+     the columns make the row. */
+  & .tun-table-empty-text {
+    position: sticky;
+    inset-inline-start: calc(var(--spacing) * 2);
+    max-width: calc(100cqi - var(--spacing) * 4);
+  }
   @media (hover: hover) {
     & tbody tr:not(.tun-table-empty):hover { background-color: var(--accent); }
   }
-  /* A row that opens a record answers while it is pressed. */
-  & tbody tr[data-link]:active { background-color: var(--pressed); transition-duration: 0s; }
+  /* A row that opens a record answers while its link is pressed, and only
+     then: pressing a control in the row presses the control. */
+  & tbody tr[data-link]:has(.tun-table-row-link:active) {
+    background-color: var(--pressed);
+    transition-duration: 0s;
+  }
 
   /* A row with a link: the first cell's link covers the whole row, so the
      row is one target and the link's text is its name. */
   & tr[data-link] {
     position: relative;
-    & :is(a, button, input, select, label):not(.tun-table-row-link) {
+    & :is(a, button, input, select, textarea, label):not(.tun-table-row-link) {
       position: relative;
       z-index: 1;
     }
@@ -212,107 +239,73 @@ cards, for a value a phone can do without.")
     font-weight: var(--font-weight-medium);
     text-underline-offset: 4px;
     outline: none;
-    &::after { content: ''; position: absolute; inset: 0; border-radius: inherit; }
+    &::after { content: ''; position: absolute; inset: 0; }
     /* The row fills its box, so its ring is drawn inside it. */
     &:focus-visible::after { box-shadow: var(--focus-ring-inset); }
   }
+  /* A finger finds a row that leads somewhere. */
+  @media (pointer: coarse) {
+    & tbody tr[data-link] td { padding-block: calc(var(--spacing) * 3); }
+  }
 
-  /* Narrow, as on a phone: each row is a card titled by its first cell, the
-     record's identity, and each other cell is a line with its column's
-     name. */
+  /* A phone: the rows' box is one panel, and the first column's text keeps
+     to two lines and half the box, so the next columns start in sight. */
   @container tun-table (width < 36rem) {
-    & table, & tbody, & tfoot, & tr, & td { display: block; }
-    & thead { display: none; }
-    /* The sortable headers stay, as a row of links above the cards. */
-    & thead:has(.tun-table-sort) { display: block; margin-bottom: calc(var(--spacing) * 3); }
-    & thead:has(.tun-table-sort) tr {
-      display: flex;
-      flex-wrap: wrap;
-      gap: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
-      border: 0;
-    }
-    & thead th { height: auto; padding: 0; }
-    & thead th:not(:has(.tun-table-sort)) { display: none; }
-    & caption { display: block; }
-    & tbody { display: flex; flex-direction: column; gap: calc(var(--spacing) * 3); }
-    & tfoot { margin-top: calc(var(--spacing) * 3); border: 0; background: none; }
-    & tbody tr, & tfoot tr, & tbody tr:last-child {
-      padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
+    & .tun-table-box {
       border: 1px solid var(--border);
       border-radius: var(--radius-lg);
-      background-color: var(--card);
       box-shadow: var(--shadow-panel);
     }
-    & tfoot tr { background-color: var(--muted); box-shadow: none; }
-    & td {
-      display: flex;
-      align-items: baseline;
-      justify-content: space-between;
-      gap: calc(var(--spacing) * 4);
-      padding: calc(var(--spacing) * 1.5) 0;
+    & caption { padding: calc(var(--spacing) * 2) calc(var(--spacing) * 2) 0; margin: 0; }
+    & .tun-table-lead {
+      display: -webkit-box;
+      -webkit-box-orient: vertical;
+      -webkit-line-clamp: 2;
+      line-clamp: 2;
+      overflow: hidden;
+      /* Its own width up to the cap: a short name never wraps, and where the
+         columns do not fit then, the box scrolls. */
+      width: max-content;
+      max-width: min(16rem, 50cqi);
       white-space: normal;
-      text-align: end;
+      overflow-wrap: anywhere;
     }
-    & td[data-wrap] { min-width: 0; }
-    & td:has(> .tun-table-value:empty), & td[data-narrow='false'] { display: none; }
-    & .tun-table-label {
-      display: block;
-      flex-shrink: 0;
-      color: var(--muted-foreground);
-      text-align: start;
-    }
-    & .tun-table-value { min-width: 0; overflow-wrap: anywhere; }
-    & td[data-align='end'] .tun-table-value { white-space: nowrap; }
-    /* The title: its label is left for a screen reader only. */
-    & td:first-child {
-      justify-content: flex-start;
-      font-weight: var(--font-weight-semibold);
-      text-align: start;
-      & .tun-table-label {
-        position: absolute;
-        width: 1px;
-        height: 1px;
-        overflow: hidden;
-        clip-path: inset(50%);
-        white-space: nowrap;
-      }
-    }
-    & tbody tr[data-link] td:first-child { padding-inline-end: calc(var(--spacing) * 6); }
-    & .tun-table-row-link { font-weight: inherit; }
-    /* The chevron sits at the end of the title's line: the card's top
-       padding, the cell's, and half the difference between the line and
-       the icon. */
-    & .tun-table-row-link .tun-icon {
-      display: block;
-      position: absolute;
-      inset-inline-end: calc(var(--spacing) * 3);
-      top: calc(var(--spacing) * 3.5 + (var(--text-sm) * var(--text-sm--line-height) - 1rem) / 2);
-      color: var(--muted-foreground);
-    }
-    & .tun-table-row-link::after { border-radius: var(--radius-lg); }
-    & .tun-table-empty td {
-      display: block;
-      padding-block: calc(var(--spacing) * 6);
-      text-align: center;
-    }
-    & tbody tr.tun-table-empty { border-style: dashed; box-shadow: none; }
+    & td[data-wrap] { min-width: 10rem; }
+    & :is(th, td)[data-narrow='false'] { display: none; }
   }
   /* An empty state brings its own space. */
-  & .tun-table-empty td:has(> .tun-empty-state) { padding: 0; }
+  & .tun-table-empty td:has(.tun-empty-state) { padding: 0; }
 }")
   (:examples
    (("A list of orders" :layout :stack)
     (table (:caption "Orders in the last week"
-                     :columns '(("Order" :width :min) "Customer" ("Date" :width :min) "Status"
-                                ("Amount" :align :end))
-                     :rows '(("10482" "Fjord Coffee Ltd" "12 Oct 2026" "New" "€4,380.00")
-                             ("10481" "Hansen Building and Construction Ltd" "11 Oct 2026"
-                              "In progress" "€128,950.00")
-                             ("10480" "Kari Nordmann" "10 Oct 2026" "Sent" "€649.00")
-                             ("10479" "Tromsø Bicycle Workshop" "9 Oct 2026" "Invoiced"
-                              "€12,400.00")
-                             ("10478" "The Corner Bakery" "8 Oct 2026" "Cancelled" "€0.00"))
-                     :row-href (lambda (row) (format nil "/orders/~a" (first row))))))
+            :columns '(("Order" :width :min) "Customer" "Status" ("Due" :width :min)
+                       ("Amount" :align :end) ("Actions" :width :min))
+            :rows (mapcar
+                   (lambda (order)
+                     (destructuring-bind (number customer status tone due amount) order
+                       (list number
+                             (link (:href (format nil "#customer-~a" number)) customer)
+                             (badge (:variant tone) status)
+                             due
+                             amount
+                             (dropdown-menu*
+                              (list :label "More actions" :icon :ellipsis :size :icon
+                                    :variant :ghost :align :end
+                                    :id (format nil "order-~a-menu" number)
+                                    :items (list (list :label "Remind"
+                                                       :href (format nil "#remind-~a" number))
+                                                 (list :label "Cancel order"
+                                                       :href (format nil "#cancel-~a" number))))))))
+                   '(("10482" "Fjord Coffee Ltd" "Draft" :neutral "12 Nov 2026" "€4,380.00")
+                     ("10481" "Hansen Building and Construction Ltd" "Sent" :info "11 Nov 2026"
+                      "€128,950.00")
+                     ("10480" "Kari Nordmann" "Paid" :success "10 Nov 2026" "€649.00")
+                     ("10479" "Tromsø Bicycle Workshop" "Waiting" :warning "9 Nov 2026"
+                      "€12,400.00")
+                     ("10478" "The Corner Bakery" "Overdue" :destructive "8 Nov 2026"
+                      "€0.00")))
+            :row-href (lambda (row) (format nil "/orders/~a" (first row))))))
    (("Invoice lines with a total and a hidden caption" :layout :stack)
     (table (:caption "Lines on invoice 2026-0193" :caption-hidden t
                      :columns '(("Description" :wrap t) ("Quantity" :align :end :width :min)
@@ -347,22 +340,24 @@ cards, for a value a phone can do without.")
   (let ((columns (mapcar #'table-column columns))
         (hrefs (table-row-hrefs row-href rows)))
     `(:div ,(attrs (list :class "tun-table" :id id) attributes)
-           (:table
-            ,@(when caption
-                `((:caption ,(attrs (list :data-hidden (when caption-hidden "true")))
-                            ,caption)))
-            (:thead
-             (:tr ,@(loop for column in columns
-                          collect (table-header column sort-href))))
-            (:tbody
-             ,@(if rows
-                   (loop for row in rows
-                         for href in hrefs
-                         collect (table-row columns row href))
-                   `((:tr (:@ :class "tun-table-empty")
-                          (:td (:@ :colspan ,(length columns)) ,empty)))))
-            ,@(when footer
-                `((:tfoot ,(table-row columns footer))))))))
+           (:div (:@ :class "tun-table-box")
+                 (:table
+                  ,@(when caption
+                      `((:caption ,(attrs (list :data-hidden (when caption-hidden "true")))
+                                  ,caption)))
+                  (:thead
+                   (:tr ,@(loop for column in columns
+                                collect (table-header column sort-href))))
+                  (:tbody
+                   ,@(if rows
+                         (loop for row in rows
+                               for href in hrefs
+                               collect (table-row columns row href))
+                         `((:tr (:@ :class "tun-table-empty")
+                                (:td (:@ :colspan ,(length columns))
+                                     (:div (:@ :class "tun-table-empty-text") ,empty))))))
+                  ,@(when footer
+                      `((:tfoot ,(table-row columns footer)))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Summary list

@@ -571,6 +571,9 @@ admin application, 2026-11")
     line-height: var(--text-2xl--line-height);
     font-weight: var(--font-weight-semibold);
     letter-spacing: -0.025em;
+    /* A word longer than the line breaks with a hyphen where the page's
+       language has one for it, else anywhere. */
+    hyphens: auto;
     overflow-wrap: anywhere;
   }
   & .tun-page-header-description { color: var(--muted-foreground); max-width: 65ch; }
