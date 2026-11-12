@@ -175,3 +175,17 @@
   ("Without an estimate" "Uten anslag")
   ("With files" "Med filer")
   ("No card matches" "Ingen kort passer"))
+
+;;; The fields and the cards by day (fields.lisp, lists.lisp)
+
+(define-translations "nb"
+  ("Fields" "Felt")
+  ("Delivery date" "Leveringsdato")
+  ("Return date" "Returdato")
+  ("Pick-up time" "Hentetid")
+  ("Price" "Pris")
+  ("Send" "Send")
+  ("Enter a delivery date" "Skriv inn en leveringsdato")
+  ("What the server read" "Hva tjeneren leste")
+  ("Days" "Dager")
+  ("Reported" "Meldt"))

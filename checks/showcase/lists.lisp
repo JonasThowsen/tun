@@ -1,6 +1,7 @@
 ;;;; lists.lisp -- /cards, the cards as a list with its toolbar (spec/ui.md 6,
 ;;;; list-toolbar, table): a search and a filter of each kind, and a sort by
-;;;; title or estimate, applied on the server from the address.
+;;;; title or estimate, applied on the server from the address; and /days,
+;;;; the cards by the day each was reported on, with a period.
 
 (in-package #:showcase)
 
@@ -115,4 +116,70 @@ toolbar's filters."
                         (cards-toolbar query)
                         (if cards
                             (cards-table (sorted-cards cards query) query)
+                            (ui:empty-state (:icon :search :title (tr "No card matches"))))))))))
+
+;;; /days: the cards by the day they were reported on, a period among the
+;;; toolbar's filters (spec/ui.md 6, list-toolbar, «A period»).
+
+(defun period-of (query)
+  "The first and last day QUERY's period names, each YYYY-MM-DD or NIL, and
+the messages of those it cannot read."
+  (let ((dates '()) (errors '()))
+    (dolist (key '("from" "to"))
+      (multiple-value-bind (date problem) (read-date-text (first (query-values query key)))
+        (push date dates)
+        (push (and problem (princ-to-string problem)) errors)))
+    (values (nreverse dates) (nreverse errors))))
+
+(defun reported-within-p (card query)
+  "Whether CARD was reported on a day of QUERY's period, and has the status
+and the files QUERY asks for."
+  (destructuring-bind (from to) (period-of query)
+    (let ((day (jget card "reported_on"))
+          (statuses (query-values query "status"))
+          (text (first (query-values query "q"))))
+      (and (or (null text) (search (string-downcase text) (string-downcase (jget card "title"))))
+           (or (null statuses) (member (jget card "status") statuses :test #'equal))
+           (or (null (query-values query "files")) (card-files-p card))
+           (or (and (null from) (null to))
+               (and (stringp day)
+                    (or (null from) (string<= from day))
+                    (or (null to) (string<= day to))))))))
+
+(defun days-toolbar (query)
+  "The toolbar of /days, as QUERY has it."
+  (ui:list-toolbar (:action "/days" :id "days-toolbar"
+                    :search (list :name "q" :label (tr "Search the cards")
+                                  :value (first (query-values query "q")))
+                    :filters (list (list :kind :period :label (tr "Reported") :names '("from" "to")
+                                         :value (list (first (query-values query "from"))
+                                                      (first (query-values query "to")))
+                                         :errors (nth-value 1 (period-of query)))
+                                   (list :name "status" :label (tr "Status") :kind :several
+                                         :choices (mapcar (lambda (key)
+                                                            (list key (column-title key)))
+                                                          +columns+)
+                                         :value (query-values query "status"))
+                                   (list :name "files" :label (tr "With files") :kind :toggle
+                                         :value (and (query-values query "files") t))))))
+
+(define-page days-page ("days" :title "Days" :icon :calendar-days :policy :employee)
+    (method path form query)
+  (declare (ignore form))
+  (if (or path (eq method :post))
+      (values 404 (tr "Days") (list (ui:alert (:variant :warning :title (tr "Page not found")))))
+      (let ((cards (remove-if-not (lambda (card) (reported-within-p card query))
+                                  (coerce (jget (web-call "cards_list" (jobj)) "items") 'list))))
+        (values 200 (tr "Days")
+                (list (ui:stack (:gap :md)
+                        (days-toolbar query)
+                        (if cards
+                            (ui:table (:caption (tr "Cards") :caption-hidden t
+                                       :columns (list (tr "Title") (tr "Reported on")
+                                                      (tr "Status"))
+                                       :rows (mapcar (lambda (card)
+                                                       (list (jget card "title")
+                                                             (date-text (jget card "reported_on"))
+                                                             (column-title (jget card "status"))))
+                                                     cards)))
                             (ui:empty-state (:icon :search :title (tr "No card matches"))))))))))

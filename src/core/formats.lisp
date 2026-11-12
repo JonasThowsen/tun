@@ -205,3 +205,249 @@ message when it is not an amount CURRENCY can hold (spec/i18n.md 5.4)."
                      (values nil (deferred-tr "is too large: at most ~a"
                                               (money-text +most-amount+ :currency currency)))
                      amount)))))))
+
+;;; ------------------------------------------------------------------
+;;; Dates and times as a person writes them (spec/i18n.md 6.2)
+;;;
+;;; The same forms in every language, day first, as Tun writes its dates:
+;;; one reader, on the server, judges every date and time a form posts.
+
+(defun money-number-text (amount &key (currency (current-currency)))
+  "AMOUNT, an integer of CURRENCY's minor units, as the current language
+writes the number of it, without the currency: 12,450.00 or 12 450,00, a
+negative one with - or −.  What a money field shows."
+  (check-type amount integer)
+  (let* ((digits (currency-minor-digits currency))
+         (nb (equal (writing-language) "nb"))
+         (factor (expt 10 digits)))
+    (multiple-value-bind (whole fraction) (floor (abs amount) factor)
+      (format nil "~a~a~:[~2*~;~a~v,'0d~]"
+              (cond ((not (minusp amount)) "") (nb "−") (t "-"))
+              (group-digits whole (if nb (string #\No-break_space) ","))
+              (plusp digits) (if nb "," ".") digits fraction))))
+
+(defun month-name (month)
+  "The name of MONTH, 1 to 12, in the current language: November, november."
+  (ecase month
+    (1 (tr ("January" :context "month"))) (2 (tr ("February" :context "month")))
+    (3 (tr ("March" :context "month"))) (4 (tr ("April" :context "month")))
+    (5 (tr ("May" :context "month"))) (6 (tr ("June" :context "month")))
+    (7 (tr ("July" :context "month"))) (8 (tr ("August" :context "month")))
+    (9 (tr ("September" :context "month"))) (10 (tr ("October" :context "month")))
+    (11 (tr ("November" :context "month"))) (12 (tr ("December" :context "month")))))
+
+(defun calendar-day-name (day)
+  "The name of DAY, 1 for Monday to 7 for Sunday, in the current language."
+  (ecase day
+    (1 (tr ("Monday" :context "weekday"))) (2 (tr ("Tuesday" :context "weekday")))
+    (3 (tr ("Wednesday" :context "weekday"))) (4 (tr ("Thursday" :context "weekday")))
+    (5 (tr ("Friday" :context "weekday"))) (6 (tr ("Saturday" :context "weekday")))
+    (7 (tr ("Sunday" :context "weekday")))))
+
+(defun calendar-day-short-name (day)
+  "The short name of DAY, 1 for Monday to 7 for Sunday, a calendar's column
+heading: Mo, ma."
+  (ecase day
+    (1 (tr ("Mo" :context "weekday"))) (2 (tr ("Tu" :context "weekday")))
+    (3 (tr ("We" :context "weekday"))) (4 (tr ("Th" :context "weekday")))
+    (5 (tr ("Fr" :context "weekday"))) (6 (tr ("Sa" :context "weekday")))
+    (7 (tr ("Su" :context "weekday")))))
+
+(defun week-first-day ()
+  "The day a week starts on, 1 for Monday to 7 for Sunday: Monday in every
+language Tun writes (ISO 8601), the one place a regional setting would
+change it."
+  1)
+
+(defun weekday-of (date)
+  "The day of the week of DATE, YYYY-MM-DD: 1 for Monday to 7 for Sunday."
+  (1+ (nth-value 6 (decode-universal-time (parse-date date) 0))))
+
+(defun page-today ()
+  "Today as the tenant's calendar has it, YYYY-MM-DD; outside an
+application, as the system's clock has it in Tun's default zone."
+  (if *application* (local-today) (local-date-of (get-universal-time))))
+
+(defparameter +english-months+
+  '("january" "february" "march" "april" "may" "june" "july" "august" "september"
+    "october" "november" "december"))
+
+(defun month-of-word (word)
+  "The month, 1 to 12, WORD names in English or in the current language,
+whole or by its first three letters, in any case, with a dot after it or
+not; NIL for any other word."
+  (let ((word (string-downcase (string-right-trim "." word))))
+    (flet ((names (whole short)
+             (or (position word whole :test #'string=)
+                 (position word short :test #'string=)))
+           (local (function)
+             (loop for month from 1 to 12
+                   collect (string-downcase (string-right-trim "." (funcall function month))))))
+      (let* ((local-whole (local #'month-name))
+             (found (or (names +english-months+
+                               (mapcar (lambda (name) (subseq name 0 3)) +english-months+))
+                        (names local-whole
+                               (mapcar (lambda (name) (subseq name 0 (min 3 (length name))))
+                                       local-whole))
+                        (names '() (local #'month-abbreviation)))))
+        (and found (1+ found))))))
+
+(defun date-separator-p (char)
+  (or (find char "./-,") (member char '(#\Space #\Tab #\No-break_space))))
+
+(defun ascii-digit-p (char)
+  (char<= #\0 char #\9))
+
+(defun date-tokens (text)
+  "TEXT split into its runs of digits and of letters, as strings, or NIL
+when it holds anything else, starts with a separator, or is empty.
+Separators between the runs, and after the last, are dropped."
+  (let ((tokens '()) (i 0) (n (length text)))
+    (loop while (< i n)
+          do (let ((char (char text i)))
+               (cond ((date-separator-p char)
+                      (when (null tokens) (return-from date-tokens nil))
+                      (incf i))
+                     ((ascii-digit-p char)
+                      (let ((end (or (position-if-not #'ascii-digit-p text :start i) n)))
+                        (push (subseq text i end) tokens)
+                        (setf i end)))
+                     ((alpha-char-p char)
+                      (let ((end (or (position-if-not #'alpha-char-p text :start i) n)))
+                        (push (subseq text i end) tokens)
+                        (setf i end)))
+                     (t (return-from date-tokens nil)))))
+    (nreverse tokens)))
+
+(defun date-of-parts (year month day)
+  "YYYY-MM-DD for YEAR, MONTH and DAY when that day exists from 1900 to
+9999, else NIL."
+  (and (integerp year) (integerp month) (integerp day)
+       (<= 1900 year 9999) (<= 1 month 12) (<= 1 day 31)
+       (let ((date (format nil "~4,'0d-~2,'0d-~2,'0d" year month day)))
+         (and (valid-date-string-p date) date))))
+
+(defun digits-of-length-p (token &rest lengths)
+  (and (stringp token) (every #'ascii-digit-p token) (member (length token) lengths) t))
+
+(defun year-of (token this-year)
+  "The year TOKEN names: four digits as they are, two as 20YY, none
+(NIL) as THIS-YEAR; :REFUSED for anything else."
+  (cond ((null token) this-year)
+        ((digits-of-length-p token 4) (parse-integer token))
+        ((digits-of-length-p token 2) (+ 2000 (parse-integer token)))
+        (t :refused)))
+
+(defun read-date-parts (tokens this-year)
+  "The date the TOKENS of a date name, or NIL."
+  (let* ((words (remove-if (lambda (token) (ascii-digit-p (char token 0))) tokens))
+         (numbers (remove-if-not (lambda (token) (ascii-digit-p (char token 0))) tokens)))
+    (flet ((dmy (day month year)
+             (let ((year (year-of year this-year)))
+               (and (digits-of-length-p day 1 2) (integerp year)
+                    (date-of-parts year (if (integerp month) month (parse-integer month))
+                                   (parse-integer day))))))
+      (cond ((null tokens) nil)
+            ((and (null words) (= 1 (length tokens)))
+             (let ((digits (first tokens)))
+               (case (length digits)
+                 (8 (dmy (subseq digits 0 2) (subseq digits 2 4) (subseq digits 4)))
+                 (6 (dmy (subseq digits 0 2) (subseq digits 2 4) (subseq digits 4)))
+                 (4 (dmy (subseq digits 0 2) (subseq digits 2 4) nil)))))
+            ((null words)
+             (destructuring-bind (first second &optional third &rest more) tokens
+               (cond (more nil)
+                     ((and third (digits-of-length-p first 4))
+                      (and (digits-of-length-p second 1 2) (digits-of-length-p third 1 2)
+                           (date-of-parts (parse-integer first) (parse-integer second)
+                                          (parse-integer third))))
+                     ((digits-of-length-p second 1 2) (dmy first second third)))))
+            ((and (= 1 (length words)) (<= 1 (length numbers) 2) (<= (length tokens) 3))
+             (let ((month (month-of-word (first words)))
+                   (at (position (first words) tokens)))
+               (when month
+                 (case at
+                   ;; 21 Oct, 21 Oct 2026
+                   (1 (dmy (first tokens) month (third tokens)))
+                   ;; Oct 21, Oct 21 2026
+                   (0 (dmy (second tokens) month (third tokens)))))))))))
+
+(defparameter +example-date+ "2026-10-21"
+  "The date a field's hint and error show as an example: a day past the
+twelfth, so the order of day and month shows.")
+
+(defun read-date-text (text &key (today (page-today)))
+  "TEXT, a date a person wrote, as YYYY-MM-DD: day first in every language,
+in the forms of spec/i18n.md 6.2, a date without a year in TODAY's year.
+Values NIL and a message for the field when it is not one, and NIL alone
+for an empty text."
+  (let ((text (string-trim '(#\Space #\Tab #\No-break_space) (or text ""))))
+    (if (zerop (length text))
+        nil
+        (let ((date (and (<= (length text) 40)
+                         (read-date-parts (date-tokens text)
+                                          (parse-integer today :end 4)))))
+          (or date
+              (values nil (deferred-tr "must be a date, such as ~a"
+                                       (date-text +example-date+))))))))
+
+(defun read-time-text (text)
+  "TEXT, a time of day a person wrote, as HH:MM, 24 hours: an hour alone
+(9), three or four digits (930, 1330), or the hour and two digits of
+minutes between :, ., , or a space (spec/i18n.md 6.2).  Values NIL and a
+message for the field when it is not one, and NIL alone for an empty text."
+  (let ((text (string-trim '(#\Space #\Tab #\No-break_space) (or text ""))))
+    (if (zerop (length text))
+        nil
+        (destructuring-bind (&optional hour minute)
+            (or (cl-ppcre:register-groups-bind ((#'parse-integer h) (#'parse-integer m))
+                    ("^([0-9]{1,2})(?:[ ]*[:.,][ ]*|[ ]+)([0-9]{2})$" text)
+                  (list h m))
+                (cl-ppcre:register-groups-bind ((#'parse-integer h))
+                    ("^([0-9]{1,2})$" text)
+                  (list h 0))
+                (cl-ppcre:register-groups-bind ((#'parse-integer h) (#'parse-integer m))
+                    ("^([0-9]{1,2})([0-9]{2})$" text)
+                  (list h m)))
+          (if (and hour (<= 0 hour 23) (<= 0 minute 59))
+              (format nil "~2,'0d:~2,'0d" hour minute)
+              (values nil (deferred-tr "must be a time of day, such as ~a" "09:30")))))))
+
+(defun period-text (from to &key (today (page-today)))
+  "The period from FROM to TO, dates YYYY-MM-DD or NIL, as the current
+language writes it (spec/i18n.md 6.2): 1–14 Nov, 28 Oct – 3 Nov, From 1
+Nov, Until 14 Nov; nb 01.–14.11., 28.10.–03.11., Fra 01.11., Til 14.11.
+The years show when a day is not in TODAY's year.  A value that is not a
+date is written as it is; NIL when both are empty."
+  (flet ((given (value) (and (stringp value) (plusp (length value)) value))
+         (dated (value) (and (stringp value) (valid-date-string-p value))))
+    (let* ((from (given from)) (to (given to))
+           (nb (equal (writing-language) "nb"))
+           (year (subseq today 0 4))
+           (years (some (lambda (value) (and (dated value) (string/= year (subseq value 0 4))))
+                        (list from to))))
+      (flet ((day (value)
+               (cond ((not (dated value)) value)
+                     (years (date-text value))
+                     (t (day-text value)))))
+        (cond ((and from to (string= from to)) (day from))
+              ((and from to)
+               (cond ((and (not years) (dated from) (dated to)
+                           (string= (subseq from 0 7) (subseq to 0 7)))
+                      (if nb
+                          (format nil "~a.–~a" (subseq from 8 10) (day-text to))
+                          (format nil "~d–~a" (parse-integer from :start 8) (day-text to))))
+                     (nb (format nil "~a–~a" (day from) (day to)))
+                     (t (format nil "~a – ~a" (day from) (day to)))))
+              (from (tr "From ~a" (day from)))
+              (to (tr "Until ~a" (day to))))))))
+
+(defun currency-mark (&optional (currency (current-currency)))
+  "What stands beside an amount of CURRENCY in the current language, and
+where: values the symbol or the code, and :BEFORE in English (€, NOK) or
+:AFTER in Norwegian (kr, €), as MONEY-TEXT writes it."
+  (destructuring-bind (code digits english-symbol norwegian-symbol) (currency-spec currency)
+    (declare (ignore digits))
+    (if (equal (writing-language) "nb")
+        (values (or norwegian-symbol code) :after)
+        (values (or english-symbol code) :before))))

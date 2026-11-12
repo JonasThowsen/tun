@@ -1258,12 +1258,11 @@ An amount is written as a person writes it, with the currency beside it."
                                                 common))))
                      (t (text :width 30)))))
             ((money-field-p type)
-             (ui:input-group* (append common (list :value value :required required
-                                                   :suffix (current-currency)
-                                                   :inputmode "decimal" :width 10))))
+             (ui:money-input* (append common (list :value value :required required))))
             ((typep type 'integer-type) (text :type :number :inputmode "numeric" :width 10))
             ((typep type 'decimal-type) (text :inputmode "decimal" :width 10))
-            ((typep type 'date-type) (text :type :date))
+            ((typep type 'date-type)
+             (ui:date-input* (append common (list :value value :required required))))
             ((typep type 'email-type) (text :type :email :autocomplete "off"))
             ((or (long-text-p type) (typep type 'json-type))
              (ui:textarea* (append common (list :value value :rows 3 :required required))))
@@ -1545,12 +1544,27 @@ the context its stored words are labelled in."
                                                            :test #'string=))))
     (and field (field-context class field))))
 
-(defun generated-list-filters (resource op query)
+(defparameter +period-names+
+  '(("from" "to") ("since" "until") ("from_date" "to_date") ("start_date" "end_date"))
+  "The pairs of a list operation's date inputs the generated list offers as
+a period, its first and last day (spec/ui.md 8, «Lists»).")
+
+(defun list-period (op)
+  "The first pair of +PERIOD-NAMES+ that OP has as date inputs, or NIL."
+  (flet ((date-input-p (name)
+           (let ((parameter (find name (operation-parameters op)
+                                  :key #'parameter-json-name :test #'string=)))
+             (and parameter (typep (parameter-type parameter) 'date-type)))))
+    (and op (find-if (lambda (pair) (every #'date-input-p pair)) +period-names+))))
+
+(defun generated-list-filters (resource op query &key errors)
   "The toolbar of RESOURCE's list operation OP, read from QUERY, the page's
 query parameters.  Values: the toolbar or NIL, the arguments the address
 gives OP, and the address with every filter cleared when the list is
-filtered, else NIL."
-  (let ((search nil) (filters '()) (arguments '()) (path (resource-path resource)))
+filtered, else NIL.  ERRORS, (NAME . MESSAGE) pairs of the list's refusal,
+are shown at a period's fields."
+  (let ((search nil) (filters '()) (arguments '()) (path (resource-path resource))
+        (period (list-period op)))
     (dolist (parameter (and op (operation-parameters op)))
       (let* ((name (parameter-json-name parameter))
              (kind (list-filter-kind parameter))
@@ -1574,16 +1588,33 @@ filtered, else NIL."
            (push (list :name name :label label :kind :toggle :value (and values t)) filters)
            (when values (setf arguments (list* name t arguments)))))))
     (setf filters (nreverse filters))
+    (when period
+      (let ((values (mapcar (lambda (name) (first (query-values query name))) period)))
+        (loop for name in period for value in values
+              when value do (setf arguments (list* name value arguments)))
+        (setf filters (append filters
+                              (list (list :kind :period :label (tr "Period") :names period
+                                          :value values
+                                          :errors (mapcar (lambda (name)
+                                                            (cdr (assoc name errors
+                                                                        :test #'string=)))
+                                                          period)))))))
     (values (when (or search filters)
               (ui:list-toolbar (:action path :search search :filters filters
                                 :id "tun-list-toolbar")))
             arguments
-            (when (or (some (lambda (filter) (getf filter :value)) filters)
+            (when (or (some (lambda (filter)
+                              (let ((value (getf filter :value)))
+                                (if (eq (getf filter :kind) :period) (some #'identity value) value)))
+                            filters)
                       (and search (getf search :value)))
               (format nil "~a?~a" path
                       (pairs-query (append (when search (list (cons (getf search :name) "")))
-                                           (mapcar (lambda (filter) (cons (getf filter :name) ""))
-                                                   filters))))))))
+                                           (loop for filter in filters
+                                                 append (if (eq (getf filter :kind) :period)
+                                                            (mapcar (lambda (name) (cons name ""))
+                                                                    (getf filter :names))
+                                                            (list (cons (getf filter :name) "")))))))))))
 
 (defun transition-tool-p (op resource)
   "A status operation of RESOURCE's entity that a button can call: a
@@ -1692,14 +1723,18 @@ which returns to this page (spec/auth.md 3.4), and any other request gets a
 
 (defun resource-page (resource &key error-json values (status 200))
   "The list of RESOURCE and, unless the actor only views, its create form;
-after a refused submission, the form with VALUES and ERROR-JSON."
-  (multiple-value-bind (toolbar arguments reset)
-      (generated-list-filters resource (find-operation-by-tool (resource-list-tool resource))
-                              (query-object (hunchentoot:get-parameters*)))
-    (resource-list-page resource toolbar reset
-                        (web-call (resource-list-tool resource)
-                                  (apply #'jobj "limit" 100 arguments))
-                        :error-json error-json :values values :status status)))
+after a refused submission, the form with VALUES and ERROR-JSON.  A
+period the list refuses has its errors at its fields."
+  (let ((op (find-operation-by-tool (resource-list-tool resource)))
+        (query (query-object (hunchentoot:get-parameters*))))
+    (multiple-value-bind (toolbar arguments reset) (generated-list-filters resource op query)
+      (let ((list-json (web-call (resource-list-tool resource)
+                                 (apply #'jobj "limit" 100 arguments))))
+        (when (and (jget list-json "error") (list-period op))
+          (setf toolbar (generated-list-filters resource op query
+                                                :errors (field-errors list-json))))
+        (resource-list-page resource toolbar reset list-json
+                            :error-json error-json :values values :status status)))))
 
 (defun resource-list-page (resource toolbar reset list-json &key error-json values status)
   "The page of RESOURCE's list, LIST-JSON, under TOOLBAR, filtered when RESET

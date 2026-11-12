@@ -24,7 +24,8 @@ the address, a repeated query key and the generated list's filters (§6,
 §8), 2026-11-12, core 2.28.0; every table's rows on a phone, in a box
 that scrolls sideways, a row that leads somewhere pressed as one target,
 and a page title's long word hyphenated (§2.1, §6, §8), 2026-11-12, core
-2.29.0. How every Tun page
+2.29.0; the date, time and money fields, the calendar, and a period as a
+filter of a list (§6, §8, §9), 2026-11-12, core 2.30.0. How every Tun page
 looks and behaves: the tokens, the components that are built from them,
 the specimen that shows them, and the rules a component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
@@ -547,7 +548,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Group (file in `src/web/ui/`) | Components |
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
-| Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
+| Forms (`forms`, `fields`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input`, `date-input`, `time-input`, `money-input` |
 | Data (`data`, `toolbar`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `list-toolbar`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
@@ -576,6 +577,76 @@ still checks the value. `:button`, such as the form's submit button,
 stands at the end of the field's row. Without the script the field is a text input
 with the browser's own list of the options (`<datalist>`), and nothing
 is disabled.
+
+`date-input` is a text field a person types a date in, as they write it,
+with a calendar where scripts run: `(date-input (:label "Delivery" :name
+"delivery" :value "2026-11-21" :min "2026-11-12" :quick t))`.
+
+- **The field.** A `field` around a text field (`inputmode="decimal"`,
+  `autocomplete="off"` unless `:autocomplete` names one, such as `bday`)
+  that posts what is in it under NAME. VALUE, a `YYYY-MM-DD` date, is
+  written as `date-text` writes it («21 Nov 2026», «21.11.2026»); any other
+  VALUE, such as a refused text posted back, as it is. The hint ends with
+  the form, «For example, 21 Oct 2026» («For eksempel 21.10.2026»), after
+  the caller's `:hint`, unless `:form-hint nil` leaves it out, as a
+  period's second field does. `:error`, `:required`, `:optional`, `:disabled`
+  and `:label-hidden` are `text-input`'s. The page reads what is posted
+  with `read-date-text` (`i18n.md` §6.2), which takes the forms a person
+  types, day first in every language; a text it cannot read is shown again
+  as typed, with its error. Without JavaScript this is the whole of it.
+- **The calendar.** Where scripts run, a button at the end inside the
+  field («Choose a date», `aria-haspopup="dialog"`) opens a month: a
+  `popover="auto"` with `role="dialog"` and `aria-modal="true"`, named by
+  its title, the month and the year («November 2026», «november 2026»),
+  between a previous and a next month button, over a grid (`role="grid"`)
+  of six weeks from Monday whose columns are headed by the days' short
+  names, their full names as `abbr`. Its names are the catalogue's,
+  written into the page by the server; today is the tenant's, written by
+  the server too. It opens on the field's date when the field holds one
+  the page or the calendar wrote, or one written `YYYY-MM-DD`, `D.M.YYYY`
+  or as `date-text` writes it, else on today's month, and the focus is on
+  that day, the one day Tab reaches. Today has `aria-current="date"` and a
+  frame, the chosen day `aria-selected="true"` and the ink fill, at the
+  others' weight and size; days of the next and the last month are muted.
+  `:min` and `:max`, dates, make the days outside them `aria-disabled`,
+  greyed, unchosen; the page still checks the value.
+- **The keyboard.** The arrows move a day and a week, PageUp and PageDown
+  a month, with Shift a year, Home and End to the week's first and last
+  day, across months as they must; Enter or Space chooses; Escape closes;
+  Tab goes round the month's buttons, the close button where it shows (on
+  a phone), the focused day and the quick choices, never out.
+- **Choosing.** A click, a tap, Enter or Space on a day writes it in the
+  field as `date-text` writes it, fires `input` and `change` on the field,
+  closes the calendar and gives the focus to its button, as Escape and a
+  press outside give it back too. `:quick` adds buttons under the grid
+  that choose their day: `t` for «Today» and «Tomorrow» («I dag», «I
+  morgen»), or a list of `(LABEL DATE)`; one whose day is outside `:min`
+  and `:max` is disabled, as the grid's days are.
+- **Where it stands.** From 40rem of the window, under the field, or
+  above it when there is more room there, always inside the window,
+  20rem wide; it rises 0.25rem and fades in over `--duration-fast`.
+  Below 40rem a floating sheet as a filter's popover is (`list-toolbar`):
+  at the bottom of the window, 0.75rem from its sides and above the
+  bottom's safe area, every corner `--radius-xl`, with a close button, over
+  the `--overlay` dim, rising from below over `--duration`, its days at
+  least 2.5rem high. It sinks and fades over `--duration-close` as it
+  closes.
+
+`time-input` is a text field for a time of day, 5 characters wide, in
+tabular figures, `inputmode="decimal"`, with the hint «For example, 09:30»
+(«For eksempel 09:30») after the caller's; it posts what is typed, which
+`read-time-text` reads into `HH:MM` (`9`, `930`, `9.30`). It has no
+picker. VALUE is shown as it is.
+
+`money-input` is an amount in a currency: an `input-group`, its control
+right-aligned in tabular figures, `inputmode="decimal"`,
+`autocomplete="off"`, 10 characters wide unless `:width` says otherwise,
+with the currency (`:currency`, the tenant's by default) before it in
+English and after it in Norwegian, as `money-text` writes it (`€`, `NOK`;
+`kr`, `€`). VALUE, an integer of minor units, is written as the language
+writes the amount without its currency («1,250.50», «1 250,50»); any
+other VALUE as it is. It posts what is typed; `read-money-text` reads it
+(`i18n.md` §5.4). Nothing is read or rounded in the browser.
 
 `dialog` with `:shortcut` opens on that key from anywhere on the page;
 Ctrl is Cmd on a Mac, and a key without Ctrl is left to a field being
@@ -794,7 +865,8 @@ shows before it runs. `flash` is a message carried over a redirect.
   KIND `:one` (one of several, VALUE a text), `:several` (several of
   several, VALUE a list) or `:toggle` (on or off, VALUE true or false;
   on, it sends `NAME=true`); CHOICES are `(VALUE LABEL)` pairs, as
-  `radios` takes them.
+  `radios` takes them. A period is `(:kind :period :label :names (FROM
+  TO) :value (FROM-VALUE TO-VALUE) [:quick] [:errors])` (below).
 - **Every key, every time.** A `:one` filter's first choice is «All»
   («Alle»), or ALL, of empty value; a `:several` filter's boxes and a
   toggle's box come after a hidden field of the same name and empty
@@ -856,8 +928,31 @@ shows before it runs. `flash` is a message carried over a redirect.
   button on the row under the search, the popovers open with their
   buttons (the Popover API), and an «Apply» («Bruk») button submits the
   form.
-- A list's dates (a period) are not filters of this toolbar yet: the
-  browser's own date field sends a change for each part typed.
+- **A period.** A filter of KIND `:period` is the first and the last day
+  of what the list shows, under two keys, FROM and TO, both sent in every
+  submission and named in every clear and «Reset» link. VALUE holds their
+  values as the page has them (as the address gives them: ISO dates or
+  what a person typed), ERRORS a message for either, shown at its field.
+  Its button says LABEL, or in use «LABEL: 1–14 Nov», as `period-text`
+  writes it (`i18n.md` §6.2), at the weight, size and height of one not in
+  use, with its clear. Its popover, as a filter's (a floating sheet on a
+  phone), holds the quick choices «Today», «This week» (Monday to
+  Sunday), «This month» and «Last month» («I dag», «Denne uka», «Denne
+  måneden», «Forrige måned»), then QUICK's `(LABEL FROM TO)`, each a link
+  to the address with that period, the one in use `aria-current="true"`,
+  shown by its frame; and two `date-input`s, «From» and «To» («Fra»,
+  «Til»), with their calendars, the form a date is written in under
+  «From» alone. The popover opens with the focus on the quick choice in
+  use, else the first, so a phone shows no keyboard until a field is
+  tapped. Where scripts run a quick choice fills
+  both fields as `date-text` writes its days, closes the popover with the
+  focus on its button and submits; a day chosen in a calendar, and a date
+  typed and then left or entered, submits, the popover staying open;
+  nothing is sent while a date is being typed, and the toolbar sends no
+  submission whose fields are those of the last one. In the «Filters»
+  sheet it is a row as the others, its quick choices and fields under it.
+  Without JavaScript the popover opens, a quick choice is a link, and
+  «Apply» submits the dates typed.
 
 `flash` is a toast where the browser runs scripts. It stands over the
 page, out of its flow: below 40rem at the bottom, 1rem from the
@@ -1517,8 +1612,12 @@ form of `field`s with an `error-summary`, a confirmation is a
   Above it stands a `list-toolbar` (§6) of what its list operation can
   filter by: an input named `query` or `q` of text is the search, an
   enum a `:one` filter, a list of an enum a `:several` filter, a boolean
-  a `:toggle`; ids, dates, numbers, other text and `limit` are not
-  offered. The address's keys are those inputs' names, as an agent
+  a `:toggle`, and two date inputs named `from` and `to`, `since` and
+  `until`, `from_date` and `to_date`, or `start_date` and `end_date` (the
+  first such pair) one `:period` filter, «Period» («Periode»), after the
+  others; ids, other dates, numbers, other text and `limit` are not
+  offered. A period's values go to the operation as the address gives
+  them, read there, and one it refuses shows its error at its field too. The address's keys are those inputs' names, as an agent
   passes them (`/orders?status=draft&dateless=true`), and the list
   operation is called with what the address gives, so a value it refuses
   shows as its error. An operation with none of these inputs gives no
@@ -1542,7 +1641,11 @@ form of `field`s with an `error-summary`, a confirmation is a
   long text and JSON, an amount (`money`) as a person writes it in the
   page's language, with the currency beside it (`i18n.md` §5.4), and a
   `fieldset` per row of a list of records, its optional inputs folded
-  away. The description is the hint; an optional input says «(optional)»
+  away. A date is a `date-input` and an amount a `money-input` (§6); what
+  a person types is posted as typed, and `web-call` reads it into what the
+  operation takes (`i18n.md` §5.4, §6.2), so the operation gets
+  `YYYY-MM-DD` and minor units, and a text it cannot read comes back in
+  its field, as typed, with its error. The description is the hint; an optional input says «(optional)»
   («(valgfritt)»). A form with inputs carries `novalidate`, as
   GOV.UK's do: the server checks every submission, and its answer is
   shown in the page, where the browser's own bubble is easy to miss on a
@@ -1741,8 +1844,10 @@ form of `field`s with an `error-summary`, a confirmation is a
 - Charts other than one line over time: several series in one chart
   (comparing shares, a moving average), bars, areas, stacks, scatter, and
   a chart's own time range control.
-- A date picker beyond the browser's own, a combobox whose values differ
-  from the texts it shows, or that asks the server for its options.
+- A combobox whose values differ from the texts it shows, or that asks
+  the server for its options. A date and a time in one field, a time
+  picker, week numbers in the calendar, and a choice of the week's first
+  day or of month-first dates.
 - htmx's own extensions (server-sent events, the head merge,
   morphing).
 - Paging the generated list: it shows its first 100 records.
@@ -2001,6 +2106,33 @@ form of `field`s with an `error-summary`, a confirmation is a
   a floating popover inside the window, and no page scrolling sideways;
   without JavaScript, at 390 px every filter's button shown, a popover
   opening and «Apply» filtering the list.
+- `tests/ui-fields-tests.lisp` (§6 `date-input`, `time-input`,
+  `money-input`, the period of `list-toolbar`, §8, `i18n.md` §6.2):
+  every accepted and refused form of a date and a time read by
+  `read-date-text` and `read-time-text`, every day of 2024 to 2027 in
+  each accepted form and random texts of digits, separators and month
+  names read without an error; a date read over a page and not over MCP;
+  `period-text` in both languages; the three fields' markup, hints,
+  errors, values and calendar in English and Norwegian; the calendar's
+  CSS that opens and closes as §2.1 says, and its chosen and today days
+  without a change of weight or size; the generated form's date and
+  amount fields, a typed date, an ISO date and a refused one posted; the
+  period's keys, links, quick choices, summary, errors and sheet row; the
+  generated list's period from the test client's orders.
+- `checks/showcase/checks/ui-fields.py`, on the showcase's `/fields` and
+  `/days` and the specimen: in English and Norwegian, each accepted form
+  typed and posted read as its date, and the time and amount forms; a
+  refused date shown again as typed with its error; the calendar's roles
+  and names, its first weekday, today and the chosen day at the others'
+  weight, the keyboard walk, min and max, choosing, Escape and the focus
+  back; its box under the field at 1280 px and inside the window as a
+  floating sheet at 390, 360 and 320 px, its transition's properties and
+  durations opening and closing; the money field right-aligned in tabular
+  figures; the period's quick choice, a calendar choice and a typed date
+  each changing the address once, Back stepping through them, the
+  «Filters» sheet's row; without JavaScript no calendar button, the
+  fields posting and the period applied by «Apply» and by a quick choice's
+  link; no page scrolling sideways.
 - `tests/ui-lists-tests.lisp` (§2.1, §6 `table`, §8 «Lists»): a
   table's cells hold their content and no card's labels; the first
   cell's text in its own part, the row's one link in it; `:narrow nil`

@@ -32,6 +32,8 @@
 
 (defparameter +safe-attributes+
   '("class" "id" "title" "href" "name" "value" "type" "method" "action" "for" "colspan" "rowspan"
+    ;; A table heading's full text, such as a calendar's weekday (abbr).
+    "abbr"
     "selected" "checked" "disabled" "required" "min" "max" "step" "placeholder" "lang" "role"
     "accept" "alt" "autocomplete" "autofocus" "cols" "command" "commandfor" "datetime" "dir" "enterkeyhint"
     "form" "formaction" "formmethod" "formnovalidate" "headers" "height" "hidden" "high" "inert"

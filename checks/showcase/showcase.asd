@@ -11,6 +11,7 @@
                (:file "cards")
                (:file "pages")
                (:file "lists")
+               (:file "fields")
                (:file "prices")
                (:file "markdown")
                (:file "graph")

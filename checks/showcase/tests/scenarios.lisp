@@ -5,11 +5,11 @@
 (defparameter +reported-on+ "2026-10-21"
   "The date the scenarios' cards were reported on, which the board shows.")
 
-(defun create-card (title &key (status "new") estimate)
-  "Create a card titled TITLE, last in the column STATUS, with ESTIMATE in
-minor units when given, and return its id."
+(defun create-card (title &key (status "new") estimate (reported-on +reported-on+))
+  "Create a card titled TITLE, last in the column STATUS, reported on
+REPORTED-ON, with ESTIMATE in minor units when given, and return its id."
   (let ((id (tun:jget (apply #'call-ok "cards_create" "employee:anna" "title" title
-                             "reported_on" +reported-on+
+                             "reported_on" reported-on
                              (and estimate (list "estimate_minor" estimate)))
                       "id")))
     (unless (equal status "new")
@@ -30,14 +30,17 @@ minor units when given, and return its id."
   (let ((first (create-card "Item 1")))
     (loop for i from 2 to 25
           do (create-card (format nil "Item ~d" i)))
-    (dolist (title '("New page for invoices" "Export to accounting" "Notification by email"))
-      (let ((id (create-card title :status "planned"
-                                   :estimate (and (equal title "Export to accounting") 1250000))))
-        (when (equal title "Export to accounting")
-          (call-ok "attachments_add" "employee:anna" "entity" "card" "record_id" id
-                   "files" (tun:jarr (list (showcase-file "screenshot.png")
-                                           (showcase-file "receipt.pdf")))))))
-    (create-card "Fix a typo" :status "done")
+    ;; Reported on days of their own, for the period of /days.
+    (loop for title in '("New page for invoices" "Export to accounting" "Notification by email")
+          for day in '("2026-11-03" "2026-11-10" "2026-12-02")
+          do (let ((id (create-card title :status "planned" :reported-on day
+                                         :estimate (and (equal title "Export to accounting")
+                                                        1250000))))
+               (when (equal title "Export to accounting")
+                 (call-ok "attachments_add" "employee:anna" "entity" "card" "record_id" id
+                          "files" (tun:jarr (list (showcase-file "screenshot.png")
+                                                  (showcase-file "receipt.pdf")))))))
+    (create-card "Fix a typo" :status "done" :reported-on "2026-09-15")
     ;; Made last, put first: the board shows the order a person chose.
     (call-ok "cards_move" "employee:anna" "id" (create-card "Urgent: the customer cannot sign in")
                                           "status" "new" "before" first)))

@@ -228,4 +228,32 @@
   ("Skip to the main content"
    "Hopp til hovedinnholdet")
   ("Main menu"
-   "Hovedmeny"))
+   "Hovedmeny")
+  ;; The date, time and money fields and a list's period (fields.lisp,
+  ;; toolbar.lisp)
+  ("{weekday} {day} {month} {year}"
+   "{weekday} {day}. {month} {year}")
+  ("{month} {year}"
+   "{month} {year}")
+  ("Today"
+   "I dag")
+  ("Tomorrow"
+   "I morgen")
+  ("Previous month"
+   "Forrige måned")
+  ("Next month"
+   "Neste måned")
+  ("Choose a date"
+   "Velg en dato")
+  ("For example, ~a"
+   "For eksempel ~a")
+  ("This week"
+   "Denne uka")
+  ("This month"
+   "Denne måneden")
+  ("Last month"
+   "Forrige måned")
+  ("From"
+   "Fra")
+  ("Period"
+   "Periode"))

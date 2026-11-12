@@ -11,6 +11,12 @@
   ;; A chart writes its times and hands its points to its script.
   (:import-from #:tun.core #:date-text #:day-text #:instant-text #:local-date-of
                 #:local-time-of #:jarr #:to-json-string)
+  ;; The fields a person types a date, a time and an amount in, and a
+  ;; list's period (fields.lisp, toolbar.lisp).
+  (:import-from #:tun.core #:read-date-text #:period-text #:money-number-text #:month-name
+                #:month-abbreviation #:calendar-day-name #:calendar-day-short-name #:week-first-day
+                #:page-today #:valid-date-string-p #:date-add-days #:date-add-months
+                #:current-currency #:currency-mark #:weekday-of)
   (:export
    ;; defining components
    #:define-component #:component #:find-component #:all-components #:component-name

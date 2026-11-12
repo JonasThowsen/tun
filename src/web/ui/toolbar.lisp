@@ -17,7 +17,9 @@
 (defparameter +fold-from+ 3
   "From this many filters, a narrow toolbar keeps them behind «Filters».")
 
-(defun filter-name (filter) (getf filter :name))
+(defun filter-name (filter)
+  "FILTER's address key; a period's is the first of its two."
+  (or (getf filter :name) (first (getf filter :names))))
 (defun filter-label (filter) (getf filter :label))
 (defun filter-kind (filter) (getf filter :kind))
 
@@ -29,7 +31,9 @@ filter's value, a :SEVERAL filter's, or \"true\" for a :TOGGLE that is on."
       (:one (and (stringp value) (plusp (length value)) (list value)))
       (:several (remove-if-not (lambda (each) (and (stringp each) (plusp (length each))))
                                (if (listp value) value (list value))))
-      (:toggle (and value (list "true"))))))
+      (:toggle (and value (list "true")))
+      (:period (remove-if-not (lambda (each) (and (stringp each) (plusp (length each))))
+                              value)))))
 
 (defun filter-in-use-p (filter)
   (and (filter-values filter) t))
@@ -38,45 +42,68 @@ filter's value, a :SEVERAL filter's, or \"true\" for a :TOGGLE that is on."
   "The label of FILTER's choice VALUE, else VALUE itself."
   (or (second (find value (getf filter :choices) :key #'first :test #'equal)) value))
 
+(defun period-dates (filter)
+  "A :PERIOD FILTER's first and last day as the page gives them, each read
+as a date, YYYY-MM-DD, where it names one, else as it is, or NIL."
+  (mapcar (lambda (value)
+            (and (stringp value) (plusp (length value))
+                 (or (read-date-text value) value)))
+          (list (first (getf filter :value)) (second (getf filter :value)))))
+
 (defun filter-summary (filter)
-  "What FILTER's button says it has chosen: the choice's label, or for
-several the count; NIL when it is not in use or is a toggle."
+  "What FILTER's button says it has chosen: the choice's label, for several
+the count, for a period its days; NIL when it is not in use or is a toggle."
   (let ((values (filter-values filter)))
-    (when (and values (member (filter-kind filter) '(:one :several)))
-      (if (rest values)
-          (princ-to-string (length values))
-          (choice-text filter (first values))))))
+    (cond ((null values) nil)
+          ((eq (filter-kind filter) :period) (apply #'period-text (period-dates filter)))
+          ((member (filter-kind filter) '(:one :several))
+           (if (rest values)
+               (princ-to-string (length values))
+               (choice-text filter (first values)))))))
 
 (defun check-filter (filter)
-  (destructuring-bind (&key name label kind choices value all) filter
-    (declare (ignore value all))
-    (unless (and (stringp name) (plusp (length name)))
-      (error "A list-toolbar filter needs :name, its address key: ~s" filter))
+  (destructuring-bind (&key name names label kind choices value all quick errors) filter
+    (declare (ignore value all quick errors))
+    (check-type kind (member :one :several :toggle :period))
+    (if (eq kind :period)
+        (unless (and (= 2 (length names))
+                     (every (lambda (key) (and (stringp key) (plusp (length key)))) names))
+          (error "A list-toolbar period needs :names, its two address keys: ~s" filter))
+        (unless (and (stringp name) (plusp (length name)))
+          (error "A list-toolbar filter needs :name, its address key: ~s" filter)))
     (require-label 'list-toolbar label "a label for each filter")
-    (check-type kind (member :one :several :toggle))
     (when (and (member kind '(:one :several)) (null choices))
       (error "The list-toolbar filter ~s needs :choices, (VALUE LABEL) pairs" name))))
 
 ;;; ------------------------------------------------------------------
 ;;; Addresses: every filter's key, as a submission names them
 
-(defun filter-pairs (filter clearedp)
+(defun filter-pairs (filter clearedp &optional period)
   "The (KEY . VALUE) pairs FILTER sends in a submission, in the order its
-fields stand, or as if nothing were chosen when CLEAREDP."
+fields stand, or as if nothing were chosen when CLEAREDP.  PERIOD, a
+period's (FROM TO), stands for what it holds."
   (let ((name (filter-name filter))
         (values (unless clearedp (filter-values filter))))
     (ecase (filter-kind filter)
       (:one (list (cons name (or (first values) ""))))
-      ((:several :toggle) (cons (cons name "") (mapcar (lambda (value) (cons name value)) values))))))
+      ((:several :toggle) (cons (cons name "") (mapcar (lambda (value) (cons name value)) values)))
+      (:period (let ((dates (cond (clearedp '("" ""))
+                                  (period period)
+                                  (t (getf filter :value)))))
+                 (mapcar (lambda (key value)
+                           (cons key (if (and (stringp value) (plusp (length value))) value "")))
+                         (getf filter :names) (list (first dates) (second dates))))))))
 
-(defun toolbar-href (action search filters keep &key (cleared '()))
+(defun toolbar-href (action search filters keep &key (cleared '()) set)
   "The address of ACTION with what the toolbar sends: the search, every
-filter's key (those in CLEARED, or all for :ALL, as cleared) and KEEP."
+filter's key (those in CLEARED, or all for :ALL, as cleared) and KEEP.
+SET, (FILTER FROM TO), gives a period other days."
   (let ((pairs (append (when search
                          (list (cons (getf search :name) (or (getf search :value) ""))))
                        (loop for filter in filters
                              append (filter-pairs filter (or (eq cleared :all)
-                                                             (member filter cleared))))
+                                                             (member filter cleared))
+                                                  (and (eq filter (first set)) (rest set))))
                        (loop for (key value) in keep
                              when value collect (cons key (princ-to-string value))))))
     (format nil "~a~@[?~{~a~^&~}~]" action
@@ -99,9 +126,53 @@ filter's key (those in CLEARED, or all for :ALL, as cleared) and KEEP."
            :aria-controls ,(filter-id base filter "choices"))
        ,(icon (:name :x))))
 
-(defun filter-choices (base filter)
-  "The popover of a :ONE or :SEVERAL filter: its choices as radios or
-checkboxes, headed by its label, with a close button a phone shows."
+(defun period-quick-choices (filter)
+  "A period FILTER's quick choices, (LABEL FROM TO): today, this week from
+its first day, this month, last month, then the page's own."
+  (let* ((today (page-today))
+         (week (date-add-days today (- (mod (- (weekday-of today) (week-first-day)) 7))))
+         (month (concatenate 'string (subseq today 0 8) "01"))
+         (last-month (date-add-months month -1)))
+    (append (list (list (tr "Today") today today)
+                  (list (tr "This week") week (date-add-days week 6))
+                  (list (tr "This month") month (date-add-days (date-add-months month 1) -1))
+                  (list (tr "Last month") last-month (date-add-days month -1)))
+            (getf filter :quick))))
+
+(defun period-choices (base filter action search filters keep)
+  "What a period FILTER's popover holds: its quick choices, each a link to
+the address with its days, and a date field for its first and last day."
+  (let ((dates (period-dates filter))
+        (errors (getf filter :errors)))
+    (list `(:div (:@ :class "tun-list-toolbar-quick")
+                 ,@(loop for (label from to) in (period-quick-choices filter)
+                         collect `(:a ,(attrs (list :class "tun-list-toolbar-quick-choice"
+                                                    :href (toolbar-href action search filters keep
+                                                                        :set (list filter from to))
+                                                    :hx-boost "false"
+                                                    :aria-current (when (and (equal from (first dates))
+                                                                             (equal to (second dates)))
+                                                                    "true")
+                                                    :data-tun-list-toolbar-quick t
+                                                    :data-from (date-text from)
+                                                    :data-to (date-text to)))
+                                      ,label)))
+          `(:div (:@ :class "tun-list-toolbar-period-fields")
+                 ,@(loop for key in (getf filter :names)
+                         for value in (list (first (getf filter :value)) (second (getf filter :value)))
+                         for label in (list (tr "From") (tr "To"))
+                         for part in '("start" "end")
+                         for error in (list (first errors) (second errors))
+                         ;; The form a date is written in, once.
+                         for form-hint = (string= part "start")
+                         collect (date-input* (list :label label :name key :value value
+                                                    :error error :form-hint form-hint
+                                                    :id (filter-id base filter part))))))))
+
+(defun filter-choices (base filter &optional action search filters keep)
+  "The popover of a :ONE, :SEVERAL or :PERIOD filter: its choices as radios
+or checkboxes, or a period's days, headed by its label, with a close button
+a phone shows."
   (let ((id (filter-id base filter "choices"))
         (name (filter-name filter)))
     `(:div (:@ :class "tun-list-toolbar-choices" :id ,id :popover t
@@ -122,12 +193,16 @@ checkboxes, headed by its label, with a close button a phone shows."
                       (checkboxes* (list :legend (filter-label filter) :name name
                                          :id (filter-id base filter "choice")
                                          :selected (filter-values filter)
-                                         :choices (getf filter :choices)))))))))
+                                         :choices (getf filter :choices)))))
+               (:period
+                (list (apply #'fieldset* (list :legend (filter-label filter)
+                                               :id (filter-id base filter "choice"))
+                             (period-choices base filter action search filters keep))))))))
 
-(defun filter-markup (base filter clear-href)
-  "One filter: a :TOGGLE's one button, or a :ONE or :SEVERAL filter's
-button, its clear link while in use, its heading in the sheet, and its
-choices."
+(defun filter-markup (base filter clear-href &optional action search filters keep)
+  "One filter: a :TOGGLE's one button, or a :ONE, :SEVERAL or :PERIOD
+filter's button, its clear link while in use, its heading in the sheet,
+and its choices; ACTION, SEARCH, FILTERS and KEEP make a period's links."
   (let* ((in-use (filter-in-use-p filter))
          (summary (filter-summary filter))
          (common (list :class "tun-list-toolbar-filter" :id (filter-id base filter)
@@ -160,7 +235,7 @@ choices."
                        (:span ,(filter-label filter))
                        ,@(when summary (list value))
                        ,@(when in-use (list (filter-clear-link base filter clear-href))))
-                 ,(filter-choices base filter))))))
+                 ,(filter-choices base filter action search filters keep))))))
 
 (defun fold-button (sheet-id in-use)
   "The «Filters» button a narrow toolbar shows, with how many are in use."
@@ -181,7 +256,9 @@ choices."
   (:doc "A list's one search and its filters, above the list, as one GET form to ACTION, so
 what is chosen is the address. SEARCH is (:name :label :value); each of FILTERS is (:name
 :label :kind :choices :value [:all]), KIND :one, :several or :toggle, CHOICES (VALUE LABEL)
-pairs; KEEP, (KEY VALUE) pairs, go along as hidden fields, such as the sort. A filter is a
+pairs; KEEP, (KEY VALUE) pairs, go along as hidden fields, such as the sort. A period is
+(:kind :period :label :names (FROM TO) :value (FROM-VALUE TO-VALUE) [:quick] [:errors]): its
+first and last day under two keys, with quick choices and two date fields. A filter is a
 button that opens its choices, applied at once where scripts run; a narrow toolbar keeps three
 or more behind one «Filters» sheet. Two toolbars on one page need an :id each.")
   (:source "The owner's rules for an admin application, 2026-11 (filter bar and sheet); the
@@ -477,6 +554,41 @@ popover and the dialog as Tun's own")
       }
     }
   }
+  /* A period: its quick choices, a chosen one by its frame, and its two
+     date fields. */
+  & .tun-list-toolbar-quick {
+    display: flex;
+    flex-wrap: wrap;
+    gap: calc(var(--spacing) * 2);
+  }
+  & .tun-list-toolbar-quick-choice {
+    display: inline-flex;
+    align-items: center;
+    min-height: var(--control-height-sm);
+    padding-inline: calc(var(--spacing) * 3);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background-color: var(--background);
+    color: var(--foreground);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+    outline: none;
+    touch-action: manipulation;
+    transition-property: background-color, border-color, box-shadow;
+    transition-duration: var(--duration-fast);
+    transition-timing-function: var(--ease);
+    &[aria-current='true'] { border-color: var(--border-strong); background-color: var(--secondary); }
+    &:focus-visible { box-shadow: var(--focus-ring); }
+    @media (hover: hover) { &:hover { background-color: var(--accent); } }
+    &:active { background-color: var(--pressed); transition-duration: 0s; }
+    @media (pointer: coarse) { min-height: var(--control-height); }
+  }
+  & .tun-list-toolbar-period-fields { display: grid; gap: calc(var(--spacing) * 4); }
+  @media (min-width: 40rem) {
+    & .tun-list-toolbar-filter[data-kind='period'] .tun-list-toolbar-choices { width: 20rem; }
+  }
   & .tun-list-toolbar-choices-close {
     display: none;
     position: absolute;
@@ -562,7 +674,15 @@ const toolbarAnchored = CSS.supports('anchor-scope: all')
   && CSS.supports('position-try-fallbacks: flip-block');
 const choicesButton = (choices) => choices.closest('[data-tun-list-toolbar-filter]')
   ?.querySelector('.tun-list-toolbar-filter-button');
-const submitToolbar = (form) => (form.requestSubmit ? form.requestSubmit() : form.submit());
+// A submission whose fields are those the page shows, or those last sent,
+// is not sent again, so a date entered with Enter and then left sends once.
+const toolbarFields = (form) => new URLSearchParams(new FormData(form)).toString();
+const submitToolbar = (form) => {
+  const fields = toolbarFields(form);
+  if (form.tunSent === fields) return;
+  form.tunSent = fields;
+  if (form.requestSubmit) form.requestSubmit(); else form.submit();
+};
 const shown = (element) => element && element.getClientRects().length > 0;
 
 const placeChoices = (choices) => {
@@ -587,6 +707,8 @@ const placeChoices = (choices) => {
 };
 
 tunOnContent((root) => {
+  for (const form of root.querySelectorAll('[data-tun-list-toolbar]')) form.tunSent = toolbarFields(form);
+  if (root.matches?.('[data-tun-list-toolbar]')) root.tunSent = toolbarFields(root);
   for (const choices of root.querySelectorAll(toolbarChoices))
     choicesButton(choices)?.setAttribute('aria-expanded', String(tunPopoverOpen(choices)));
 });
@@ -599,7 +721,11 @@ document.addEventListener('toggle', (event) => {
   button?.setAttribute('aria-expanded', String(open));
   if (open) {
     placeChoices(choices);
-    const first = choices.querySelector('input:checked:not([type=hidden])')
+    // A period starts on its quick choices, so a phone shows no keyboard
+    // until a date field is tapped.
+    const first = choices.querySelector('[data-tun-list-toolbar-quick][aria-current=true]')
+      || choices.querySelector('[data-tun-list-toolbar-quick]')
+      || choices.querySelector('input:checked:not([type=hidden])')
       || choices.querySelector('input:not([type=hidden])');
     first?.focus({ preventScroll: true });
   } else if (choices.contains(document.activeElement) || document.activeElement === document.body) {
@@ -609,8 +735,22 @@ document.addEventListener('toggle', (event) => {
 
 // A choice applies at once: one of several closes its popover first, so
 // the focus is on its button; several of several stay open.
+// A period's date applies when it is left or entered, or chosen in the
+// calendar, never while it is being typed.
+const toolbarDate = (input) => input instanceof HTMLInputElement
+  && input.matches('[data-tun-list-toolbar] .tun-date-input-control');
+document.addEventListener('keydown', (event) => {
+  if (event.key !== 'Enter' || !toolbarDate(event.target)) return;
+  event.preventDefault();
+  submitToolbar(event.target.closest('[data-tun-list-toolbar]'));
+});
+
 document.addEventListener('change', (event) => {
   const input = event.target;
+  if (toolbarDate(input)) {
+    submitToolbar(input.closest('[data-tun-list-toolbar]'));
+    return;
+  }
   if (!(input instanceof HTMLInputElement) || !input.matches('[type=radio], [type=checkbox]')) return;
   const form = input.closest('[data-tun-list-toolbar]');
   if (!form) return;
@@ -631,6 +771,7 @@ document.addEventListener('click', (event) => {
     if (name !== undefined && filter.dataset.tunListToolbarFilter !== name) continue;
     for (const input of filter.querySelectorAll('input[type=radio], input[type=checkbox]'))
       input.checked = input.type === 'radio' && input.value === '';
+    for (const input of filter.querySelectorAll('.tun-date-input-control')) input.value = '';
   }
   event.preventDefault();
   const filter = name === undefined ? null
@@ -641,6 +782,24 @@ document.addEventListener('click', (event) => {
        form.querySelector('[data-tun-list-toolbar-fold]'),
        form.querySelector('input[type=search]')].find(shown);
   next?.focus({ preventScroll: true });
+  submitToolbar(form);
+});
+
+// A period's quick choice fills both days as the page writes a date, closes
+// the popover, the focus on its button, and submits; the link is for a page
+// without scripts.
+document.addEventListener('click', (event) => {
+  const link = event.target instanceof Element
+    && event.target.closest('[data-tun-list-toolbar] a[data-tun-list-toolbar-quick]');
+  if (!link || event.button !== 0 || event.metaKey || event.ctrlKey || event.shiftKey) return;
+  event.preventDefault();
+  const form = link.closest('[data-tun-list-toolbar]');
+  const [from, to] = link.closest('[data-tun-list-toolbar-filter]')
+    .querySelectorAll('.tun-date-input-control');
+  from.value = link.dataset.from;
+  to.value = link.dataset.to;
+  const choices = link.closest('[data-tun-list-toolbar-choices]');
+  if (choices && tunPopoverOpen(choices)) choices.hidePopover();
   submitToolbar(form);
 });
 
@@ -682,6 +841,14 @@ window.addEventListener('resize', () => {
                                                    ("paid" "Paid"))
                                         :value "overdue")
                                   (list :name "mine" :label "Mine" :kind :toggle)))))
+   (("A period in use" :layout :stack)
+    (list-toolbar (:action "/rentals" :id "rentals-toolbar"
+                   :search (list :name "q" :label "Search rentals")
+                   :filters (list (list :name "state" :label "State" :kind :one
+                                        :choices '(("booked" "Booked") ("out" "Out")
+                                                   ("returned" "Returned")))
+                                  (list :kind :period :label "Period" :names '("from" "to")
+                                        :value '("2026-11-01" "2026-11-14"))))))
    (("Filters without a search" :layout :stack)
     (list-toolbar (:action "/staff" :id "staff-toolbar"
                    :filters (list (list :name "team" :label "Team" :kind :several
@@ -698,7 +865,8 @@ window.addEventListener('resize', () => {
          (markup (mapcar (lambda (filter)
                            (filter-markup base filter
                                           (toolbar-href action search filters keep
-                                                        :cleared (list filter))))
+                                                        :cleared (list filter))
+                                          action search filters keep))
                          filters))
          (row `(:div (:@ :class "tun-list-toolbar-filters") ,@markup)))
     `(:form ,(attrs (list :class "tun-list-toolbar" :id base :method "get" :action action

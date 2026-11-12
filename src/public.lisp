@@ -83,6 +83,9 @@ the listed symbols (the same symbol objects, not copies)."
    #:tr #:deferred-tr #:define-translations #:label #:with-language #:current-language
    #:money-text #:date-text #:day-text #:timestamp-text #:number-text #:local-date-of
    #:local-time-of
+   ;; what a person typed in a form: a date, a time of day, an amount
+   ;; (spec/i18n.md 5.4, 6.2), and a period as a list's filter shows it
+   #:read-date-text #:read-time-text #:read-money-text #:period-text
    ;; the application and its context
    #:application #:*application* #:entity #:stored-entity #:entity-id
    #:now #:today #:local-today #:date-add-days #:date-add-months #:date-at #:date-of #:parse-date #:format-date #:format-quantity

@@ -436,6 +436,30 @@ values that are not empty, as a list.
                   :keep (list (list "sort" (jget query "sort")))))
 ```
 
+A period is a filter of the kind `:period` with two keys, the first and
+the last day: `(list :kind :period :label "Periode" :names '("fra" "til")
+:value (list (first (query-values query "fra")) (first (query-values query
+"til"))))`. Its button says «Periode: 1.–14.11.», and it opens quick
+choices («I dag», «Denne uka», «Denne måneden», «Forrige måned», and
+yours as `:quick`) and two date fields with a calendar. The values come as
+the address holds them, as a person typed them or as ISO dates; read them
+with `read-date-text`.
+
+A form takes a date, a time of day and an amount in fields a person types
+in as they write them: `ui:date-input` (with a calendar where scripts run),
+`ui:time-input` and `ui:money-input`. Each posts what was typed, and the
+page reads it on the server: `(read-date-text TEXT)` gives `YYYY-MM-DD`,
+`(read-time-text TEXT)` `HH:MM` and `(read-money-text TEXT)` minor units,
+or NIL and the message to show at the field. `web-call` reads a date and
+an amount given as text this way itself, so a page may pass the posted
+text on to an operation (`spec/ui.md` §6, `spec/i18n.md` §5.4, §6.2).
+
+```lisp
+(ui:date-input (:label "Leveres" :name "levering" :value (jget form "levering")
+                :error problem :quick t))
+(ui:money-input (:label "Pris" :name "pris" :value (or (jget form "pris") price-minor)))
+```
+
 ### The home page
 
 `/` and a sign-in that was not started from a page lead to the first
@@ -1054,8 +1078,9 @@ translates it in a catalogue per other language, `nb.lisp` in a client
   finds a text without one, and an entry nothing uses.
 - An amount is an integer of minor units in a field of type `money` named
   `…-minor`: `(total-minor :type money :label "Total")`. `money-text`,
-  `date-text`, `timestamp-text` and `number-text` write a value as the
-  tenant's language writes it.
+  `date-text`, `timestamp-text`, `number-text` and `period-text` write a
+  value as the tenant's language writes it; `read-date-text`,
+  `read-time-text` and `read-money-text` read what a person typed.
 
 ## Declared settings
 

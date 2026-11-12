@@ -257,7 +257,7 @@
           (is (html-has page "name=\"status\" value=\"quote_sent\"" "name=\"dateless\" value=\"true\""
                         "name=\"tag\" value=\"rental\""))
           (is (not (search "name=\"customer_id\" value=" page)) "an id is not offered")
-          (is (not (search "name=\"from\"" page)) "nor a date")
+          (is (not (search "tun-list-toolbar-department" page)) "nor other text")
           (is (not (search "name=\"limit\"" page)) "nor the limit")
           (is (and (search draft page) (search sent page))))
         (let ((page (nth-value 1 (web-request port "/orders?status=quote_sent&tag=&dateless="
@@ -268,7 +268,7 @@
           (is (cl-ppcre:scan "value=\"quote_sent\" checked" page)))
         (let ((page (nth-value 1 (web-request port "/orders?status=completed" :jar jar))))
           (is (search "Nothing matches" page) "a list filtered to nothing says so")
-          (is (search "href=\"/orders?status=&amp;dateless=&amp;tag=\"" page)
+          (is (search "href=\"/orders?status=&amp;dateless=&amp;tag=&amp;from=&amp;to=\"" page)
               "with «Reset» naming every key"))
         (let ((page (nth-value 1 (web-request port "/orders?status=bogus" :jar jar))))
           (is (search "<form class=\"tun-list-toolbar\"" page) "a refused value keeps the toolbar")

@@ -192,9 +192,10 @@ that is parsed (core.md §7.5): more than any number field holds.")
 (defmethod type-name ((type money-type)) "money")
 
 (defvar *written-amounts* nil
-  "True while a page's form is the input: an amount given as text is then
-read as a person writes it in the tenant's language (spec/i18n.md 5.4).
-Over MCP and the API an amount is the integer.")
+  "True while a page's form is the input: an amount, or a date, given as
+text is then read as a person writes it in the tenant's language
+(spec/i18n.md 5.4, 6.2).  Over MCP and the API an amount is the integer
+and a date YYYY-MM-DD.")
 
 (defmethod coerce-input ((type money-type) value path)
   ;; Text too long for a number is refused as an integer's is, unread.
@@ -364,9 +365,17 @@ dates Tun keeps (PARSE-DATE)."
 (defmethod type-json-schema ((type date-type))
   (jobj "type" "string" "format" "date" "pattern" "^[0-9]{4}-[0-9]{2}-[0-9]{2}$"))
 (defmethod coerce-input ((type date-type) value path)
-  (if (valid-date-string-p value)
-      (coerce value 'simple-string)
-      (input-error path "must be a valid date in the form YYYY-MM-DD")))
+  (cond ((valid-date-string-p value) (coerce value 'simple-string))
+        ;; From a page's form, a date as a person writes it (spec/i18n.md 6.2).
+        ((and *written-amounts* (stringp value))
+         (multiple-value-bind (date problem) (read-date-text value)
+           (if date
+               (coerce date 'simple-string)
+               (progn (push (cons path (or problem (deferred-tr "must be a date, such as ~a"
+                                                          (date-text "2026-10-21"))))
+                            *input-errors*)
+                      nil))))
+        (t (input-error path "must be a valid date in the form YYYY-MM-DD"))))
 
 (defclass timestamp-type (field-type) ())
 (defmethod type-name ((type timestamp-type)) "timestamp")

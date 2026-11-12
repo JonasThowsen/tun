@@ -25,6 +25,9 @@
    #:+currencies+ #:currency-p #:current-currency #:currency-minor-digits #:+most-amount+
    #:money-text #:number-text #:date-text #:day-text #:instant-text #:timestamp-text #:yes-no-text
    #:read-money-text #:read-decimal-text #:money-type #:money #:money-name-p #:check-money-name
+   #:read-date-text #:read-time-text #:period-text #:money-number-text #:month-name
+   #:calendar-day-name #:calendar-day-short-name #:week-first-day #:weekday-of #:page-today
+   #:currency-mark #:month-abbreviation
    #:*written-amounts*
    ;; time zones (spec/i18n.md 6.1)
    #:+time-zones+ #:time-zone-p #:european-summer-time-p #:current-time-zone #:zone-offset
