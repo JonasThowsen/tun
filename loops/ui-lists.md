@@ -2,7 +2,7 @@
 
 - loop: ui-lists
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 99cd40e880d06a15b0c67957fd25dae0c2124e97
 - item: sak_1ysmxc6qqxdm6hr6
 - estimate: 1h30m 2h15m 4h
@@ -268,6 +268,12 @@ Mode: reviewed. A core change, a minor version.
 - **Core 2.29.0**: the table's look on a phone for every client; no call
   shape changes.
 
+## Actuals
+
+```json
+{"loop":"ui-lists","title":"Every table shows dense rows on a phone and keeps its columns; a row that leads somewhere answers the press","repository":"tun","mode":"reviewed","stage":"done","item":"sak_1ysmxc6qqxdm6hr6","tags":["kind:ui","core","module:ui"],"like":["tun/ui-filters","tun/ui-header"],"started":"2026-11-12 02:46","ended":"2026-11-12 04:10","minutes":{"total":84,"waiting_person":0,"waiting_reviewer":4,"working":80,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":135,"worst":240,"at":"brief"},"latest_estimate":{"best":90,"likely":135,"worst":240,"at":"brief"},"within_estimate":false,"ratio":0.62,"verify":{"rounds":3,"failed":0},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 02:46  started, reviewed
@@ -381,3 +387,4 @@ Mode: reviewed. A core change, a minor version.
   **The rest is unchanged from the last review and still holds**
   - **Criteria 7–10:** the row is one target at both widths, it also works without JavaScript, and the focus ring is inset. The pressed state applies only while the row's own link is pressed. The customer link and the «More actions» menu inside a row work as themselves. Sorting keeps the filters in the address, and the rows stay with the loading sign while a slow sort or filter answers.
   - **The added lines** have no leftover debugging or TODOs.
+- 2026-11-12 04:10  finished at tun 7703b0c9
