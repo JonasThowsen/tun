@@ -2,7 +2,7 @@
 
 - loop: ui-fields
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: f09131bd848069d9296bccd9f13dd3190caf6a92
 - item: sak_t5gvvtw1rr2nbwe8
 - estimate: 2h20m 3h15m 5h30m
@@ -332,6 +332,12 @@ Mode: reviewed. A core change, a minor version.
 - **Core 2.30.0**: three components, a filter kind, four functions in `TUN`,
   dates read over a page; no call shape changes.
 
+## Actuals
+
+```json
+{"loop":"ui-fields","title":"The date, time and money fields, and a period as a filter of a list","repository":"tun","mode":"reviewed","stage":"done","item":"sak_t5gvvtw1rr2nbwe8","tags":["kind:ui","core","module:ui"],"like":["tun/ui-filters","tun/ui-sheets"],"started":"2026-11-12 04:20","ended":"2026-11-12 06:20","minutes":{"total":120,"waiting_person":0,"waiting_reviewer":3,"working":117,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":140,"likely":195,"worst":330,"at":"brief"},"latest_estimate":{"best":140,"likely":195,"worst":330,"at":"brief"},"within_estimate":false,"ratio":0.62,"verify":{"rounds":6,"failed":3},"changes":{"A":0,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 04:20  started, reviewed
@@ -445,3 +451,5 @@ Mode: reviewed. A core change, a minor version.
   - The screenshots cover phone and desktop widths, with the calendar open and the period open.
   - The spec changes are where the behaviour changed.
   - The two edits to `ui-filters-tests` follow the spec and weaken nothing.
+- 2026-11-12 06:20  pushed 7bcd6f3 to Tun's main, core 2.30.0
+- 2026-11-12 06:20  finished at tun 7bcd6f38
