@@ -9,19 +9,31 @@
 ;;; ------------------------------------------------------------------
 ;;; search-results
 
-(defun marked-text (query text)
-  "TEXT as markup, the stored characters QUERY's words matched in <mark>."
+(defun marked-text (query text &key identifier)
+  "TEXT as markup, the stored characters QUERY's words matched in <mark>;
+with IDENTIFIER, those it covers as an identifier when no word matched."
   (let ((at 0) (parts '()))
-    (loop for (start . end) in (search-mark-ranges query text)
+    (loop for (start . end) in (search-mark-ranges query text :identifier identifier)
           do (when (> start at) (push (subseq text at start) parts))
              (push `(:mark ,(subseq text start end)) parts)
              (setf at end))
     (when (< at (length text)) (push (subseq text at) parts))
     (nreverse parts)))
 
-(defun search-meta-line (item)
-  "The line under a result's title: its kind's word, then its META."
-  (format nil "~{~a~^ · ~}" (cons (getf item :label) (getf item :meta))))
+(defun search-meta-line (query item)
+  "The line under a result's title: its kind's word, then what it was found
+by (MATCHED) when it has that, then its META; when the title holds no mark,
+the matches in MATCHED and META are marked (spec/ui.md 6.4, «Why it was
+found»)."
+  (let ((mark (null (search-mark-ranges query (getf item :title))))
+        (parts (remove-if (lambda (text) (zerop (length text)))
+                          (mapcar #'princ-to-string
+                                  (remove nil (cons (getf item :matched) (getf item :meta)))))))
+    (cons (princ-to-string (getf item :label))
+          (loop for part in parts
+                append (cons " · " (if mark
+                                       (marked-text query part :identifier t)
+                                       (list part)))))))
 
 (defun search-row (query item index listbox)
   "The row of ITEM, the INDEXth result, a link to its page."
@@ -35,15 +47,18 @@
             (:span (:@ :class "tun-search-results-text")
                    (:span (:@ :class "tun-search-results-title")
                           ,@(marked-text query (getf item :title)))
-                   (:span (:@ :class "tun-search-results-meta") ,(search-meta-line item))))))
+                   (:span (:@ :class "tun-search-results-meta")
+                          ,@(search-meta-line query item))))))
 
 (define-component search-results ((&key query items listbox id attributes))
   (:group "Data")
   (:doc "What the application's one search found for QUERY: a list of links, each with its
 kind's icon, its title with what matched marked, and a line that starts with its kind. ITEMS
-are plists of :kind, :label (the kind's word), :icon, :title, :meta (a list of texts) and
-:href, best first. Under two characters it is empty; with none it says so. LISTBOX makes it the
-list a search dialog's field moves through.")
+are plists of :kind, :label (the kind's word), :icon, :title, :meta (a list of texts),
+:matched (what it was found by, when neither the title nor META shows it) and :href, best first.
+A result whose title holds no match has its match marked in the line under it. Under two
+characters it is empty; with none it says so. LISTBOX makes it the list a search dialog's
+field moves through.")
   (:source "Tun's own, after its owner's rules for an admin application, 2026-11")
   (:css "
 .tun-search-results {
@@ -136,6 +151,15 @@ list a search dialog's field moves through.")
                      :items '((:kind "customer" :label "Customer" :icon :users
                                :title "Bjørn Åsen" :meta ("bjorn@example.com" "412 34 567")
                                :href "/customers/cus_2")))))
+   ("Found by the line under the title: the match is marked there"
+    (search-results (:query "ex"
+                     :items '((:kind "customer" :label "Customer" :icon :users
+                               :title "Fjord Events" :meta ("hello@fjord.example")
+                               :href "/customers/cus_3")
+                              (:kind "order" :label "Order" :icon :shopping-cart
+                               :title "Fjord Events" :matched "Exhibition hall 2, Storgata 12"
+                               :meta ("Confirmed" "21 Nov 2026")
+                               :href "/orders/ord_2")))))
    ("Nothing found"
     (search-results (:query "zebra" :items '()))))
   (let* ((text (or query ""))

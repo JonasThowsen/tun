@@ -177,10 +177,35 @@ texts."
     (let ((by-identifier (identifier-score query identifiers)))
       (if (and by-words by-identifier) (max by-words by-identifier) (or by-identifier by-words)))))
 
-(defun search-mark-ranges (query text)
+(defun identifier-mark-range (query text)
+  "The (START . END) range of TEXT's own characters that QUERY covers when
+TEXT, as an identifier, is what QUERY found whole or by its start (as
+IDENTIFIER-SCORE counts it), else NIL."
+  (let ((key (search-query-identifier query)))
+    (when (plusp (length key))
+      (multiple-value-bind (folded from) (search-fold text)
+        (let ((kept (loop for char across folded
+                          for index from 0
+                          unless (find char " +-.#()/") collect (cons char (aref from index)))))
+          (when (and (<= (length key) (length kept))
+                     (every (lambda (char pair) (char= char (car pair))) key kept)
+                     (or (= (length key) (length kept))
+                         (and (find-if #'digit-char-p key) (>= (length key) 3))))
+            (cons (cdr (first kept)) (1+ (cdr (nth (1- (length key)) kept))))))))))
+
+(defun search-mark-ranges (query text &key identifier)
   "Where in TEXT the words of QUERY are found, as a sorted list of (START .
 END) ranges of TEXT's own characters, overlapping ones joined: for each
-word its first match at the start of a word, else its first anywhere."
+word its first match at the start of a word, else its first anywhere.
+With IDENTIFIER, a TEXT no word is found in, but which QUERY found as an
+identifier, has the one range the query covers."
+  (let ((ranges (word-mark-ranges query text)))
+    (or ranges
+        (let ((range (and identifier (identifier-mark-range query text))))
+          (and range (list range))))))
+
+(defun word-mark-ranges (query text)
+  "SEARCH-MARK-RANGES by the words of QUERY alone."
   (multiple-value-bind (folded from) (search-fold text)
     (let ((ranges '()))
       (dolist (word (search-query-words query))
@@ -218,20 +243,28 @@ word its first match at the start of a word, else its first anywhere."
    (score :initarg :score :reader search-result-score :type integer
           :documentation "What the rule gave it.")
    (id :initarg :id :initform nil :reader search-result-id
-       :documentation "The record's id, or NIL."))
+       :documentation "The record's id, or NIL.")
+   (matched :initarg :matched :initform nil :reader search-result-matched
+            :type (or null string)
+            :documentation "What the record was found by when neither its title nor its
+meta shows it, as SEARCH-EXCERPT cuts it, or NIL."))
   (:documentation "One thing a search found (spec/ui.md 6.4)."))
 
-(defun make-search-result (&key kind label icon title meta href score id)
+(defun make-search-result (&key kind label icon title meta href score id matched)
   "A result of a search: KIND a kind's key, LABEL its word, ICON its icon,
 TITLE the record's name, META a list of short texts, HREF its page, SCORE
-what SEARCH-MATCH gave it and ID the record's id."
+what SEARCH-MATCH gave it and ID the record's id.  MATCHED, a text or NIL,
+is what the record was found by when neither TITLE nor META shows it; the
+result's line shows it (spec/ui.md 6.4, «Why it was found»)."
   (check-type kind string)
   (check-type title string)
   (check-type href string)
   (check-type score integer)
+  (check-type matched (or null string))
   (make-instance 'search-result
                  :kind kind :label (princ-to-string (or label kind)) :icon (or icon :file)
                  :title title :href href :score score :id id
+                 :matched (and matched (plusp (length matched)) matched)
                  :meta (loop for each in meta
                              when (and each (plusp (length (princ-to-string each))))
                                collect (princ-to-string each))))
@@ -241,6 +274,40 @@ what SEARCH-MATCH gave it and ID the record's id."
 
 (defparameter +search-most+ 20
   "The most results a search shows in all.")
+
+(defparameter +search-excerpt-length+ 80
+  "The most characters of a text a result shows as what it was found by.")
+
+(defun search-excerpt (query text)
+  "TEXT as a result shows what it was found by (spec/ui.md 6.4): whole when
+it is +SEARCH-EXCERPT-LENGTH+ characters or less, else from the start of
+the word holding QUERY's first mark, «…» before it unless that is TEXT's
+start, at most +SEARCH-EXCERPT-LENGTH+ characters of it and «…» after it
+when it is cut."
+  (if (<= (length text) +search-excerpt-length+)
+      text
+      (let* ((first-mark (car (first (search-mark-ranges query text :identifier t))))
+             (start (if first-mark
+                        (or (position-if (lambda (c) (search-space-p c)) text
+                                         :end first-mark :from-end t)
+                            -1)
+                        -1))
+             (from (1+ start))
+             (to (min (length text) (+ from +search-excerpt-length+))))
+        (format nil "~:[~;…~]~a~:[~;…~]" (plusp from) (subseq text from to)
+                (< to (length text))))))
+
+(defun search-matched-text (query title meta candidates)
+  "What a result shows it was found by: NIL when TITLE or a text of META
+holds a mark of QUERY, else the excerpt of the first of CANDIDATES (its
+names, texts and identifiers) that holds one, or NIL."
+  (flet ((marked-p (text identifier)
+           (and (stringp text) (plusp (length text))
+                (search-mark-ranges query text :identifier identifier))))
+    (unless (or (marked-p title nil)
+                (some (lambda (text) (marked-p (princ-to-string text) t)) (remove nil meta)))
+      (let ((found (find-if (lambda (text) (marked-p text t)) candidates)))
+        (and found (search-excerpt query found))))))
 
 (defun search-entity (query entity &key where keep kind label icon title names texts identifiers
                                        meta href (score #'identity))
@@ -268,11 +335,19 @@ transaction, so the record policies decide what the actor finds."
       ;; SCORED holds the newest first: a stable sort keeps them so.
       (loop for (points . record) in (stable-sort scored #'> :key #'car)
             repeat +search-per-kind+
-            collect (make-search-result :kind kind :label label :icon icon
-                                        :title (funcall title record)
-                                        :meta (and meta (funcall meta record))
-                                        :href (funcall href record) :score points
-                                        :id (entity-id record))))))
+            collect (let ((name (funcall title record))
+                          (facts (and meta (funcall meta record))))
+                      (make-search-result
+                       :kind kind :label label :icon icon :title name :meta facts
+                       :href (funcall href record) :score points :id (entity-id record)
+                       :matched (search-matched-text
+                                 query name facts
+                                 (remove-if-not #'stringp
+                                                (append (if names (funcall names record)
+                                                            (list name))
+                                                        (and texts (funcall texts record))
+                                                        (and identifiers
+                                                             (funcall identifiers record)))))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The seam

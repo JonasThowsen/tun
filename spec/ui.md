@@ -27,7 +27,10 @@ and a page title's long word hyphenated (§2.1, §6, §8), 2026-11-12, core
 2.29.0; the date, time and money fields, the calendar, and a period as a
 filter of a list (§6, §8, §9), 2026-11-12, core 2.30.0; one search for
 the whole application, its rule, `search-results`, `search-dialog` and
-the dialog's `:size :large` (§6, §6.4, §8, §9), 2026-11-12, core 2.31.0.
+the dialog's `:size :large` (§6, §6.4, §8, §9), 2026-11-12, core 2.31.0;
+a summary list's label column, a section's `:meta`, `note`, the marks
+of a result found by its second line, and the specimen's theme switch
+(§6, §6.4, §7, §8), 2026-11-12, core 2.32.0.
 How every Tun page looks and behaves: the tokens, the components that
 are built from them, the specimen that shows them, and the rules a
 component follows. The
@@ -555,7 +558,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Data (`data`, `toolbar`, `board`, `files`, `charts`, `markdown`, `graph`, `search`) | `table`, `list-toolbar`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph`, `search-results`, `search-dialog` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
-| Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `section-links`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
+| Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `section-links`, `note`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
 `files.md` §6, `markdown`, text written in Markdown, in §6.2,
@@ -1060,6 +1063,29 @@ the markup as on the screen; the others keep the order the page gave.
 `:description`, a sentence under the title, is for a client that wants
 one (§8: Tun's own pages have none).
 
+`section` takes `:meta` in the same sense: the live facts of that part
+of the page, such as «3 lines» or «The units are with the customer.», or
+a status badge, as a list of nodes or one node. They stand in a row under
+the section's heading, in the header's look: `--text-sm`, in
+`--muted-foreground`, a gap of 0.5rem between them, wrapping; the
+section's actions stay beside the heading. A fact is never a badge among
+the actions, and `:meta` is not help text: a sentence about what the
+section is for is a `:description`, which Tun's own pages do not use.
+
+`note` is a short muted line in a page's flow: `(note () "Your answer
+goes to Nordvik Bakery Ltd.")`, a `<p>` in `--text-sm` and
+`--muted-foreground` (§2.1: at least 6.5:1 on every ground), no margin
+of its own, its words wrapping, a long word broken where it must be.
+It is for a line that says what follows from what is beside it: under a
+pair of buttons («Your answer goes to COMPANY.»), under a table («The
+first 100 found; search to narrow them.»), under a form's actions. It is
+not a field's hint (`field`'s `:hint`, tied to its field), not a table's
+caption (`table`'s `:caption`, which names what the table holds, above
+it), not an empty list's text (`empty-state`), not a live fact (a
+header's or a section's `:meta`) and not a message that something
+happened (`flash`, `alert`). It takes the children a paragraph takes:
+text, a link, `kbd`.
+
 - **When the actions do not fit on a phone.** The header reckons, when it
   is rendered, whether its actions fit beside the title on a 320 px phone,
   whose content is 18rem wide: an icon button is 2.75rem, a button with
@@ -1109,6 +1135,19 @@ line up with the header and the sections. Narrower than 30rem (its own
 width) a row is the label, in `--muted-foreground`, beside the value,
 with the action under the value; from 30rem the rows stand in two
 columns, a row's label above its value and its action beside the label.
+
+- **The label's column.** Beside the value the label has a column of
+  10rem, or half of what the row has left after the gap between them,
+  `(100% - gap) / 2`, when that is less, the same in every row, so the
+  values line up. 10rem holds a label of about
+  20 characters in the device's font at 0.875rem, such as
+  «Organisasjonsnummer» (about 9.5rem), on one line from a 360 px phone.
+  A label longer than its column, as that one on a 320 px phone, breaks:
+  with a hyphen where the page's language (`lang`, the page's or the
+  list's own) has one for it (`hyphens: auto`), else where it must
+  (`overflow-wrap: break-word`). No label's text ever reaches into its
+  value's box, at any width; above it, too, a long word breaks the same
+  way.
 
 `tabs`, segmented (the default), is a strip with a 1px `--border` frame
 on the ground it stands on, the page, a card or the chrome, and its
@@ -1646,6 +1685,22 @@ matched, an identifier and the name before the rest. In full:
   word covers in the title, its first match at the start of a word,
   else its first anywhere, are marked (`<mark>`): «kafe» marks «kafé»,
   «bjorn» marks «Bjørn».
+- **Why it was found.** A result whose title has no mark shows its
+  match in the line under the title: the words are marked the same way
+  in each META text, and a META text that is an identifier found whole
+  or by its start (an email, a phone number written otherwise, «41234567»
+  for «412 34 567») is marked over the characters it covers. When no
+  META text holds a mark, the result carries what it was found by
+  (MATCHED), the first of its names, texts and identifiers that holds a
+  mark, and the line shows it right after the kind's word, marked:
+  «Order · <mark>Storgata</mark> 12 · Confirmed». MATCHED is that text
+  whole when it is 80 characters or less; a longer one from the start of
+  the word holding its first mark, «…» before it unless that is the
+  text's start, and at most 80 characters of it, «…» after it when it is
+  cut. `search-entity` works MATCHED out for the results it keeps;
+  `make-search-result` takes it as `:matched`, NIL when left out, so a
+  contributor written without it is shown as before, its META marked.
+  A result whose title holds a mark shows its line unmarked, as before.
 - **What it costs.** `search-entity` reads every record of its entity
   once per search, in the read transaction, and matches in Lisp: on
   Postgres one `SELECT` of the table per kind, without an index, so the
@@ -1666,14 +1721,17 @@ so the three answer the same.
 **The tool.** `search` (`query`, 2 to 120 characters; `kinds`, a list
 of kinds, all when left out; `limit`, 1 to 20, 20 when left out),
 `:viewer`, answers `{"items": [...]}`, each item the result's `kind`,
-`kind_label`, `icon`, `title`, `meta` (an array), `href`, `score` and `id`
-(null when the contributor gave none), under the caller's authority as
-the page's.
+`kind_label`, `icon`, `title`, `meta` (an array), `matched` (what it was
+found by, when neither the title nor the meta shows it, else null),
+`href`, `score` and `id` (null when the contributor gave none), under the
+caller's authority as the page's.
 
 **`search-results`** is the list: `(search-results (:query TEXT :items
-ITEMS))`, ITEMS plists of a result's parts. Each row is a link to HREF:
-the kind's icon, the title with its marks, and under it the meta line,
-which starts with the kind's word («Customer · post@nordvik.example»),
+ITEMS))`, ITEMS plists of a result's parts (`:matched` among them). Each
+row is a link to HREF: the kind's icon, the title with its marks, and
+under it the meta line, which starts with the kind's word, then MATCHED
+when there is one, then META («Customer · post@nordvik.example»), marked
+as «Why it was found» says,
 in `--muted-foreground`, `--text-xs`, cut with «…» at the end of its
 line. A row is at least 2.75rem high and pressed (`--pressed`) at once.
 `<mark>` stands on the text colour at 14 % (`--foreground` mixed with
@@ -1735,7 +1793,9 @@ for the results as one types and a box under it that holds them:
   example rendered beside its Lisp. `/ui/NAME` shows one. The specimen
   is public; it holds no data.
 - A theme switch on the specimen sets `data-theme` and remembers it in
-  the browser.
+  the browser. It stands in the specimen's top bar right after the
+  title, at the start of the row, so a toast (`flash`), which stands at
+  the top right from 40rem, never covers it on a wide screen.
 - `bin/ui-specimen [DIR]` writes the specimen as standalone files (the
   CSS and script inline): `index.html` and `NAME.html` for each
   component.
@@ -1766,7 +1826,10 @@ form of `field`s with an `error-summary`, a confirmation is a
   under a page's or a section's title; what such a sentence said that a
   person needs stands where it is used: in a card's text or an alert,
   or, when it says what a list or a block holds, as the table's caption
-  or the code block's title.
+  or the code block's title. A live fact of a section (a count, a state)
+  is the section's `:meta`, never a badge among its actions; a short
+  muted line in the page's flow (under buttons, under a table) is a
+  `note`.
 - **The frame.** A staff page is an `app-shell` with the menu, the actor
   and «Sign out» («Logg ut»). Its content is at most 72rem wide, 84rem from a
   1440 px window, centred, with more space at the sides the wider the
@@ -2410,5 +2473,25 @@ form of `field`s with an `error-summary`, a confirmation is a
   top bar's button opening it as tall as it may be and above a keyboard;
   without JavaScript the button leading to `/search` and its form
   listing the results; the server's time for the showcase's searches.
+- `tests/ui-nits-tests.lisp` (§6 `summary-list`, `section`, `note`,
+  §6.4 «Why it was found», §7): the label column's width, its
+  `hyphens: auto` and `overflow-wrap: break-word`; a section's `:meta`
+  under its heading, before its actions, in the header's look, and none
+  without it; `note`'s markup and its muted colour and size; a result
+  found by its META marked there and not when its title is marked, an
+  identifier marked over the characters it covers, MATCHED for an order
+  found by its address and none when META shows it, its excerpt of a
+  long text, a result made without `:matched`; the `search` tool's
+  `matched`, and the page, the fragment and the tool agreeing on it.
+- `checks/showcase/checks/ui-nits.py`, on the specimen and the
+  showcase: at 320, 360 and 390 px no label's text of the specimen's
+  summary lists and of a card's page in Norwegian reaching into its
+  value's box, a long label whole when its words fit its column in the
+  browser's font and broken when they do not, the column 10rem at 390 px; a
+  section's `:meta` under its heading on the specimen and a card's page;
+  `note` in the muted colour; typing «ex» in the showcase's search
+  marking «ex» in each customer's line; at 1280 px the specimen's toast
+  and theme switch not overlapping, and «Dark» pressed while the toast
+  shows turning the page dark; no page scrolling sideways.
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

@@ -206,6 +206,7 @@
                              (:file "ui-lists-tests")
                              (:file "ui-fields-tests")
                              (:file "search-tests")
+                             (:file "ui-nits-tests")
                              (:file "review-tests")
                              (:file "review2-tests")
                              (:file "slice1-review-tests")

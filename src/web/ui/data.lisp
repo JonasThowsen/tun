@@ -397,19 +397,27 @@ value.")
   width: 100%;
   font-size: var(--text-running);
   line-height: var(--text-running--line-height);
-  /* On a phone the label stands beside the value, the action under it. */
+  /* On a phone the label stands beside the value, the action under it.
+     The label's column is the same in every row, so the values line up:
+     10rem holds a label of about 20 characters, or half the row after the
+     gap when that is less (spec/ui.md 6, summary-list). */
   & .tun-summary-list-row {
     display: grid;
-    grid-template-columns: minmax(0, 2fr) minmax(0, 3fr);
+    grid-template-columns: min(10rem, calc((100% - var(--spacing) * 4) / 2)) minmax(0, 1fr);
     grid-template-areas: 'key value' '. action';
     align-items: baseline;
     column-gap: calc(var(--spacing) * 4);
     row-gap: var(--spacing);
     min-width: 0;
   }
+  /* A label longer than its column breaks, with a hyphen where the
+     language has one, and never runs into its value. */
   & .tun-summary-list-key {
     grid-area: key;
+    min-width: 0;
     color: var(--muted-foreground);
+    hyphens: auto;
+    overflow-wrap: break-word;
   }
   & .tun-summary-list-value {
     grid-area: value;
@@ -461,6 +469,12 @@ value.")
               ("Phone" "+47 912 34 567" :href "/customers/412/edit#phone")
               ("Invoice address" ((:p "Industriveien 14") (:p "7080 Heimdal"))
                :href "/customers/412/edit#address")))))
+   (("Long labels, in Norwegian: a long word breaks only where it must" :layout :stack)
+    (summary-list
+     (:attributes '(:lang "nb")
+      :rows '(("Organisasjonsnummer" "912 345 678")
+              ("Fakturaadresse" "Industriveien 14, 7080 Heimdal")
+              ("Leveringsbetingelsesdokumentasjon" "Vedlagt kontrakten")))))
    (("Without links" :layout :stack)
     (summary-list
      (:rows '(("Order" "10481")

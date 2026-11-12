@@ -345,7 +345,12 @@ menu when they do not fit beside the title), `:breadcrumbs`, `:meta`
 (Tun's own pages have none). A long page read as a whole starts with
 `(ui:section-links (:label "På denne siden" :items '((:label "Detaljer"
 :href "#detaljer") ...)))`, links to its sections' ids, rather than
-`ui:tabs`, which show one part at a time. `ui:board` (`spec/ui.md` §6.1)
+`ui:tabs`, which show one part at a time. A section's live facts (a
+count, a state) are its `:meta`, `(ui:section (:title "Linjer" :meta
+(list "3 linjer" (ui:badge (:variant :info) "Hos kunden"))) ...)`, never
+badges among its `:actions`; a short muted line in the page's flow,
+under buttons or under a table, is `(ui:note () "Svaret går til
+Nordvik Bakeri AS.")`. `ui:board` (`spec/ui.md` §6.1)
 is a board of cards in columns whose cards move by a «Flytt til» menu or
 by dragging, posting `card` and `column` to its `:action`. A page under
 «System» in the menu, rather than with the business's work, is defined
@@ -517,7 +522,10 @@ or by their start) and answers the five best. A contributor that builds
 its results itself calls `search-match` for the score and
 `make-search-result` for each result. A result whose page ACTOR cannot
 open is dropped. The same search is the page `/search?q=`, the dialog's
-results and the agents' `search` tool.
+results and the agents' `search` tool. A result whose title holds no
+match shows why it was found in the line under it: its `:meta` marked,
+or else what it matched (`search-entity` works it out;
+`make-search-result` takes it as `:matched`).
 
 A page's own dialog with `:shortcut "Ctrl+K"`, from
 `staff-page-extras` or in its content, still opens on Ctrl K: it comes

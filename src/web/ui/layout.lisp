@@ -672,13 +672,14 @@ admin application, 2026-11")
                 (when meta
                   (list `(:div (:@ :class "tun-page-header-meta") ,@meta))))))
 
-(define-component section ((&key title description actions (level 2) id attributes)
+(define-component section ((&key title description meta actions (level 2) id attributes)
                            &rest children)
   (:group "Layout and navigation")
   (:doc "A part of a page with a heading of its own (h2, or h3 with LEVEL 3) and actions that
 concern only this part. In an app-shell or a stack the sections get room between them. ID lets
-section-links lead to it. DESCRIPTION, a sentence under the heading, is for a client that
-wants one; Tun's own pages do not use it.")
+section-links lead to it. META is a row of this part's live facts under the heading, as a page
+header's, such as a count or a status badge; never put them among the actions. DESCRIPTION, a
+sentence under the heading, is for a client that wants one; Tun's own pages do not use it.")
   (:source "Basecoat card header (Vega), without the card")
   (:css "
 .tun-section {
@@ -711,6 +712,16 @@ wants one; Tun's own pages do not use it.")
     font-size: var(--text-base);
     line-height: var(--text-base--line-height);
   }
+  /* The part's live facts, in the look of the page header's. */
+  & .tun-section-meta {
+    display: flex;
+    flex-wrap: wrap;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    color: var(--muted-foreground);
+  }
   & .tun-section-description {
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
@@ -732,6 +743,12 @@ wants one; Tun's own pages do not use it.")
                                             "Add")))
              '(:p "Kari Nordmann, managing director – kari@example.com – 912 34 567")
              '(:p "Per Olsen, purchasing – per@example.com")))
+   (("With live facts under the heading" :layout :stack)
+    (section (:title "Order lines"
+                     :meta (list "3 lines" (badge (:variant :info) "With the customer"))
+                     :actions (list (button (:variant :outline :size :sm :icon :plus)
+                                            "Add a line")))
+             '(:p "Tent 6 × 12 m, 2 units; Folding table, 20 units; Bench, 40 units")))
    (("Two sections in a stack, the last with h3" :layout :stack)
     (stack (:gap :xl)
            (section (:title "Delivery address")
@@ -750,11 +767,51 @@ wants one; Tun's own pages do not use it.")
              (:div (:@ :class "tun-section-header")
                    (:div (:@ :class "tun-section-text")
                          (,(if (= level 3) :h3 :h2) (:@ :class "tun-section-title") ,title)
+                         ,@(let ((meta (if (or (node-tag meta) (stringp meta))
+                                           (list meta)
+                                           (remove nil meta))))
+                             (when meta
+                               (list `(:div (:@ :class "tun-section-meta") ,@meta))))
                          ,@(when description
                              (list `(:p (:@ :class "tun-section-description") ,description))))
                    ,@(when actions
                        (list `(:div (:@ :class "tun-section-actions") ,@actions))))
              ,@children))
+
+;;; ------------------------------------------------------------------
+;;; A short muted line in a page's flow
+
+(define-component note ((&key id attributes) &rest children)
+  (:group "Layout and navigation")
+  (:doc "A short muted line in a page's flow that says what follows from what is beside it:
+under a pair of buttons («Your answer goes to Nordvik Bakery Ltd.»), under a table («The first
+100 found; search to narrow them.»). Not a field's hint, a table's caption, an empty list's
+text, a live fact (META) or a message that something happened (flash, alert).")
+  (:source "Tun's own, after its owner's rules for an admin application, 2026-11")
+  (:css "
+.tun-note {
+  margin: 0;
+  max-width: 65ch;
+  font-size: var(--text-sm);
+  line-height: var(--text-sm--line-height);
+  color: var(--muted-foreground);
+  overflow-wrap: break-word;
+}")
+  (:examples
+   (("Under a pair of buttons" :layout :stack)
+    (stack (:gap :sm)
+      (cluster ()
+        (button () "Accept the quote")
+        (button (:variant :outline) "Decline"))
+      (note () "Your answer goes to Nordvik Bakery Ltd.")))
+   (("Under a table" :layout :stack)
+    (stack (:gap :sm)
+      (table (:caption "Customers" :caption-hidden t
+              :columns '("Name" "Email")
+              :rows '(("Nordvik Bakery Ltd" "post@nordvik.example")
+                      ("Fjord Events" "hello@fjord.example"))))
+      (note () "The first 100 found; search to narrow them."))))
+  `(:p ,(attrs (list :class "tun-note" :id id) attributes) ,@children))
 
 (define-component section-links ((&key label items id attributes))
   (:group "Layout and navigation")

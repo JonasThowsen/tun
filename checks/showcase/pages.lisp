@@ -72,12 +72,33 @@ the input NAME or one of its items, or NIL."
                              :hint (tr "PNG, JPEG, WebP, GIF or PDF, up to 10 MB each.")))
              (ui:cluster () (ui:button (:type "submit" :icon :upload) (tr "Attach"))))))
 
+(defun card-details (card files)
+  "The facts of CARD, its JSON, as a section whose live facts are its
+files' count and its status (spec/ui.md 6, section, summary-list, note)."
+  (let ((estimate (jget card "estimate_minor")))
+    (ui:section (:title (tr "Details") :id "details"
+                 :meta (list (tr "~d files" (length files))
+                             (ui:badge (:variant (if (equal (jget card "status") "done")
+                                                     :success
+                                                     :neutral))
+                               (column-title (jget card "status")))))
+      (ui:summary-list (:rows (list (list (tr "Title") (jget card "title"))
+                                    (list (tr "Registration number") (jget card "id"))
+                                    (list (tr "Reported on")
+                                          (if (stringp (jget card "reported_on"))
+                                              (date-text (jget card "reported_on"))
+                                              "–"))
+                                    (list (tr "Estimate")
+                                          (if (integerp estimate) (money-text estimate) "–")))))
+      (ui:note () (tr "A change to the card shows on the board at once.")))))
+
 (defun card-page (id &key error (status 200))
-  "The card ID, its files and the form that adds more."
+  "The card ID, its facts, its files and the form that adds more."
   (let ((card (web-call "cards_get" (jobj "id" id)))
         (files (jget (web-call "attachments_list" (jobj "entity" "card" "record_id" id)) "items")))
     (values status (jget card "title")
-            (list (ui:card (:title (tr "Attachments"))
+            (list (card-details card files)
+                  (ui:card (:title (tr "Attachments"))
                     (ui:attachments (:items files))
                     (ui:button (:variant :outline :icon :upload
                                 :attributes (list :command "show-modal" :commandfor "attach"))

@@ -59,6 +59,7 @@ output, since it is a mistake of the contributor that made it."
         "icon" (string-downcase (symbol-name (search-result-icon result)))
         "title" (search-result-title result)
         "meta" (jarr (search-result-meta result))
+        "matched" (or (search-result-matched result) :null)
         "href" (search-result-href result)
         "score" (search-result-score result)
         "id" (or (search-result-id result) :null)))
@@ -81,7 +82,7 @@ NIL), for *ACTOR*, in the order it shows them and at most LIMIT."
             :description "Only results of these kinds, such as customer or order; every kind when left out.")
      (limit :type (integer :min 1 :max 20) :default 20 :label "Most results"))
     (:tool "search" :kind :read :policy :viewer :title "Search"
-     :description "The application's one search, as a person's Ctrl K finds: every record the modules and the client let it find that the caller may open, best first, at most five of a kind. Each result has its kind, the kind's word, its title, a few facts (meta), its page (href), its score and its id.")
+     :description "The application's one search, as a person's Ctrl K finds: every record the modules and the client let it find that the caller may open, best first, at most five of a kind. Each result has its kind, the kind's word, its title, a few facts (meta), what it was found by when neither the title nor the meta shows it (matched, else null), its page (href), its score and its id.")
   (jobj "items" (jarr (mapcar #'search-result->json
                               (application-search-results query :kinds kinds :limit limit)))))
 
@@ -102,6 +103,8 @@ or NIL under two characters."
                                :icon (intern (string-upcase (jget item "icon")) :keyword)
                                :title (jget item "title")
                                :meta (coerce (jget item "meta") 'list)
+                               :matched (let ((matched (jget item "matched")))
+                                          (and (stringp matched) matched))
                                :href (jget item "href")))
                  (jget json "items")))))))
 

@@ -189,3 +189,11 @@
   ("What the server read" "Hva tjeneren leste")
   ("Days" "Dager")
   ("Reported" "Meldt"))
+
+;;; A card's facts (pages.lisp)
+
+(define-translations "nb"
+  ("~d files" "~d filer")
+  ("Registration number" "Registreringsnummer")
+  ("A change to the card shows on the board at once."
+   "En endring på kortet vises på tavla med en gang."))

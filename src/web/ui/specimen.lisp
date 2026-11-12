@@ -23,10 +23,12 @@
     position: sticky;
     top: 0;
     z-index: var(--z-sticky);
+    /* The theme switch follows the title at the start of the row, where a
+       toast, at the top right from 40rem, never covers it. */
     display: flex;
     align-items: center;
-    justify-content: space-between;
-    gap: calc(var(--spacing) * 2);
+    justify-content: flex-start;
+    gap: calc(var(--spacing) * 4);
     padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
     border-bottom: 1px solid var(--border);
     background-color: color-mix(in oklab, var(--background) 90%, transparent);
