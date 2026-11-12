@@ -488,6 +488,41 @@ policy admits them, or a resource) and it is on this site and not `/`;
 otherwise Tun takes `:home`, else its own default, and says why in the
 server's output. A `next` from the login still wins.
 
+### The search
+
+An application has one search, on Ctrl K and on every staff page
+(`spec/ui.md` §6.4), once a module it enables or the client says what
+can be found: the customers module finds customers and the orders module
+orders, so a client with either has it. A client adds its own records
+with a method on `(search-records APPLICATION QUERY ACTOR)`, appending
+its results to `(call-next-method)`'s, so the modules' stay:
+
+```lisp
+(defmethod search-records ((app tracker) query actor)
+  (declare (ignore actor))
+  (append (search-entity query 'item
+                         :kind "item" :label (tr "Item") :icon :list-checks
+                         :title #'item-title
+                         :texts (lambda (item) (list (item-description item)))
+                         :identifiers (lambda (item) (list (item-number item)))
+                         :meta (lambda (item) (list (status-text item)))
+                         :href (lambda (item) (format nil "/items/~a" (entity-id item))))
+          (call-next-method)))
+```
+
+`search-entity` reads the entity's records in the caller's transaction,
+so the record policies decide what ACTOR finds, scores each by the one
+rule (`search-match`: folded, every word in any order, identifiers whole
+or by their start) and answers the five best. A contributor that builds
+its results itself calls `search-match` for the score and
+`make-search-result` for each result. A result whose page ACTOR cannot
+open is dropped. The same search is the page `/search?q=`, the dialog's
+results and the agents' `search` tool.
+
+A page's own dialog with `:shortcut "Ctrl+K"`, from
+`staff-page-extras` or in its content, still opens on Ctrl K: it comes
+before the search's dialog in the page.
+
 ### Public pages
 
 A page a customer opens without signing in, such as a quote or a form,

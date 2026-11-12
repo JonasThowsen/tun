@@ -185,6 +185,22 @@ the count is the number of orders currently completed (README §3)."
 (defun marketing-allowed-p (customer)
   (and (customer-marketing-consent customer) (not (customer-erased customer))))
 
+(defmethod search-records ((application customers-module) query actor)
+  ;; spec/ui.md 6.4: customers by name, and by their email and phone,
+  ;; written however; an erased customer is not found.
+  (declare (ignore actor))
+  (append (search-entity query 'customer
+                         :keep (lambda (customer) (not (customer-erased customer)))
+                         :kind "customer" :label (tr "Customer") :icon :users
+                         :title #'customer-name
+                         :texts (lambda (customer) (list (customer-email customer)))
+                         :identifiers (lambda (customer)
+                                        (list (customer-email customer) (customer-phone customer)))
+                         :meta (lambda (customer)
+                                 (list (customer-email customer) (customer-phone customer)))
+                         :href (lambda (customer) (format nil "/customers/~a" (entity-id customer))))
+          (call-next-method)))
+
 (defgeneric customer-erasing (application customer)
   (:method-combination traced-protocol)
   (:method ((application customers-module) customer) (declare (ignore customer)) nil))

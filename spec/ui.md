@@ -25,9 +25,12 @@ the address, a repeated query key and the generated list's filters (§6,
 that scrolls sideways, a row that leads somewhere pressed as one target,
 and a page title's long word hyphenated (§2.1, §6, §8), 2026-11-12, core
 2.29.0; the date, time and money fields, the calendar, and a period as a
-filter of a list (§6, §8, §9), 2026-11-12, core 2.30.0. How every Tun page
-looks and behaves: the tokens, the components that are built from them,
-the specimen that shows them, and the rules a component follows. The
+filter of a list (§6, §8, §9), 2026-11-12, core 2.30.0; one search for
+the whole application, its rule, `search-results`, `search-dialog` and
+the dialog's `:size :large` (§6, §6.4, §8, §9), 2026-11-12, core 2.31.0.
+How every Tun page looks and behaves: the tokens, the components that
+are built from them, the specimen that shows them, and the rules a
+component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
 are built from these components and nothing else.
 
@@ -549,14 +552,15 @@ A component is defined with `define-component` in the package `TUN.UI`:
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
 | Forms (`forms`, `fields`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input`, `date-input`, `time-input`, `money-input` |
-| Data (`data`, `toolbar`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `list-toolbar`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
+| Data (`data`, `toolbar`, `board`, `files`, `charts`, `markdown`, `graph`, `search`) | `table`, `list-toolbar`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph`, `search-results`, `search-dialog` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `section-links`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
-`files.md` §6, `markdown`, text written in Markdown, in §6.2, and
-`graph`, nodes and the edges between them, in §6.3.
+`files.md` §6, `markdown`, text written in Markdown, in §6.2,
+`graph`, nodes and the edges between them, in §6.3, and `search-results`
+and `search-dialog`, the application's one search, in §6.4.
 
 `combobox` is a text field that finds one of its `:options`, texts, as
 one types. Focusing or tapping it opens a list of every option under it;
@@ -661,7 +665,9 @@ typed in.
   share one row, «Cancel» first, each growing to fill it, and keep the
   bottom's safe area. From 40rem it is centred, 28rem wide (32rem for
   the asking variants), all its corners rounded, its buttons at the end
-  of the row.
+  of the row. `:size :large` makes it a fixed box from there, for what
+  changes inside it as one types (§6.4): `min(40rem, 100% - 2rem)` wide
+  and `min(36rem, 100dvh - 4rem)` high, whatever it holds.
 - **The keyboard.** Below 40rem a dialog that holds a text field (an
   `input` that takes text), a `textarea` or a `combobox` is as tall as
   it may be from the moment it opens, so the on-screen keyboard moves
@@ -1547,6 +1553,182 @@ narrow card on a wide page is a list.
 - With no nodes, «No data» stands in place of both forms, and there is
   no table.
 
+### 6.4 The search
+
+An application whose modules or client say what of their records can be
+found has one search, on every staff page, for everything: opened with
+Ctrl K (⌘ K on a Mac) from anywhere, a button in the phone's top bar or
+a row at the top of the sidebar. It matches by one rule, and the same
+search answers a person's page, the dialog's results and an agent's
+`search` tool.
+
+- **What can be found.** `(search-records APPLICATION QUERY ACTOR)`, a
+  generic function in `TUN` with the `traced-protocol` combination,
+  answers the results for QUERY that a module or the client finds, as a
+  list. Tun's own method, the least specific, answers none. A module
+  specialises it on its mixin and a client on its application class or a
+  feature; each method returns its own results appended to
+  `(call-next-method)`'s, so every contributor's are kept, the client's
+  first. A method runs in a read transaction with `*actor*` bound to
+  ACTOR, so it reads only what ACTOR may (`select` applies the record
+  policies, `store.md` §6), and it may look at `(search-query-kinds
+  QUERY)` to skip a kind the caller did not ask for (only the `search`
+  tool asks for some kinds; the page and the dialog ask for all).
+  `introspect_extensions` lists the seam.
+- **A result** is `(make-search-result :kind KIND :label LABEL :icon
+  ICON :title TITLE :meta META :href HREF :score SCORE :id ID)`: KIND a
+  short key in English (`"customer"`), LABEL its word in the page's
+  language («Customer», «Kunde»), ICON an icon's name, TITLE the record's
+  name, META a list of short texts about it (an email, a status, a
+  date), HREF the record's page, SCORE what the rule gave it, ID the
+  record's id. `(search-entity QUERY ENTITY ...)` makes a kind's results
+  from the records of an entity: it reads them, scores each by the rule
+  and answers the five best.
+- **Only what ACTOR may open.** Tun keeps a result only when its HREF is
+  a path on the site whose page ACTOR's role opens, as the home page's
+  (§8, «Home»): a staff page (`define-page`: the client's, the kernel's,
+  or one of a module the application enables) whose policy admits
+  ACTOR, or a resource's list, or a resource's record when ACTOR may
+  call the resource's get tool. Any other result is dropped and written
+  to the server's error output.
+- **Who has it.** An application has the search when a method of a
+  module it enables or of the client is applicable to it besides Tun's
+  own. Then every `app-shell` of a staff page has the search's button,
+  its row and its dialog, a viewer's too, since `/search` is a page for
+  `:viewer` and up and so for every role a staff page admits; an
+  application without has none of them, no shortcut, and `/search` is
+  not found. The customers module finds customers (by name, email and
+  phone) and the orders module orders (by their customer's name, their
+  delivery address and their id), so a client enabling either has the
+  search with no code of its own.
+
+**The rule.** In one sentence: a record is found when every word typed,
+folded, is in one of its texts in any order, or when all that was typed
+is one of its identifiers or their start, and it ranks by where it
+matched, an identifier and the name before the rest. In full:
+
+- **Folded.** What was typed and what is stored are compared folded:
+  upper and lower case alike; accents and other marks ignored («é» is
+  «e», «å» is «a»), a letter written with a separate mark too; «ø» is
+  «o», «æ» «ae», «œ» «oe», «ß» «ss», «ł» «l», «đ» «d»; a run of «a» is
+  one «a», so «aa», the old spelling of «å», finds it («aasen» finds
+  «Åsen»); any run of spaces, tabs and line breaks is one space, none at
+  either end.
+- **Every word, in any order.** What was typed is split into words at
+  spaces. A record matches when every word is found, folded, in one of
+  its searched texts, as a word, the start of one or a part of one, in
+  any order and across texts; or when the whole of what was typed is
+  one of its identifiers or the start of one. `(search-match QUERY
+  :names NAMES :texts TEXTS :identifiers IDENTIFIERS)` decides it once
+  for every contributor and answers the score, or NIL for no match.
+  NAMES are the texts that name the record (a customer's name), TEXTS
+  the others it is found by (a note, an address, the meta line's
+  words), IDENTIFIERS the values found only whole or by their start (an
+  order's number, an email, a phone number).
+- **Identifiers.** An identifier and what was typed are compared folded
+  and without spaces and the signs «+ - . # ( ) /», so «412 34 567»
+  finds «41234567» and «#1042» finds «1042». It scores only when what
+  was typed is it whole, or, when what was typed holds a digit, its
+  start from three characters on: the start of a number counts (an
+  order's, a phone's), the start of an email does not, so «kari» ranks
+  Kari's name above another customer whose email starts so.
+- **The score.** The best of: 100 what was typed is an identifier; 90
+  it holds a digit and is the start of one; 80 a name is what was typed; 60 a name starts
+  with it; 45 every word starts a word of the names; 25 every word is
+  in the names; 10 a word is found only in the other texts. A
+  contributor may lower a score, as an order scores as its customer
+  would, less 15, so a customer comes before its orders.
+- **The order.** Results come best score first; among equal scores, by
+  kind in the order the contributors answered them, then in each
+  contributor's own order, which `search-entity` makes the newest
+  first. At most five of one kind and twenty in all.
+- **The marks.** Where a result is shown, the stored characters each
+  word covers in the title, its first match at the start of a word,
+  else its first anywhere, are marked (`<mark>`): «kafe» marks «kafé»,
+  «bjorn» marks «Bjørn».
+- **What it costs.** `search-entity` reads every record of its entity
+  once per search, in the read transaction, and matches in Lisp: on
+  Postgres one `SELECT` of the table per kind, without an index, so the
+  cost grows with the records, as `customers_list`'s query does. The
+  dialog asks only from two characters and after a pause of 150 ms, so
+  a person typing asks once per pause. A search of 2000 customers
+  answers within 100 ms on the server, in memory and on Postgres.
+
+**The search page.** `/search?q=TEXT`, a kernel page for `:viewer`s and
+up: a `page-header` «Search», a GET form (`role="search"`) with the
+field and «Search», and under it `search-results`, the results as a list
+of links, or «No results for «TEXT»» («Ingen treff på «TEXT»»), or,
+under two characters, nothing. An htmx request for part of the page
+(`HX-Request-Type: partial`) is answered with `search-results` alone,
+which the dialog shows. The page and the fragment ask the `search` tool,
+so the three answer the same.
+
+**The tool.** `search` (`query`, 2 to 120 characters; `kinds`, a list
+of kinds, all when left out; `limit`, 1 to 20, 20 when left out),
+`:viewer`, answers `{"items": [...]}`, each item the result's `kind`,
+`kind_label`, `icon`, `title`, `meta` (an array), `href`, `score` and `id`
+(null when the contributor gave none), under the caller's authority as
+the page's.
+
+**`search-results`** is the list: `(search-results (:query TEXT :items
+ITEMS))`, ITEMS plists of a result's parts. Each row is a link to HREF:
+the kind's icon, the title with its marks, and under it the meta line,
+which starts with the kind's word («Customer · post@nordvik.example»),
+in `--muted-foreground`, `--text-xs`, cut with «…» at the end of its
+line. A row is at least 2.75rem high and pressed (`--pressed`) at once.
+`<mark>` stands on the text colour at 14 % (`--foreground` mixed with
+transparent; the accent is for focus and what is on, §2.1) in the text
+colour, with no padding, so a match inside a word does not split it. With `:listbox t` (the dialog's) the list is a
+`listbox` of `option`s, each with an id; the root carries the query it
+answers (`data-tun-search-query`).
+
+**`search-dialog`** is the search in a `dialog` of the size `:large`,
+titled «Search», with a GET form to `/search` whose field (`type=search`,
+`role=combobox`, its label «Search» hidden, `autocomplete="off"`) asks
+for the results as one types and a box under it that holds them:
+
+- **The size.** On a phone the dialog is the sheet a dialog to type in
+  is (§6 `dialog`): as tall as it may be from the moment it opens, above
+  the keyboard. From 40rem, `:size :large` gives a dialog a fixed box,
+  `min(40rem, 100% - 2rem)` wide and `min(36rem, 100dvh - 4rem)` high,
+  from the moment it opens, so the field never moves as results come
+  and go; only the results scroll, inside their box.
+- **Asking.** The field carries `hx-get="/search"`, `hx-trigger="input
+  changed delay:150ms"`, `hx-target` the results' box, `hx-swap
+  innerHTML` and `hx-sync="this:replace"`: htmx itself waits for a
+  pause of 150 ms after the last key and drops the request a newer one
+  replaces. The page answers nothing under two characters.
+- **The latest answer wins.** An answer whose query is not what the
+  field holds now, as a slow answer for earlier keys that arrives after
+  a newer one, is not shown. An answer that fails (an error status, or
+  no answer) shows «The search failed. Try again.» («Søket feilet.
+  Prøv igjen.») in place of the results.
+- **The keys.** ↑ and ↓ move the mark over the rows (`aria-selected`,
+  the field's `aria-activedescendant`), going round at the ends; the
+  marked row is chosen: the ground of a row under a pointer (`--accent`)
+  and the frame of what is chosen, 1px of `--border-strong` inside it,
+  at the weight, size and padding of the others.
+  The first row is marked when results come. Enter opens the marked
+  row, as a click on its link would (htmx, as any link of the shell); an
+  Enter typed before the answer for what the field holds has come waits
+  for it, and then opens its first row. Escape closes the dialog, and
+  the focus goes back to what opened it.
+- **Opening.** Ctrl K and ⌘ K open it (`:shortcut "Ctrl+K"`), and so do
+  the top bar's button and the sidebar's row, with the focus in the
+  field and what was typed before selected. The dialog stands last in
+  the shell, after every dialog of the page, so a page's own dialog
+  that opens on Ctrl K, through `staff-page-extras` or in its content,
+  opens on it instead, and the search keeps its button and row.
+- **The button and the row.** `app-shell`'s `:search` (the page's path,
+  `/search`) adds, below 64rem, a ghost icon button «Search» in the top
+  bar beside the menu button, and from 64rem a row at the top of the
+  sidebar that reads as a field: the search icon, «Search» and the
+  caps «Ctrl K» («⌘ K» on a Mac), `aria-keyshortcuts="Control+K
+  Meta+K"`. Both are links to `/search`, which a click turns into opening
+  the dialog where scripts run.
+- **Without JavaScript** the button and the row lead to `/search`, whose
+  form is the search; the dialog never opens.
+
 ## 7. The specimen
 
 - `/ui` shows every component: its documentation, its source, and each
@@ -1592,7 +1774,10 @@ form of `field`s with an `error-summary`, a confirmation is a
   the menu, for a board or a wide overview. A client adds components to
   every staff page, after its content, with a method on
   `staff-page-extras`: a dialog with a `:shortcut` (`"/"`, `"Ctrl+K"`)
-  opens from anywhere, as a search does.
+  opens from anywhere, as a search does. An application with a search
+  (§6.4) has its button in the top bar, its row at the top of the
+  sidebar and its dialog last in the shell; a page's own dialog on
+  Ctrl K comes before it and opens instead.
 - **The menu.** First the business's work: the client's own pages in the
   order they are defined, the resources, then the modules' pages and the
   kernel's. Then, under the heading «System», the pages about the system
@@ -1853,6 +2038,11 @@ form of `field`s with an `error-summary`, a confirmation is a
 - Paging the generated list: it shows its first 100 records.
 - Path patterns with typed parameters for pages (`/saker/:item`), and
   links that name their page (`docs/roadmap.md`).
+- In the search (§6.4): near matches for a word typed wrong, an index of
+  the searched texts (Postgres's trigrams) in place of reading a kind's
+  records, the open search in the page's address, what was searched
+  before, filters inside the search, places in the menu as results, and
+  full text of long texts.
 
 ## 10. Evidence
 
@@ -2192,5 +2382,33 @@ form of `field`s with an `error-summary`, a confirmation is a
   `:web-app` there is no manifest and the worker removes itself; a
   client's page cannot take the paths. `push.md` §10 has the evidence
   for push notifications.
+- `tests/search-tests.lisp` (§6.4): the fold, the words, the
+  identifiers and every score of the rule, and a property: thousands of
+  random records found by their own words folded, reordered, cased and
+  accented, by each word's start, and not with a word they lack; the
+  marks on the stored characters; `search-records` in `TUN`, traced and
+  listed, a module's and a client's results both kept, the client's
+  first; the order, five of a kind and twenty in all; results only for
+  what the actor may open, for an employee and an admin, a client's own
+  page kept, and by the record policy on Postgres; the tool's `kinds`
+  and `limit`, and the inputs it refuses; the customers' and the orders' results; no
+  button, dialog or `/search` without a contributor; the shell's
+  button, row and dialog, the dialog after a page's own Ctrl K dialog;
+  the page, the fragment and the `search` tool answering the same for
+  one query; the CSS of the marked row, the mark and the large dialog;
+  2000 customers searched within 100 ms, in memory and on Postgres.
+- `checks/showcase/checks/ui-search.py` (§6.4), on the showcase, whose
+  cards and customers are found: Ctrl K and ⌘ K open the dialog with
+  the focus in the field, the caps read «⌘» on a Mac; at 1280 px the
+  dialog's box the same with no results, with «No results» and with
+  the most it finds; results within a bound of the last key, the match in a
+  `<mark>`; the arrows moving the mark at the others' weight and size,
+  Enter opening the marked row, an Enter typed at once opening the
+  latest answer's first row; a slow earlier answer never shown over a
+  later one; a failed answer saying so; Escape closing with the focus
+  back; on `/items` Ctrl K opening the page's own dialog; at 390 px the
+  top bar's button opening it as tall as it may be and above a keyboard;
+  without JavaScript the button leading to `/search` and its form
+  listing the results; the server's time for the showcase's searches.
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

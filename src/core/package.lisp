@@ -92,6 +92,12 @@
    #:request-backtrace #:request-store-statements #:*stored-diagnostics-redactors*
    #:current-source-location #:definition-source-location #:display-source-path
    #:call-collecting-steps #:*extension-protocols* #:register-extension-protocol
+   ;; the application's one search (spec/ui.md 6.4)
+   #:search-records #:search-query #:make-search-query #:search-query-text #:search-query-kinds
+   #:search-query-wants-p #:search-match #:search-fold #:search-mark-ranges #:search-result
+   #:make-search-result #:search-result-kind #:search-result-label #:search-result-icon
+   #:search-result-title #:search-result-meta #:search-result-href #:search-result-score
+   #:search-result-id #:search-entity #:search-contributors-p #:search-order
    ;; deadlines
    #:*deadline-ms* #:*watchdog-grace-ms* #:deadline-exceeded #:*deadline* #:check-deadline
    #:deadline-remaining-ms #:sleep-with-deadline #:without-deadline-interrupts #:*interruptible* #:with-deadline

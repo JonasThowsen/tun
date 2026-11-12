@@ -169,3 +169,11 @@ README §3).
 `/customers` lists, shows and creates customers through `customers_list`,
 `customers_get` and `customers_create` (spec/ui.md §8). It has no form for
 `customers_update`.
+
+### 8. Search
+
+The application's one search (spec/ui.md §6.4) finds customers, kind
+`customer` («Customer»): by name, by email, and by email or phone written
+whole (a phone's start too, from three digits); an erased customer is not
+found. Each result's line is its email and phone, and it leads to
+`/customers/ID`.

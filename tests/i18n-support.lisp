@@ -244,11 +244,14 @@ JSON holds them: the data a page may show as it is."
 
 (defun data-codes ()
   "Codes a page shows as they are: currencies and time zones, the language
-codes, and the application's title."
+codes, the application's title, and the keys of the search's shortcut."
   (let ((title (tun.core:application-title *app*)))
     (append (mapcar #'first +currencies+) (mapcar #'first +time-zones+) +languages+
             ;; The app shell's mark is the title's first letter.
-            (list title (subseq title 0 (min 1 (length title)))))))
+            (list title (subseq title 0 (min 1 (length title))))
+            ;; The search's keys, as a button's shortcut shows its keys
+            ;; (spec/ui.md 6, 6.4).
+            (list "Ctrl" "K"))))
 
 ;;; ------------------------------------------------------------------
 ;;; Pages fetched over HTTP

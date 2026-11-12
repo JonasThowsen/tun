@@ -277,4 +277,13 @@
   ("File not found"
    "Fant ikke filen")
   ("The file does not exist, or you do not have access to it."
-   "Filen finnes ikke, eller du har ikke tilgang til den."))
+   "Filen finnes ikke, eller du har ikke tilgang til den.")
+  ;; The search (spec/ui.md 6.4)
+  ("There is nothing to search here."
+   "Det er ingenting å søke i her.")
+  ("Kinds"
+   "Typer")
+  ("What to look for: words, a number, an email or a phone number."
+   "Det du leter etter: ord, et nummer, en e-postadresse eller et telefonnummer.")
+  ("Only results of these kinds, such as customer or order; every kind when left out."
+   "Bare treff av disse typene, som customer eller order; alle typer når det er tomt."))

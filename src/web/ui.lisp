@@ -613,6 +613,11 @@ the kernel's pages; then, under «System», the pages about the system."
   "Every entry of the staff menu, in its order."
   (loop for group in (navigation) append (getf group :items)))
 
+(defun shell-search-path (application)
+  "The path of the search page a staff page's shell offers, when APPLICATION
+has a search (spec/ui.md 6.4), else NIL: no button, row or dialog."
+  (when (search-contributors-p application) "/search"))
+
 (defun page-frame (body &key guest (home "/") (width :default) site-title)
   "BODY inside the app-shell, WIDTH wide: with the menu and the actor for
 staff, without for someone not logged in or a GUEST page (whose title links
@@ -626,6 +631,9 @@ for the provider's page."
                                      :current (hunchentoot:script-name*)
                                      :user (actor-string *actor*) :logout-action "/logout"
                                      :width width
+                                     ;; The application's one search, when
+                                     ;; something can be found (spec/ui.md 6.4).
+                                     :search (shell-search-path *web-app*)
                                      ;; Inherited by every link and form in it.
                                      :attributes (list :hx-boost\:inherited "true"
                                                        :hx-headers\:inherited

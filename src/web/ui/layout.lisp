@@ -921,7 +921,8 @@ tunOnContent(later);")
                                       (tr "Sign out"))))))))
 
 (define-component app-shell ((&key title (home "/") nav nav-groups current user logout-action
-                                   (width :default) (main-id "main-content") id attributes)
+                                   (width :default) (main-id "main-content") search id
+                                   attributes)
                              &rest children)
   (:group "Layout and navigation")
   (:doc "The frame around every page for the staff: a link past the menu, the app's name, the
@@ -931,7 +932,9 @@ sidebar, not a menu at the top: six entries with an icon and a count do not fit 
 name and the user on a narrower screen, and a sidebar has room for more modules. With :width
 :narrow the content stands narrow in the middle of the page, for a page with one short form
 such as signing in; with :width :wide it uses the whole width beside the menu, for a board or
-a wide overview.")
+a wide overview. SEARCH, the path of the application's search page, adds the search: a button
+in the top bar on a phone, a row at the top of the sidebar with its Ctrl K keys, and its dialog
+(spec/ui.md 6.4).")
   (:source "Basecoat sidebar (Vega); GOV.UK skip link and service navigation")
   (:css "
 .tun-app-shell {
@@ -1033,6 +1036,31 @@ a wide overview.")
     font-size: var(--text-sm);
   }
   & .tun-app-shell-name-text { overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+  & .tun-app-shell-bar > [data-tun-search-open] { margin-inline-start: auto; }
+
+  /* The search's row at the top of the sidebar reads as a field, its keys
+     at its end; on a phone the top bar's button stands for it. */
+  & .tun-app-shell-search { display: none; }
+  & .tun-app-shell-search-row {
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 2);
+    height: var(--control-height);
+    padding-inline: calc(var(--spacing) * 2.5) calc(var(--spacing) * 1.5);
+    border: 1px solid var(--border);
+    border-radius: var(--radius-md);
+    background-color: var(--input-background);
+    color: var(--muted-foreground);
+    font-size: var(--text-sm);
+    line-height: var(--text-sm--line-height);
+    text-decoration: none;
+    & > .tun-kbd { margin-inline-start: auto; }
+    &:focus-visible { outline: none; box-shadow: var(--focus-ring); }
+    &:active { background-color: var(--pressed); transition: none; }
+  }
+  @media (hover: hover) {
+    & .tun-app-shell-search-row:hover { border-color: var(--border-strong); }
+  }
 
   /* On a phone the menu is a popover: a panel that slides in from the left
      over a dimmed page, opened by the menu button without any script. */
@@ -1198,7 +1226,12 @@ a wide overview.")
       background-color: var(--chrome);
     }
     & .tun-app-shell-bar { flex-shrink: 0; padding-inline: calc(var(--spacing) * 3); }
-    & .tun-app-shell-bar > [popovertarget] { display: none; }
+    & .tun-app-shell-bar > :is([popovertarget], [data-tun-search-open]) { display: none; }
+    & .tun-app-shell-search {
+      display: block;
+      flex-shrink: 0;
+      padding: calc(var(--spacing) * 3) calc(var(--spacing) * 3) 0;
+    }
     & .tun-app-shell-panel,
     & .tun-app-shell-panel:popover-open {
       position: static;
@@ -1340,7 +1373,12 @@ wide.addEventListener('change', () => {
          (close-button (button (:variant :ghost :size :icon :label (tr "Close the menu")
                                          :attributes (list :popovertarget menu-id
                                                            :popovertargetaction "hide"))
-                               (icon (:name :x)))))
+                               (icon (:name :x))))
+         ;; The search's links lead to its page without scripts; a click
+         ;; opens its dialog instead where they run, so htmx neither
+         ;; follows nor preloads them.
+         (search-link (list :href search :data-tun-search-open t :hx-boost "false"
+                            :data-tun-preload "off")))
     `(:div ,(attrs (list :class "tun-app-shell" :id id) attributes)
            (:a (:@ :class "tun-app-shell-skip" :href ,(format nil "#~a" main-id))
                ,(tr "Skip to the main content"))
@@ -1354,7 +1392,12 @@ wide.addEventListener('change', () => {
                           (:a (:@ :class "tun-app-shell-title" :href ,home)
                               (:span (:@ :class "tun-app-shell-mark" :aria-hidden "true")
                                      ,(subseq title 0 (min 1 (length title))))
-                              (:span (:@ :class "tun-app-shell-name-text") ,title)))
+                              (:span (:@ :class "tun-app-shell-name-text") ,title))
+                          ,@(when search
+                              (list (button (:variant :ghost :size :icon :label (tr "Search")
+                                             :href search
+                                             :attributes (rest (rest search-link)))
+                                            (icon (:name :search))))))
                     ,@(when menu-p
                         (list
                          `(:div (:@ :class "tun-app-shell-panel" :id ,menu-id :popover "auto"
@@ -1362,6 +1405,15 @@ wide.addEventListener('change', () => {
                                 (:div (:@ :class "tun-app-shell-panel-head")
                                       (:span ,(tr "Menu"))
                                       ,close-button)
+                                ,@(when search
+                                    (list `(:div (:@ :class "tun-app-shell-search")
+                                                 (:a ,(attrs (list :class "tun-app-shell-search-row"
+                                                                   :aria-keyshortcuts
+                                                                   (aria-keyshortcuts '("Ctrl" "K")))
+                                                             search-link)
+                                                     ,(icon (:name :search))
+                                                     (:span ,(tr "Search"))
+                                                     ,(shortcut-caps '("Ctrl" "K"))))))
                                 ,@(when (or nav nav-groups)
                                     (list `(:div (:@ :class "tun-app-shell-nav")
                                                  ,(nav-list (:label (tr "Main menu") :items nav
@@ -1374,4 +1426,7 @@ wide.addEventListener('change', () => {
                             :data-width ,(unless (eq width :default) (option-string width)))
                         ,@children))
            ;; The page's one dialog that asks before an action (spec/ui.md 6).
-           ,(confirm-dialog ()))))
+           ,(confirm-dialog ())
+           ;; The search's dialog comes last, after every dialog of the page,
+           ;; so a page's own dialog on Ctrl K opens on it instead (6.4).
+           ,@(when search (list (search-dialog (:action search)))))))

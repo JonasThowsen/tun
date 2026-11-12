@@ -108,13 +108,30 @@ shortcut's keys (Ctrl+K), a name's initials (KN) and its first letter."
                              (let ((last (first (last words))))
                                (subseq last 0 (min 1 (length last)))))))))))
 
+(defun marked-pieces (query text)
+  "The pieces TEXT shows in when a search for QUERY marks it: cut where each
+mark starts and ends."
+  (let ((cuts (append (list 0)
+                      (loop for (start . end) in (search-mark-ranges (make-search-query query) text)
+                            append (list start end))
+                      (list (length text)))))
+    (loop for (from to) on cuts
+          while to
+          for piece = (string-trim " " (subseq text from to))
+          when (plusp (length piece)) collect piece)))
+
 (defun example-allowed-texts (component source)
   "The texts an example of COMPONENT whose forms are SOURCE may show without
 a lookup: its own strings and what a component shows of them, the parts of
-a markdown's text, and for the icon the icons' names, which its specimen
-shows."
+a markdown's text, the pieces a search's marks cut a title in, and for the
+icon the icons' names, which its specimen shows."
   (let ((strings (example-strings source)))
     (append strings (mapcan #'shown-parts strings)
+            ;; A search's results show a title in pieces around its marks.
+            (when (member (tun.ui:component-name component)
+                          '(tun.ui:search-results tun.ui:search-dialog))
+              (loop for query in strings
+                    append (loop for text in strings append (marked-pieces query text))))
             ;; Markdown shows the parts of its text between the marks.
             (when (eq (tun.ui:component-name component) 'tun.ui:markdown)
               (mapcan (lambda (string)

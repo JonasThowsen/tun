@@ -244,6 +244,9 @@ def what_is_inside_works_as_itself(t):
     row = "(() => document.querySelector('.tun-specimen-preview .tun-table tbody tr'))()"
     link = page.locator(".tun-specimen-preview .tun-table tbody tr").first.locator(".tun-link")
     link.hover()
+    # The row's ground under the pointer eases in over --duration: read it
+    # once it has, so a slow page does not catch it midway.
+    page.wait_for_timeout(400)
     hover = page.evaluate(f"() => getComputedStyle({row}).backgroundColor")
     page.mouse.down()
     ground = page.evaluate(f"() => getComputedStyle({row}).backgroundColor")

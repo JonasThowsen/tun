@@ -13,6 +13,28 @@
                               collect (jobj "product_id" (entity-id product) "name" (product-name product)
                                             "reason" reason))))))
 
+(defmethod search-records ((application orders-module) query actor)
+  ;; spec/ui.md 6.4: an order by its customer's name and its id, as its
+  ;; customer would score, less 15, so the customer comes before it.
+  (declare (ignore actor))
+  (append (when (search-query-wants-p query "order")
+            (let ((names (make-hash-table :test 'equal)))
+              (dolist (customer (select 'customer))
+                (setf (gethash (entity-id customer) names) (customer-name customer)))
+              (flet ((customer-of (order) (or (gethash (order-customer-id order) names) "")))
+                (search-entity query 'order
+                               :kind "order" :label (tr "Order") :icon :shopping-cart
+                               :title #'customer-of
+                               :identifiers (lambda (order) (list (entity-id order)))
+                               :texts (lambda (order) (list (order-delivery-address order)))
+                               :meta (lambda (order)
+                                       (list (label "order" "status" (order-status order))
+                                             (and (order-event-date order)
+                                                  (date-text (order-event-date order)))))
+                               :href (lambda (order) (format nil "/orders/~a" (entity-id order)))
+                               :score (lambda (score) (- score 15))))))
+          (call-next-method)))
+
 (tun.web:register-web-resource :path "/orders" :entity 'order :title "Orders" :icon :shopping-cart
                                :list-tool "orders_list" :create-tool "orders_create" :get-tool "orders_get"
                                :list-screen :order-list :detail-screen :order-detail :detail-key :order)

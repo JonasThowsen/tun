@@ -17,6 +17,8 @@
                 #:month-abbreviation #:calendar-day-name #:calendar-day-short-name #:week-first-day
                 #:page-today #:valid-date-string-p #:date-add-days #:date-add-months
                 #:current-currency #:currency-mark #:weekday-of)
+  ;; The search's results mark what the one rule matched (search.lisp).
+  (:import-from #:tun.core #:make-search-query #:search-mark-ranges)
   (:export
    ;; defining components
    #:define-component #:component #:find-component #:all-components #:component-name

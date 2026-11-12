@@ -38,8 +38,8 @@ joined to its own (ATTRS: a value in PLIST replaces NODE's)."
 ;;; ------------------------------------------------------------------
 ;;; dialog
 
-(define-component dialog ((&key id title description (variant :default) icon footer action
-                                (method "post") shortcut attributes)
+(define-component dialog ((&key id title description (variant :default) (size :default) icon
+                                footer action (method "post") shortcut attributes)
                           &rest children)
   (:group "Interaction")
   (:doc "A window over the page for a short task or a question that must be answered before
@@ -48,7 +48,8 @@ ID); «Cancel» has :command \"close\". The variants confirm and destructive are
 sure?»: they do not close on a click outside and have no close button, only the choices in
 FOOTER. With :shortcut (\"/\", \"Ctrl+K\" or a list of them) the dialog opens on that key from
 anywhere on the page; Ctrl is Cmd on a Mac, and a key without Ctrl does nothing while typing
-in a field.")
+in a field. :size :large gives it a fixed box from 40rem, for content that changes as one types,
+such as a search's results.")
   (:source "Basecoat dialog and alert dialog (Vega)")
   (:css "
 .tun-dialog {
@@ -210,6 +211,14 @@ in a field.")
     & .tun-dialog-footer {
       justify-content: flex-end;
       & > * { flex: none; }
+    }
+    /* A fixed box whatever it holds, so what changes inside as one types
+       never moves its edges (spec/ui.md 6.4): 40rem by 36rem, less where
+       the window is smaller. */
+    &[data-size='large'] {
+      width: min(40rem, calc(100% - var(--spacing) * 8));
+      max-width: none;
+      height: min(36rem, calc(100dvh - var(--spacing) * 16));
     }
     &:is([data-variant='confirm'], [data-variant='destructive']) {
       max-width: 32rem;
@@ -492,6 +501,7 @@ negotiation. The venue is the district court where the job was done."))
   (unless (and id title)
     (error "A dialog needs :id, which its buttons name, and :title"))
   (check-type variant (member :default :confirm :destructive))
+  (check-type size (member :default :large))
   (let* ((asking (member variant '(:confirm :destructive)))
          (icon (or icon (when (eq variant :destructive) :triangle-alert)))
          (title-id (format nil "~a-title" id))
@@ -512,6 +522,7 @@ negotiation. The venue is the district court where the job was done."))
                                            :attributes (list :command "close" :commandfor id))
                                  (icon (:name :x)))))))))
     `(:dialog ,(attrs (list :class "tun-dialog" :id id :data-variant (option-string variant)
+                            :data-size (unless (eq size :default) (option-string size))
                             :role (when asking "alertdialog")
                             :aria-labelledby title-id :aria-describedby description-id
                             :data-tun-dialog (if asking "confirm" "dismissible")

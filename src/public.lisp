@@ -111,7 +111,11 @@ the listed symbols (the same symbol objects, not copies)."
    ;; (spec/outbound.md 6)
    #:entity->json #:jobj #:jarr #:jget #:parse-json #:json-parse-failure #:to-json-string
    ;; rank keys: records in an order a person chose (spec/core.md 2.6)
-   #:rank-between #:rank-order-error #:rank-order-error-low #:rank-order-error-high)
+   #:rank-between #:rank-order-error #:rank-order-error-low #:rank-order-error-high
+   ;; the application's one search: what of the client's records it finds,
+   ;; and the one rule they match by (spec/ui.md 6.4)
+   #:search-records #:search-query #:search-query-text #:search-query-kinds
+   #:search-query-wants-p #:search-match #:search-result #:make-search-result #:search-entity)
   ;; Writes, guarded: an extension's own fields and records only
   (#:tun.guarded #:insert #:save)
   ;; The web UI: screens a client can override, and its own pages, built

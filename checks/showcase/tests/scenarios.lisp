@@ -60,6 +60,16 @@ attached; four customers.  Jonas is an admin, who can change the settings."
   (board-of-items)
   (some-customers))
 
+(define-scenario search (:actors ("employee:anna" "admin:jonas"))
+  "The default scenario's cards and customers, and two customers whose names
+are written with letters a search folds: Bjørn Åsen, with a phone, and Café
+Øst (spec/ui.md 6.4)."
+  (board-of-items)
+  (some-customers)
+  (call-ok "customers_create" "employee:anna" "name" "Bjørn Åsen" "email" "bjorn@asen.example"
+           "phone" "412 34 567")
+  (call-ok "customers_create" "employee:anna" "name" "Café Øst" "email" "post@cafe-ost.example"))
+
 (define-scenario norwegian (:actors ("admin:jonas" "employee:anna"))
   "The default scenario's cards on a tenant whose language is Norwegian.
 Jonas is an admin, who can set it back to English on «Innstillinger»."

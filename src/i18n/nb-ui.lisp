@@ -256,4 +256,11 @@
   ("From"
    "Fra")
   ("Period"
-   "Periode"))
+   "Periode")
+  ;; The search
+  ("Results"
+   "Treff")
+  ("No results for «~a»"
+   "Ingen treff på «~a»")
+  ("The search failed. Try again."
+   "Søket feilet. Prøv igjen."))
