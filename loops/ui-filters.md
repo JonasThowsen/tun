@@ -2,7 +2,7 @@
 
 - loop: ui-filters
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 415a002c3bb89e8c04e600a7bc49f22f61baaa05
 - item: sak_41rk2e2c4svqxmw0
 - estimate: 2h20m 3h30m 6h
@@ -302,6 +302,12 @@ Mode: reviewed. A core change, a minor version.
 - **Core 2.28.0**: a new component, a new function, QUERY's repeated
   keys and the generated list's toolbar; no call shape changes.
 
+## Actuals
+
+```json
+{"loop":"ui-filters","title":"A list's filters: one button per filter beside the search, a «Filters» sheet on a phone, the state in the address","repository":"tun","mode":"reviewed","stage":"done","item":"sak_41rk2e2c4svqxmw0","tags":["kind:ui","core","module:ui"],"like":["tun/ui-sheets","tun/ui-header"],"started":"2026-11-12 00:58","ended":"2026-11-12 02:41","minutes":{"total":103,"waiting_person":0,"waiting_reviewer":5,"working":98,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":140,"likely":210,"worst":360,"at":"brief"},"latest_estimate":{"best":140,"likely":210,"worst":360,"at":"brief"},"within_estimate":false,"ratio":0.49,"verify":{"rounds":5,"failed":2},"changes":{"A":2,"B":2,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 00:58  started, reviewed
@@ -492,3 +498,5 @@ Mode: reviewed. A core change, a minor version.
   **Not blocking**
   - The close button and a press on the dim are still left to the `dialog` component's own checks; `ui-filters.py` only checks Escape.
   - For the asker: every client's generated lists now get a toolbar built from their list operation's inputs. All five clients still pass unchanged.
+- 2026-11-12 02:40  pushed d6c3f7e to Tun's main, core 2.28.0
+- 2026-11-12 02:41  finished at tun d6c3f7ee
