@@ -2,7 +2,7 @@
 
 - loop: ui-nits
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: b0ba1dd26db2439ab488882ab3882d92a4115223
 - item: sak_60ga5rkmmj8f1ejk
 - estimate: 50m 1h15m 2h30m
@@ -142,6 +142,12 @@ On the tree verified in round 4 (snapshot 6acdbbcc), each client's
 tun-erp at 8eaa0d2 (16324 and 26105) all pass, with no change to any of
 them.
 
+## Actuals
+
+```json
+{"loop":"ui-nits","title":"Five small faults the first client found on the new UI library (core 2.31.0)","repository":"tun","mode":"reviewed","stage":"done","item":"sak_60ga5rkmmj8f1ejk","tags":["kind:ui","core","module:ui"],"like":["tun/ui-header"],"started":"2026-11-12 10:24","ended":"2026-11-12 11:59","minutes":{"total":95,"waiting_person":0,"waiting_reviewer":2,"working":93,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":50,"likely":75,"worst":150,"at":"brief"},"latest_estimate":{"best":50,"likely":75,"worst":150,"at":"brief"},"within_estimate":true,"ratio":1.27,"verify":{"rounds":4,"failed":3},"changes":{"A":0,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 10:24  started, reviewed
@@ -220,3 +226,4 @@ them.
   **Code**
   
   There is no leftover debugging or dead code. The spec, `docs/client-api.md` and the spec's list of tests change where the behaviour does. The decision to have the new tests reuse the customers module's entity, instead of defining their own, comes with its reason recorded.
+- 2026-11-12 11:59  finished at tun 15502387
