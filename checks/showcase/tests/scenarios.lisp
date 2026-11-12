@@ -42,11 +42,20 @@ minor units when given, and return its id."
     (call-ok "cards_move" "employee:anna" "id" (create-card "Urgent: the customer cannot sign in")
                                           "status" "new" "before" first)))
 
+(defun some-customers ()
+  "Make the customers the generated list at /customers shows."
+  (loop for (name email) in '(("Nordvik Bakery Ltd" "post@nordvik.example")
+                              ("Hansen Plumbing" "kari@hansen.example")
+                              ("Fjord Events" "booking@fjord.example")
+                              ("Berg Catering" "mat@berg.example"))
+        do (call-ok "customers_create" "employee:anna" "name" name "email" email)))
+
 (define-scenario default (:actors ("employee:anna" "admin:jonas"))
   "25 cards in New, with an urgent one put first, three planned and one done;
 «Export to accounting» has an estimate, and a screenshot and a PDF
-attached.  Jonas is an admin, who can change the settings."
-  (board-of-items))
+attached; four customers.  Jonas is an admin, who can change the settings."
+  (board-of-items)
+  (some-customers))
 
 (define-scenario norwegian (:actors ("admin:jonas" "employee:anna"))
   "The default scenario's cards on a tenant whose language is Norwegian.

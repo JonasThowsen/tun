@@ -414,6 +414,28 @@ filters names one of the keys, empty.
   ...)
 ```
 
+A list's search and filters are one `ui:list-toolbar` above it: one GET
+form, a button per filter that opens its choices, applied at once where
+scripts run, behind one «Filters» sheet on a phone (`spec/ui.md` §6). It
+names every filter's key in every submission, so `:remembers` sees a
+cleared filter. A filter of several choices sends its key more than
+once; the page reads any filter with `(query-values query KEY)`, its
+values that are not empty, as a list.
+
+```lisp
+(ui:list-toolbar (:action "/saker"
+                  :search (list :name "q" :label "Søk i sakene" :value (jget query "q"))
+                  :filters (list (list :name "status" :label "Status" :kind :one
+                                       :choices '(("ny" "Ny") ("ferdig" "Ferdig"))
+                                       :value (first (query-values query "status")))
+                                 (list :name "kind" :label "Type" :kind :several
+                                       :choices '(("feil" "Feil") ("ønske" "Ønske"))
+                                       :value (query-values query "kind"))
+                                 (list :name "waiting" :label "Venter på meg" :kind :toggle
+                                       :value (query-values query "waiting")))
+                  :keep (list (list "sort" (jget query "sort")))))
+```
+
 ### The home page
 
 `/` and a sign-in that was not started from a page lead to the first

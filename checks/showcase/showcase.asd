@@ -5,11 +5,12 @@
 (defsystem "showcase"
   :description "Pages for Tun's browser checks."
   :version "0.1.0"
-  :depends-on ("tun")
+  :depends-on ("tun" "tun-customers")
   :serial t
   :components ((:file "package")
                (:file "cards")
                (:file "pages")
+               (:file "lists")
                (:file "prices")
                (:file "markdown")
                (:file "graph")

@@ -21,7 +21,7 @@
            #:staff-page-extras #:home-path #:public-page-title #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
            #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
-           #:page-texts))
+           #:page-texts #:query-values))
 
 (in-package #:tun.web)
 
@@ -142,17 +142,51 @@ client's always, a module's only when the application enables the module."
    (query :type json :input nil :label "Søk"
           :description "The keys the page remembers that have a value, as an object.")))
 
+(defun query-values (query key)
+  "The values that are not empty QUERY, a page's query parameters as a JSON
+object, gives KEY, as a list of texts: one for a key given once, each in
+turn for a key given more than once (spec/ui.md 8)."
+  (let ((value (jget query key)))
+    (remove-if-not (lambda (each) (and (stringp each) (plusp (length each))))
+                   (if (vectorp value)
+                       (if (stringp value) (list value) (coerce value 'list))
+                       (list value)))))
+
+(defun query-object (pairs)
+  "The query parameters PAIRS, (KEY . VALUE) conses in order, as a JSON
+object: a key given once is its text, a key given more than once an array
+of its texts in order."
+  (let ((query (jobj)))
+    (dolist (pair pairs query)
+      (multiple-value-bind (earlier found) (gethash (car pair) query)
+        (setf (gethash (car pair) query)
+              (cond ((not found) (cdr pair))
+                    ((stringp earlier) (vector earlier (cdr pair)))
+                    (t (concatenate 'vector earlier (vector (cdr pair))))))))))
+
 (defun remembered-pairs (page query)
   "The keys PAGE remembers that QUERY, a JSON object, gives a value, with
-those values, in the order PAGE names them."
+those values, in the order PAGE names them: a text, or a list of texts for
+a key given more than once."
   (loop for key in (staff-page-remembers page)
-        for value = (jget query key)
-        when (and (stringp value) (plusp (length value)))
-          collect (cons key value)))
+        for raw = (jget query key)
+        for values = (query-values query key)
+        when values
+          collect (cons key (if (and (vectorp raw) (not (stringp raw))) values (first values)))))
 
 (defun pairs-object (pairs)
-  "PAIRS, (KEY . VALUE) conses, as a JSON object."
-  (apply #'jobj (loop for (key . value) in pairs append (list key value))))
+  "PAIRS, (KEY . VALUE) conses, as a JSON object; a list of values is an array."
+  (apply #'jobj (loop for (key . value) in pairs
+                      append (list key (if (listp value) (jarr value) value)))))
+
+(defun pairs-query (pairs)
+  "PAIRS, (KEY . VALUE) conses, as a query string: a list of values gives
+the key once for each."
+  (format nil "~{~a~^&~}"
+          (loop for (key . value) in pairs
+                append (loop for each in (if (listp value) value (list value))
+                             collect (format nil "~a=~a" (hunchentoot:url-encode key :utf-8)
+                                             (hunchentoot:url-encode each :utf-8))))))
 
 (defun remember-query (page prefix query)
   "Keep what QUERY gives PAGE's remembered keys for the person signed in, when
@@ -183,12 +217,10 @@ after it keeps it (spec/ui.md 4.1)."
                                                              (:= "page" ,prefix)))))
                (pairs (and row (remembered-pairs page (saved-query-query row)))))
           (when pairs
-            (format nil "/~a?~@[~a&~]~{~a~^&~}" prefix
+            (format nil "/~a?~@[~a&~]~a" prefix
                     (let ((given (hunchentoot:query-string*)))
                       (and (plusp (length given)) given))
-                    (loop for (key . value) in pairs
-                          collect (format nil "~a=~a" (hunchentoot:url-encode key :utf-8)
-                                          (hunchentoot:url-encode value :utf-8)))))))))
+                    (pairs-query pairs)))))))
 
 (defun dispatch-staff-page (method parts)
   (let ((page (gethash (first parts) *staff-pages*)))
@@ -199,13 +231,11 @@ after it keeps it (spec/ui.md 4.1)."
               (respond 403 (tr "No access")
                        (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
                                (tr "The page needs a role other than yours.")))))))
-      (let ((form (jobj)) (query (jobj)))
+      (let ((form (jobj)) (query (query-object (hunchentoot:get-parameters*))))
         (when (eq method :post)
           (dolist (pair (hunchentoot:post-parameters*))
             (setf (gethash (car pair) form) (cdr pair)))
           (add-posted-files form))
-        (dolist (pair (hunchentoot:get-parameters*))
-          (setf (gethash (car pair) query) (cdr pair)))
         ;; Only the page's own address, as a page: a record's page under it,
         ;; a post and a part htmx refreshes neither keep nor follow it.
         (when (and (eq method :get) (null (rest parts)) (staff-page-remembers page)
@@ -1467,20 +1497,93 @@ its application class (and may include the default via CALL-NEXT-METHOD)."))
                     (when create
                       (ui:button (:href "#new" :icon :plus) (translate (operation-title create)))))))
 
-(defmethod render-screen (app screen &rest arguments &key items &allow-other-keys)
+(defun nothing-matches (reset)
+  "What a list filtered to nothing shows: «Nothing matches», with RESET, the
+address with every filter cleared."
+  (ui:empty-state (:icon :search :title (tr "Nothing matches")
+                         :description (tr "Change the filters or the search, or reset them."))
+                  (ui:button (:href reset :variant :outline) (tr "Reset"))))
+
+(defmethod render-screen (app screen &rest arguments &key items toolbar reset &allow-other-keys)
   ;; The generated default of every registered screen, least specific of
-  ;; all: a module's or client's method for the screen comes first.
+  ;; all: a module's or client's method for the screen comes first.  A list
+  ;; has its TOOLBAR above it, and RESET when it is filtered.
   (declare (ignore app))
   (let* ((resource (or (screen-resource screen) (error "No resource renders screen ~s" screen)))
          (class (find-entity-class (resource-entity resource))))
-    (cond ((not (eq screen (resource-list-screen resource)))
-           (entity-detail class (getf arguments (resource-detail-key resource))))
-          ((null items) (empty-list resource))
-          (t (record-table items (list-columns class)
-                           :link (and (resource-detail-screen resource)
-                                      (lambda (item)
-                                        (format nil "~a/~a" (resource-path resource)
-                                                (jget item "id")))))))))
+    (flet ((under-toolbar (node) (if toolbar (list toolbar node) node)))
+      (cond ((not (eq screen (resource-list-screen resource)))
+             (entity-detail class (getf arguments (resource-detail-key resource))))
+            ((and (null items) reset) (under-toolbar (nothing-matches reset)))
+            ((null items) (under-toolbar (empty-list resource)))
+            (t (under-toolbar
+                (record-table items (list-columns class)
+                              :link (and (resource-detail-screen resource)
+                                         (lambda (item)
+                                           (format nil "~a/~a" (resource-path resource)
+                                                   (jget item "id")))))))))))
+
+;;; The generated list's toolbar (spec/ui.md 8, «Lists»): what its list
+;;; operation can filter by, under the names an agent passes.
+
+(defun list-filter-kind (parameter)
+  "How the generated list offers PARAMETER of its list operation: :SEARCH,
+or a filter's kind, or NIL when it does not."
+  (let ((type (parameter-type parameter)))
+    (cond ((and (member (parameter-json-name parameter) '("query" "q") :test #'string=)
+                (typep type 'string-type) (not (typep type 'email-type)))
+           :search)
+          ((typep type 'enum-type) :one)
+          ((and (typep type 'list-type) (typep (list-element type) 'enum-type)) :several)
+          ((typep type 'boolean-type) :toggle))))
+
+(defun list-filter-context (resource name)
+  "ENTITY.FIELD for the input NAME when RESOURCE's entity has such a field,
+the context its stored words are labelled in."
+  (let* ((class (find-entity-class (resource-entity resource)))
+         (field (and class (find name (entity-fields class) :key #'field-json-name
+                                                           :test #'string=))))
+    (and field (field-context class field))))
+
+(defun generated-list-filters (resource op query)
+  "The toolbar of RESOURCE's list operation OP, read from QUERY, the page's
+query parameters.  Values: the toolbar or NIL, the arguments the address
+gives OP, and the address with every filter cleared when the list is
+filtered, else NIL."
+  (let ((search nil) (filters '()) (arguments '()) (path (resource-path resource)))
+    (dolist (parameter (and op (operation-parameters op)))
+      (let* ((name (parameter-json-name parameter))
+             (kind (list-filter-kind parameter))
+             (values (query-values query name))
+             (type (parameter-type parameter))
+             (label (translate (or (parameter-label parameter) name))))
+        (case kind
+          (:search
+           (setf search (list :name name :label (tr "Search") :value (first values)))
+           (when values (setf arguments (list* name (first values) arguments))))
+          ((:one :several)
+           (let ((choices (enum-choices (if (eq kind :one) type (list-element type))
+                                        (list-filter-context resource name))))
+             (push (list :name name :label label :kind kind :choices choices
+                         :value (if (eq kind :one) (first values) values))
+                   filters)
+             (when values
+               (setf arguments (list* name (if (eq kind :one) (first values) (jarr values))
+                                      arguments)))))
+          (:toggle
+           (push (list :name name :label label :kind :toggle :value (and values t)) filters)
+           (when values (setf arguments (list* name t arguments)))))))
+    (setf filters (nreverse filters))
+    (values (when (or search filters)
+              (ui:list-toolbar (:action path :search search :filters filters
+                                :id "tun-list-toolbar")))
+            arguments
+            (when (or (some (lambda (filter) (getf filter :value)) filters)
+                      (and search (getf search :value)))
+              (format nil "~a?~a" path
+                      (pairs-query (append (when search (list (cons (getf search :name) "")))
+                                           (mapcar (lambda (filter) (cons (getf filter :name) ""))
+                                                   filters))))))))
 
 (defun transition-tool-p (op resource)
   "A status operation of RESOURCE's entity that a button can call: a
@@ -1590,8 +1693,18 @@ which returns to this page (spec/auth.md 3.4), and any other request gets a
 (defun resource-page (resource &key error-json values (status 200))
   "The list of RESOURCE and, unless the actor only views, its create form;
 after a refused submission, the form with VALUES and ERROR-JSON."
-  (let* ((list-json (web-call (resource-list-tool resource) (jobj "limit" 100)))
-         (create-op (find-operation-by-tool (resource-create-tool resource)))
+  (multiple-value-bind (toolbar arguments reset)
+      (generated-list-filters resource (find-operation-by-tool (resource-list-tool resource))
+                              (query-object (hunchentoot:get-parameters*)))
+    (resource-list-page resource toolbar reset
+                        (web-call (resource-list-tool resource)
+                                  (apply #'jobj "limit" 100 arguments))
+                        :error-json error-json :values values :status status)))
+
+(defun resource-list-page (resource toolbar reset list-json &key error-json values status)
+  "The page of RESOURCE's list, LIST-JSON, under TOOLBAR, filtered when RESET
+is given, and its create form."
+  (let* ((create-op (find-operation-by-tool (resource-create-tool resource)))
          (viewer (eq (actor-role *actor*) :viewer))
          (form-p (and create-op (not viewer))))
     (respond status (translate (resource-title resource))
@@ -1600,9 +1713,10 @@ after a refused submission, the form with VALUES and ERROR-JSON."
                      (ui:alert (:variant :info :title (tr "You have read access"))
                                (tr "You are signed in with read access (viewer); anything you send is refused.")))
                    (if (jget list-json "error")
-                       (error-alert list-json)
+                       (list toolbar (error-alert list-json))
                        (screen (resource-list-screen resource)
-                               :items (coerce (jget list-json "items") 'list)))
+                               :items (coerce (jget list-json "items") 'list)
+                               :toolbar toolbar :reset reset))
                    (when form-p
                      (operation-form create-op (resource-path resource) :id "new"
                                      :values values :error-json error-json)))

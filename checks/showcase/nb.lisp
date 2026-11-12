@@ -59,7 +59,7 @@
   ("To the item" "Til saken")
   ("Access" "Tilgang")
   ("Access in a new tab" "Tilgang i en ny fane")
-  ("Page not found" "Fant ikke siden")
+  ("Page not found" "Siden finnes ikke")
   ("No attachments" "Ingen vedlegg"))
 
 ;;; The summary as an email (mail.lisp)
@@ -162,7 +162,16 @@
   ("Garden party, 14 June" "Hagefest 14. juni")
   ("Tent, tables and chairs for 40 guests, delivered and collected."
    "Telt, bord og stoler til 40 gjester, levert og hentet.")
-  ("Page not found" "Fant ikke siden")
-  ("Check the link in the email." "Sjekk lenken i e-posten.")
+  ("Page not found" "Siden finnes ikke")
+  ("Check the link in the email." "Kontroller lenken i e-posten.")
   ("Opening hours" "Åpningstider")
   ("Monday to Friday, 8 to 16." "Mandag til fredag, 8 til 16."))
+
+;;; The cards as a list with its toolbar (lists.lisp)
+
+(define-translations "nb"
+  ("Search the cards" "Søk i kortene")
+  ("With an estimate" "Med anslag")
+  ("Without an estimate" "Uten anslag")
+  ("With files" "Med filer")
+  ("No card matches" "Ingen kort passer"))

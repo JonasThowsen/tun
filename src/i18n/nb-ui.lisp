@@ -193,6 +193,23 @@
    "Et prøvevarsel ble sendt for under ett minutt siden. Vent litt før du sender et nytt.")
   ("Could not send the test notification. Try again."
    "Kunne ikke sende prøvevarselet. Prøv igjen.")
+  ;; A list's toolbar
+  ("Clear ~a"
+   "Fjern ~a")
+  ("Filters"
+   "Filtre")
+  ("Filters, ~d in use"
+   "Filtre, ~d i bruk")
+  ("Reset"
+   "Nullstill")
+  ("Apply"
+   "Bruk")
+  ("Search"
+   "Søk")
+  ("Nothing matches"
+   "Ingen treff")
+  ("Change the filters or the search, or reset them."
+   "Endre filtrene eller søket, eller nullstill dem.")
   ;; Layout and navigation
   ("Breadcrumbs"
    "Brødsmuler")

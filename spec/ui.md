@@ -19,7 +19,9 @@ flash as a toast (§2.1, §3, §6), 2026-11-11, core 2.26.0; the page
 header's row and its «more» menu, `section-links`, the record's facts by
 spacing, `tabs` on the page's ground, the shell and the theme colours on
 the chrome, and no description in Tun's own pages (§4.2, §6, §8),
-2026-11-11, core 2.27.0. How every Tun page
+2026-11-11, core 2.27.0; a list's toolbar, `list-toolbar`, its filters in
+the address, a repeated query key and the generated list's filters (§6,
+§8), 2026-11-12, core 2.28.0. How every Tun page
 looks and behaves: the tokens, the components that are built from them,
 the specimen that shows them, and the rules a component follows. The
 generated screens (`ui.lisp`, `access.lisp`) and a client's own screens
@@ -543,7 +545,7 @@ A component is defined with `define-component` in the package `TUN.UI`:
 |---|---|
 | Actions (`actions`) | `button`, `icon`, `button-group`, `link`, `kbd`, `badge`, `avatar` |
 | Forms (`forms`, `push`), GOV.UK behaviour | `field`, `text-input`, `combobox`, `textarea`, `select`, `checkbox`, `checkboxes`, `radios`, `switch`, `fieldset`, `input-group`, `error-summary`, `form-actions`, `push-switch` (`push.md` §2.1), `file-input` |
-| Data (`data`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
+| Data (`data`, `toolbar`, `board`, `files`, `charts`, `markdown`, `graph`) | `table`, `list-toolbar`, `summary-list`, `card`, `stat`, `empty-state`, `pagination`, `timeline`, `code-block`, `board`, `attachments`, `line-chart`, `sparkline`, `markdown`, `graph` |
 | Feedback (`feedback`) | `alert`, `flash`, `confirm-panel`, `progress`, `spinner`, `skeleton` |
 | Interaction (`interaction`) | `dialog`, `confirm-dialog`, `dropdown-menu`, `tooltip`, `accordion`, `tabs` |
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `section-links`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
@@ -719,6 +721,96 @@ row of links above the cards. A column given `:narrow nil` is left out
 of the cards, and kept in the table on a wide screen: a page says which
 columns a phone can do without. `confirm-panel` is the form a `:confirm` operation
 shows before it runs. `flash` is a message carried over a redirect.
+
+`list-toolbar` is a list's one search and its filters, above the list:
+
+```lisp
+(ui:list-toolbar (:action "/orders"
+                  :search (list :name "q" :label "Search orders" :value q)
+                  :filters (list (list :name "status" :label "Status" :kind :one
+                                       :choices '(("draft" "Draft") ("confirmed" "Confirmed"))
+                                       :value "draft")
+                                 (list :name "tag" :label "Tags" :kind :several
+                                       :choices '(("rental" "Rental") ("music" "Music"))
+                                       :value '("rental"))
+                                 (list :name "dateless" :label "Without a date" :kind :toggle
+                                       :value nil))
+                  :keep '(("sort" "date"))))
+```
+
+- **One form.** It is one `<form method="get" action=ACTION
+  role="search">`: the search field (`type="search"`, LABEL its name,
+  shown as its placeholder), each filter's fields, and the KEEP pairs as
+  hidden fields, such as the list's sort. So what is chosen is the
+  address: a link, a reload and Back keep it. SEARCH and FILTERS may each
+  be left out. A filter is `(:name :label :kind :choices :value [:all])`:
+  KIND `:one` (one of several, VALUE a text), `:several` (several of
+  several, VALUE a list) or `:toggle` (on or off, VALUE true or false;
+  on, it sends `NAME=true`); CHOICES are `(VALUE LABEL)` pairs, as
+  `radios` takes them.
+- **Every key, every time.** A `:one` filter's first choice is «All»
+  («Alle»), or ALL, of empty value; a `:several` filter's boxes and a
+  toggle's box come after a hidden field of the same name and empty
+  value. Every submission names every filter's key, so a page that
+  `:remembers` it (§8) takes an unticked filter as cleared, not as
+  missing. A page reads a filter with `query-values` (§8).
+- **The row.** From 40rem of the toolbar's own width (it is a container)
+  the search and one button per filter stand on one row, in the order
+  given, that never wraps: the search keeps its width (24rem) while there
+  is room, so a filter put into use moves only its own button and what
+  follows it; when the row is full the search narrows first, to 12rem,
+  and then the filters scroll sideways in their own box. A `:one` or
+  `:several` filter's button is named by LABEL and opens its choices; a `:toggle` is
+  one button that is pressed while on, with no choices to open. A filter
+  in use says so in its button, «Status: Draft», or the count for two or
+  more of several, «Tags: 2», with its edge `--border-strong`, at the
+  weight, size and height of one not in use; joined to it, a clear
+  button, «×» («Clear Status», «Fjern Status» to a screen reader), is a
+  link to the address with that filter cleared. With two or more in use,
+  «Reset» («Nullstill»), underlined words, follows the filters, a link to
+  the address with every filter cleared, the search and KEEP kept. Both
+  name every filter's key, a cleared one empty
+  (`/orders?q=…&status=&tags=&tags=rental&dateless=`), as a submission
+  does, so they clear a page that `:remembers` them (§8).
+- **The choices.** A filter's choices are radios (`:one`) or checkboxes
+  (`:several`) in a popover (`popover="auto"`: one open at a time, closed
+  by Escape and a press outside, the focus back on its button), under its
+  button, or above it when there is more room there, always inside the
+  window; it rises 0.25rem and fades in over `--duration-fast`, and sinks
+  and fades over `--duration-close`. Below 40rem of the window's width it
+  is a floating sheet instead: at the bottom of the window, 0.75rem from
+  its sides and above the bottom's safe area, every corner
+  `--radius-xl`, headed by LABEL and a close button, over the
+  `--overlay` dim, rising from below over `--duration`.
+- **Applied at once.** Where scripts run, a choice, a toggle and a clear
+  submit the form at once, and there is no «Apply» button. In a boosted
+  shell (§4.1) htmx sends it and morphs the page into the answer
+  (`hx-swap` `innerMorph`, the body its target), pushing the address:
+  each choice is a step Back returns from, and the page is not loaded
+  again. The toolbar's elements have fixed ids, from `:id`
+  («tun-list-toolbar» when omitted; two toolbars on one page need one
+  each) and the filters' names, so the morph keeps them: a `:several`
+  filter's popover stays open, the focus on the box just ticked; a `:one`
+  filter's popover closes on the choice, the focus on its button. The
+  loading sign shows as for any request.
+- **On a phone.** Below 40rem of the toolbar's own width the search fills
+  its row. Three or more filters are not in the bar: they are behind one
+  «Filters» («Filtre») button after the search, which shows how many are
+  in use (to a screen reader «Filters, 2 in use»). It opens a `dialog`
+  (a sheet, §6 `dialog`) titled «Filters», inside the form, so its fields
+  are the form's: a row per filter, its LABEL and value, its clear button,
+  and under it its choices, in place of the popover; a choice applies at
+  once, the list behind changes, the sheet stays open, and the page
+  behind does not scroll. Escape, the close button and the dim close it,
+  and the focus goes back to «Filters». One
+  or two filters keep their buttons, on a row under the search that
+  scrolls sideways in its own box rather than wrap.
+- **Without JavaScript** nothing folds on a phone: every filter keeps its
+  button on the row under the search, the popovers open with their
+  buttons (the Popover API), and an «Apply» («Bruk») button submits the
+  form.
+- A list's dates (a period) are not filters of this toolbar yet: the
+  browser's own date field sends a change for each part typed.
 
 `flash` is a toast where the browser runs scripts. It stands over the
 page, out of its flow: below 40rem at the bottom, 1rem from the
@@ -1374,6 +1466,18 @@ form of `field`s with an `error-summary`, a confirmation is a
   record's name (else its id, linked to its page), then its status as a
   `badge`, the records it refers to by their names, its first date, its
   total, and its other inputs. No records is an `empty-state`.
+  Above it stands a `list-toolbar` (§6) of what its list operation can
+  filter by: an input named `query` or `q` of text is the search, an
+  enum a `:one` filter, a list of an enum a `:several` filter, a boolean
+  a `:toggle`; ids, dates, numbers, other text and `limit` are not
+  offered. The address's keys are those inputs' names, as an agent
+  passes them (`/orders?status=draft&dateless=true`), and the list
+  operation is called with what the address gives, so a value it refuses
+  shows as its error. An operation with none of these inputs gives no
+  toolbar. The toolbar is part of the generated screen: a client's
+  `render-screen` method for the list shows it only through
+  `call-next-method`. A list filtered to nothing says «Nothing matches»
+  («Ingen treff») with «Reset».
 - **A record.** A `page-header` (breadcrumbs, the status as a badge in
   its `:meta`, the status operations as buttons, or a `dropdown-menu`
   when there are more than two), a `summary-list` of the fields that have
@@ -1424,7 +1528,11 @@ form of `field`s with an `error-summary`, a confirmation is a
   2. NAME is a function of the request. METHOD is `:get` or `:post`, PATH
      the parts after the prefix (`/saker/sak_1` gives `("sak_1")`), FORM
      and QUERY the posted and the query parameters as JSON objects. A
-     post's files arrive in FORM as `files.md` §6.2 says.
+     post's files arrive in FORM as `files.md` §6.2 says. A query key
+     given once is a text; given more than once, as a `:several`
+     filter sends it, an array of its texts in order.
+     `(query-values QUERY KEY)` gives a key's values that are not empty,
+     as a list, from either.
   3. It returns `(values STATUS TITLE BODY)`, BODY a list of components
      shown under a page header with TITLE, and may add a fourth value, a
      plist of the header's `:description`, `:meta`, `:actions` and
@@ -1446,7 +1554,9 @@ form of `field`s with an `error-summary`, a confirmation is a
      list filtered finds it so again, on any device. A GET of the page's
      own path (`/saker`, not `/saker/sak_1`) whose query has any of the
      keys saves their values for the signed-in account, in place of what
-     was saved: a key absent or empty is saved as cleared. A GET of the
+     was saved: a key absent or empty is saved as cleared, and a key given
+     more than once keeps its values that are not empty, which the
+     address it is sent to names each in turn. A GET of the
      own path with none of the keys, while the account has a value saved,
      is answered 303 to the path with the saved keys that have a value,
      in the order of `:remembers`, after the query parameters it had
@@ -1816,6 +1926,29 @@ form of `field`s with an `error-summary`, a confirmation is a
   column on a phone and two on a desktop, without an edge, in line with
   the header; the chosen segmented tab's ground unlike the page's, light
   and dark; no page scrolling sideways.
+- `tests/ui-filters-tests.lisp` (§6 `list-toolbar`, §8 «Lists» and
+  QUERY): the toolbar's form, search, buttons, popovers, choices and
+  hidden fields in English and Norwegian; a filter in use, its words, its
+  clear link and «Reset» from two in use, both naming every key and
+  clearing a `:remembers` page; the «Filters» button and its
+  sheet from three filters, with the count; fixed ids; the CSS that
+  chooses without a change of weight, size or edge; a repeated key in
+  QUERY, `query-values`, a `:remembers` page keeping and restoring one;
+  the generated list's toolbar from the test client's orders and
+  customers, the operation called with the address's values, «Nothing
+  matches», and a client's screen method without it.
+- `checks/showcase/checks/ui-filters.py`, on the showcase's `/cards` and
+  `/customers` and the specimen: at 1280 px the search and the buttons on
+  one row; putting a filter into use leaving the row's height and the
+  list's top where they were; a choice changing the address and the list
+  without loading the page, the several popover open with the focus on
+  its box, the one popover closed with the focus on its button, Back
+  going a choice back and then off the list; the popover under its button
+  and its motion; at 390, 360 and 320 px the «Filters» sheet's box, dim,
+  rows, a choice applying with the sheet open, Escape and the focus back,
+  a floating popover inside the window, and no page scrolling sideways;
+  without JavaScript, at 390 px every filter's button shown, a popover
+  opening and «Apply» filtering the list.
 - `tests/ui-layout-tests.lisp`: every `app-shell` holds the loading
   sign hidden and `aria-hidden`, and an empty `role="status"` region
   with «Loading…» in the page's language to say; the script and the

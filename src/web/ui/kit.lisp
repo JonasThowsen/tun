@@ -507,6 +507,13 @@ window.htmx?.registerExtension('tun', {
     };
     api.initSecurity({ createHTML: (html) => html, createScript: () => '' }, refuse, refuse);
   },
+  // A morph (hx-swap innerMorph) makes each element's attributes the
+  // answer's: a dialog the person opened, which the server's markup has
+  // closed, stays open, such as a list's «Filters» sheet (spec/ui.md 6).
+  htmx_before_morph_attr(element, detail) {
+    return !(element instanceof HTMLDialogElement && detail.attrName === 'open'
+             && detail.newValue === null);
+  },
 });
 
 // Preloading (spec/ui.md 4.1): a link htmx boosts loads its page when a
