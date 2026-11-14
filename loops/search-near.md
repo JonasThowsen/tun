@@ -2,7 +2,7 @@
 
 - loop: search-near
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: cf0de1df2dc69c8bb91f830e0df7ac7bdc7e4232
 - item: sak_nbe1akjs60qsbze8
 - estimate: 1h15m 2h 3h30m
@@ -264,6 +264,12 @@ Before (`origin/main`, 2.35.0) in `~/coding/tun-wt/search-near-shots/before/`
 options for «nordvika», each at 390 and 1280 px, light and dark). Before
 this loop the dialog answered «nordvk» with «No results for «nordvk»».
 
+## Actuals
+
+```json
+{"loop":"search-near","title":"A misspelled word still finds, ranked below exact hits, in the search and in the choice","repository":"tun","mode":"reviewed","stage":"done","item":"sak_nbe1akjs60qsbze8","tags":[],"like":["tun/search-reads"],"started":"2026-11-14 19:07","ended":"2026-11-14 21:03","minutes":{"total":116,"waiting_person":0,"waiting_reviewer":4,"working":112,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":75,"likely":120,"worst":210,"at":"brief"},"latest_estimate":{"best":75,"likely":120,"worst":210,"at":"brief"},"within_estimate":true,"ratio":0.97,"verify":{"rounds":3,"failed":2},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-14 19:07  started, reviewed
@@ -368,3 +374,4 @@ this loop the dialog answered «nordvk» with «No results for «nordvk»».
   - **Readability.** There is no leftover debugging, and the spec is changed where the behaviour changed: §6, §6.4, §9 and «Not yet».
   
   **One thing for the report, not a blocker.** tun-erp fails two `erp` checks, so strictly it does not pass. The Log blames a plan key its own `factory/parity.md` names that its plan lacks, which is unrelated to search, and neither check is about a misspelled query. The Log doesn't say these checks were also run on tun-erp against 2.36.0 to confirm they already failed. The report should name both and say they come from tun-erp's own documents.
+- 2026-11-14 21:03  finished at tun 3a08219e
