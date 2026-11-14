@@ -38,7 +38,9 @@ typing, `/choices/ENTITY`, and the specimen's choice answered by
 `choice-answer` (§7, §8, §9), 2026-11-12, core 2.35.0; a form's alert
 naming its fields by their labels, Enter saving in a form with an asked
 choice, «must be chosen», and `record-choice`, a module's shape of its
-records' choice (§2.1, §6, §8, §9), 2026-11-12, core 2.36.0.
+records' choice (§2.1, §6, §8, §9), 2026-11-12, core 2.36.0; near matches
+for a word typed wrong in the search and a choice (§6, §6.4, §9),
+2026-11-14, core 2.37.0.
 How every Tun page looks and behaves: the tokens, the components that
 are built from them, the specimen that shows them, and the rules a
 component follows. The
@@ -608,9 +610,15 @@ value, an id, under NAME, showing the chosen record's text:
   them. Without SOURCE they are every choice and come with the page (a
   few dozen at most); typing narrows them in the browser by the search's
   rule (§6.4) as far as it applies to texts alone: every word typed,
-  folded, a part of the option's text, in any order, kept in the order
-  given. With SOURCE, a path on the site, the options are asked for as
-  one types, and OPTIONS hold only those the page knows now: the chosen
+  folded, a part of the option's text or found nearly at the start of
+  one of its words, in any order; the options found exactly first, in
+  the order given, then those found nearly, in the order given. The
+  script's rule is the server's: the kit's script holds it once
+  (`tunSearchFold`, `tunSearchFinds`), and the server's `search-match`
+  and the script answer the same table of cases
+  (`tests/search-cases.json`). With SOURCE, a path on the site, the
+  options are asked for as one types, and OPTIONS hold only those the
+  page knows now: the chosen
   one, and the matches of a find step (below). VALUE is the chosen value,
   its text the option's of that value; a VALUE not among OPTIONS is shown
   as nothing chosen.
@@ -730,9 +738,11 @@ with N above 0, a line that is no option, «12 more. Type to narrow them.»
   them (by name, say); VALUE and TEXT are functions of a row (VALUE by
   default its id, as `search-among`'s); NAMES (by default its TEXT),
   TEXTS and IDENTIFIERS are `search-match`'s (§6.4), so a choice finds
-  what the search finds: «bjorn ase» finds «Bjørn Åsen». A blank TEXT
-  matches every row KEEP keeps, in ROWS' order; any other the rows that
-  match, best score first and in ROWS' order among equals. At most LIMIT
+  what the search finds: «bjorn ase» finds «Bjørn Åsen», «nordvk»
+  finds «Nordvik Bakery Ltd» nearly. A blank TEXT matches every row KEEP
+  keeps, in ROWS' order; any other the rows that match, best score
+  first and in ROWS' order among equals, so every row found exactly
+  before every row found nearly. At most LIMIT
   are answered; the count is the rest.
 - `(choice-answer QUERY ROWS &rest KEYS)`, for SOURCE's page: QUERY its
   query parameters, the text its `q`; it answers `choice-matches`' LIMIT
@@ -1829,12 +1839,15 @@ search answers a person's page, the dialog's results and an agent's
   and written to the server's error output. `introspect_extensions`
   lists the methods, each with its place in the source.
 - **A result** is `(make-search-result :kind KIND :label LABEL :icon
-  ICON :title TITLE :meta META :href HREF :score SCORE :id ID)`: KIND a
+  ICON :title TITLE :meta META :href HREF :score SCORE :id ID :near
+  NEAR)`: KIND a
   short key in English (`"customer"`), LABEL its word in the page's
   language («Customer», «Kunde»), ICON an icon's name, TITLE the record's
   name, META a list of short texts about it (an email, a status, a
   date), HREF the record's page, SCORE what the rule gave it, ID the
-  record's id. `(search-entity QUERY ENTITY ...)` makes a kind's results
+  record's id, NEAR true when the rule found it nearly (NIL when left
+  out, so a contributor written without it is ordered by its score
+  alone). `(search-entity QUERY ENTITY ...)` makes a kind's results
   from the records of an entity: it reads them, scores each by the rule
   and answers the five best. With `:fields`, a list of the entity's
   field names, it reads only those fields of each record (`store.md` §2,
@@ -1868,9 +1881,11 @@ search answers a person's page, the dialog's results and an agent's
   search with no code of its own.
 
 **The rule.** In one sentence: a record is found when every word typed,
-folded, is in one of its texts in any order, or when all that was typed
+folded, is in one of its texts in any order, or nearly at the start of
+one of their words when it is long enough, or when all that was typed
 is one of its identifiers or their start, and it ranks by where it
-matched, an identifier and the name before the rest. In full:
+matched, an identifier and the name before the rest, and every record
+found without a near match before any found with one. In full:
 
 - **Folded.** What was typed and what is stored are compared folded:
   upper and lower case alike; accents and other marks ignored («é» is
@@ -1890,6 +1905,52 @@ matched, an identifier and the name before the rest. In full:
   the others it is found by (a note, an address, the meta line's
   words), IDENTIFIERS the values found only whole or by their start (an
   order's number, an email, a phone number).
+- **Near matches.** A word typed wrong still finds, below every exact
+  hit. A word typed is found *nearly* in a name or text when it is not
+  found there exactly and the start of one of its words is within the
+  word's faults of it, compared folded:
+  - *Which words.* Only a word typed of letters alone, folded, six or
+    more of them: a word with a digit or any sign («@ . - / # +») is
+    never found nearly, nor is a word of five letters or less («AS»,
+    «Ola», «Kari», «Lunde»), which a fault would let find too much.
+    Identifiers are never found nearly, whatever was typed: a number,
+    an order's number, an email or a phone number given as identifiers
+    is found whole or by its start, as below, or not at all. A
+    contributor that also gives an email as a text (the customers
+    module does, so «nordvik» finds «post@nordvik.example») lets the
+    words of its letters be found nearly as any text's: «exampel» finds
+    it nearly, while the typed email «post@nordvik.exampel», a word with
+    signs, is never found nearly.
+  - *A fault* is one letter missing, one extra, one wrong, or two
+    letters next to each other swapped (the optimal string alignment
+    distance), counted on the folded texts, so a letter folded alike is
+    no fault («sørlie» is «Sorlie»; «soerlie» is one fault from it).
+    A word of six to eight letters is forgiven one fault, a word of nine
+    or more two.
+  - *The first letter is right.* A word of a text is tried only when its
+    first letter is the typed word's first, folded.
+  - *A word's start.* A word of a text is a run of letters where a word
+    starts (§ «Every word»: its first character, or one after a
+    character that is not a letter or a digit), ending before the next
+    character that is not a letter. The typed word is found nearly when
+    the whole run or any start of it is within its faults, so a word is
+    found as one types it: «minglng» finds «Mingling» (one letter
+    missing), and so does «minglni», typed on the way to «mingling»
+    with two letters swapped. «mongleng» does not find «Mingling» (two
+    faults in eight letters), nor does «ningling» (its first letter).
+  - *Every word, still.* A record is found when every word typed is found
+    in its names or texts, each exactly or nearly; a word found exactly
+    is never tried nearly. A record found with at least one word only
+    nearly is *found nearly*; it is found exactly when every word is
+    found exactly, or when what was typed is one of its identifiers.
+  - *Symmetric.* Two words of six to eight letters, or two of nine or
+    more, with the same first letter and within the faults of each other
+    as whole words, find each other: «hansen» finds «Hanssen», and
+    «hanssen» finds «Hansen». A start is not symmetric: «bergen» finds
+    «Bergersen» by its start «berger», «bergersen» does not find
+    «Bergen».
+  - `search-match` answers, as a second value, T for a record found
+    nearly and NIL otherwise.
 - **Identifiers.** An identifier and what was typed are compared folded
   and without spaces and the signs «+ - . # ( ) /», so «412 34 567»
   finds «41234567» and «#1042» finds «1042». It scores only when what
@@ -1916,17 +1977,28 @@ matched, an identifier and the name before the rest. In full:
 - **The score.** The best of: 100 what was typed is an identifier; 90
   it holds a digit and is the start of one; 80 a name is what was typed; 60 a name starts
   with it; 45 every word starts a word of the names; 25 every word is
-  in the names; 10 a word is found only in the other texts. A
-  contributor may lower a score, as an order scores as its customer
-  would, less 15, so a customer comes before its orders.
-- **The order.** Results come best score first; among equal scores, by
-  kind in the order the contributors answered them, then in each
-  contributor's own order, which `search-entity` makes the newest
-  first. At most five of one kind and twenty in all.
+  in the names; 10 a word is found only in the other texts. A record
+  found nearly scores 5 when every word is found, exactly or nearly, in
+  the names, and 1 otherwise: below every score of a record found
+  exactly. A contributor may lower a score, as an order scores as its
+  customer would, less 15, so a customer comes before its orders.
+- **The order.** Every result found exactly comes before every result
+  found nearly, in each kind and in all, whatever a contributor did to
+  the scores: a result knows it was found nearly (`make-search-result`'s
+  `:near`, which `search-entity` and `search-among` give it from
+  `search-match`'s second value). Within each of the two, results come
+  best score first; among equal scores, by kind in the order the
+  contributors answered them, then in each contributor's own order,
+  which `search-entity` makes the newest first. At most five of one
+  kind and twenty in all.
 - **The marks.** Where a result is shown, the stored characters each
   word covers in the title, its first match at the start of a word,
   else its first anywhere, are marked (`<mark>`): «kafe» marks «kafé»,
-  «bjorn» marks «Bjørn».
+  «bjorn» marks «Bjørn». In a result found nearly, a word not found
+  exactly in a text is marked over the whole word of the text it was
+  found nearly in, its first such word: «minglng» marks «Mingling»,
+  «minglni» marks «Mingling» too. A result found exactly is marked as
+  before, with no near mark.
 - **Why it was found.** A result whose title has no mark shows its
   match in the line under the title: the words are marked the same way
   in each META text, and a META text that is an identifier found whole
@@ -1945,6 +2017,10 @@ matched, an identifier and the name before the rest. In full:
   `make-search-result` takes it as `:matched`, NIL when left out, so a
   contributor written without it is shown as before, its META marked.
   A result whose title holds a mark shows its line unmarked, as before.
+  A result found nearly is shown as any other, its near marks the same
+  `<mark>`, and comes after the exact ones: no line or word sets it
+  apart, since the mark over the whole word it was found by already
+  says why, and the order says it is a weaker match.
 - **What it costs.** `search-entity` reads every record of its entity
   once per search, in the read transaction, and matches in Lisp: on
   Postgres one `SELECT` of the table per kind, without an index, so the
@@ -1957,13 +2033,19 @@ matched, an identifier and the name before the rest. In full:
   stops folding a record's texts once every word is found, compares an
   identifier character by character as it folds, and folds the names
   into texts of their own only for a record every word was found in, the
-  only ones it scores. The dialog asks only from two characters and
+  only ones it scores. Near matches are tried in the same pass, only in
+  a text already folded for a word of six letters or more that is not
+  found there exactly, and only at a word's start whose first letter is
+  the word's and whose run of letters is long enough; a query none of
+  whose words may be found nearly (a number, short words) costs what it
+  did. The dialog asks only from two characters and
   after a pause of 150 ms, so a person typing asks once per pause. A
   search of 2000 customers answers within 100 ms on the server, in
   memory and on Postgres, and so does one of 2000 customers, 2000 orders
   and 2000 records with long texts, every kind together (its test's
   limit is 90 ms: under the rule, with room over what was measured on a
-  loaded machine).
+  loaded machine), a misspelled word that is found nearly in thousands
+  of them among the queries.
 
 **The search page.** `/search?q=TEXT`, a kernel page for `:viewer`s and
 up: a `page-header` «Search», a GET form (`role="search"`) with the
@@ -1979,11 +2061,13 @@ of kinds, all when left out; `limit`, 1 to 20, 20 when left out),
 `:viewer`, answers `{"items": [...]}`, each item the result's `kind`,
 `kind_label`, `icon`, `title`, `meta` (an array), `matched` (what it was
 found by, when neither the title nor the meta shows it, else null),
-`href`, `score` and `id` (null when the contributor gave none), under the
-caller's authority as the page's.
+`href`, `score`, `id` (null when the contributor gave none) and `near`
+(true for a result found nearly), under the caller's authority as the
+page's.
 
 **`search-results`** is the list: `(search-results (:query TEXT :items
-ITEMS))`, ITEMS plists of a result's parts (`:matched` among them). Each
+ITEMS))`, ITEMS plists of a result's parts (`:matched` and `:near`
+among them; with `:near` true its words are marked nearly too). Each
 row is a link to HREF: the kind's icon, the title with its marks, and
 under it the meta line, which starts with the kind's word, then MATCHED
 when there is one, then META («Customer · post@nordvik.example»), marked
@@ -2519,8 +2603,7 @@ form of `field`s with an `error-summary`, a confirmation is a
   a chart's own time range control.
 - A choice among more than one entity's records in the generated pages
   (§8, «Choosing a record»).
-- Near matches in a choice for a word typed wrong (as in the search),
-  and muted text inside a table cell: a cell holds its value in the text
+- Muted text inside a table cell: a cell holds its value in the text
   colour (a quieter fact is a column of its own, or `:narrow nil`).
 - A date and a time in one field, a time
   picker, week numbers in the calendar, and a choice of the week's first
@@ -2530,7 +2613,9 @@ form of `field`s with an `error-summary`, a confirmation is a
 - Paging the generated list: it shows its first 100 records.
 - Path patterns with typed parameters for pages (`/saker/:item`), and
   links that name their page (`docs/roadmap.md`).
-- In the search (§6.4): near matches for a word typed wrong, an index of
+- In the search (§6.4): a near match inside a word (only a word's start
+  is tried) or for a word of five letters or less, ranking near matches
+  by their number of faults, an index of
   the searched texts (Postgres's trigrams) in place of reading a kind's
   records, the open search in the page's address, what was searched
   before, filters inside the search, places in the menu as results, and
@@ -2905,6 +2990,28 @@ form of `field`s with an `error-summary`, a confirmation is a
   middle, and the national part marked in a result's line. 2000
   customers, 2000 orders and 2000 records with long texts searched
   within the test's limit, in memory and on Postgres.
+- `tests/search-near-tests.lisp` (§6.4 «Near matches», §6
+  `choice-input`): the table of cases `tests/search-cases.json`
+  (found exactly, nearly or not at all) answered by `search-match`;
+  each fault, the lengths, the first letter, a word's start, a digit or
+  sign, an identifier; the scores 5 and 1, the second value; properties
+  over thousands of random words: an exact hit never below a near one,
+  a word with a digit never found nearly, a word folded alike found
+  alike, a near match symmetric between whole words of one length band,
+  the plain rule's results unchanged for records it finds; the order of
+  `search-among`, `search-order` and `choice-matches`, exact first
+  whatever a contributor's `:score`; the whole word marked, in the
+  title, the line and MATCHED; the tool's `near`; the customers and
+  orders modules and `/choices/ENTITY` finding by a misspelled word; a
+  misspelled word among 2000 customers, 2000 orders and 2000 long texts
+  within the limit.
+- `checks/showcase/checks/search-near.py` (§6.4, §6 `choice-input`):
+  the kit's `tunSearchFinds` answering the table of cases as the
+  server does; the dialog finding by a misspelled word with the whole
+  word marked, after the exact hits, at 390 and 1280 px; the specimen's
+  given options narrowed by a misspelled word, «nordvika» showing
+  «Nordvika Marina», found exactly, before «Nordvik Bakery Ltd», found
+  nearly, though it is given first.
 - `checks/showcase/checks/ui-search.py` (§6.4), on the showcase, whose
   cards and customers are found: Ctrl K and ⌘ K open the dialog with
   the focus in the field, the caps read «⌘» on a Mac; at 1280 px the

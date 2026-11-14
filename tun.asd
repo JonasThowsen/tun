@@ -211,6 +211,7 @@
                              (:file "ui-choice-tests")
                              (:file "generated-choice-tests")
                              (:file "form-nits-tests")
+                             (:file "search-near-tests")
                              (:file "review-tests")
                              (:file "review2-tests")
                              (:file "slice1-review-tests")

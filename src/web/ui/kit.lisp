@@ -484,6 +484,79 @@ const tunModal = (dialog) => {
   try { return dialog.matches(':modal'); } catch (e) { return dialog.open; }
 };
 
+// The search's rule over one text, as the server's search-match finds a
+// record by a name (spec/ui.md 6.4); the server and this answer the same
+// table of cases (tests/search-cases.json).  The fold: lower case, the
+// letters the server spells otherwise, decomposed without the non-spacing
+// marks, a run of «a» as one, any run of spaces as one, none at the ends.
+const tunSearchLetters = { 'ø': 'o', 'æ': 'ae', 'œ': 'oe', 'ß': 'ss', 'ł': 'l', 'đ': 'd',
+                           'ı': 'i', 'þ': 'th' };
+const tunSearchFold = (text) => String(text ?? '').toLowerCase()
+  .replace(/[øæœßłđıþ]/g, (letter) => tunSearchLetters[letter])
+  .normalize('NFKD').replace(/\\p{Mn}/gu, '').toLowerCase()
+  .replace(/[ \\t\\n\\r\\f\\u00a0]+/g, ' ').replace(/a+/g, 'a').trim();
+
+// Near matches: a word typed of six letters or more, letters alone, is
+// forgiven a fault (two from nine letters): a letter missing, extra or
+// wrong, or two neighbours swapped.  It is found nearly at a word of the
+// text (a run of letters where a word starts, its first letter the
+// word's) whose run or a start of it is within its faults.  Both are
+// arrays of characters, so a letter beyond 16 bits counts once.
+const tunSearchFaults = (word) => (word.length < 6 || !/^\\p{L}+$/u.test(word.join('')) ? 0
+                                   : word.length < 9 ? 1 : 2);
+const tunSearchStartWithin = (word, faults, text, start, end) => {
+  const n = word.length;
+  const m = Math.min(end - start, n + faults);
+  let before = new Array(m + 1).fill(0);
+  let above = Array.from({ length: m + 1 }, (_, j) => j);
+  let row = new Array(m + 1).fill(0);
+  for (let i = 1; i <= n; i += 1) {
+    row[0] = i;
+    for (let j = 1; j <= m; j += 1) {
+      const typed = word[i - 1];
+      const stored = text[start + j - 1];
+      let v = Math.min(above[j] + 1, row[j - 1] + 1, above[j - 1] + (typed === stored ? 0 : 1));
+      if (i > 1 && j > 1 && typed === text[start + j - 2] && word[i - 2] === stored)
+        v = Math.min(v, before[j - 2] + 1);
+      row[j] = v;
+    }
+    [before, above, row] = [above, row, before];
+  }
+  for (let j = 1; j <= m; j += 1) if (above[j] <= faults) return true;
+  return false;
+};
+const tunSearchNear = (word, faults, text) => {
+  const letter = /\\p{L}/u;
+  const wordy = /[\\p{L}\\p{Nd}]/u;
+  for (let at = 0; at < text.length; at += 1) {
+    if (text[at] !== word[0] || (at > 0 && wordy.test(text[at - 1]))) continue;
+    let end = at;
+    while (end < text.length && letter.test(text[end])) end += 1;
+    if (end - at >= word.length - faults && tunSearchStartWithin(word, faults, text, at, end))
+      return true;
+  }
+  return false;
+};
+
+// How TEXT is found by QUERY: 'exact' when every word typed, folded, is a
+// part of it; 'near' when every word is that or found nearly, some only
+// nearly; null otherwise, and for a QUERY of no words.
+const tunSearchFinds = (query, text) => {
+  const words = tunSearchFold(query).split(' ').filter(Boolean);
+  if (words.length === 0) return null;
+  const folded = tunSearchFold(text);
+  const letters = Array.from(folded);
+  let near = false;
+  for (const word of words) {
+    if (folded.includes(word)) continue;
+    const typed = Array.from(word);
+    const faults = tunSearchFaults(typed);
+    if (faults === 0 || !tunSearchNear(typed, faults, letters)) return null;
+    near = true;
+  }
+  return near ? 'near' : 'exact';
+};
+
 // Set up what a component's markup needs once it is in the page: SETUP is
 // called with the document when the page has loaded, and with each element
 // htmx swaps in afterwards (spec/ui.md 4).

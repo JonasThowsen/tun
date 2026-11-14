@@ -71,13 +71,16 @@ Jonas is an admin, who can change the settings."
 (define-scenario search (:actors ("employee:anna" "admin:jonas"))
   "The default scenario's cards and customers, and two customers whose names
 are written with letters a search folds: Bjørn Åsen, with a phone written with
-its country code, which its national number finds, and Café Øst (spec/ui.md
+its country code, which its national number finds, and Café Øst; and
+Hanssen Rigging, which «hansen» finds nearly, after Hansen Plumbing (spec/ui.md
 6.4)."
   (board-of-items)
   (some-customers)
   (call-ok "customers_create" "employee:anna" "name" "Bjørn Åsen" "email" "bjorn@asen.example"
            "phone" "+47 412 34 567")
-  (call-ok "customers_create" "employee:anna" "name" "Café Øst" "email" "post@cafe-ost.example"))
+  (call-ok "customers_create" "employee:anna" "name" "Café Øst" "email" "post@cafe-ost.example")
+  ;; Its email holds no text an earlier check's query finds.
+  (call-ok "customers_create" "employee:anna" "name" "Hanssen Rigging" "email" "post@rigging.no"))
 
 (define-scenario norwegian (:actors ("admin:jonas" "employee:anna"))
   "The default scenario's cards on a tenant whose language is Norwegian.

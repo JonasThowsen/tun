@@ -4,9 +4,11 @@
 ;;;;
 ;;;; The rule is pure: text is folded (case, marks, a few letters, a run of
 ;;;; «a», spaces), every word of the query must be in one of a record's
-;;;; texts, and the whole query may be one of its identifiers or their
-;;;; start.  SEARCH-MATCH scores a record by it; SEARCH-MARK-RANGES says
-;;;; which stored characters a title's match covers.
+;;;; texts, exactly or, for a word of six letters or more, nearly at the
+;;;; start of one of their words, and the whole query may be one of its
+;;;; identifiers or their start.  SEARCH-MATCH scores a record by it;
+;;;; SEARCH-MARK-RANGES says which stored characters a title's match
+;;;; covers.
 ;;;;
 ;;;; SEARCH-MATCH runs for every record a search reads, so it folds into one
 ;;;; buffer per search (FOLD-INTO-BUFFER) and compares an identifier as it
@@ -277,6 +279,12 @@ SEARCH-MATCH, SEARCH-ENTITY or SEARCH-AMONG as identifiers."
           :documentation "The folded words of what was typed.")
    (identifier :initarg :identifier :reader search-query-identifier :type string
                :documentation "What was typed as an identifier is compared.")
+   (faults :initarg :faults :reader search-query-faults :type list
+           :documentation "For each of WORDS, the faults it is forgiven when found nearly:
+0, 1 or 2 (NEAR-FAULTS).")
+   (forgiving :initarg :forgiving :reader search-query-forgiving :type unsigned-byte
+              :documentation "The bits of WORDS, the first word's the lowest, that may be found
+nearly.")
    (starts :initarg :starts :reader search-query-starts :type simple-bit-vector
            :documentation "For each character up to Latin Extended-B, 1 when its fold holds
 the first character of a word: a text with none of them holds no word.")
@@ -291,10 +299,30 @@ the first character of a word: a text with none of them holds no word.")
     (flet ((folded (string) (coerce string 'folded-string)))
       (let ((words (mapcar #'folded (remove "" (uiop:split-string folded :separator " ")
                                             :test #'string=))))
-        (make-instance 'search-query :text text :folded (folded folded) :words words
-                                     :identifier (folded (search-identifier-key text))
-                                     :starts (word-starts-table words)
-                                     :kinds kinds)))))
+        (let ((faults (mapcar #'near-faults words)))
+          (make-instance 'search-query :text text :folded (folded folded) :words words
+                                       :faults faults
+                                       :forgiving (loop for each in faults
+                                                        for bit from 0
+                                                        when (plusp each) sum (ash 1 bit))
+                                       :identifier (folded (search-identifier-key text))
+                                       :starts (word-starts-table words)
+                                       :kinds kinds))))))
+
+(defparameter +near-shortest+ 6
+  "The fewest letters a word typed has to be found nearly (spec/ui.md 6.4,
+«Near matches»).")
+
+(defparameter +near-two-faults+ 9
+  "The fewest letters a word typed has to be forgiven two faults.")
+
+(defun near-faults (word)
+  "The faults WORD, a folded word typed, is forgiven when it is found nearly:
+0 unless it is letters alone, +NEAR-SHORTEST+ or more of them; 2 from
++NEAR-TWO-FAULTS+ letters; else 1."
+  (cond ((or (< (length word) +near-shortest+) (notevery #'alpha-char-p word)) 0)
+        ((< (length word) +near-two-faults+) 1)
+        (t 2)))
 
 (defun word-starts-table (words)
   "For each character up to Latin Extended-B, 1 when its fold holds the first
@@ -365,6 +393,94 @@ a character that is not a letter or a digit."
   "True when WORD is in FOLDED."
   (and (folded-search word folded (length folded)) t))
 
+(defun start-within-p (word faults text start end)
+  "True when a start of TEXT's characters from START below END, of one
+character or more, is within FAULTS of WORD: a letter missing, one extra,
+one wrong or two neighbours swapped each one fault (the optimal string
+alignment distance), worked out a row of WORD's characters at a time."
+  (declare (optimize (speed 3) (safety 1))
+           (type folded-string word text) (type fixnum start end) (type (integer 0 2) faults))
+  (let* ((n (length word))
+         (m (min (- end start) (+ n faults)))
+         (width (1+ m))
+         ;; Any count above FAULTS is as good as another: counts stop there.
+         (over (1+ faults)))
+    (declare (type fixnum n m width over))
+    ;; ROW holds the faults between WORD's first I characters and each
+    ;; start of the text, ABOVE the row before it and BEFORE the one before
+    ;; that, which a swap reaches back to.  Only the cells within FAULTS of
+    ;; the diagonal can be within FAULTS; the others stay at OVER.
+    (let ((before (make-array width :element-type 'fixnum :initial-element over))
+          (above (make-array width :element-type 'fixnum :initial-element over))
+          (row (make-array width :element-type 'fixnum :initial-element over))
+          (above-least 0))
+      (declare (dynamic-extent before above row) (type fixnum above-least)
+               (type (simple-array fixnum (*)) before above row))
+      (loop for j of-type fixnum from 0 to (min m faults) do (setf (aref above j) j))
+      (loop for i of-type fixnum from 1 to n
+            for typed = (schar word (1- i))
+            do (fill row over)
+               (setf (aref row 0) (min i over))
+               (let ((least (aref row 0)))
+                 (declare (type fixnum least))
+                 (loop for j of-type fixnum from (max 1 (- i faults)) to (min m (+ i faults))
+                       for stored = (schar text (+ start j -1))
+                       do (let ((v (min (1+ (aref above j)) (1+ (aref row (1- j)))
+                                        (+ (aref above (1- j)) (if (char= typed stored) 0 1)))))
+                            (declare (type fixnum v))
+                            (when (and (> i 1) (> j 1)
+                                       (char= typed (schar text (+ start j -2)))
+                                       (char= (schar word (- i 2)) stored))
+                              (setf v (min v (1+ (aref before (- j 2))))))
+                            (setf v (min v over)
+                                  (aref row j) v
+                                  least (min least v))))
+                 ;; A row's least is at least the lesser of the row above's
+                 ;; and the one before's plus one: two rows over FAULTS
+                 ;; leave every later row over it.
+                 (when (and (> least faults) (> above-least faults))
+                   (return-from start-within-p nil))
+                 (setf above-least least))
+               (rotatef before above row))
+      (loop for j of-type fixnum from 1 to m thereis (<= (aref above j) faults)))))
+
+(declaim (inline folded-letter-p folded-alphanumeric-p))
+(defun folded-letter-p (char)
+  "ALPHA-CHAR-P for a character of a fold, quickly for ASCII, which a fold
+holds in lower case."
+  (let ((code (char-code char)))
+    (if (< code 128) (<= 97 code 122) (alpha-char-p char))))
+
+(defun folded-alphanumeric-p (char)
+  "ALPHANUMERICP for a character of a fold, quickly for ASCII."
+  (let ((code (char-code char)))
+    (if (< code 128) (or (<= 97 code 122) (<= 48 code 57)) (alphanumericp char))))
+
+(defun near-word-at (word faults text end)
+  "Where in TEXT, below END, WORD is found nearly (spec/ui.md 6.4, «Near
+matches»): the start and the end of the first word of TEXT, a run of letters
+where a word starts with WORD's first letter, whose run or a start of it is
+within FAULTS of WORD; NIL when there is none."
+  (declare (optimize (speed 3) (safety 1))
+           (type folded-string word text) (type fixnum end) (type (integer 0 2) faults))
+  (let ((first (schar word 0))
+        (shortest (- (length word) faults)))
+    (declare (type fixnum shortest))
+    (loop for at of-type fixnum from 0 below end
+          when (and (char= (schar text at) first)
+                    (or (zerop at) (not (folded-alphanumeric-p (schar text (1- at))))))
+            do (let ((run-end (loop for k of-type fixnum from at below end
+                                    while (folded-letter-p (schar text k))
+                                    finally (return k))))
+                 (declare (type fixnum run-end))
+                 (when (and (>= (- run-end at) shortest)
+                            (start-within-p word faults text at run-end))
+                   (return (values at run-end)))))))
+
+(defun word-near-p (word faults folded)
+  "True when WORD, forgiven FAULTS, is found nearly in FOLDED."
+  (and (plusp faults) (near-word-at word faults folded (length folded)) t))
+
 (defun identifier-score (query identifiers)
   "100 when QUERY is one of IDENTIFIERS, 90 when it holds a digit and starts
 one from three characters on, else NIL: the start of a number counts, as
@@ -380,6 +496,16 @@ of an order's or a phone's, and the start of an email does not."
                    (:start (when start-counts (setf best 90))))
             finally (return best)))))
 
+(defun near-names-score (query names)
+  "The score of a record found nearly by QUERY (spec/ui.md 6.4): 5 when each
+word is in NAMES, folded, exactly or nearly, else 1."
+  (if (every (lambda (word faults)
+               (some (lambda (name) (or (word-in-p word name) (word-near-p word faults name)))
+                     names))
+             (search-query-words query) (search-query-faults query))
+      5
+      1))
+
 (defun names-score (query names)
   "The score of QUERY's words, all found, by NAMES, folded: 80, 60, 45 or 25,
 or 10 when they are not all in the names."
@@ -394,30 +520,46 @@ or 10 when they are not all in the names."
             ((in-names-p #'word-in-p) 25)
             (t 10)))))
 
-(defun words-found-p (query names texts)
-  "True when every word of QUERY is in one of NAMES and TEXTS, folded: each
-folded into the search's buffer in turn, until every word is found, and a
-text with no character that folds to a word's first left unfolded."
+(defun words-found (query names texts)
+  "How the words of QUERY are found in NAMES and TEXTS, folded: :EXACT when
+every word is in one of them, :NEAR when every word is in one of them or
+found nearly in one (spec/ui.md 6.4, «Near matches»), else NIL.  Each text
+is folded into the search's buffer in turn, until every word is found, and
+a text with no character that folds to a word's first is left unfolded; in
+a text folded, a word not in it that may be found nearly is tried there."
   (let* ((words (search-query-words query))
+         (faults (search-query-faults query))
+         (forgiving (search-query-forgiving query))
          (starts (search-query-starts query))
-         (left (1- (ash 1 (length words)))))
-    (declare (type unsigned-byte left))
+         (left (1- (ash 1 (length words))))
+         (near 0))
+    (declare (type unsigned-byte left near forgiving))
     (flet ((look (text)
-             ;; Clears in LEFT the bit of each word TEXT holds.
+             ;; Clears in LEFT the bit of each word TEXT holds, and sets in
+             ;; NEAR the bit of each word left that it holds nearly.
              (when (and (stringp text) (plusp (length text)) (text-may-hold-p text starts))
                (let ((end (fold-into-buffer text))
                      (buffer *fold-buffer*))
                  (loop for word in words
                        for bit from 0
                        when (and (logbitp bit left) (folded-search word buffer end))
-                         do (setf left (logandc2 left (ash 1 bit))))))))
-      (dolist (text names) (look text) (when (zerop left) (return-from words-found-p t)))
-      (dolist (text texts) (look text) (when (zerop left) (return-from words-found-p t)))
-      nil)))
+                         do (setf left (logandc2 left (ash 1 bit))))
+                 (when (logtest left (logandc2 forgiving near))
+                   (loop for word in words
+                         for each in faults
+                         for bit from 0
+                         when (and (logbitp bit left) (logbitp bit forgiving)
+                                   (not (logbitp bit near))
+                                   (near-word-at word each buffer end))
+                           do (setf near (logior near (ash 1 bit)))))))))
+      (dolist (text names) (look text) (when (zerop left) (return-from words-found :exact)))
+      (dolist (text texts) (look text) (when (zerop left) (return-from words-found :exact)))
+      (and (zerop (logandc2 left near)) :near))))
 
 (defun search-match (query &key names texts identifiers)
   "The score of a record by the one rule (spec/ui.md 6.4), or NIL when it does
-not match QUERY, a SEARCH-QUERY.  NAMES are the texts that name the record,
+not match QUERY, a SEARCH-QUERY, and as a second value T when it was found
+nearly, else NIL.  NAMES are the texts that name the record,
 TEXTS the others it is found by, IDENTIFIERS the values found only whole or
 by their start (a number, an email, a phone number's SEARCH-PHONE-FORMS);
 each a list of strings, NILs and empty strings ignored.  The record matches
@@ -426,17 +568,26 @@ order; or when the whole query is one of its identifiers (100), or, holding a
 digit, their start from three characters on (90).  Otherwise the score is 80
 when a name is the query, 60 when one starts with it, 45 when every word
 starts a word of the names, 25 when every word is in the names, and 10 when
-some word is only in the texts."
+some word is only in the texts.  A record whose every word is found, but
+some only nearly (a word of six letters or more with a fault or two, at the
+start of a word of a name or text), and that no identifier finds, is found
+nearly: 5 when every word is found in the names, else 1."
   (check-type query search-query)
   (with-fold-buffer
     (let* ((words (search-query-words query))
-           (by-words (and words
-                          (words-found-p query names texts)
-                          (names-score query (loop for name in names
-                                                   when (and (stringp name) (plusp (length name)))
-                                                     collect (fold-to-string name)))))
+           (found (and words (words-found query names texts)))
+           (folded-names (and found
+                              (loop for name in names
+                                    when (and (stringp name) (plusp (length name)))
+                                      collect (fold-to-string name))))
+           (by-words (case found
+                       (:exact (names-score query folded-names))
+                       (:near (near-names-score query folded-names))))
            (by-identifier (identifier-score query identifiers)))
-      (if (and by-words by-identifier) (max by-words by-identifier) (or by-identifier by-words)))))
+      (cond (by-identifier
+             (values (if (eq found :exact) (max by-words by-identifier) by-identifier) nil))
+            (by-words (values by-words (eq found :near)))
+            (t nil)))))
 
 (defun identifier-mark-range (query text)
   "The (START . END) range of TEXT's own characters that QUERY covers when
@@ -469,31 +620,40 @@ code, when its national number is (SEARCH-PHONE-FORMS), else NIL."
                                (char/= (car (aref kept offset)) #\0)
                                (range-from offset (subseq key 1))))))))))))))
 
-(defun search-mark-ranges (query text &key identifier)
+(defun search-mark-ranges (query text &key identifier near)
   "Where in TEXT the words of QUERY are found, as a sorted list of (START .
 END) ranges of TEXT's own characters, overlapping ones joined: for each
 word its first match at the start of a word, else its first anywhere.
-With IDENTIFIER, a TEXT no word is found in, but which QUERY found as an
+With NEAR, for a record found nearly, a word not in TEXT that is found
+nearly in it covers the whole word it is found in, its first such.  With
+IDENTIFIER, a TEXT no word is found in, but which QUERY found as an
 identifier, has the one range the query covers."
-  (let ((ranges (word-mark-ranges query text)))
+  (let ((ranges (word-mark-ranges query text near)))
     (or ranges
         (let ((range (and identifier (identifier-mark-range query text))))
           (and range (list range))))))
 
-(defun word-mark-ranges (query text)
-  "SEARCH-MARK-RANGES by the words of QUERY alone."
+(defun word-mark-ranges (query text &optional near)
+  "SEARCH-MARK-RANGES by the words of QUERY alone, NEAR as it takes it."
   (multiple-value-bind (folded from) (search-fold text)
-    (let ((ranges '()))
-      (dolist (word (search-query-words query))
-        (let ((start (or (loop for at = (search word folded) then (search word folded :start2 (1+ at))
-                               while at
-                               when (word-start-p folded at) return at)
-                         (search word folded))))
-          (when start
-            (let ((end (+ start (length word))))
-              (push (cons (aref from start)
-                          (if (< end (length folded)) (aref from end) (length text)))
-                    ranges)))))
+    (let ((folded (coerce folded 'folded-string))
+          (ranges '()))
+      (flet ((cover (start end)
+               (push (cons (aref from start)
+                           (if (< end (length folded)) (aref from end) (length text)))
+                     ranges)))
+        (loop for word in (search-query-words query)
+              for faults in (search-query-faults query)
+              do (let ((start (or (loop for at = (search word folded)
+                                          then (search word folded :start2 (1+ at))
+                                        while at
+                                        when (word-start-p folded at) return at)
+                                  (search word folded))))
+                   (cond (start (cover start (+ start (length word))))
+                         ((and near (plusp faults))
+                          (multiple-value-bind (at end)
+                              (near-word-at word faults folded (length folded))
+                            (when at (cover at end))))))))
       (let ((joined '()))
         (dolist (range (sort ranges #'< :key #'car) (nreverse joined))
           (if (and joined (<= (car range) (cdr (first joined))))
@@ -524,17 +684,22 @@ identifier, has the one range the query covers."
             :type (or null string)
             :documentation "What the record was found by when neither its title nor its
 meta shows it, as SEARCH-EXCERPT cuts it, or NIL.")
+   (near :initarg :near :initform nil :reader search-result-near
+         :documentation "True when the rule found the record nearly: it comes after every
+result found exactly.")
    (module :initarg :module :initform nil :reader search-result-module
            :documentation "The module (or \"client\") whose method of SEARCH-RECORDS made it,
 for SEARCH-REPLACEMENTS; NIL when made outside one."))
   (:documentation "One thing a search found (spec/ui.md 6.4)."))
 
-(defun make-search-result (&key kind label icon title meta href score id matched)
+(defun make-search-result (&key kind label icon title meta href score id matched near)
   "A result of a search: KIND a kind's key, LABEL its word, ICON its icon,
 TITLE the record's name, META a list of short texts, HREF its page, SCORE
 what SEARCH-MATCH gave it and ID the record's id.  MATCHED, a text or NIL,
 is what the record was found by when neither TITLE nor META shows it; the
-result's line shows it (spec/ui.md 6.4, «Why it was found»)."
+result's line shows it (spec/ui.md 6.4, «Why it was found»).  NEAR, true
+when SEARCH-MATCH found the record nearly (its second value), orders it
+after every result found exactly."
   (check-type kind string)
   (check-type title string)
   (check-type href string)
@@ -542,7 +707,7 @@ result's line shows it (spec/ui.md 6.4, «Why it was found»)."
   (check-type matched (or null string))
   (make-instance 'search-result
                  :kind kind :label (princ-to-string (or label kind)) :icon (or icon :file)
-                 :title title :href href :score score :id id
+                 :title title :href href :score score :id id :near (and near t)
                  :module *protocol-method-module*
                  :matched (and matched (plusp (length matched)) matched)
                  :meta (loop for each in meta
@@ -558,15 +723,16 @@ result's line shows it (spec/ui.md 6.4, «Why it was found»)."
 (defparameter +search-excerpt-length+ 80
   "The most characters of a text a result shows as what it was found by.")
 
-(defun search-excerpt (query text)
+(defun search-excerpt (query text &key near)
   "TEXT as a result shows what it was found by (spec/ui.md 6.4): whole when
 it is +SEARCH-EXCERPT-LENGTH+ characters or less, else from the start of
-the word holding QUERY's first mark, «…» before it unless that is TEXT's
-start, at most +SEARCH-EXCERPT-LENGTH+ characters of it and «…» after it
-when it is cut."
+the word holding QUERY's first mark (a near one too, with NEAR), «…» before
+it unless that is TEXT's start, at most +SEARCH-EXCERPT-LENGTH+ characters
+of it and «…» after it when it is cut."
   (if (<= (length text) +search-excerpt-length+)
       text
-      (let* ((first-mark (car (first (search-mark-ranges query text :identifier t))))
+      (let* ((first-mark (car (first (search-mark-ranges query text :identifier t
+                                                                    :near near))))
              (start (if first-mark
                         (or (position-if (lambda (c) (search-space-p c)) text
                                          :end first-mark :from-end t)
@@ -577,17 +743,25 @@ when it is cut."
         (format nil "~:[~;…~]~a~:[~;…~]" (plusp from) (subseq text from to)
                 (< to (length text))))))
 
-(defun search-matched-text (query title meta candidates)
+(defun search-matched-text (query title meta candidates &key near)
   "What a result shows it was found by: NIL when TITLE or a text of META
 holds a mark of QUERY, else the excerpt of the first of CANDIDATES (its
-names, texts and identifiers) that holds one, or NIL."
+names, texts and identifiers) that holds one, or NIL.  With NEAR, for a
+record found nearly, near marks count too."
   (flet ((marked-p (text identifier)
            (and (stringp text) (plusp (length text))
-                (search-mark-ranges query text :identifier identifier))))
+                (search-mark-ranges query text :identifier identifier :near near))))
     (unless (or (marked-p title nil)
                 (some (lambda (text) (marked-p (princ-to-string text) t)) (remove nil meta)))
       (let ((found (find-if (lambda (text) (marked-p text t)) candidates)))
-        (and found (search-excerpt query found))))))
+        (and found (search-excerpt query found :near near))))))
+
+(defun exact-first-p (near-a score-a near-b score-b)
+  "True when a result found nearly or not (NEAR-A) with SCORE-A comes before
+one with NEAR-B and SCORE-B: found exactly first, then the better score."
+  (if (eq (and near-a t) (and near-b t))
+      (> score-a score-b)
+      (not near-a)))
 
 (defun row-id (row)
   "The id of ROW: a record's id, a JSON object's \"id\", a property list's :ID."
@@ -601,7 +775,8 @@ names, texts and identifiers) that holds one, or NIL."
                                      id (score #'identity))
   "The best results of QUERY among ROWS, at most +SEARCH-PER-KIND+, best first and
 the newest first among equals; NIL when QUERY does not want KIND (spec/ui.md
-6.4).  ROWS, in the order they were read, oldest first, are records, the JSON
+6.4), every one found exactly before any found nearly.  ROWS, in the order
+they were read, oldest first, are records, the JSON
 objects a DEFINE-QUERY of rows answers, or property lists.  KEEP, a function
 of a row, says which are searched.  TITLE, NAMES, TEXTS, IDENTIFIERS, META and
 HREF are functions of a row: TITLE its name, NAMES the texts that name it (its
@@ -616,21 +791,24 @@ was found by (SEARCH-MATCHED-TEXT)."
                (if names (funcall names row) (list (funcall title row)))))
         (let ((scored '()))
           (dolist (row rows)
-            (let ((match (and (or (null keep) (funcall keep row))
-                              (search-match query
-                                            :names (names-of row)
-                                            :texts (and texts (funcall texts row))
-                                            :identifiers (and identifiers
-                                                              (funcall identifiers row))))))
-              (when match (push (cons (funcall score match) row) scored))))
+            (when (or (null keep) (funcall keep row))
+              (multiple-value-bind (match near)
+                  (search-match query
+                                :names (names-of row)
+                                :texts (and texts (funcall texts row))
+                                :identifiers (and identifiers (funcall identifiers row)))
+                (when match (push (list (funcall score match) near row) scored)))))
           ;; SCORED holds the newest first: a stable sort keeps them so.
-          (loop for (points . row) in (stable-sort scored #'> :key #'car)
+          (loop for (points near row) in (stable-sort scored
+                                                      (lambda (a b)
+                                                        (exact-first-p (second a) (first a)
+                                                                       (second b) (first b))))
                 repeat +search-per-kind+
                 collect (let ((name (funcall title row))
                               (facts (and meta (funcall meta row))))
                           (make-search-result
                            :kind kind :label label :icon icon :title name :meta facts
-                           :href (funcall href row) :score points
+                           :href (funcall href row) :score points :near near
                            :id (if id (funcall id row) (row-id row))
                            :matched (search-matched-text
                                      query name facts
@@ -638,7 +816,8 @@ was found by (SEARCH-MATCHED-TEXT)."
                                                     (append (names-of row)
                                                             (and texts (funcall texts row))
                                                             (and identifiers
-                                                                 (funcall identifiers row)))))))))))))
+                                                                 (funcall identifiers row))))
+                                     :near near)))))))))
 
 (defun search-entity (query entity &key where fields keep kind label icon title names texts
                                        identifiers meta href (score #'identity))
@@ -666,7 +845,8 @@ record policies decide what the actor finds."
 
 (defun choice-ranked (query rows text-of names texts identifiers)
   "The ROWS QUERY matches by the rule, the best first and in ROWS' order
-among equals."
+among equals: every row found exactly first, since a row found nearly
+scores below every exact score."
   (with-fold-buffer
     (let ((scored
             (loop for row in rows
@@ -821,17 +1001,20 @@ besides Tun's own, says what APPLICATION's search finds."
                                       (list application (make-search-query "") nil)))))
 
 (defun search-order (results)
-  "RESULTS in the order a search shows them, best score first, then by kind in
-the order the kinds first came, then as they came: at most +SEARCH-PER-KIND+
-of a kind and +SEARCH-MOST+ in all."
+  "RESULTS in the order a search shows them, every one found exactly before
+any found nearly, best score first, then by kind in the order the kinds
+first came, then as they came: at most +SEARCH-PER-KIND+ of a kind and
++SEARCH-MOST+ in all."
   (let ((kinds '()) (counts (make-hash-table :test 'equal)))
     (dolist (result results)
       (pushnew (search-result-kind result) kinds :test #'string=))
     (setf kinds (reverse kinds))
     (let ((sorted (stable-sort (copy-list results)
                                (lambda (a b)
-                                 (or (> (search-result-score a) (search-result-score b))
-                                     (and (= (search-result-score a) (search-result-score b))
+                                 (or (exact-first-p (search-result-near a) (search-result-score a)
+                                                    (search-result-near b) (search-result-score b))
+                                     (and (eq (search-result-near a) (search-result-near b))
+                                          (= (search-result-score a) (search-result-score b))
                                           (< (position (search-result-kind a) kinds
                                                        :test #'string=)
                                              (position (search-result-kind b) kinds

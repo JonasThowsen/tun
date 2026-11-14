@@ -109,9 +109,13 @@ folded away, or as it is."
         (let ((other (random-word random :from 3 :to 9))
               (all (search-fold (format nil "~a ~a" (first names) (first texts)))))
           (unless (search (search-fold other) all)
-            (is (null (search-match (q (format nil "~a ~a" typed other))
-                                    :names names :texts texts))
-                "~s with ~s, in neither ~s nor ~s, finds nothing" typed other names texts)))))))
+            ;; A word of six letters or more may be found nearly (search-near).
+            (multiple-value-bind (score near)
+                (search-match (q (format nil "~a ~a" typed other)) :names names :texts texts)
+              (is (or (null score)
+                      (and near (plusp (tun.core::near-faults (search-fold other)))))
+                  "~s with ~s, in neither ~s nor ~s, finds nothing exactly" typed other names
+                  texts))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; The marks (criterion 3)
@@ -483,7 +487,9 @@ actor answering results, or NIL for none.")
 
 ;;; ------------------------------------------------------------------
 ;;; The plain rule, as core 2.32.0 had it, which the faster rule must
-;;; answer the same as (search-reads, criterion 4)
+;;; answer the same as (search-reads, criterion 4) for every record the
+;;; plain rule finds; one it does not find the rule may find nearly
+;;; (search-near), and only so.
 
 (defun plain-words (query)
   (remove "" (uiop:split-string (search-fold (search-query-text query)) :separator " ")
@@ -637,9 +643,14 @@ folded and not, letters beyond Latin, signs, digits and runs of spaces and «a»
         (dolist (text own)
           (is (string= (search-fold text) (tun.core::fold-to-string text))
               "the fold of ~s" text))
-        (is (eql (plain-search-match query :names names :texts texts :identifiers identifiers)
-                 (search-match query :names names :texts texts :identifiers identifiers))
-            "«~a» against ~s ~s ~s" typed names texts identifiers)
+        (let ((plain (plain-search-match query :names names :texts texts :identifiers identifiers)))
+          (multiple-value-bind (score near)
+              (search-match query :names names :texts texts :identifiers identifiers)
+            (is (if plain
+                    (and (eql plain score) (null near))
+                    (or (null score) (and near (< score 10))))
+                "«~a» against ~s ~s ~s: ~s, now ~s ~s" typed names texts identifiers plain score
+                near)))
         (unless (some #'tun.core::phone-national-start own)
           (incf compared)
           (dolist (text own)
@@ -665,16 +676,26 @@ folded and not, letters beyond Latin, signs, digits and runs of spaces and «a»
                                           (list (jget row "name") (jget row "text")
                                                 (jget row "number"))))
                       rows)
-          (is (equal (plain-search-results query rows :names names :texts texts
-                                                      :identifiers identifiers :title title :less 3)
-                     (mapcar (lambda (result)
-                               (list (search-result-title result) (search-result-score result)
-                                     (search-result-matched result)))
-                             (search-among query rows :kind "row" :title title :names names
-                                                      :texts texts :identifiers identifiers
-                                                      :href (constantly "/x")
-                                                      :score (lambda (score) (- score 3)))))
-              "«~a»" (search-query-text query)))))))
+          ;; The results found exactly are the plain rule's, in its order,
+          ;; and any found nearly come after them all.
+          (let* ((results (search-among query rows :kind "row" :title title :names names
+                                                   :texts texts :identifiers identifiers
+                                                   :href (constantly "/x")
+                                                   :score (lambda (score) (- score 3))))
+                 (exact (remove-if #'search-result-near results))
+                 (plain (plain-search-results query rows :names names :texts texts
+                                                         :identifiers identifiers :title title
+                                                         :less 3)))
+            (is (equal plain
+                       (mapcar (lambda (result)
+                                 (list (search-result-title result) (search-result-score result)
+                                       (search-result-matched result)))
+                               exact))
+                "«~a»" (search-query-text query))
+            (is (equal exact (subseq results 0 (length exact))) "«~a»: exact first"
+                (search-query-text query))
+            (is (or (= (length exact) (length plain)) (= 5 (length results)))
+                "«~a»: no exact result lost to a near one" (search-query-text query))))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Rows (criterion 3)
@@ -1063,7 +1084,19 @@ ran beside it (loops/search-reads.md, criterion 5).")
                         (search-as "employee:anna" "999 19 1999" "kinds" (jarr '("customer"))))
                  "~a: a customer by the start of its national number" label)
              (time-search-as-ms "employee:anna" "kunde")      ; once to warm up
-             (dolist (text '("kunde 1999" "nordmann" "julebord rigging" "zebra" "912 19"))
+             (is (equal '(t t t t t)
+                        (map 'list (lambda (item) (jget item "near"))
+                             (jget (call-ok "search" "employee:anna" "query" "nordmnan"
+                                            "kinds" (jarr '("customer")))
+                                   "items")))
+                 "~a: a misspelled word finds customers nearly" label)
+             (is (= 5 (length (search-as "employee:anna" "julebrod" "kinds" (jarr '("inquiry")))))
+                 "~a: and long texts" label)
+             ;; The last two are misspelled words found nearly in thousands
+             ;; of records (search-near): customers and their orders, and long
+             ;; texts.
+             (dolist (text '("kunde 1999" "nordmann" "julebord rigging" "zebra" "912 19"
+                             "nordmnan" "julebrod"))
                (let ((times (sort (loop repeat 9 collect (time-search-as-ms "employee:anna" text))
                                   #'<)))
                  (format t "~&;; search of every kind, 2000 of each, ~a, «~a»: ~{~,1f~^ ~} ms~%"

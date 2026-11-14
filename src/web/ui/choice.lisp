@@ -375,7 +375,7 @@ clear button, opening upward); WAI-ARIA combobox and listbox; GOV.UK select")
 // Choosing one record among many by typing (spec/ui.md 6, choice-input):
 // a select carries the value; once this runs it is hidden and set from a
 // list of options a person narrows by typing.  Given options narrow here
-// by the search's fold; asked ones come from the server (htmx asks after a
+// by the search's rule; asked ones come from the server (htmx asks after a
 // pause), and only the answer for what the field holds now is shown.  The
 // same parts serve a list's :choice filter (toolbar.lisp), found by
 // data-tun-choice-* attributes.  A browser without popovers keeps the
@@ -398,13 +398,6 @@ const choiceAsked = (parts) => parts.field.hasAttribute('hx-get');
 const choicePopover = (parts) => parts.field.closest('[popover]');
 const choiceText = (option) => option.querySelector('.tun-choice-options-text')?.textContent ?? '';
 const choiceWaiting = new WeakMap();
-
-// The search's fold (spec/ui.md 6.4): case, marks and the letters it
-// spells otherwise, a run of a as one a, any run of spaces as one.
-const choiceLetters = { 'ø': 'o', 'æ': 'ae', 'œ': 'oe', 'ß': 'ss', 'ł': 'l', 'đ': 'd' };
-const choiceFold = (text) => text.toLowerCase().normalize('NFD').replace(/\\p{M}/gu, '')
-  .replace(/[øæœßłđ]/g, (letter) => choiceLetters[letter]).replace(/a+/g, 'a')
-  .replace(/\\s+/g, ' ').trim();
 
 // The list's id is the one the field controls, and each option's follows
 // it, so an answer from the server needs none of its own.
@@ -431,16 +424,33 @@ const choiceActive = (parts) => choiceShown(parts)
 const choiceChosen = (parts) => choiceShown(parts)
   .find((option) => option.dataset.value === parts.select.value && parts.select.value !== '');
 
-// Given options: every word typed, folded, is a part of the option's text.
+// Given options, by the search's rule (tunSearchFinds, spec/ui.md 6.4):
+// every word typed, folded, a part of the option's text or found nearly
+// at a word's start; those found exactly first, then those found nearly,
+// each in the order given, which an empty text shows again.
+const choiceGiven = new WeakMap();
 const choiceNarrow = (parts) => {
-  const words = choiceFold(parts.field.value).split(' ').filter(Boolean);
-  for (const option of choiceOptions(parts)) {
-    const text = choiceFold(choiceText(option));
-    option.hidden = !words.every((word) => text.includes(word));
+  const list = choiceList(parts);
+  if (!list) return;
+  if (!choiceGiven.has(list)) choiceGiven.set(list, choiceOptions(parts));
+  const given = choiceGiven.get(list);
+  const typed = parts.field.value;
+  const blank = tunSearchFold(typed) === '';
+  const found = new Map(given.map((option) => [option,
+                                               blank ? 'exact' : tunSearchFinds(typed, choiceText(option))]));
+  const order = [...given.filter((option) => found.get(option) === 'exact'),
+                 ...given.filter((option) => found.get(option) === 'near'),
+                 ...given.filter((option) => found.get(option) === null)];
+  const now = choiceOptions(parts);
+  if (order.some((option, n) => now[n] !== option)) {
+    const after = list.querySelector('.tun-choice-options-more, .tun-choice-options-none');
+    for (const option of order) list.insertBefore(option, after);
+    choiceName(parts);
   }
-  const none = choiceList(parts)?.querySelector('.tun-choice-options-none');
+  for (const option of given) option.hidden = found.get(option) === null;
+  const none = list.querySelector('.tun-choice-options-none');
   if (none) none.hidden = choiceShown(parts).length > 0;
-  choiceActivate(parts, words.length > 0 ? choiceShown(parts)[0] : choiceChosen(parts));
+  choiceActivate(parts, blank ? choiceChosen(parts) : choiceShown(parts)[0]);
 };
 
 // The field's button shows the chosen text, else the placeholder.
@@ -679,7 +689,8 @@ document.addEventListener('htmx:after:swap', (event) => {
                    :options '(("cus_1" "Nordvik Bakery Ltd") ("cus_2" "Hansen Plumbing")
                               ("cus_3" "Fjord Events") ("cus_4" "Bjørn Åsen")
                               ("cus_5" "Kari Hansen") ("cus_6" "Café Øst")
-                              ("cus_7" "Tromsø Bicycle Workshop")))))
+                              ("cus_7" "Tromsø Bicycle Workshop")
+                              ("cus_8" "Nordvika Marina")))))
    (("Asked for as one types" :layout :stack)
     (choice-input (:label "Customer" :name "customer_id" :id "specimen-asked"
                    :source "/ui/choice-input/options")))

@@ -594,9 +594,13 @@ its results to `(call-next-method)`'s, so the modules' stay:
 `search-entity` reads the entity's records in the caller's transaction,
 so the record policies decide what ACTOR finds, scores each by the one
 rule (`search-match`: folded, every word in any order, identifiers whole
-or by their start) and answers the five best. A contributor that builds
-its results itself calls `search-match` for the score and
-`make-search-result` for each result. A result whose page ACTOR cannot
+or by their start, a word of six letters or more typed with a fault or
+two found nearly at a word's start) and answers the five best, every
+record found exactly before any found nearly. A contributor that builds
+its results itself calls `search-match` for the score, whose second
+value is true for a record found nearly, and `make-search-result` for
+each result, passing that value as `:near` so the result comes after
+every exact one. A result whose page ACTOR cannot
 open is dropped. The same search is the page `/search?q=`, the dialog's
 results and the agents' `search` tool. A result whose title holds no
 match shows why it was found in the line under it: its `:meta` marked,

@@ -9,11 +9,14 @@
 ;;; ------------------------------------------------------------------
 ;;; search-results
 
-(defun marked-text (query text &key identifier)
+(defun marked-text (query text &key identifier near)
   "TEXT as markup, the stored characters QUERY's words matched in <mark>;
-with IDENTIFIER, those it covers as an identifier when no word matched."
+with IDENTIFIER, those it covers as an identifier when no word matched;
+with NEAR, for a result found nearly, the whole word a word was found
+nearly in."
   (let ((at 0) (parts '()))
-    (loop for (start . end) in (search-mark-ranges query text :identifier identifier)
+    (loop for (start . end) in (search-mark-ranges query text :identifier identifier
+                                                              :near near)
           do (when (> start at) (push (subseq text at start) parts))
              (push `(:mark ,(subseq text start end)) parts)
              (setf at end))
@@ -25,14 +28,15 @@ with IDENTIFIER, those it covers as an identifier when no word matched."
 by (MATCHED) when it has that, then its META; when the title holds no mark,
 the matches in MATCHED and META are marked (spec/ui.md 6.4, «Why it was
 found»)."
-  (let ((mark (null (search-mark-ranges query (getf item :title))))
+  (let ((mark (null (search-mark-ranges query (getf item :title) :near (getf item :near))))
         (parts (remove-if (lambda (text) (zerop (length text)))
                           (mapcar #'princ-to-string
                                   (remove nil (cons (getf item :matched) (getf item :meta)))))))
     (cons (princ-to-string (getf item :label))
           (loop for part in parts
                 append (cons " · " (if mark
-                                       (marked-text query part :identifier t)
+                                       (marked-text query part :identifier t
+                                                               :near (getf item :near))
                                        (list part)))))))
 
 (defun search-row (query item index listbox)
@@ -46,7 +50,7 @@ found»)."
                    ,(icon* (list :name (or (getf item :icon) :file))))
             (:span (:@ :class "tun-search-results-text")
                    (:span (:@ :class "tun-search-results-title")
-                          ,@(marked-text query (getf item :title)))
+                          ,@(marked-text query (getf item :title) :near (getf item :near)))
                    (:span (:@ :class "tun-search-results-meta")
                           ,@(search-meta-line query item))))))
 
@@ -55,7 +59,8 @@ found»)."
   (:doc "What the application's one search found for QUERY: a list of links, each with its
 kind's icon, its title with what matched marked, and a line that starts with its kind. ITEMS
 are plists of :kind, :label (the kind's word), :icon, :title, :meta (a list of texts),
-:matched (what it was found by, when neither the title nor META shows it) and :href, best first.
+:matched (what it was found by, when neither the title nor META shows it), :near (true when it
+was found nearly, by a word typed with a fault) and :href, best first.
 A result whose title holds no match has its match marked in the line under it. Under two
 characters it is empty; with none it says so. LISTBOX makes it the list a search dialog's
 field moves through.")
@@ -160,6 +165,11 @@ field moves through.")
                                :title "Fjord Events" :matched "Exhibition hall 2, Storgata 12"
                                :meta ("Confirmed" "21 Nov 2026")
                                :href "/orders/ord_2")))))
+   ("A word typed wrong: «catring» finds «Catering» nearly, the whole word marked"
+    (search-results (:query "catring"
+                     :items '((:kind "customer" :label "Customer" :icon :users
+                               :title "Berg Catering" :meta ("mat@berg.example")
+                               :href "/customers/cus_4" :near t)))))
    ("Nothing found"
     (search-results (:query "zebra" :items '()))))
   (let* ((text (or query ""))
