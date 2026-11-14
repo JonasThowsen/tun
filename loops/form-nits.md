@@ -2,7 +2,7 @@
 
 - loop: form-nits
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 97ade0c28aa74ef2e1155c7c593b058646539fae
 - item: sak_j38933ycc05qwa47
 - estimate: 1h30m 2h30m 5h
@@ -224,6 +224,19 @@ Before (`origin/main`, 2.35.0) in `~/coding/tun-wt/form-nits-shots/before/`
 alert naming its fields at 390 and 1280 px, light and dark, in English
 and Norwegian, from `form-nits.py`).
 
+## Actuals
+
+The clock counts 48 hours; about 110 minutes of them were work: 61 from
+the start to gate B's approval (2026-11-12 19:13–20:14), and the client
+suites, the run of ferdig against the base and the ship on 2026-11-14.
+The loop stood still between, after gate B, its client runs waiting on
+a check that never cleared.
+
+
+```json
+{"loop":"form-nits","title":"A form's alert names fields by their labels, Enter saves without scripts, and a module shapes its records' choice","repository":"tun","mode":"reviewed","stage":"done","item":"sak_j38933ycc05qwa47","tags":["kind:ui","core","module:ui"],"like":["tun/generated-choice"],"started":"2026-11-12 19:13","ended":"2026-11-14 19:17","minutes":{"total":2884,"waiting_person":0,"waiting_reviewer":3,"working":2881,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":150,"worst":300,"at":"brief"},"latest_estimate":{"best":90,"likely":150,"worst":300,"at":"brief"},"within_estimate":false,"ratio":19.23,"verify":{"rounds":2,"failed":1},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-12 19:13  started, reviewed
@@ -313,3 +326,4 @@ and Norwegian, from `form-nits.py`).
   - It is readable, with no debugging left over. Comments say what and why, without history.
   - The spec, `docs/client-api.md` and the deferred list in §10 move with the behaviour.
   - `offered-choice-text` and `record-choice-text` keep "accepted when posted" apart from "named on a page", which is the right line to draw.
+- 2026-11-14 19:17  finished at tun ae817a40
