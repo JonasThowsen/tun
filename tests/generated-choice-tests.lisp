@@ -171,7 +171,7 @@
                 "an admin, who reaches it, sees its name"))))))
 
 ;;; ------------------------------------------------------------------
-;;; One read of two fields (criterion 3)
+;;; One read of the fields the shape names (criterion 3)
 
 (test the-choices-are-one-read-of-the-names
   (with-test-server (port)
@@ -182,10 +182,20 @@
            (progn
              (setf *search-reads* '())
              (web-request port "/choices/customer?q=bjorn" :jar jar :headers +htmx-part+))
-        (let ((reads (remove 'tun.customers:customer *search-reads* :key #'first :test-not #'eq)))
+        (let ((reads (remove 'tun.customers:customer *search-reads* :key #'first :test-not #'eq))
+              (record (find-if (lambda (tool)
+                                 (and (stringp tool)
+                                      (string-prefix-p "web:GET /choices/customer" tool)))
+                               (finished-requests) :key #'request-tool)))
           (setf *search-reads* :off)
           (is (= 1 (length reads)) "one read of the customers: ~s" reads)
-          (is (equal '("name") (third (first reads))) "their names alone"))))))
+          ;; The customers module's shape (record-choice) names the fields.
+          (is (equal '("name" "email" "phone" "erased") (third (first reads)))
+              "the fields the customers module's shape names alone")
+          (is (not (null record)) "the request is traced")
+          (is (notany (lambda (step) (eq :operation (trace-step-kind step)))
+                      (request-steps record))
+              "no operation is called"))))))
 
 ;;; ------------------------------------------------------------------
 ;;; Fast (criterion 4)

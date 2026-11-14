@@ -55,8 +55,10 @@
    "Flere valg")
   ("Row"
    "Rad")
-  ("~a in ~(~a~)"
-   "~a i ~(~a~)")
+  ("Row ~d"
+   "Rad ~d")
+  ("must be chosen"
+   "må velges")
   ("There is a problem"
    "For å gå videre må du rette opp følgende feil:")
   ("No ~(~a~) yet"

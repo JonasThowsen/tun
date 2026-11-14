@@ -116,7 +116,7 @@ the listed symbols (the same symbol objects, not copies)."
    ;; and the one rule they match by (spec/ui.md 6.4)
    #:search-records #:search-query #:search-query-text #:search-query-kinds
    #:search-query-wants-p #:search-match #:search-result #:make-search-result #:search-entity
-   #:search-among #:search-replacements #:search-phone-forms
+   #:search-among #:search-replacements #:search-phone-forms #:record-choice
    ;; choosing one record among many by typing (spec/ui.md 6, choice-input)
    #:choice-matches #:read-choice)
   ;; Writes, guarded: an extension's own fields and records only

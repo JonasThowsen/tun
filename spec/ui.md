@@ -35,7 +35,10 @@ of a result found by its second line, and the specimen's theme switch
 choice, `query-address`, and the specimen's options (§6, §7, §8, §9),
 2026-11-12, core 2.34.0; the generated pages choosing a record by
 typing, `/choices/ENTITY`, and the specimen's choice answered by
-`choice-answer` (§7, §8, §9), 2026-11-12, core 2.35.0.
+`choice-answer` (§7, §8, §9), 2026-11-12, core 2.35.0; a form's alert
+naming its fields by their labels, Enter saving in a form with an asked
+choice, «must be chosen», and `record-choice`, a module's shape of its
+records' choice (§2.1, §6, §8, §9), 2026-11-12, core 2.36.0.
 How every Tun page looks and behaves: the tokens, the components that
 are built from them, the specimen that shows them, and the rules a
 component follows. The
@@ -146,8 +149,8 @@ application of 2026-11-10 and 2026-11-11; the token names stay shadcn's.
   that is a link, a table row that is a link, a `nav-list` entry, a tab,
   a `dropdown-menu` item, a `combobox` option, a sortable header, a
   pagination link, an accordion's summary, a link (`link`, a
-  breadcrumb, a summary list's action, the links of `error-summary` and
-  `form-actions`), a `board` card and a `graph` node that are links, and
+  breadcrumb, a summary list's action, the links of `error-summary`, of
+  an `alert` and of `form-actions`), a `board` card and a `graph` node that are links, and
   an attachment's tile. Every component with a style under a pointer has
   one while pressed, but `tooltip`, which shows on hover. A checkbox, a
   radio, a switch and a field answer with the browser's own change of
@@ -693,6 +696,20 @@ value, an id, under NAME, showing the chosen record's text:
   «TEXT»»). Where
   scripts run the find field and its button are hidden and taken out of
   the form (a `form` naming no form), so they never post.
+- **Enter saves.** A browser presses a form's first submit button when
+  Enter is pressed in one of its text fields, and the «Find» button
+  stands before the form's own. So right before it the field puts a
+  submit button of its own with no name, out of sight (clipped to
+  nothing, as a visually hidden label is, since some browsers do not
+  press a default button that is `display: none`), out of the tab order
+  (`tabindex="-1"`) and away from a screen reader (`aria-hidden`): it is
+  the form's first, and Enter in any text field of the form, the find
+  field too, posts the form as its own submit button does when it has
+  no name, so it saves. Pressing «Find» still finds. Where scripts run
+  it is taken out of the form with the find step, so Enter is as it was.
+  A form whose submit button sends a name or a `formaction` of its own
+  does not get that name from Enter in a form with an asked choice; such
+  a form puts a submit button of its own first.
 - `:hint`, `:error`, `:required`, `:optional`, `:disabled`,
   `:label-hidden` and `:id` are `select`'s.
 
@@ -2149,7 +2166,19 @@ form of `field`s with an `error-summary`, a confirmation is a
   shown in the page, where the browser's own bubble is easy to miss on a
   phone. A refused submission keeps what was typed, puts each field's
   error at the field and lists them in an `error-summary` that links to
-  them.
+  them, each named by its label; a field of a row of a list of records
+  by its row's legend and its label, «Order line 1: Quantity must be at
+  least 1» («Ordrelinje 1: Antall …»). A choice left empty (a record's
+  `choice-input`, an enum's `select` or `radios`) is refused «must be
+  chosen» («må velges») where the operation said «must be filled in»
+  («må fylles ut»): «Customer must be chosen» in the summary and «Must
+  be chosen» at the field. The kernel refuses an id input given as
+  blank text (`""`, or blanks alone) with «must be filled in» («må fylles
+  ut»), not «must be a valid identifier», so a page of a client's that
+  posts an empty choice reads so too. `""` is refused as before,
+  required or not, only in other words, and blanks alone, which passed
+  as an id before, are refused the same way: an optional id with no
+  value is left out or given as null, and blank text is no id.
 - **Choosing a record.** An input that is the id of a record of another
   entity (`(id customer)`), in a generated form and as a generated
   list's filter, chooses among that entity's records by typing, under
@@ -2173,12 +2202,56 @@ form of `field`s with an `error-summary`, a confirmation is a
      page. A choice finds a record
      by the search's rule (§6.4) with that text as its one name and its
      id as its one identifier: «bjorn ase» finds «Bjørn Åsen», and a
-     pasted id its record; no other field is read or searched. The
+     pasted id its record; no other field is read or searched, unless a
+     module shapes the choice (below). The
      records come in the order of their names (the store's order of the
-     `name` field), or as they were made when there is none. Tun has no
-     seam for a module to give an entity another text or more fields to
-     be found by (§9); a module or client that wants one writes its own
-     page with `choice-input` and an address of its own that answers with
+     `name` field), or as they were made when there is none.
+
+     **A module shapes the choice.** `(record-choice APPLICATION
+     ENTITY)`, a generic function in `TUN` (ENTITY an entity's class
+     name), answers how ENTITY's records are named, found and offered,
+     as a property list of what it changes: `:fields`, the JSON names of
+     every field the other keys' functions read; `:text`, a function of a
+     record that answers its text (a blank text gives its id); `:names`,
+     `:texts` and `:identifiers`, functions of a record as `search-match`
+     takes them (by default the text as its one name and nothing more),
+     its id always one of its identifiers too; `:keep`, a function of a
+     record, true for one to offer; and `:order-by`, as `select` takes
+     it. Tun's own method, the least specific, answers NIL: the `name`,
+     else the id, as above. A module specialises it on its mixin, an EQL
+     specialiser for its entity, and a client on its application class
+     or a feature, which wins over a module's; a method answers its keys
+     before `(call-next-method)`'s, `(list* :text #'display-name
+     (call-next-method))`, so a key it does not give stays the less
+     specific method's. A method runs in the request's read transaction
+     with `*actor*` bound. The records are read once a request in one
+     `select` of their id and `:fields` (4). A record `:keep` does not
+     keep is not offered (not among the options, not found, not counted
+     by the rule of 30, and its posted id is refused as one that is none
+     of the choices), but where a page names it (a cell, a record's
+     details) it is named by its text, so an order of a customer erased
+     since shows the customer's name. The generated pages have no form
+     that edits a record (their forms create one, and a record's actions
+     take no inputs), so a kept-out record is never the value a form of
+     theirs already had; a page of a client's that edits one and checks
+     the posted id with `read-choice` gives the record's current value
+     among its options, so saving it unchanged is accepted. Tun's
+     customers module names a customer by its `name`, finds it by its
+     email and its phone in the forms `search-phone-forms` gives too, as
+     its search does, and keeps an erased customer out:
+
+     ```lisp
+     (defmethod record-choice ((app customers-module) (entity (eql 'customer)))
+       (list* :fields '("name" "email" "phone" "erased")
+              :identifiers (lambda (c) (list* (customer-email c)
+                                              (search-phone-forms (customer-phone c))))
+              :keep (lambda (c) (not (customer-erased c)))
+              (call-next-method)))
+     ```
+
+     A module or client that wants a choice no record of one entity
+     answers (one among several entities' records) still writes its own
+     page with `choice-input` and an address that answers with
      `choice-answer`.
   3. **Few or many.** When the person may choose among at most 30
      records, the field and the filter hold all of them with the page
@@ -2195,9 +2268,11 @@ form of `field`s with an `error-summary`, a confirmation is a
      A person whose role the list operation's policy does not admit gets
      403; an entity that does not exist or has no list operation, a path
      without ENTITY or with more, and a POST get 404. It reads the
-     records once, their id and `name` alone (`select`'s `:fields`,
-     `store.md` §2, item 11); with 2000 records it answers within 100 ms
-     on the server, in memory and on Postgres.
+     records once, their id and `name` alone, or their id and the
+     `:fields` of `record-choice` (`select`'s `:fields`, `store.md` §2,
+     item 11); with 2000 records it answers within 100 ms on the server,
+     in memory and on Postgres, the customers module's four fields
+     included.
   5. **The form.** The field is a `choice-input` named as the input,
      required as it is. Without JavaScript a many-records field has its
      «Find» step: the form is shown again with the matches in its select
@@ -2206,7 +2281,8 @@ form of `field`s with an `error-summary`, a confirmation is a
      records too (an order's lines), is checked with `read-choice`
      against the records the person may choose: an id that is none of
      them (one that does not exist, or one a record policy hides from
-     the person) is refused at its field, «must be one of the choices»
+     the person, or one `record-choice` keeps out) is refused at its
+     field, «must be one of the choices»
      («må være et av valgene»), in the form's `error-summary`, with
      status 422, and the operation is not called.
   6. **The list's filter.** A `:choice` filter labelled as the input,
@@ -2259,7 +2335,35 @@ form of `field`s with an `error-summary`, a confirmation is a
      person, through the execution path. It returns the result, or the
      error document and its code; `error-alert` shows that document.
      An operation error the page does not catch is shown as that alert,
-     with the code's status. `timestamp-text`, `date-text`,
+     with the code's status. `(error-alert JSON :fields FIELDS)`, FIELDS
+     the form's fields as the components make them (the nodes the page
+     puts in its form), names each of the document's field errors by the
+     label the form shows for that field, in the page's language, and
+     makes its line a link to the field's control (`#ID`, as
+     `error-summary`'s links are: where scripts run the focus goes to the
+     control with its label in sight, and without them the browser goes
+     to it). The field of an error is the one whose control is posted
+     under its path: `starts_on` names the control `starts_on`, a row's
+     `lines[2].unit_price` or `lines.2.unit_price` the control
+     `lines[2][unit_price]`; its label is its `field`'s, without
+     «(optional)», and that of `radios` or `checkboxes` their legend. A
+     row's field is named by its row and its label: «Line 3: Unit price
+     must be at least 0», «Line 3» the legend of the `fieldset` the
+     control stands in, else «Row 3» («Rad 3»). An error whose path no
+     control in FIELDS is posted under is written as without FIELDS: its
+     path and its message, with no link. Without FIELDS the alert is as
+     it was. A page that builds its fields first passes them to both:
+
+     ```lisp
+     (let ((fields (order-fields values errors)))
+       `(:form (:@ :method "post" :action "/orders/new")
+               ,(apply #'ui:stack* (list :gap :lg)
+                       (append (when problem (list (error-alert problem :fields fields)))
+                               fields
+                               (list (ui:form-actions () (ui:button (:type "submit") "Save")))))))
+     ```
+
+     `timestamp-text`, `date-text`,
      `money-text` and `number-text` write a value as the generated pages
      do (`i18n.md` §6.2). `(query-address PATH PAIRS)` writes an
      address: PATH and PAIRS, `(KEY . VALUE)` conses, as its query, each
@@ -2413,11 +2517,8 @@ form of `field`s with an `error-summary`, a confirmation is a
 - Charts other than one line over time: several series in one chart
   (comparing shares, a moving average), bars, areas, stacks, scatter, and
   a chart's own time range control.
-- A seam for a module to give the generated pages' choice of a record
-  (§8, «Choosing a record») another text than its name, or more of its
-  fields to find it by (an email, a number), or to keep some records out
-  of it (an erased customer); and a choice among more than one entity's
-  records.
+- A choice among more than one entity's records in the generated pages
+  (§8, «Choosing a record»).
 - Near matches in a choice for a word typed wrong (as in the search),
   and muted text inside a table cell: a cell holds its value in the text
   colour (a quieter fact is a column of its own, or `:narrow nil`).
@@ -2874,7 +2975,8 @@ form of `field`s with an `error-summary`, a confirmation is a
   `/choices/ENTITY`'s fragment and page, its order, LIMIT and count, its
   403, 404s and POST; on Postgres the record policies deciding what it
   answers, what a form's field may post and which records a cell names;
-  one read of the id and `name` alone; its time with 2000 records in
+  one read of the id and the customers module's fields, no operation
+  called; its time with 2000 records in
   memory and on Postgres, and what the names add to the orders' pages;
   a record's text in a table and on a record's page past the first 100,
   and an id for a record the person may not choose;
@@ -2896,5 +2998,23 @@ form of `field`s with an `error-summary`, a confirmation is a
   `generated-choice-few.py`, with the default scenario's four
   customers: every one in the field and the filter, narrowed in the
   browser with no request.
+- `tests/form-nits-tests.lisp` (§6 `choice-input`, §8 «Forms»,
+  «Choosing a record», «A client's pages»): `error-alert` with FIELDS
+  naming each field error by its field's label or legend, linked to its
+  control, a row's by its row, in English and Norwegian, and an unknown
+  path and an alert without FIELDS as before; the generated summary's
+  row wording and «must be chosen»; the kernel's «must be filled in» for
+  a blank id; the asked choice's default submit button and none for a
+  given one; `record-choice`: the customers module's email, phone and
+  erased customer, in `/choices`, the few options, the posted id and
+  the names a page shows, and a more specific method's keys winning
+  over the module's.
+- `checks/showcase/checks/form-nits.py`, on «New item» and the
+  generated «Meetings» with 405 customers: the alert of «New item»
+  naming «Title» and «Reported on» by their labels in English and
+  Norwegian, at 390 and 1280 px, its links going to their fields with
+  and without JavaScript; with JavaScript off, Enter in the title of
+  either form saving it, not finding, and «Find» still finding; a
+  generated form's empty customer «Customer must be chosen».
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

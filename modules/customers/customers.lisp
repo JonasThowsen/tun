@@ -18,7 +18,7 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module customers
-  (:core ">= 2.0.0" "< 3.0")
+  (:core ">= 2.36.0" "< 3.0")
   (:on-open repair-customer-receipts)
   (:documentation "Customers: name, email, phone, notes, completed orders."))
 
@@ -204,6 +204,17 @@ the count is the number of orders currently completed (README §3)."
                                  (list (customer-email customer) (customer-phone customer)))
                          :href (lambda (customer) (format nil "/customers/~a" (entity-id customer))))
           (call-next-method)))
+
+;; spec/ui.md 8, «Choosing a record»: a customer is chosen by its name and
+;; found by its email and phone as the search finds it; an erased customer
+;; is not offered, though a record that refers to it still names it.
+(defmethod record-choice ((application customers-module) (entity (eql 'customer)))
+  (list* :fields '("name" "email" "phone" "erased")
+         :identifiers (lambda (customer)
+                        (list* (customer-email customer)
+                               (search-phone-forms (customer-phone customer))))
+         :keep (lambda (customer) (not (customer-erased customer)))
+         (call-next-method)))
 
 (defgeneric customer-erasing (application customer)
   (:method-combination traced-protocol)

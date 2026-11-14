@@ -68,7 +68,12 @@ inserted after the page has loaded.")
     overflow-wrap: break-word;
     & p + p, & p + ul, & ul + p { margin-top: calc(var(--spacing) * 2); }
     & ul { padding-left: calc(var(--spacing) * 4); list-style: disc; }
-    & a { color: inherit; text-decoration-line: underline; text-underline-offset: 3px; }
+    & a {
+      color: inherit;
+      text-decoration-line: underline;
+      text-underline-offset: 3px;
+      &:active { background-color: var(--pressed); }
+    }
   }
   & .tun-alert-actions {
     display: flex;
@@ -204,7 +209,12 @@ role=\"status\", or role=\"alert\" for an error.")
     min-width: 0;
     overflow-wrap: break-word;
     text-wrap: pretty;
-    & a { color: inherit; text-decoration-line: underline; text-underline-offset: 3px; }
+    & a {
+      color: inherit;
+      text-decoration-line: underline;
+      text-underline-offset: 3px;
+      &:active { background-color: var(--pressed); }
+    }
   }
   /* The close button keeps its full touch target but does not make the bar
      taller than a line of text with its padding. */

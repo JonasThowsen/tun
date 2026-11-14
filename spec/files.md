@@ -511,7 +511,8 @@ A form control (`ui.md` §6, Skjema) for one or more files:
   most files the control takes.
 - The zone, and the browser's control in it, are never wider than the
   field's column: the control narrows with it, the browser's text
-  beside its button cut at its end, so on a phone of 320 px the page
+  beside its button shortened as the browser shortens it (Chromium cuts
+  it in the middle, «No fi…hosen»), so on a phone of 320 px the page
   does not scroll sideways.
 - **With JavaScript:**
   - a file chosen in the control, dropped on the zone, or pasted is

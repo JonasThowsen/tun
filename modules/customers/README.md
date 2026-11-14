@@ -5,7 +5,7 @@ ASDF system `tun-customers`, package `tun.customers`; pinned by clients through
 
 - **Owns:** `customer` (name, email, phone, notes, completed orders); `customers_create`, `customers_get`, `customers_list`, `customers_update`, `customers_set_consent`, `customers_erase`.
 - **Depends on:** none.
-- **Core range:** builds against core `>= 2.0.0, < 3.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.36.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`); to `TUN`, the operations `customers-create`, `customers-get`, `customers-list`, `customers-update` and `customers-set-consent`, the accessors of `customer`'s name, email, phone, revision, completed orders, consent and erasure, and `marketing-allowed-p`. Its exported symbols are its interface for

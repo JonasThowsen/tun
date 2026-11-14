@@ -400,9 +400,13 @@ dates Tun keeps (PARSE-DATE)."
 (defmethod type-lisp-type ((type id-type)) '(or null string))
 (defmethod type-json-schema ((type id-type)) (jobj "type" "string" "minLength" 1 "maxLength" 64))
 (defmethod coerce-input ((type id-type) value path)
-  (if (and (stringp value) (< 0 (length value) 65) (not (nul-text-p value)))
-      (coerce value 'simple-string)
-      (input-error path "must be a valid identifier")))
+  (cond ((and (stringp value) (zerop (length (trim value))))
+         ;; Blank text is no id: a person left a choice empty (spec/ui.md 8,
+         ;; «Forms»).  An optional id with no value is null or left out.
+         (input-error path "must be filled in"))
+        ((and (stringp value) (< 0 (length value) 65) (not (nul-text-p value)))
+         (coerce value 'simple-string))
+        (t (input-error path "must be a valid identifier"))))
 
 ;;; ------------------------------------------------------------------
 ;;; Opaque JSON

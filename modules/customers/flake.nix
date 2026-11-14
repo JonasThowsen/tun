@@ -11,7 +11,7 @@
       system = "tun-customers";
       dependsOn = [ ];
       # The core versions this module builds against (its README states it).
-      core = [ ">= 2.0.0" "< 3.0" ];
+      core = [ ">= 2.36.0" "< 3.0" ];
       src = ./.;
       rev = self.rev or self.dirtyRev or "unknown";
     };

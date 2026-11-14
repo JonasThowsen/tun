@@ -134,28 +134,40 @@ files' count and its status (spec/ui.md 6, section, summary-list, note)."
                                              (jget (jget json "error") "message")))
         (values 303 (format nil "/items/~a" id)))))
 
-(defun report-form (&key values json customer-error)
-  "«New item»: a title, the customer it is for and screenshots, VALUES the
-posted form, JSON a refusal of it and CUSTOMER-ERROR the customer's."
+(defun report-fields (&key values json customer-error)
+  "The fields of «New item»: a title, the day it was reported, the customer
+it is for and screenshots, VALUES the posted form, JSON a refusal of it and
+CUSTOMER-ERROR the customer's."
   (let* ((customer (and values (jget values "customer")))
          (customer (and (stringp customer) (plusp (length customer)) customer))
          (find (and values (choice-find values "customer"))))
+    (list (ui:text-input (:label (tr "Title") :name "title"
+                          :value (and values (jget values "title"))
+                          :error (and json (field-message json "title"))))
+          (ui:date-input (:label (tr "Reported on") :name "reported_on" :optional t
+                          :value (and values (jget values "reported_on"))
+                          :error (and json (field-message json "reported_on"))))
+          ;; One of hundreds, found by typing (spec/ui.md 6, choice-input).
+          (ui:choice-input (:label (tr "Customer") :name "customer" :id "card-customer"
+                            :optional t :source "/cards/customers" :value customer :find find
+                            :options (customer-options customer find)
+                            :error (or customer-error
+                                       (and json (field-message json "customer")))))
+          (ui:file-input (:label (tr "Screenshots") :name "files" :optional t
+                          :hint (tr "Paste a screenshot, drag files here or choose them.")
+                          :error (and json (field-message json "screenshots")))))))
+
+(defun report-form (&key values json customer-error)
+  "«New item», VALUES the posted form, JSON a refusal of it and
+CUSTOMER-ERROR the customer's: its alert names the fields by their labels
+(spec/ui.md 8, «A client's pages»)."
+  (let ((fields (report-fields :values values :json json :customer-error customer-error)))
     `(:form (:@ :method "post" :action "/items/new" :enctype "multipart/form-data" :novalidate t)
-            ,(ui:stack (:gap :lg)
-               (when json (error-alert json))
-               (ui:text-input (:label (tr "Title") :name "title"
-                               :value (and values (jget values "title"))
-                               :error (and json (field-message json "title"))))
-               ;; One of hundreds, found by typing (spec/ui.md 6, choice-input).
-               (ui:choice-input (:label (tr "Customer") :name "customer" :id "card-customer"
-                                 :optional t :source "/cards/customers" :value customer :find find
-                                 :options (customer-options customer find)
-                                 :error (or customer-error
-                                            (and json (field-message json "customer")))))
-               (ui:file-input (:label (tr "Screenshots") :name "files" :optional t
-                               :hint (tr "Paste a screenshot, drag files here or choose them.")
-                               :error (and json (field-message json "screenshots"))))
-               (ui:cluster () (ui:button (:type "submit") (tr "Report the item")))))))
+            ,(apply #'ui:stack* (list :gap :lg)
+                    (append (when json (list (error-alert json :fields fields)))
+                            fields
+                            (list (ui:cluster ()
+                                    (ui:button (:type "submit") (tr "Report the item")))))))))
 
 (defun report-card (form)
   "Report the card FORM describes, with its customer and its screenshots,
@@ -172,7 +184,10 @@ found, and a customer that is none is refused at its field."
                 (web-call "cards_create"
                           (apply #'jobj "title" (jget form "title")
                                  "screenshots" (or (jget form "files") (jarr '()))
-                                 (and customer (list "customer" customer))))
+                                 (append (and customer (list "customer" customer))
+                                         (let ((day (jget form "reported_on")))
+                                           (and (stringp day) (plusp (length (string-trim " " day)))
+                                                (list "reported_on" day))))))
               (if code
                   (values 422 (tr "New item") (list (report-form :values form :json json)))
                   (values 303 (format nil "/items/~a" (jget json "id")))))))))

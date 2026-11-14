@@ -298,6 +298,13 @@ rails beside it in a narrower box, such as on a phone (`spec/ui.md`
                               ,(ui:button (:type "submit") "Lagre")))))))
 ```
 
+`(error-alert json)` lists a refusal's field errors by their paths
+(«delivery_on must be a date»). Give it the form's fields, `(error-alert
+json :fields fields)`, and it names each by the label the form shows
+(«Delivery must be a date …»), a row's as «Line 3: Unit price …», and links
+each line to its field (`spec/ui.md` §8, «A client's pages», 4). Build
+the fields first and put the same list in the form.
+
 ### Pages with htmx
 
 Every page loads htmx 4, and a staff page's links and forms go through it
@@ -505,6 +512,29 @@ their `name` (else their id), all with the page up to 30 and asked from
 `/choices/ENTITY` beyond, and a posted id is checked before the
 operation is called (`spec/ui.md` §8, «Choosing a record»). A page of
 yours may ask `/choices/customer` too.
+
+What names a record there, what more finds it and which records are
+offered is the entity's module's to say, with a method on
+`(record-choice APPLICATION ENTITY)`: a property list of `:fields` (every
+field its functions read), `:text`, `:names`, `:texts` and
+`:identifiers` (functions of a record, as `search-match` takes them; the
+id is always found too), `:keep` (a function of a record, true for one to
+offer) and `:order-by`. Put your keys before `(call-next-method)`'s, so
+the module's others stay. Tun's customers module finds a customer by its
+email and phone and keeps an erased one out; a client that names its
+customers otherwise and finds them by an organisation number too:
+
+```lisp
+(defmethod record-choice ((app erp) (entity (eql 'customer)))
+  (list* :fields '("name" "company_name" "email" "phone" "org_number" "erased")
+         :text #'customer-display-name
+         :identifiers (lambda (c) (list* (customer-org-number c) (customer-email c)
+                                         (search-phone-forms (customer-phone c))))
+         (call-next-method)))
+```
+
+A record kept out is not offered, found or accepted when posted, but a
+page that refers to it still shows its text.
 
 `(query-address PATH PAIRS)` writes a link with a query: `(query-address
 "/orders" '(("q" . "kari nord") ("status" . "") ("tag" "a" "b")))` is

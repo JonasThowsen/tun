@@ -744,19 +744,140 @@ deploy that changed them, the next page is loaded in full."
       (concatenate 'string (string-upcase (subseq text 0 1)) (subseq text 1))
       text))
 
-(defun error-alert (json)
+(defun error-alert (json &key fields)
   "The error document JSON as a destructive alert carrying its code in
-data-code: a refusal that belongs to no form, or a form not on this page."
-  (let ((err (jget json "error")))
+data-code: a refusal that belongs to no form, or a form not on this page.
+FIELDS, the nodes of the form's fields as the components make them, names
+each field error by its field's label and links it to its control
+(spec/ui.md 8, «A client's pages»); an error no control in FIELDS is posted
+under, and every error without FIELDS, is written with its path."
+  (let ((err (jget json "error"))
+        (known (and fields (form-field-labels fields))))
     (ui:alert (:variant :destructive :title (error-title (error-code-keyword json))
                         :attributes (list :data-code (jget err "code")))
-              (let ((fields (coerce (or (jget err "fields") #()) 'list)))
-                (if fields
+              (let ((errors (coerce (or (jget err "fields") #()) 'list)))
+                (if errors
                     `(:ul ,@(mapcar (lambda (field)
-                                      `(:li ,(field-error-sentence (jget field "field")
-                                                                   (jget field "message"))))
-                                    fields))
+                                      (field-error-line (jget field "field")
+                                                        (jget field "message") known))
+                                    errors))
                     (jget err "message"))))))
+
+(defun field-error-line (path message known)
+  "The line of an error alert for the error MESSAGE at PATH: a link to its
+control named by its label when KNOWN, FORM-FIELD-LABELS' table, has the
+control PATH names, else the path and the message as before."
+  (let* ((name (error-path-name path))
+         ;; An error about an item of a control's list, tags[0], is the control's.
+         (control (and known (or (gethash name known)
+                                 (gethash (cl-ppcre:regex-replace "\\[[0-9]+\\]$" name "")
+                                          known)))))
+    (if control
+        `(:li (:a (:@ :href ,(format nil "#~a" (first control)) :data-tun-field-link t)
+                  ,(field-error-sentence (second control) message)))
+        `(:li ,(field-error-sentence path message)))))
+
+;;; The labels of a form's fields, read from the markup the components make
+;;; (spec/ui.md 8, «A client's pages»): a control's name and id, the label
+;;; whose for is that id, the legend of the fieldset it stands in.
+
+(defparameter +labelled-controls+ '("input" "select" "textarea")
+  "The elements a form posts a value of under their name.")
+
+(defparameter +unlabelled-input-types+ '("hidden" "submit" "button" "reset" "image")
+  "The types of an input a person does not fill in.")
+
+(defun element-node-p (node)
+  (and (consp node) (keywordp (first node))))
+
+(defun node-text (node)
+  "The text a person reads in NODE, markup as data, its whitespace
+collapsed: its strings, without an «(optional)» mark or a control's text."
+  (let ((parts '()))
+    (labels ((walk (node)
+               (cond ((stringp node) (push node parts))
+                     ((element-node-p node)
+                      (multiple-value-bind (tag attributes children) (tun.html:node-parts node)
+                        (unless (or (member tag +labelled-controls+ :test #'string=)
+                                    (search "-optional" (or (getf attributes :class) "")))
+                          (mapc #'walk children))))
+                     ((consp node) (mapc #'walk node)))))
+      (walk node))
+    (string-trim " " (cl-ppcre:regex-replace-all "\\s+" (format nil "~{~a~}" (nreverse parts))
+                                                 " "))))
+
+(defun fieldset-legend (children)
+  "The text of the legend among a fieldset's CHILDREN, or NIL."
+  (let ((legend (find-if (lambda (child)
+                           (and (element-node-p child)
+                                (string= "legend" (tun.html:node-parts child))))
+                         children)))
+    (and legend (node-text (nth-value 2 (tun.html:node-parts legend))))))
+
+(defun form-controls (nodes)
+  "The labels and the controls in NODES: two values, a table from a label's
+for to its text, and a list of (NAME ID TYPE LEGENDS) for each control in
+the order they stand, LEGENDS the legends of the fieldsets round it, the
+innermost first."
+  (let ((labels (make-hash-table :test 'equal))
+        (controls '()))
+    (labels ((walk (node legends)
+               (cond ((element-node-p node)
+                      (multiple-value-bind (tag attributes children) (tun.html:node-parts node)
+                        (cond ((member tag +labelled-controls+ :test #'string=)
+                               (let ((type (or (getf attributes :type) "")))
+                                 (when (and (getf attributes :name) (getf attributes :id)
+                                            (not (member (princ-to-string type)
+                                                         +unlabelled-input-types+
+                                                         :test #'string-equal)))
+                                   (push (list (princ-to-string (getf attributes :name))
+                                               (princ-to-string (getf attributes :id))
+                                               (string-downcase (princ-to-string type))
+                                               legends)
+                                         controls))))
+                              ((string= tag "fieldset")
+                               (let ((legend (fieldset-legend children)))
+                                 (dolist (child children)
+                                   (walk child (if legend (cons legend legends) legends)))))
+                              (t
+                               (when (and (string= tag "label") (getf attributes :for))
+                                 (setf (gethash (princ-to-string (getf attributes :for)) labels)
+                                       (node-text children)))
+                               (dolist (child children) (walk child legends))))))
+                     ((consp node) (dolist (child node) (walk child legends))))))
+      (walk nodes '()))
+    (values labels (nreverse controls))))
+
+(defun row-index (name)
+  "The row of a list a control's NAME is in, lines[2][unit_price] in row 2,
+or NIL."
+  (cl-ppcre:register-groups-bind ((#'parse-integer row)) ("^[^\\[]+\\[([0-9]+)\\]\\[" name)
+    row))
+
+(defun form-field-labels (nodes)
+  "A table from each name a control in NODES is posted under to (ID LABEL):
+the control's id, and what a person reads for it, its field's label, the
+legend of radios and of several checkboxes of one name, and a row's
+field's label after its row («Line 3: Unit price», else «Row 3: …»)."
+  (multiple-value-bind (labels controls) (form-controls nodes)
+    (let ((known (make-hash-table :test 'equal)))
+      (dolist (control controls known)
+        (destructuring-bind (name id type legends) control
+          (unless (gethash name known)
+            (let* ((group (or (string= type "radio")
+                              (and (string= type "checkbox")
+                                   (< 1 (count name controls :key #'first :test #'string=)))))
+                   (own (and (not group) (gethash id labels)))
+                   (label (or own (first legends)))
+                   (around (if own legends (rest legends)))
+                   (row (row-index name)))
+              (when (plusp (length label))
+                (setf (gethash name known)
+                      (list id (if row
+                                   (format nil "~a: ~a"
+                                           (or (first around) (tr "Row ~d" (1+ row)))
+                                           label)
+                                   label)))))))))))
 
 (defun field-error-sentence (label message)
   "An error MESSAGE about the field LABEL as a sentence for an error summary:
@@ -823,10 +944,20 @@ label's context when one word needs two translations (spec/i18n.md 3.1)."
   "The most records a generated field or filter holds with the page; with
 more it asks /choices/ENTITY as one types.")
 
+;; The records of an entity a person may choose, read once a request: ROWS
+;; the offered ones as (ID TEXT) in their order, TEXTS every read record's
+;; text by id, OFFERED the ids of ROWS, RECORDS every read record by id, and
+;; SHAPE the entity's CHOICE-SHAPE.
+(defstruct (choice-read (:constructor make-choice-read (rows texts offered records shape)))
+  (rows '() :type list)
+  (texts nil :type hash-table)
+  (offered nil :type hash-table)
+  (records nil :type hash-table)
+  (shape '() :type list))
+
 (defvar *record-choices* nil
-  "For this request: entity class name -> (ROWS . TEXTS), the records the
-actor may choose as RECORD-CHOICES reads them and their texts by id, or NIL
-when the actor may choose none.")
+  "For this request: entity class name -> its CHOICE-READ, or NIL when the
+actor may choose none of its records.")
 
 (defun list-tool-for (class)
   "The operation that lists the records of CLASS: its read tool named *_list."
@@ -854,19 +985,49 @@ else NIL: who may choose among CLASS's records."
   (let ((field (find-field class "name")))
     (and field (field-stored-p field) (typep (field-type field) 'string-type) field)))
 
-(defun read-record-choices (class)
-  "(ID TEXT) of every record of CLASS the actor reaches, TEXT its name when
-filled, else its id, in the order of their names: one read of their id and
-name, under the record policies."
+(defun choice-shape (class)
+  "How CLASS's records are named, found and offered: RECORD-CHOICE's keys
+(spec/ui.md 8, «Choosing a record»), each one no method gives Tun's own: the
+name, else the id, found by it and the id, every record offered, in the
+order of the names.  The name is read when the text is Tun's own."
   (let ((field (record-name-field class)))
-    (with-transaction (:read)
-      (mapcar (lambda (record)
-                (let ((name (and field (field-value record field))))
-                  (list (entity-id record)
-                        (if (and (stringp name) (plusp (length name))) name (entity-id record)))))
-              (select (class-name class)
-                      :fields (list (if field "name" "id"))
-                      :order-by (and field '(("name" :asc))))))))
+    (destructuring-bind (&key (fields nil fields-p) text names texts identifiers keep
+                              (order-by (and field '(("name" :asc)))))
+        (record-choice *web-app* (class-name class))
+      (list :fields (if (and field (null text))
+                        (adjoin "name" (if fields-p fields '()) :test #'string=)
+                        fields)
+            :text (or text (lambda (record) (and field (field-value record field))))
+            :names names :texts texts :identifiers identifiers :keep keep
+            :order-by order-by))))
+
+(defun shaped-text (shape record)
+  "RECORD's text by SHAPE: what its :TEXT answers when that is text that is
+not blank, else its id."
+  (let ((text (funcall (getf shape :text) record)))
+    (if (and (stringp text) (plusp (length (trim text)))) text (entity-id record))))
+
+(defun read-record-choices (class)
+  "The CHOICE-READ of CLASS's records the actor reaches: one read of their id
+and the fields CLASS's CHOICE-SHAPE names, under the record policies."
+  (with-transaction (:read)
+    (let* ((shape (choice-shape class))
+           (keep (getf shape :keep))
+           (texts (make-hash-table :test 'equal))
+           (offered (make-hash-table :test 'equal))
+           (records (make-hash-table :test 'equal))
+           (rows '()))
+      (dolist (record (select (class-name class)
+                              :fields (or (getf shape :fields) '("id"))
+                              :order-by (getf shape :order-by)))
+        (let ((id (entity-id record))
+              (text (shaped-text shape record)))
+          (setf (gethash id texts) text
+                (gethash id records) record)
+          (when (or (null keep) (funcall keep record))
+            (setf (gethash id offered) t)
+            (push (list id text) rows))))
+      (make-choice-read (nreverse rows) texts offered records shape))))
 
 (defun record-choices-entry (class)
   (let ((cache (or *record-choices* (setf *record-choices* (make-hash-table)))))
@@ -875,26 +1036,50 @@ name, under the record policies."
           entry
           (setf (gethash (class-name class) cache)
                 (when (choice-operation class)
-                  (let ((rows (read-record-choices class))
-                        (texts (make-hash-table :test 'equal)))
-                    (dolist (row rows) (setf (gethash (first row) texts) (second row)))
-                    (cons rows texts))))))))
+                  (read-record-choices class)))))))
 
 (defun record-choices (class)
-  "The records of CLASS the actor may choose, (ID TEXT) in the order of
-their names, read once a request; NIL when the actor may choose none."
-  (car (record-choices-entry class)))
+  "The records of CLASS the actor may choose, (ID TEXT) in their order, read
+once a request; NIL when the actor may choose none."
+  (let ((entry (record-choices-entry class)))
+    (and entry (choice-read-rows entry))))
 
 (defun record-choice-text (class id)
-  "The text of the record ID of CLASS when the actor may choose it, else NIL."
+  "The text of the record ID of CLASS when the actor reaches it among the
+records a choice reads (offered or kept out), else NIL: how a page names it."
   (let ((entry (record-choices-entry class)))
-    (and entry (values (gethash id (cdr entry))))))
+    (and entry (values (gethash id (choice-read-texts entry))))))
 
-(defun record-choice-matches (rows text &key without)
-  "The (ID TEXT) options among ROWS that TEXT finds by the search's rule,
-the name its text and the id its identifier, without the one of WITHOUT."
-  (remove without (choice-matches text rows :value #'first :text #'second
-                                            :identifiers (lambda (row) (list (first row))))
+(defun offered-choice-text (class id)
+  "The text of the record ID of CLASS when it is one of the actor's choices,
+else NIL: what a posted id is checked against."
+  (let ((entry (record-choices-entry class)))
+    (and entry (gethash id (choice-read-offered entry))
+         (values (gethash id (choice-read-texts entry))))))
+
+(defun choice-match-keys (class)
+  "The keys CHOICE-MATCHES and CHOICE-ANSWER take for the rows of
+RECORD-CHOICES: a row's id and text, and its record's names, texts and
+identifiers by CLASS's shape, its id always one of the identifiers."
+  (let* ((entry (record-choices-entry class))
+         (shape (choice-read-shape entry))
+         (records (choice-read-records entry))
+         (identifiers (getf shape :identifiers)))
+    (flet ((of-record (key)
+             (let ((function (getf shape key)))
+               (and function
+                    (lambda (row) (funcall function (gethash (first row) records)))))))
+      (list :value #'first :text #'second
+            :names (of-record :names) :texts (of-record :texts)
+            :identifiers (lambda (row)
+                           (cons (first row)
+                                 (and identifiers
+                                      (funcall identifiers (gethash (first row) records)))))))))
+
+(defun record-choice-matches (class text &key without)
+  "The (ID TEXT) options among CLASS's choices that TEXT finds by the
+search's rule and CLASS's shape, without the one of WITHOUT."
+  (remove without (apply #'choice-matches text (record-choices class) (choice-match-keys class))
           :key #'first :test #'equal))
 
 (defun choices-path (class)
@@ -906,7 +1091,7 @@ the name its text and the id its identifier, without the one of WITHOUT."
 actor may choose it, then what FIND, a find step's text, found."
   (let ((text (and value (record-choice-text class value))))
     (append (when text (list (list value text)))
-            (when find (record-choice-matches (record-choices class) find :without value)))))
+            (when find (record-choice-matches class find :without value)))))
 
 (defun record-path (entity id)
   "The detail page of record ID of ENTITY (a class name), or NIL when it has none."
@@ -1414,28 +1599,57 @@ and its other inputs folded away unless one of them has a value or an error."
                           (tr "Row"))
           (1+ row)))
 
+(defun input-spec-at (name specs)
+  "The input among SPECS the control NAME is for, an input of a row's
+record for lines[0][quantity], and the row (from 0) as a second value; NIL
+when there is none."
+  (let* ((top (subseq name 0 (or (position #\[ name) (length name))))
+         (spec (find top specs :key #'spec-name :test #'string=)))
+    (multiple-value-bind (match parts)
+        (cl-ppcre:scan-to-strings "^[^\\[]+\\[([0-9]+)\\]\\[([^\\]]+)\\]$" name)
+      (cond ((and match spec (row-list-p (spec-type spec)))
+             (let ((input (find (aref parts 1) (element-inputs (spec-type spec))
+                                :key #'spec-name :test #'string=)))
+               (and input (values input (parse-integer (aref parts 0))))))
+            ((string= top name) spec)))))
+
 (defun row-input-label (name specs)
   "The label of the control NAME among the inputs SPECS, as an error summary
-names it: Customer, or for a row of a list, Quantity in order line 1."
+names it: Customer, or for a row of a list, Order line 1: Quantity."
   (let* ((top (subseq name 0 (or (position #\[ name) (length name))))
-         (spec (find top specs :key #'spec-name :test #'string=))
-         (label (if spec (spec-label-text spec) name)))
-    (cl-ppcre:register-groups-bind ((#'parse-integer row) input)
-        ("^[^\\[]+\\[([0-9]+)\\]\\[([^\\]]+)\\]$" name)
-      (when (and spec (row-list-p (spec-type spec)))
-        (let ((element (find input (element-inputs (spec-type spec)) :key #'spec-name
-                             :test #'string=))
-              (class (find-entity-class (list-element (spec-type spec)))))
-          (return-from row-input-label
-            (tr "~a in ~(~a~)" (if element (spec-label-text element) input)
-                (row-legend class row))))))
-    label))
+         (spec (find top specs :key #'spec-name :test #'string=)))
+    (multiple-value-bind (input row) (input-spec-at name specs)
+      (cond ((null spec) name)
+            (row (format nil "~a: ~a"
+                         (row-legend (find-entity-class (list-element (spec-type spec))) row)
+                         (spec-label-text input)))
+            (t (spec-label-text spec))))))
+
+(defun choice-spec-p (spec)
+  "True for an input a person chooses rather than types: an enum, or a
+record's id with records to choose from."
+  (and spec
+       (let ((type (spec-type spec)))
+         (or (typep type 'enum-type)
+             (let ((class (reference-class type)))
+               (and class (record-choices class) t))))))
+
+(defun generated-form-errors (error-json specs)
+  "FIELD-ERRORS of ERROR-JSON in the form of the inputs SPECS, a choice's
+«must be filled in» worded «must be chosen» (spec/ui.md 8, «Forms»)."
+  (let ((missing (princ-to-string (tr "must be filled in"))))
+    (mapcar (lambda (entry)
+              (if (and (equal (cdr entry) missing)
+                       (choice-spec-p (input-spec-at (car entry) specs)))
+                  (cons (car entry) (princ-to-string (tr "must be chosen")))
+                  entry))
+            (field-errors error-json))))
 
 (defun form-error-summary (error-json form-id specs)
   "The error summary at the top of a form whose submission ERROR-JSON
 refused: each field error links to its control, with the field's label."
   (let ((err (jget error-json "error"))
-        (errors (field-errors error-json)))
+        (errors (generated-form-errors error-json specs)))
     (flet ((label-of (name)
              (row-input-label name specs)))
       (ui:error-summary* (list :title (if errors
@@ -1467,9 +1681,9 @@ input name to (id . label) pairs, limits what those id inputs offer.
 VALUES, the posted form, fills the controls, and ERROR-JSON, the refusal of
 that submission, puts an error summary on top and each field's error at the
 field.  ID is the card's id; CANCEL a link back without saving."
-  (let ((form-id (operation-tool op))
-        (specs (form-inputs op omit))
-        (errors (and error-json (field-errors error-json))))
+  (let* ((form-id (operation-tool op))
+         (specs (form-inputs op omit))
+         (errors (and error-json (generated-form-errors error-json specs))))
     (ui:card (:title title :description description :heading-level 2 :id id)
              `(:form (:@ :method "post" :action ,action :data-tool ,(operation-tool op)
                          :novalidate t
@@ -1883,7 +2097,7 @@ of a list of records too; else NIL."
                (when (and class (record-choices class))
                  (multiple-value-bind (value problem)
                      (read-choice (posted name params)
-                                  (lambda (id) (record-choice-text class id)))
+                                  (lambda (id) (offered-choice-text class id)))
                    (declare (ignore value))
                    (when problem
                      (push (jobj "field" path "message" (princ-to-string problem)) refused)))))))
@@ -2180,9 +2394,8 @@ choice-input)."
            (values 403 (if (htmx-request-p) :fragment (tr "No access"))
                    (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
                            (tr "The page needs a role other than yours.")))))
-          (t (choice-answer query (record-choices class)
-                            :value #'first :text #'second
-                            :identifiers (lambda (row) (list (first row))))))))
+          (t (apply #'choice-answer query (record-choices class)
+                    (choice-match-keys class))))))
 
 (defun specimen-choices (query)
   "/ui/choice-input/options: the specimen's made-up customers for QUERY's q,

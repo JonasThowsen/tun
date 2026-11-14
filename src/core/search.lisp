@@ -725,6 +725,27 @@ any other."
               (values value nil (princ-to-string found))
               (values nil (deferred-tr "must be one of the choices")))))))
 
+(defgeneric record-choice (application entity)
+  (:method-combination traced-protocol)
+  (:documentation "How the records of ENTITY, an entity's class name, are named, found
+and offered in APPLICATION's generated choice of a record (spec/ui.md 8,
+«Choosing a record»): a property list of what it changes, :FIELDS (the JSON
+names of every field the functions read), :TEXT (a function of a record that
+answers its text), :NAMES, :TEXTS and :IDENTIFIERS (functions of a record, as
+SEARCH-MATCH takes them), :KEEP (a function of a record, true for one to
+offer) and :ORDER-BY (as SELECT takes it).  A module specialises it on its
+mixin and on its entity with EQL, a client on its application class or a
+feature; a method answers its own keys before (CALL-NEXT-METHOD)'s, so the
+keys it does not give stay the less specific method's.  It runs in a read
+transaction with *ACTOR* bound.  The default, Tun's own method, answers NIL:
+the record's name, else its id.")
+  (:method (application entity)
+    (declare (ignore application entity))
+    nil))
+(register-extension-protocol
+ 'record-choice "rule" :point "record_choice"
+ :description "A module or the client says what names its entity's records in a choice, what finds them and which are offered.")
+
 ;;; ------------------------------------------------------------------
 ;;; The seam
 

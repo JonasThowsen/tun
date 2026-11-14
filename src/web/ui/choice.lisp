@@ -366,6 +366,10 @@ clear button, opening upward); WAI-ARIA combobox and listbox; GOV.UK select")
     font-size: var(--text-sm);
     line-height: var(--text-sm--line-height);
   }
+  /* The form's first submit button, which Enter presses: out of sight, but
+     rendered, since some browsers press no default button that is not. */
+  & .tun-choice-input-default {" +visually-hidden-css+ "
+  }
 }"))
   (:script "
 // Choosing one record among many by typing (spec/ui.md 6, choice-input):
@@ -773,6 +777,10 @@ that posts the form as NAME's find, and after one how many it found."
                  (:input ,(attrs (list :class "tun-text-input" :type "search" :id find-id
                                        :name (format nil "~a-find" name) :value find
                                        :autocomplete "off" :data-tun-choice-off t)))
+                 ;; spec/ui.md 6, «Enter saves»: the form's first submit button,
+                 ;; with no name, so Enter saves rather than finds.
+                 (:button (:@ :type "submit" :class "tun-choice-input-default" :tabindex "-1"
+                              :aria-hidden "true" :data-tun-choice-off t))
                  ,(button (:type "submit" :variant :outline
                            :attributes (list :name "tun-find" :value name :formnovalidate t
                                              :data-tun-choice-off t))

@@ -98,7 +98,7 @@
    #:make-search-result #:search-result-kind #:search-result-label #:search-result-icon
    #:search-result-title #:search-result-meta #:search-result-href #:search-result-score
    #:search-result-id #:search-result-matched #:search-excerpt #:search-entity
-   #:search-contributors-p #:search-order #:search-among #:search-replacements
+   #:search-contributors-p #:search-order #:search-among #:search-replacements #:record-choice
    #:search-phone-forms #:choice-matches #:read-choice
    ;; deadlines
    #:*deadline-ms* #:*watchdog-grace-ms* #:deadline-exceeded #:*deadline* #:check-deadline

@@ -1363,7 +1363,8 @@ is the only one on the page), and a link moves focus to the field.")
 // brings it in, so a screen reader reads it out at once, and let a link
 // focus the field it names, scrolled so its label or legend shows too.  A
 // page has one error summary; with several (a page of examples) none takes
-// focus.
+// focus.  An error alert's line that names a field (error-alert's FIELDS)
+// focuses its field the same way.
 const focusSummary = (root) => {
   const found = root.querySelectorAll('[data-tun-error-summary]');
   if (found.length === 1) found[0].focus();
@@ -1384,7 +1385,8 @@ const labelFor = (input) => {
 };
 
 document.addEventListener('click', (event) => {
-  const link = event.target.closest('[data-tun-error-summary] a[href^=\"#\"]');
+  const link = event.target.closest(
+    '[data-tun-error-summary] a[href^=\"#\"], a[data-tun-field-link][href^=\"#\"]');
   if (!link) return;
   const input = document.getElementById(decodeURIComponent(link.hash.slice(1)));
   const label = input && labelFor(input);

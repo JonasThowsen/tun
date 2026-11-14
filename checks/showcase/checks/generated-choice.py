@@ -47,6 +47,10 @@ FILE_BOXES = """() => {
 }"""
 
 FORM = "#meetings_create-customer-trigger"
+# The form's own submit button: not the find step's, nor the choice's
+# default button that Enter presses (spec/ui.md 6, «Enter saves»).
+SAVE = ("form[data-tool=meetings_create] button[type=submit]"
+        ":not([name=tun-find]):not(.tun-choice-input-default)")
 FIELD = "#meetings_create-customer-search"
 SELECT = "select#meetings_create-customer"
 FILTER_BUTTON = "#tun-list-toolbar-customer-button"
@@ -101,7 +105,7 @@ def form(t):
     t.check(s["chosen"] == chosen and s["shown"] == "Bjørn Åsen",
             f"Enter chooses him, his id the select's value: {s['chosen']} {s['shown']}")
     page.fill("#meetings_create-name", "Planned by typing")
-    page.locator("form[data-tool=meetings_create] button[type=submit]:not([name=tun-find])").click()
+    page.locator(SAVE).click()
     page.wait_for_url(re.compile(r"/meetings/mtg_"), timeout=5000)
     details = page.locator(".tun-summary-list").inner_text()
     t.check("Bjørn Åsen" in details and "Planned by typing" in page.content(),
@@ -148,7 +152,7 @@ def without_javascript(t):
     t.check(page.locator(".tun-error-summary").count() == 0, "nothing was saved or refused")
     page.locator(SELECT).select_option(label="Bjørn Åsen")
     page.fill("#meetings_create-name", "Planned without scripts")
-    page.locator("form[data-tool=meetings_create] button[type=submit]:not([name=tun-find])").click()
+    page.locator(SAVE).click()
     page.wait_for_url(re.compile(r"/meetings/mtg_"), timeout=5000)
     t.check("Bjørn Åsen" in page.locator(".tun-summary-list").inner_text(),
             "saving posts the chosen customer's id")
