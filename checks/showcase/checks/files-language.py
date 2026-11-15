@@ -98,7 +98,7 @@ def control_in(t, language, width, make, javascript):
             f"{where}: what is under the button is the input, so a click there is the input's")
     if javascript:
         # Playwright reports the chooser of a page that runs scripts.
-        with page.expect_file_chooser(timeout=10000) as chooser:
+        with page.expect_file_chooser() as chooser:
             page.mouse.click(x, y)
         t.check(chooser.value.element.evaluate("(e) => e.name") == "files",
                 f"{where}: a click on the button opens the browser's chooser for the input")

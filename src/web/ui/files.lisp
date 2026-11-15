@@ -97,6 +97,10 @@ without JavaScript it chooses files as ever. MAX is how many files the field tak
   @media (hover: hover) {
     & .tun-file-input-picker:hover .tun-file-input-button { background-color: var(--accent); }
   }
+  & .tun-file-input-picker:active .tun-file-input-button {
+    border-color: var(--border-strong);
+    background-image: linear-gradient(var(--pressed), var(--pressed));
+  }
   & .tun-file-input-status {
     min-width: 0;
     overflow: hidden;

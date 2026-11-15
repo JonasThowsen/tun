@@ -57,12 +57,12 @@ their ids and never reads.")
                                           :text (logbook-entry-text entry)
                                           :attachments (attachments-of entry))))))
 
-(define-operation logbook-file ((id :type (string :min 1 :max 64) :required t :label "File"))
+(define-operation logbook-file ((file-id :type (string :min 1 :max 64) :required t :label "File"))
     (:entity logbook-entry :kind :read :policy :viewer
      :title "Read a file"
      :description "A stored file's name, size and SHA-256, read from its bytes, when the
 caller may see its record.")
-  (multiple-value-bind (octets file) (file-octets id)
+  (multiple-value-bind (octets file) (file-octets file-id)
     (jobj "filename" (jget file "filename")
           "bytes" (length octets)
           "sha256" (ironclad:byte-array-to-hex-string (ironclad:digest-sequence :sha256 octets)))))

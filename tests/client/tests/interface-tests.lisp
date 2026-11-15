@@ -67,7 +67,7 @@
                                                                    (png-octets))))))
                         "files"))
            (file (jget (aref files 0) "id"))
-           (summary (call-ok "logbook_file" "viewer:vera" "id" file))
+           (summary (call-ok "logbook_file" "viewer:vera" "file_id" file))
            (mail (call-ok "mail_get" "admin:ada"
                           "id" (jget (call-ok "logbook_mail" "employee:anna" "id" entry
                                               "to" "kunde@example.no")
@@ -79,7 +79,7 @@
         (is (equal file (jget attachment "file_id")))
         (is (equal (jget summary "sha256") (jget attachment "sha256"))
             "the mail carries the bytes the module read"))
-      (is (equal "not_found" (nth-value 1 (call "logbook_file" "viewer:vera" "id" "fil_finnes_ikke")))))))
+      (is (equal "not_found" (nth-value 1 (call "logbook_file" "viewer:vera" "file_id" "fil_finnes_ikke")))))))
 
 (test a-planted-qualifier-in-the-client-s-module-fails-its-check
   ;; A copy of the client with logbook.lisp reaching into the kernel: the
