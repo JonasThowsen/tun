@@ -18,7 +18,9 @@ def attach(page, title, name):
         page.get_by_role("button", name="Attach", exact=True).click()
 
 
-DIALOGS = "() => document.querySelectorAll('dialog').length"
+# The page's other dialogs, such as the search's, are not images'.
+DIALOGS = "() => document.querySelectorAll('dialog.tun-attachments-dialog').length"
+INSIDE = "() => document.querySelectorAll('.tun-attachments dialog').length"
 LAST = "() => !!document.body.lastElementChild.matches('dialog.tun-attachments-dialog')"
 FOCUSED = "(link) => document.activeElement === link"
 
@@ -26,7 +28,8 @@ FOCUSED = "(link) => document.activeElement === link"
 def open_each(t, page, where):
     components = page.locator(".tun-attachments").filter(has=page.locator(".tun-attachments-image"))
     t.check(components.count() == 3, f"{where}: three components with images: {components.count()}")
-    t.check(page.evaluate(DIALOGS) == 0, f"{where}: no dialog before an image is opened")
+    t.check(page.evaluate(DIALOGS) == 0 and page.evaluate(INSIDE) == 0,
+            f"{where}: no image dialog before an image is opened, and none in a component")
     dialog = page.locator("dialog.tun-attachments-dialog")
     for i in range(3):
         link = components.nth(i).locator(".tun-attachments-image").first

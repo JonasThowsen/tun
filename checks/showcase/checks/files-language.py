@@ -79,21 +79,29 @@ def control_in(t, language, width, make, javascript):
                 f"{where}: the line reads «{parts['statusText']}»")
     else:
         t.check(parts["statusHidden"], f"{where}: no line without a script, which alone knows what is chosen")
+    control.scroll_into_view_if_needed()
     page.screenshot(path=str(t.out / f"files-language-{language}-{width}-{'js' if javascript else 'nojs'}.png"))
     if javascript:
         control.set_input_files([_files.path("screenshot.png"), _files.path("receipt.pdf")])
         parts = control.evaluate(PARTS)
         t.check(parts["statusText"] == say["two"], f"{where}: two chosen: «{parts['statusText']}»")
+        page.locator(".tun-card .tun-file-input").scroll_into_view_if_needed()
         page.screenshot(path=str(t.out / f"files-language-{language}-{width}-chosen.png"))
     if width > 600:
         t.check(tab_to(page, CONTROL), f"{where}: Tab reaches the input")
         shadow = control.evaluate(PARTS)["buttonShadow"]
         t.check(shadow and shadow != "none", f"{where}: the button shows the focus ring: {shadow}")
-    button = parts["button"]
-    with page.expect_file_chooser() as chooser:
-        page.mouse.click((button["left"] + button["right"]) / 2, (button["top"] + button["bottom"]) / 2)
-    t.check(chooser.value.element.evaluate("(e) => e.name") == "files",
-            f"{where}: a click on the button opens the browser's chooser for the input")
+    control.scroll_into_view_if_needed()
+    button = control.evaluate(PARTS)["button"]
+    x, y = (button["left"] + button["right"]) / 2, (button["top"] + button["bottom"]) / 2
+    t.check(control.evaluate("(input, [x, y]) => document.elementFromPoint(x, y) === input", [x, y]),
+            f"{where}: what is under the button is the input, so a click there is the input's")
+    if javascript:
+        # Playwright reports the chooser of a page that runs scripts.
+        with page.expect_file_chooser(timeout=10000) as chooser:
+            page.mouse.click(x, y)
+        t.check(chooser.value.element.evaluate("(e) => e.name") == "files",
+                f"{where}: a click on the button opens the browser's chooser for the input")
 
 
 def run(t):

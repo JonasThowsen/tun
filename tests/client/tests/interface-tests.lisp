@@ -64,20 +64,20 @@
            (files (jget (call-ok "logbook_attach" "employee:anna" "id" entry
                                  "files" (jarr (list (jobj "filename" "levert.png"
                                                            "data" (cl-base64:usb8-array-to-base64-string
-                                                                   (png-octets)))))))
+                                                                   (png-octets))))))
                         "files"))
            (file (jget (aref files 0) "id"))
-           (read (call-ok "logbook_file" "viewer:vera" "id" file))
+           (summary (call-ok "logbook_file" "viewer:vera" "id" file))
            (mail (call-ok "mail_get" "admin:ada"
                           "id" (jget (call-ok "logbook_mail" "employee:anna" "id" entry
                                               "to" "kunde@example.no")
                                      "mail_id"))))
-      (is (equal "levert.png" (jget read "filename")))
-      (is (= (jget (aref files 0) "size") (jget read "bytes")))
+      (is (equal "levert.png" (jget summary "filename")))
+      (is (= (jget (aref files 0) "size") (jget summary "bytes")))
       (let ((attachment (aref (jget mail "attachments") 0)))
         (is (equal "levert.png" (jget attachment "filename")))
         (is (equal file (jget attachment "file_id")))
-        (is (equal (jget read "sha256") (jget attachment "sha256"))
+        (is (equal (jget summary "sha256") (jget attachment "sha256"))
             "the mail carries the bytes the module read"))
       (is (equal "not_found" (nth-value 1 (call "logbook_file" "viewer:vera" "id" "fil_finnes_ikke")))))))
 
