@@ -1,6 +1,7 @@
 ;;;; tun-test-support.asd -- the test helpers of the core suite and of every
 ;;;; client's suite (tests/support.lisp), the one that reads a clock
-;;;; (tests/timing.lisp), the tests Tun generates for every
+;;;; (tests/timing.lisp), the cases guard (tests/case-guard.lisp), the tests
+;;;; Tun generates for every
 ;;;; client (tests/generated.lisp), and what the fuzzing and record-policy
 ;;;; ones of them run (tests/fuzz-inputs.lisp, tests/fuzzing.lisp,
 ;;;; tests/policy-checks.lisp), the sequence one (tests/sequences.lisp) and the
@@ -16,6 +17,7 @@
   :components ((:module "tests"
                 :serial t
                 :components ((:file "support")
+                             (:file "case-guard")
                              (:file "timing")
                              (:file "i18n-support")
                              (:file "scenarios")

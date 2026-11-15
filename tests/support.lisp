@@ -15,6 +15,8 @@
            #:web-request #:web-login #:location
            #:enqueued-jobs #:perform-job #:drain-jobs
            #:public-interface-violations #:client-source-files #:client-files-under
+           ;; the cases guard (spec/testing.md 1, test 11)
+           #:plain-case-findings #:plain-case-findings-in-text #:check-cases-over-declared-sets
            #:client-violations #:module-violations #:asd-violations #:module-asd-files #:+kernel-public-packages+ #:+module-library-packages+ #:file-text
            #:module-directory #:client-module-directories #:client-module-names #:client-module-violations
            #:client-module-violations-under #:client-tools #:client-text-owners

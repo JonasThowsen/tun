@@ -649,9 +649,12 @@ retire it to the history."
 ;;; Source locations (introspect_extensions)
 
 (defun asd-directory (directory)
-  "The nearest directory at or above DIRECTORY that holds an .asd file, and that file's name."
+  "The nearest directory at or above DIRECTORY that holds an .asd file, and that
+file's name: tun.asd where it is one of several, as at the top of Tun's tree
+beside tun-cli.asd and tun-test-support.asd."
   (loop for dir = directory then (uiop:pathname-parent-directory-pathname dir)
-        for asd = (first (directory (merge-pathnames "*.asd" dir)))
+        for asd = (or (probe-file (merge-pathnames "tun.asd" dir))
+                      (first (directory (merge-pathnames "*.asd" dir))))
         when asd return (values dir (pathname-name asd))
         until (equal dir (uiop:pathname-parent-directory-pathname dir))))
 

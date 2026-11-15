@@ -37,7 +37,7 @@ or NIL for work the process does itself."
 
 (declaim (ftype (function (role) (values (integer 0 3) &optional)) role-rank))
 (defun role-rank (role)
-  (ecase role (:viewer 0) (:customer 0) (:employee 1) (:admin 2) (:system 3)))
+  (ecase-of role role (:viewer 0) (:customer 0) (:employee 1) (:admin 2) (:system 3)))
 
 (defun parse-actor (string)
   "Parse \"role:name\" (role admin|employee|viewer). NIL when malformed.

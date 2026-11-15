@@ -240,6 +240,123 @@ default 1000.
 
 `tests/rank-tests.lisp` shows each of these.
 
+### 2.7 Case analysis over a closed set
+
+When a closed set grows, such as an order's statuses or the kinds of
+refusal, every place that handles the set and was not updated stops the
+build, rather than meeting the new value at run time. Three forms, in
+`TUN` for clients and in `TUN.CORE` for modules, name the set they
+handle; the set is looked up when the form is compiled.
+
+```lisp
+(ecase-of (order status) (order-status order)   ; every value of the set
+  ("draft" :outline)
+  (("quote_sent" "accepted") :info)
+  (("confirmed" "picked_up" "returned" "ready_for_invoice") :warning)
+  ("completed" :success)
+  ("cancelled" :destructive))
+
+(case-of (order status) (order-status order)    ; some values, and the rest
+  ("cancelled" (tr "Cancelled"))
+  (otherwise nil))
+
+(etypecase-of delivery delivery                ; a closed set of types
+  (pickup (pickup-place delivery))
+  (shipment (shipment-address delivery)))
+```
+
+**The sets.** The first argument names the set; it is not evaluated.
+
+| Set | Written | Values | Declared by |
+|---|---|---|---|
+| A field's allowed values: an entity's statuses, a kind, a price mode | `(ENTITY FIELD)` | the strings of its `(enum …)`, or of `(list-of (enum …))`'s elements | `define-entity`; `extend-entity` for a field a client adds; `define-computed-field` |
+| A type of values | `TYPE`, a symbol | the members of a `(member …)` type, such as `error-code`, the kinds of refusal (§3.5) | `deftype` |
+| A type of types (`etypecase-of` only) | `TYPE`, a symbol | the types of an `(or …)` type, such as `(or pickup shipment)` | `deftype`, with a class or structure for each |
+
+ENTITY is the entity's symbol, as `define-entity` names it; FIELD is
+compared by name with the entity's fields. `error-code` is in `TUN`. The
+kernel's roles (`role`, `policy`) and `operation-kind` are member types
+the kernel's own code switches over the same way; they are not in `TUN`.
+
+**What is checked when it is compiled.** Each of these is a full
+compiler warning, which the strict build of `bin/build`, `bin/test` and a
+client's `bin/test` turns into a failure:
+
+- `ecase-of` or `etypecase-of` lacks a branch for a value (or type) of the
+  set. The warning names the form's place, the set, the values missing,
+  and where the set is declared: «ecase-of (order status) at
+  modules/orders/package.lisp:83 has no branch for "returned"; the set is
+  declared at modules/orders/orders.lisp:47 (module orders): draft,
+  quote_sent, …».
+- A branch names a value outside the set, such as a misspelled status.
+  The warning names that value, the set and where it is declared.
+- The set is not there to look up: ENTITY names no entity, the entity has
+  no field FIELD, the field is not an enum (a `string` or `id` field is
+  not a closed set), or TYPE is not a `member` type (or, for
+  `etypecase-of`, an `or` type). The warning says which. An entity
+  defined after the form, or in a file or system the form's file does not
+  depend on, is not known when the form is compiled: the warning says to
+  define it before the form or to add the dependency (a module's
+  `:depends-on`, the client's `.asd`).
+- `case-of` has no final `otherwise`, or a value is named in two
+  branches.
+
+**What it does when it runs.** The value is compared with `equal` for an
+enum's strings and with `eql` for a member type's values. `ecase-of` with
+a value no branch names signals `case-not-handled`, an error naming the
+value, the set and the form's place, as `ecase` would (in `TUN`, for a
+client that handles it). A final
+`(otherwise …)` branch in `ecase-of` takes those values instead, such as
+a NIL from an empty optional field or a value stored before the set
+changed; every value of the set must still have its own branch.
+`case-of` must end with `(otherwise …)`: it handles some values and says
+so in the source, and only the values it names are checked. A branch for
+NIL, `((nil) …)`, is allowed over a field's values, which hold NIL when
+the field is empty; it is never required. `etypecase-of` signals
+`case-not-handled` for a value outside the type, or takes it in its final
+`otherwise`, as `ecase-of` does.
+
+**Same file.** `define-entity`, `extend-entity` and
+`define-computed-field` note their fields' sets when they are compiled as
+well as when they are loaded, so a form after them in the same file sees
+the set. A computed field's `(enum …)` is a set as a stored field's is.
+
+**When the set changes.** The check is made when the form is compiled, so
+every form over a set must be compiled again after the set changes:
+
+- The builds that compile afresh: `nix build` of the kernel, a module or
+  a client, `bin/test` (Tun's and a client's), which forces every system
+  of its own, and the preview's first start.
+- The builds that compile only what changed, `bin/build` and a second
+  `tun preview` on the same tree, rely on ASDF: a file is compiled again
+  when a file it depends on was, in its own system (`:serial t`, as every
+  Tun system and client is) and in a system that depends on that one.
+  A file whose system does not say it depends on the set's file (a
+  component without `:serial t` or `:depends-on`) is not compiled again;
+- so, when a compiled file is loaded, each form compares the set it was
+  compiled against with the set as it is now and warns when they differ,
+  naming the form and the set: «ecase-of (order status) at … was compiled
+  against another set; compile it again». The strict builds count that
+  warning as they count the compiler's.
+- In a running image, as at the REPL (`lisp eval`), defining an entity
+  again with a changed enum warns in the same words for every loaded form
+  over that field. The forms keep running as they were compiled until
+  they are compiled again, and a value they lack is `case-not-handled`,
+  never a silent wrong branch.
+
+**Limits.** Only closed sets of values and of types are checked: no
+nested patterns, destructuring or guards. Only code written with these
+forms is checked; a `cond` or `case` over a set is not, which the guard
+of `testing.md` §1 finds when a client turns it on. A set computed when
+the application runs, such as the departments an order may name, which a
+seam answers, is not closed, and the forms refuse it; so are an
+operation's parameters, since the operation is defined only after its
+body is compiled: compare a parameter's value with the field's set it
+copies, `(ecase-of (order status) status …)`. A client cannot add values
+to a module's field (`extend-entity` adds fields, never values), so every
+enum field is a closed set. Full matching with a type checker is
+Coalton's, which Tun does not use (`reference/coalton.md`).
+
 ## 3. MCP contract
 
 ### 3.1 Transport

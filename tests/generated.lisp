@@ -147,7 +147,7 @@ application class."
       (error "define-generated-tests: ~s in :isolate is not a global variable" variable)))
   (append *isolated-variables* variables))
 
-(defmacro define-generated-tests (name &key package isolate)
+(defmacro define-generated-tests (name &key package isolate cases)
   "Define in the current FiveAM suite the tests Tun generates for the client
 whose system is NAME, a string, and whose package is PACKAGE, a string
 (spec/testing.md 1). The application class is the value of
@@ -157,7 +157,8 @@ scenarios defined in PACKAGE and in the current package, and the fuzzing
 and record-policy tests start each tool from the one of them named
 default, and so do the sequence test and the page test.  Around each test,
 and around each scenario that test runs, *ISOLATED-VARIABLES* and the
-variables ISOLATE names are bound to NIL."
+variables ISOLATE names are bound to NIL.  With CASES true, the cases guard
+is one of them (test 11)."
   (check-type name string)
   (check-type package string)
   (let ((class (application-class-variable package))
@@ -193,4 +194,7 @@ variables ISOLATE names are bound to NIL."
                             ,class ,name ,package ',scenario-packages ',isolate))
          ,(generated-test "EVERY-PAGE-ANSWERS-EVERY-ROLE"
                           `(check-every-page-of-the-client
-                            ,class ,name ,package ',scenario-packages ',isolate))))))
+                            ,class ,name ,package ',scenario-packages ',isolate))
+         ,@(when cases
+             (list (generated-test "CASES-OVER-DECLARED-SETS-NAME-THEIR-SET"
+                                   `(check-cases-over-declared-sets ,name ,package))))))))

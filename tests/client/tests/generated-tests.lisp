@@ -6,4 +6,4 @@
 (def-suite generated :in client)
 (in-suite generated)
 
-(define-generated-tests "test-client" :package "TEST-CLIENT")
+(define-generated-tests "test-client" :package "TEST-CLIENT" :cases t)

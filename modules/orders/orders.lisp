@@ -200,6 +200,24 @@ error (a running work session: conflict).")
                              :description "May refuse completing, invoicing readiness or cancelling an order.")
 
 ;;; ------------------------------------------------------------------
+;;; Statuses as the calendar writes them
+
+(defun status-label (status)
+  "The order STATUS as the calendar shows it, in capitals (README §2.1), in
+the current language; an unknown status as it is."
+  (ecase-of (order status) status
+    ("draft" (tr "DRAFT"))
+    ("quote_sent" (tr "QUOTE SENT"))
+    ("accepted" (tr "ACCEPTED BY CUSTOMER"))
+    ("confirmed" (tr "CONFIRMED"))
+    ("picked_up" (tr "PICKED UP"))
+    ("returned" (tr "RETURNED"))
+    ("ready_for_invoice" (tr "SEND INVOICE"))
+    ("cancelled" (tr "CANCELLED"))
+    ("completed" (tr "COMPLETED"))
+    (otherwise status)))
+
+;;; ------------------------------------------------------------------
 ;;; Basic predicates
 
 (defun find-order (id) (fetch! 'order id))
@@ -255,20 +273,24 @@ names it in the refusal."
   "AMOUNT after price MODE: automatic keeps it, percent_discount takes PERCENT
 off (rounded down), fixed_discount takes FIXED minor units off, both floored
 at 0; manual_total is MANUAL."
-  (cond ((or (null mode) (string= mode "automatic")) amount)
-        ((string= mode "percent_discount")
-         (cond ((null percent) (fail :invalid-input "Discount percent must be filled in"))
-               ((not (<= 0 percent 100)) (fail :invalid-input "Discount percent must be between 0 and 100"))
-               (t (max 0 (- amount (floor (* amount percent) 100))))))
-        ((string= mode "fixed_discount")
-         (cond ((null fixed) (fail :invalid-input "Discount amount must be filled in"))
-               ((minusp fixed) (fail :invalid-input "Discount amount cannot be negative"))
-               (t (max 0 (- amount fixed)))))
-        ((and (string= mode "manual_total") allow-manual)
-         (cond ((null manual) (fail :invalid-input "Manual total must be filled in"))
-               ((minusp manual) (fail :invalid-input "Manual total cannot be negative"))
-               (t (check-amount manual (deferred-tr "The manual total")))))
-        (t (fail :invalid-input "That price mode is not allowed here"))))
+  (flet ((refuse-mode ()
+           (fail :invalid-input "That price mode is not allowed here")))
+    (ecase-of (order price-mode) mode
+      ((nil "automatic") amount)
+      ("percent_discount"
+       (cond ((null percent) (fail :invalid-input "Discount percent must be filled in"))
+             ((not (<= 0 percent 100)) (fail :invalid-input "Discount percent must be between 0 and 100"))
+             (t (max 0 (- amount (floor (* amount percent) 100))))))
+      ("fixed_discount"
+       (cond ((null fixed) (fail :invalid-input "Discount amount must be filled in"))
+             ((minusp fixed) (fail :invalid-input "Discount amount cannot be negative"))
+             (t (max 0 (- amount fixed)))))
+      ("manual_total"
+       (cond ((not allow-manual) (refuse-mode))
+             ((null manual) (fail :invalid-input "Manual total must be filled in"))
+             ((minusp manual) (fail :invalid-input "Manual total cannot be negative"))
+             (t (check-amount manual (deferred-tr "The manual total")))))
+      (otherwise (refuse-mode)))))
 
 (defun clear-other-mode-inputs (mode setters)
   "Inputs that belong to another price mode are stored as null."

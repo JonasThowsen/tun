@@ -105,6 +105,22 @@ Lisp. Code that is obvious beats code that is clever.
   - `loop` when collecting, summing or iterating several things together.
 - **Prefer `cond` to nested `if`.** Use `when` and `unless` for one-armed
   conditionals, and `if` only when both branches are short.
+- **Switch over a closed set with the form that names it**
+  (`spec/core.md` §2.7), so a value added to the set stops the build
+  where it is not handled:
+  - `ecase-of` when every value has its branch: a field's statuses,
+    `(ecase-of (order status) …)`, or a member type, `(ecase-of
+    error-code …)`. A final `otherwise` there takes only values outside
+    the set, such as NIL;
+  - `case-of` with `otherwise` when the code truly handles only some
+    values; prefer `ecase-of` whenever a new value would need a decision
+    here;
+  - `etypecase-of` over a `deftype` of `(or …)` classes or structures,
+    a client's own closed set of kinds;
+  - `ecase`, `case` and `cond` for everything else: keywords no type
+    names, numbers, ranges, tests that are not one value.
+  A test of one or two values (`when`, `member`, an `if`) is not a case
+  analysis; leave it as it is.
 - **`let` by default, `let*` only when a binding uses an earlier one.**
 - **Return secondary results as multiple values,** as `gethash` does, rather
   than consing a list.
@@ -148,7 +164,11 @@ Lisp. Code that is obvious beats code that is clever.
   the other definition by its symbol and look it up when the code runs
   (`define-query`'s `{order}`). Code compiled against another definition
   goes stale silently when that definition changes, and a chain of such
-  macros is what makes a framework slow to compile.
+  macros is what makes a framework slow to compile. `ecase-of` and
+  `case-of` are the one exception, since checking the set when compiling
+  is their purpose: each reads only the one field or type it names, and
+  notes the set it was compiled against, so a stale expansion warns when
+  it is loaded (`spec/core.md` §2.7).
 - **Expand small.** One definition, a registration and a call into
   ordinary functions. A large expansion per entity costs compile time on
   every build, for every client.

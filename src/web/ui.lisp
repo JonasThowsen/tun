@@ -722,7 +722,7 @@ deploy that changed them, the next page is loaded in full."
 
 (defun error-title (code)
   "The heading of an error the page shows, by its CODE."
-  (case code
+  (case-of error-code code
     (:forbidden (tr "You do not have access to this"))
     (:not-found (tr "Not found"))
     (:conflict (tr "Someone else has changed this"))
@@ -731,7 +731,7 @@ deploy that changed them, the next page is loaded in full."
     (:unavailable (tr "Not available"))
     (:insufficient-stock (tr "Not enough in stock"))
     (:invalid-input (tr "Something needs correcting"))
-    (t (tr "That did not work"))))
+    (otherwise (tr "That did not work"))))
 
 (defun error-code-keyword (json)
   "The code of the error document JSON as a keyword, :invalid_input as :INVALID-INPUT."

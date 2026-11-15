@@ -166,6 +166,61 @@ an after hook is a guarded copy: call public operations for module-owned writes.
 Before hooks can refuse the operation using `reject` or `fail`; an exception
 rolls back the whole transaction, including all hook effects.
 
+## Switching over a closed set
+
+Code that does something different for each status, kind or mode names
+the set it switches over, so a value added to the set later stops the
+build at every such place that has no branch for it (`spec/core.md`
+§2.7):
+
+```lisp
+(defun order-status-variant (status)
+  (ecase-of (order status) status         ; every status has its branch
+    ("draft" :outline)
+    (("quote_sent" "accepted") :info)
+    (("confirmed" "picked_up" "returned" "ready_for_invoice") :warning)
+    ("completed" :success)
+    ("cancelled" :destructive)))
+
+(defun refusal-heading (code)
+  (case-of error-code code                 ; some kinds of refusal, and the rest
+    (:not-found "Not found")
+    (:forbidden "You do not have access to this")
+    (otherwise "That did not work")))
+```
+
+- `(ENTITY FIELD)` names an enum field's values, of the client's own
+  entities and of those its modules publish; a symbol names a `deftype`
+  of `(member …)`, such as `error-code`. The field's or type's definition
+  must be compiled before the form: in an earlier file of the system, or
+  in a system it depends on.
+- `ecase-of`: every value has a branch. A missing one, or a value outside
+  the set, is a compiler warning, which fails `bin/test`. A final
+  `otherwise` takes only what is outside the set, such as NIL from an
+  empty field.
+- `case-of`: some values, and `otherwise` for the rest, which must be
+  there. Only the values it names are checked.
+- `etypecase-of`: a client's own closed set of kinds, as classes or
+  structures and a `deftype` of their `or`. It is how Tun writes what
+  Serapeum's `defunion` and `match-of` do; Serapeum is not among Tun's
+  libraries, and Tun's three forms read as Serapeum's `ecase-of`,
+  `case-of` and `etypecase-of` do.
+
+```lisp
+(defstruct pickup place)
+(defstruct shipment address)
+(deftype delivery () '(or pickup shipment))
+
+(defun delivery-text (delivery)
+  (etypecase-of delivery delivery
+    (pickup (format nil "Picked up at ~a" (pickup-place delivery)))
+    (shipment (format nil "Sent to ~a" (shipment-address delivery)))))
+```
+
+`(define-generated-tests "NAME" :package "PACKAGE" :cases t)` turns on a
+guard that fails on a `cond`, `case` or `ecase` over a declared field
+written without these forms (`spec/testing.md` §1, test 11).
+
 ## Waiting for a person
 
 An agent's call can wait for what a person does in the UI, such as

@@ -56,6 +56,11 @@
    #:files-type #:files-max #:files-type-p #:files #:recorded-value #:shown-name
    #:long-number-text-p #:+most-number-text+
    #:email #:enum #:date #:timestamp #:id #:list-of #:json
+   ;; case analysis over a closed set (spec/core.md 2.7)
+   #:ecase-of #:case-of #:etypecase-of #:case-set-warning #:case-not-handled
+   #:case-not-handled-value #:case-not-handled-set #:case-not-handled-place
+   #:declared-fields #:declared-field-entity #:declared-field-name #:declared-field-reader
+   #:declared-field-location #:declared-field-module #:declared-field-values
    ;; entities
    #:entity-class #:entity #:stored-entity #:entity-id #:define-entity #:extend-entity
    #:define-rule #:define-computed-field

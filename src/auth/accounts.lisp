@@ -52,10 +52,11 @@
 
 (defun role-keyword (role)
   "The role keyword of ROLE, a role name as accounts and tokens store it."
-  (cond ((string= role "admin") :admin)
-        ((string= role "employee") :employee)
-        ((string= role "viewer") :viewer)
-        (t (error "Unknown role ~s" role))))
+  (ecase-of (account role) role
+    ("admin" :admin)
+    ("employee" :employee)
+    ("viewer" :viewer)
+    (otherwise (error "Unknown role ~s" role))))
 
 (defun lower-role (a b)
   "The lower of the role names A and B."

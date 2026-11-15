@@ -92,6 +92,9 @@ the listed symbols (the same symbol objects, not copies)."
    #:format-rfc3339 #:parse-rfc3339 #:date<= #:date<
    ;; a link at the server's public URL, for mail (spec/deploy.md 1)
    #:absolute-url
+   ;; switching over a closed set: a field's values, a member type such as
+   ;; the kinds of refusal, a client's own types (spec/core.md 2.7)
+   #:ecase-of #:case-of #:etypecase-of #:error-code #:case-not-handled
    ;; inside operations, rules, workflows
    #:fail #:input-value #:input-provided-p #:operation-result #:invoke
    ;; an operation's refusal, such as a remote-failure or program-failure a

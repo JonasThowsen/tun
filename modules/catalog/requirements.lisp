@@ -387,10 +387,12 @@ recipe, pick, position, source_key)."
                                                             (and item (recipe-item-id item)) article-id)))
                        entries)))
              (multiplier (basis)
-               (cond ((string= basis "per_line") 1)
-                     ((string= basis "per_quantity") quantity)
-                     ((string= basis "per_serving") servings)
-                     (t days))))
+               (ecase-of (product-requirement basis) basis
+                 ("per_line" 1)
+                 ("per_quantity" quantity)
+                 ("per_serving" servings)
+                 ("per_day" days)
+                 (otherwise days))))
       (when product
         (dolist (r (sort (copy-list (product-requirements product)) #'< :key #'product-requirement-position))
           (let ((n (* (product-requirement-quantity r) (multiplier (product-requirement-basis r))))

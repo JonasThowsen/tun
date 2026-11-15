@@ -52,6 +52,27 @@ and a check added to Tun reaches every client with `tun update`.
      under its `tests/`. A module loaded from anywhere else, such as a dev
      shell's store, fails the test, which names both places, and so does
      a module named as one of Tun's modules (`tun-platform.md` §2.1).
+  11. only when the client turns it on, with `:cases t`: its sources (as
+     in test 2, and its own modules' as in test 10) switch over a declared
+     set only through `ecase-of` and `case-of` (`core.md` §2.7). The test
+     reads them with the Lisp reader, each file in the package its
+     `in-package` names, and fails naming the file, the line of the
+     top-level form and the set, on a `case`, `ecase` or `ccase` whose
+     key form calls the reader of an enum field, and on a `cond` with two
+     or more branches that compare one form (with `string=`, `equal`,
+     `string-equal` or `equalp`, or `member` of a quoted list) with
+     strings that are all values of one
+     enum field, or of a field whose reader the form calls. Only the
+     fields of entities the file can name count: those whose symbol is
+     accessible in the package the form is read in (another module's
+     entity that its module does not publish is not the file's set to
+     name). A comparison in `when`, `if`, `and` or `member` is not a case
+     analysis and is left alone.
+- **The cases guard.** `(define-generated-tests "NAME" :package "PACKAGE"
+  :cases t)` adds test 11; without `:cases` it is not defined. The scan
+  is also `plain-case-findings`, a function of source files a client may
+  call in a test of its own. Tun's own suite runs it over Tun's kernel
+  and modules.
 - The client's own modules are the client's to tests 4, 6, 7 and 8 too:
   their texts are translated, and their tools are fuzzed, kept to their
   record policies and called in sequence with the client's. Tun's own

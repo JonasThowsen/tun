@@ -77,20 +77,6 @@
   "Refuse a change to a locked order with the lock message (README §2.3)."
   (fail :conflict "The order is locked (ready for invoice or completed). Reopen the order for editing first."))
 
-(defun status-label (status)
-  "The order STATUS as the calendar shows it, in capitals (README §2.1), in
-the current language; an unknown status as it is."
-  (cond ((string= status "draft") (tr "DRAFT"))
-        ((string= status "quote_sent") (tr "QUOTE SENT"))
-        ((string= status "accepted") (tr "ACCEPTED BY CUSTOMER"))
-        ((string= status "confirmed") (tr "CONFIRMED"))
-        ((string= status "picked_up") (tr "PICKED UP"))
-        ((string= status "returned") (tr "RETURNED"))
-        ((string= status "ready_for_invoice") (tr "SEND INVOICE"))
-        ((string= status "cancelled") (tr "CANCELLED"))
-        ((string= status "completed") (tr "COMPLETED"))
-        (t status)))
-
 (defun status-text (status)
   "The order STATUS as a message's argument: its label (spec/i18n.md 3.1)."
   (label "order" "status" status))

@@ -314,7 +314,16 @@ T or (:MAX N :POLICY ROLE), lets its records take files (spec/files.md 1)."
                         :rollback-check ',rollback-check
                         :record-policy ',(parse-record-policy name record-policy *package*)
                         :attachments ',(parse-attachments-option name attachments))
+       ,(declared-fields-form name (field-specs-noted name fields) location module)
        ',name)))
+
+(defun field-specs-noted (entity specs)
+  "SPECS, field specs of ENTITY, as NOTE-DECLARED-FIELDS takes them: (NAME
+DESIGNATOR READER) each (spec/core.md 2.7)."
+  (mapcar (lambda (spec)
+            (destructuring-bind (name &key (type 'string) &allow-other-keys) spec
+              (list name type (field-reader-name entity name))))
+          specs))
 
 (defun add-rollback-check (entity-name function &key older-lacks)
   "Have the rollback preflight run FUNCTION (a symbol: of one stored record,
@@ -420,6 +429,8 @@ current package) that is added to the entity's direct superclasses."
          ,(mapcar (lambda (spec) (field-spec->slot-spec entity spec source location)) fields)
          (:metaclass entity-class))
        (add-entity-extension ',entity ',mixin)
+       ,(declared-fields-form entity (field-specs-noted entity fields) location
+                              (current-definition-module))
        ',mixin)))
 
 (defun add-entity-extension (entity mixin-name)
@@ -553,6 +564,7 @@ and in registry_describe."
        (register-computed-field ',entity ',name #',fn
                                 :type ',type :label ,(or label (json-name-of name)) :source ,source
                                 :module ,module :location ,location)
+       ,(declared-fields-form entity (list (list name type fn)) location module)
        ',fn)))
 
 (defun register-computed-field (entity name function &key type label source (module "core") location)

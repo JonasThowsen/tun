@@ -62,6 +62,17 @@ repeating the history.
   image where ASDF already loaded the first can make ASDF reload it, with
   macro-redefinition style warnings. `bin/build` and `bin/test` run the
   kernel and each client in their own process.
+- **A file compiled against a definition in another file is not compiled
+  again unless ASDF knows it depends on that file.** `:serial t`, or a
+  `:depends-on` between the components, says so; then a changed set
+  recompiles every `ecase-of` over it, in the same system and in the
+  systems that depend on it. Without it, the old expansion is loaded and
+  only the load-time comparison of `ecase-of` notices (`spec/core.md`
+  §2.7). Give every system `:serial t` unless it has a reason not to.
+- **`ecase` and `case` compare with `eql`, so they never match a
+  string.** An enum field's value is a string: switch over it with
+  `ecase-of (ENTITY FIELD)`, which compares with `equal`, never with
+  `case`.
 - **Unbalanced parentheses surface only at the next full compile.** Let the
   editor or `bin/build` check the form before moving on.
 - **`function-lambda-expression` returns nothing for compiled code.** Source

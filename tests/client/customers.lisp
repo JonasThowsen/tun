@@ -33,10 +33,13 @@
 
 (declaim (ftype (function (string) (values (integer 0 100) &optional)) tier-discount-percent))
 (defun tier-discount-percent (tier)
-  "The discount, in percent of the subtotal, that loyalty TIER gives."
-  (cond ((string= tier "gull") 10)
-        ((string= tier "sølv") 5)
-        (t 0)))
+  "The discount, in percent of the subtotal, that loyalty TIER gives; none for
+anything that is not a tier."
+  (ecase-of (customer loyalty-tier) tier
+    ("gull" 10)
+    ("sølv" 5)
+    ("bronse" 0)
+    (otherwise 0)))
 
 (defclass loyalty-feature () ()
   (:documentation "Loyalty discount: 0 %, 5 % or 10 % of the subtotal by tier, rounded down."))

@@ -3,4 +3,5 @@
 (defpackage #:test-client
   (:use #:cl #:tun)
   (:export #:*application-class* #:nordvik
-           #:loyalty-tier-for #:tier-discount-percent))
+           #:loyalty-tier-for #:tier-discount-percent
+           #:order-status-variant #:refusal-heading #:delivery-text #:make-pickup #:make-shipment))
