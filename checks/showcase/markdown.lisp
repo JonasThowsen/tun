@@ -31,7 +31,7 @@ bin/export --from 2026-11-01 --to 2026-11-30 --format csv --output exports/order
 | Order | Customer | Date | Status | Lines | Net | VAT | Total | Paid | Note |
 |---|---|---|---|--:|--:|--:|--:|---|---|
 | 10482 | Fjord Coffee Ltd | 12 Oct 2026 | New | 3 | €3,504.00 | €876.00 | €4,380.00 | no | Deliver before noon |
-| 10481 | Hansen Building and Construction Ltd | 11 Oct 2026 | In progress | 12 | €103,160.00 | €25,790.00 | €128,950.00 | yes | |
+| 10481 | Hansen Building and Construction Ltd | 11 Oct 2026 | In progress | 12 | €103,160.00 | €25,790.00 | €128,950.00 | yes | The site is closed on Mondays, so the van comes on Tuesday morning before eight |
 
 A line with no spaces: exports/orders-2026-11-01-to-2026-11-30-for-every-customer-and-every-department-in-the-company.csv
 

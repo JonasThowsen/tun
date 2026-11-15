@@ -498,7 +498,7 @@ wider edge: the tick of a checkbox, a graph node's tone, the confirm panel's !."
           "~a has the edge" name)
       (is (find "var(--shadow-panel)" declarations :key #'declaration-value :test #'string=)
           "~a has the panel's shadow" name)))
-  (dolist (name '("table" "markdown" "flash" "confirm-panel" "board" "graph"))
+  (dolist (name '("table" "flash" "confirm-panel" "board" "graph"))
     (is (find-if (lambda (d) (search "var(--shadow-panel)" (declaration-value d)))
                  (component-declarations name))
         "~a has the panel's shadow" name)))

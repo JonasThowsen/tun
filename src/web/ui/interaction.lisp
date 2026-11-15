@@ -685,6 +685,36 @@ document.addEventListener('htmx:confirm', (event) => {
   ask(control, end >= 0 ? text.slice(0, end + 1) : text, end >= 0 ? text.slice(end + 1).trim() : '',
       ownWords(control), destructive(control))
     .then((yes) => (yes ? issueRequest() : dropRequest()));
+});
+
+// A confirmation the server asks for (spec/ui.md 6, «A step the server
+// sends»): htmx puts a hidden form holding the server's token beside the
+// dialog, which asks at once with the texts on the form's button.  A yes
+// submits the form, which posts the token; «Cancel» removes it.  The focus
+// goes back to the control whose request brought the step.
+let stepAsker = null;
+document.addEventListener('htmx:before:request', (event) => {
+  const ctx = event.detail?.ctx;
+  stepAsker = ctx?.sourceEvent?.submitter || ctx?.sourceElement || null;
+});
+tunOnContent(() => {
+  for (const step of document.querySelectorAll('form[data-tun-confirm-step]:not([data-tun-asked])')) {
+    const button = step.querySelector('[data-tun-confirm]');
+    // One question at a time: a step that comes while the dialog asks is
+    // dropped, and its token is never posted.
+    if (!button || confirmDialog()?.open) {
+      step.remove();
+      continue;
+    }
+    step.dataset.tunAsked = '';
+    const control = stepAsker?.isConnected ? stepAsker : null;
+    ask(control, words(button.dataset.tunConfirm), words(button.dataset.tunConfirmDetail),
+        words(button.dataset.tunConfirmAction) || ownWords(button), destructive(button))
+      .then((yes) => {
+        if (yes && step.isConnected) step.requestSubmit(button);
+        else step.remove();
+      });
+  }
 });")
   (:examples
    ("A destructive action asks first"
@@ -1302,7 +1332,6 @@ EXCLUSIVE only one entry is open at a time. Works without JavaScript.")
   display: flex;
   width: 100%;
   flex-direction: column;
-  interpolate-size: allow-keywords;
   & .tun-accordion-item:not(:last-child) { border-bottom: 1px solid var(--border); }
   & .tun-accordion-trigger {
     display: flex;
@@ -1347,17 +1376,19 @@ EXCLUSIVE only one entry is open at a time. Works without JavaScript.")
     line-height: var(--text-running--line-height);
     & > * + * { margin-top: calc(var(--spacing) * 3); }
   }
-  /* Opening slides where the browser can animate to height: auto; the
-     motion tokens are zero under prefers-reduced-motion. */
-  & .tun-accordion-item::details-content {
-    block-size: 0;
-    overflow: hidden;
-    transition-property: block-size, content-visibility;
-    transition-duration: var(--duration);
-    transition-timing-function: var(--ease);
-    transition-behavior: allow-discrete;
+  /* An opening item's content rises and fades in, by opacity and
+     translate alone; its room opens at once, so nothing around it slides.
+     Closing is at once.  An animation, not a transition: the content has
+     no earlier style to move from when [open] starts to match. */
+  @media (prefers-reduced-motion: no-preference) {
+    & .tun-accordion-item[open] > .tun-accordion-content {
+      animation: tun-accordion-open var(--duration) var(--ease) backwards;
+    }
   }
-  & .tun-accordion-item[open]::details-content { block-size: auto; }
+}
+
+@keyframes tun-accordion-open {
+  from { opacity: 0; translate: 0 var(--spacing); }
 }")
   (:examples
    (("Frequently asked questions, one open at a time" :layout :stack)

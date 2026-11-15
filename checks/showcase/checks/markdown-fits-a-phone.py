@@ -1,10 +1,9 @@
-"""An agent's comment shown with markdown, at 320px, 390px and on a desktop:
-the page never scrolls sideways, though the comment holds a table of ten
-columns, a line with no spaces, a long code line and a long address; on a
-phone the ten columns are cards, each value under its heading, and the
-table of three stays a table; on a desktop the ten columns are a table in a
-box of its own, which scrolls at 800px where they do not fit, and the code
-block scrolls in its own (spec/ui.md 6.2)."""
+"""An agent's comment shown with markdown, at 320px, 360px, 390px and on a
+desktop: the page never scrolls sideways, though the comment holds a table
+of ten columns, a line with no spaces, a long code line and a long address;
+at every width the ten columns are a table in a box of its own, which
+scrolls where they do not fit, the table of three fits, and the code block
+scrolls in its own (spec/ui.md 6.2)."""
 
 COMMENT = "#comment"
 
@@ -12,8 +11,6 @@ MEASURE = """(selector) => {
   const root = document.querySelector(selector);
   const [narrow, wide] = root.querySelectorAll('.tun-markdown-table');
   const pre = root.querySelector('.tun-code-block-pre');
-  const label = wide.querySelector('tbody tr td .tun-markdown-table-label');
-  const value = label.nextElementSibling;
   const box = (element) => element.getBoundingClientRect();
   const inside = (element) => box(element).right <= box(root).right + 0.5
     && box(element).left >= box(root).left - 0.5;
@@ -24,9 +21,7 @@ MEASURE = """(selector) => {
     narrowInside: inside(narrow),
     wideRow: getComputedStyle(wide.querySelector('tbody tr')).display,
     wideHeadings: getComputedStyle(wide.querySelector('thead')).display,
-    labelShown: getComputedStyle(label).display !== 'none',
-    labelText: label.textContent,
-    labelAbove: box(label).bottom <= box(value).top + 0.5,
+    labels: wide.querySelectorAll('.tun-markdown-table-label').length,
     wideInside: inside(wide),
     wideScrolls: wide.scrollWidth > wide.clientWidth,
     wideOverflow: getComputedStyle(wide).overflowX,
@@ -40,7 +35,7 @@ MEASURE = """(selector) => {
 
 
 def run(t):
-    for width in (320, 390):
+    for width in (320, 360, 390):
         phone = t.phone(width=width)
         phone.sign_in("employee:anna")
         phone.goto("/markdown")
@@ -51,11 +46,12 @@ def run(t):
                 f"{name}: the line with no spaces and the long address break inside the comment")
         t.check(m["narrowRow"] == "table-row" and m["narrowInside"],
                 f"{name}: three columns stay a table and fit: {m['narrowRow']}")
-        t.check(m["wideRow"] == "block" and m["wideHeadings"] == "none",
-                f"{name}: ten columns are cards: rows {m['wideRow']}, headings {m['wideHeadings']}")
-        t.check(m["labelShown"] and m["labelText"] == "Order" and m["labelAbove"],
-                f"{name}: each value has its heading above it: {m['labelText']!r}")
-        t.check(m["wideInside"], f"{name}: the cards fit in the comment")
+        t.check(m["wideRow"] == "table-row" and m["wideHeadings"] == "table-header-group"
+                and m["labels"] == 0,
+                f"{name}: ten columns stay a table, no cards: rows {m['wideRow']}, "
+                f"headings {m['wideHeadings']}, labels {m['labels']}")
+        t.check(m["wideInside"] and m["wideScrolls"] and m["wideOverflow"] == "auto",
+                f"{name}: in a box of its own inside the comment, which scrolls")
         t.check(m["codeInside"] and m["codeScrolls"],
                 f"{name}: the code block scrolls in its own box")
 

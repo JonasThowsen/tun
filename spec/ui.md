@@ -40,7 +40,10 @@ naming its fields by their labels, Enter saving in a form with an asked
 choice, «must be chosen», and `record-choice`, a module's shape of its
 records' choice (§2.1, §6, §8, §9), 2026-11-12, core 2.36.0; near matches
 for a word typed wrong in the search and a choice (§6, §6.4, §9),
-2026-11-14, core 2.37.0.
+2026-11-14, core 2.37.0; an accordion's content fades and rises as it
+opens, a generated record's confirmation asked in the confirm dialog,
+and a Markdown table of four columns or more scrolling in its own box on
+a phone (§2.1, §6, §6.2, §8), 2026-11-14, core 2.38.0.
 How every Tun page looks and behaves: the tokens, the components that
 are built from them, the specimen that shows them, and the rules a
 component follows. The
@@ -186,6 +189,11 @@ application of 2026-11-10 and 2026-11-11; the token names stay shadcn's.
   without them opens and closes at once. The duration follows the state
   it goes to: the open state names the opening duration, the closed
   state `--duration-close`.
+- **What unfolds in the page fades and rises.** An `accordion`'s content
+  rises 0.25rem and fades in over `--duration` as its item opens, by
+  `opacity` and `translate` alone; its room opens at once, so what is
+  below moves once and nothing slides, and its summary row stays where
+  it was. Closing is at once, with no motion.
 - **The dim only gets darker.** The page behind a modal dialog dims in
   one fade of its `::backdrop`, in `--overlay`, from nothing to whole
   while the dialog opens and back while it closes; there is no second
@@ -913,6 +921,15 @@ own.
   sentence.
   htmx sends the request on the action and drops it on «Cancel» or
   Escape. Mark a control one way, not both.
+- **A step the server sends.** A form marked `data-tun-confirm-step`,
+  hidden, that htmx puts beside the dialog (the server's answer to a
+  generated record's action that asks for confirmation, §8 «A record»)
+  is asked at once with the texts of its submit button's
+  `confirm-attributes`: a yes submits the form, as its button would; «Cancel» and
+  Escape remove it, and the focus goes back to the control whose
+  request brought it (the button of its menu, when that has closed). A
+  step that comes while the dialog asks is dropped, its token never
+  posted.
 - **Without JavaScript** nothing is asked in the browser: the control
   acts, and an action that asks on the server, such as a `:confirm`
   operation's `confirm-panel`, still asks there. A page without a
@@ -921,6 +938,16 @@ own.
 The `dropdown-menu`'s list, the `combobox`'s list and a `tooltip` rise
 0.25rem and fade in over `--duration-fast`, and sink and fade over
 `--duration-close` as they close.
+
+`accordion` is headings that unfold their content, each a `<details>`,
+so it opens and closes without JavaScript; with `:exclusive` one item is
+open at a time (`name`). As an item opens, its content runs the
+keyframes `tun-accordion-open`, from `opacity: 0` and `translate: 0
+0.25rem` to where it stands, over `--duration` with `--ease`, filled
+backwards; the content takes its room at once, and nothing animates a
+size or a `transform`. The animation is set only under
+`prefers-reduced-motion: no-preference`. Closing hides the content at
+once. An item open in the page's markup fades in as the page shows.
 
 `button` keeps its variants. `:primary` is ink, the one main step of a
 view. `:outline` has the page's ground and the edge; `:destructive` is
@@ -1556,12 +1583,18 @@ spaces before it.
     the lines after it are a paragraph.
   - **Up to three columns:** a table at every width, its cells' text
     wrapping, long words included.
-  - **Four or more:** where the component is less than 36rem wide, each
-    row is a card, and each cell in it has its column's heading above its
-    value. In a card, a heading is its text without marks, cut at 80
-    characters, and an empty cell has no heading. From 36rem wide, the
-    rows are a table that scrolls sideways in its own box when it does
-    not fit.
+  - **Four or more:** a table at every width, a phone's too: its rows
+    stay rows and its headings stay on top, in a box of its own that
+    scrolls sideways when the columns do not fit, never the page, as
+    `table`'s rows do (§6). A cell keeps its text on one line up to
+    16rem, and three quarters of the component's width, and wraps beyond
+    it, its long words kept whole; a soft shadow
+    at an edge of the box says there is more beyond it, and none shows
+    at the very start or end. The box has no edge of its own. A box
+    that scrolls is reached by the keyboard, which then scrolls it with
+    the arrow keys, as a browser makes such a box focusable when it
+    holds nothing focusable; a box that holds a link is reached through
+    the link.
 
 **Inline**, in paragraphs, headings, items and cells:
 
@@ -1612,8 +1645,8 @@ widens the page.
 
 - Words longer than a line, such as a URL, break in paragraphs, headings,
   items, inline code and the tables of up to three columns.
-- Code blocks and the tables of four or more columns, from 36rem, scroll
-  in their own boxes.
+- Code blocks and the tables of four or more columns scroll in their own
+  boxes.
 - A `markdown` gets its width from its container, as a block does. In a
   row of flex items it needs a width of its own.
 
@@ -2232,6 +2265,38 @@ form of `field`s with an `error-summary`, a confirmation is a
   a value, a `table` per list of records, and computed JSON in an
   `accordion`, each in a section with an id; with three sections or
   more, `section-links` to them first.
+- **A record's action that asks first.** A status operation is a form
+  that posts to `PATH/ID/TOOL`. When its operation asks for confirmation
+  (`:confirm`, `core.md` §3.6), the first post calls it without a token,
+  which changes nothing and issues one, and the answer depends on who
+  posted:
+  - **Without JavaScript** (no `HX-Request`): the confirmation page, a
+    `confirm-panel` titled with the operation's title as a question,
+    its summary, «The confirmation expires …», «Go back» to the record
+    and the action's button, which posts the token back.
+  - **With JavaScript** (htmx's post, from the record's page or any page
+    that posts to the path): 200 with `HX-Retarget:
+    [data-tun-confirm-dialog]`, `HX-Reswap: beforeend` and
+    `HX-Push-Url: false`, and only a hidden form, `data-tun-confirm-step`,
+    that posts the `confirmation_token` to the same path, its submit
+    button marked with `confirm-attributes`: the question the
+    operation's title with «?», the sentence its summary, the action its
+    title. htmx puts it beside the shell's `confirm-dialog`, which asks
+    at once (§6, «A step the server sends»), over the page the person
+    is on, its address unchanged. Yes posts the form.
+  - The post with the token is the operation's own confirming call in
+    both cases: it runs once and answers 303 to the record. The server
+    checks the token as `core.md` §3.6 says (single use, ten minutes,
+    bound to the person, the tool and the input): a token used, made up,
+    for another record or tool, or expired is refused with the record
+    page and its error, and nothing changes. A refusal of the first call
+    (the policy, a record that is not found) is the record page with its
+    error, with or without JavaScript; the operation's own checks of the
+    record's state come with the second call (`core.md` §3.6).
+  - An operation that ends or removes something (a tool ending in
+    `_cancel`, `_erase`, `_delete` or `_revoke`) is drawn as a warning:
+    the page's destructive button and icon, and in the dialog the
+    destructive action with the focus on «Cancel».
 - **Forms.** A control per input, chosen by its type: text, e-mail,
   number, date, a `select` or `radios` (four choices or fewer, required)
   for an enum, `checkboxes` for a list of an enum, a `checkbox` for a
@@ -2667,10 +2732,9 @@ form of `field`s with an `error-summary`, a confirmation is a
 - `checks/showcase/checks/markdown-fits-a-phone.py` (`/markdown`): at
   320px, 390px and on a desktop, the page does not scroll sideways with a
   table of ten columns, a long unbroken line, a long code line and a long
-  URL; on a phone the ten columns are cards, each value under its
-  heading, and a table of three columns stays a table; on a desktop the
-  ten columns are a table scrolling in its own box, and the code block
-  scrolls in its own.
+  URL; at every width the ten columns are a table scrolling in its own
+  box, and a table of three columns fits; the code block scrolls in its
+  own.
 - `tests/graph-tests.lisp` (`graph`, §6.3): the layout's layers, a
   chain on one row, nodes without edges in a row of their own, a
   source next to its successor, long edges through empty places,
@@ -3123,5 +3187,32 @@ form of `field`s with an `error-summary`, a confirmation is a
   and without JavaScript; with JavaScript off, Enter in the title of
   either form saving it, not finding, and «Find» still finding; a
   generated form's empty customer «Customer must be chosen».
+- `tests/ui-motion-tests.lisp` (§2.1 «What unfolds in the page fades
+  and rises», §6 `accordion`, `confirm-dialog`'s step, §6.2 tables, §8
+  «A record's action that asks first»): the accordion's keyframes, only
+  `opacity` and `translate`, under no-preference, and no size or
+  `::details-content` rule; a Markdown table of four columns or more as
+  a table with no labels, its cell's 16rem and its box's edge shadows;
+  a record's confirming action without `HX-Request` answering the
+  confirmation page as before and with it the hidden step, its headers,
+  token and texts, a warning's destructive button, nothing changed by
+  either; the token posted back running the operation once, and a token
+  used, made up, for another record or tool, or expired refused with
+  nothing changed, with and without `HX-Request`; a viewer's first post
+  and one for a record that does not exist refused as before.
+- `checks/showcase/checks/ui-motion.py`: on `/ui/accordion` at 390 and
+  1280 px the content's animation and its duration, its opacity rising,
+  the summary row and the next item where they were, closing at once,
+  reduced motion and JavaScript off; on the showcase's `/meetings/ID` at
+  390 and 1280 px the confirm dialog's texts, colour and focus for
+  «Cancel the meeting» and «Mark as held», «Cancel» and Escape posting
+  nothing and giving the focus back, the yes posting the token once and
+  the record showing the change, the address unchanged while it asks,
+  and the confirmation page without JavaScript, on the showcase's
+  meetings, with their status and their two actions that ask first; on
+  `/markdown` at 320,
+  360 and 390 px the ten-column table scrolling in its box inside the
+  comment, its last column brought into sight, no page scrolling
+  sideways, the box reached by Tab and scrolled by the arrow keys.
 - `bin/ui-shots` and a review of the screenshots before a component is
   accepted.

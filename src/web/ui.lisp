@@ -2207,6 +2207,32 @@ that posts the confirmation token back."
                                 (list :label title :href path)
                                 (list :label op-title)))))
 
+(defun confirmation-step (resource id op json)
+  "What a :confirm operation answers htmx before it runs (spec/ui.md 8, «A
+record's action that asks first»): a hidden form that posts the token back,
+put beside the shell's confirm dialog, which asks with its button's texts.
+The page and its address stay as they are."
+  (let ((op-title (translate (operation-title op))))
+    (setf (hunchentoot:header-out "HX-Retarget") "[data-tun-confirm-dialog]"
+          (hunchentoot:header-out "HX-Reswap") "beforeend"
+          (hunchentoot:header-out "HX-Push-Url") "false")
+    (respond-fragment
+     200
+     (list `(:form (:@ :method "post" :hidden t :data-tun-confirm-step t
+                       :action ,(format nil "~a/~a/~a" (resource-path resource) id
+                                        (operation-tool op)))
+                   (:input (:@ :type "hidden" :name "confirmation_token"
+                               :value ,(jget json "confirmation_token")))
+                   ,(ui:button (:type "submit"
+                                :variant (if (destructive-tool-p (operation-tool op))
+                                             :destructive
+                                             :primary)
+                                :attributes (ui:confirm-attributes
+                                             (format nil "~a?" op-title)
+                                             :detail (jget json "summary")
+                                             :action op-title))
+                               op-title))))))
+
 (defun handle-record-action (resource id tool)
   (let ((op (find-operation-by-tool tool))
         (path (resource-path resource)))
@@ -2220,6 +2246,11 @@ that posts the confirmation token back."
       (when (and token (operation-confirm-p op)) (setf (gethash "confirmation_token" args) token))
       (multiple-value-bind (json code) (web-call tool args)
         (cond (code (detail-page resource id :error-json json :status (error-status code)))
+              ;; htmx asks in the page's confirm dialog; a browser without
+              ;; scripts gets the confirmation page.
+              ((and (eq t (jget json "confirmation_required"))
+                    (hunchentoot:header-in* :hx-request))
+               (confirmation-step resource id op json))
               ((eq t (jget json "confirmation_required"))
                (confirmation-page resource id op json))
               (t (see-other (format nil "~a/~a" path id))))))))

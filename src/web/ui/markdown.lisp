@@ -17,8 +17,6 @@
 (defconstant +markdown-table-columns+ 20 "The most columns a table has.")
 (defconstant +markdown-address-length+ 2048 "The longest address a link takes.")
 (defconstant +markdown-title-length+ 256 "The longest title a link's address may have after it.")
-(defconstant +markdown-label-length+ 80
-  "Where a heading is cut when it labels a value in a table's card.")
 
 ;;; ------------------------------------------------------------------
 ;;; Queues: the children of what is being built, appended to at the end and
@@ -596,13 +594,6 @@ are RAW's, with their tabs, less the spaces the fence is indented by."
          (columns (length alignments))
          (wide (> columns 3))
          (headings (mapcar #'markdown-inline (table-cells (aref lines i))))
-         (labels (when wide
-                   (mapcar (lambda (cell)
-                             (let ((label (plain-text cell)))
-                               (if (> (length label) +markdown-label-length+)
-                                   (concatenate 'string (subseq label 0 (1- +markdown-label-length+)) "…")
-                                   label)))
-                           headings)))
          (end (loop for j from (+ i 2) below (length lines)
                     for line = (aref lines j)
                     when (or (blank-line-p line) (not (find #\| line))
@@ -613,9 +604,8 @@ are RAW's, with their tabs, less the spaces the fence is indented by."
          (rows (loop for j from (+ i 2) below end
                      collect `(:tr ,@(loop for cell in (table-cells (aref lines j))
                                           for alignment in alignments
-                                          for label in (or labels alignments)
-                                          collect (markdown-cell (markdown-inline cell) alignment
-                                                              (and wide (plusp (length cell)) label)))))))
+                                          collect (markdown-cell (markdown-inline cell)
+                                                                 alignment))))))
     (values `(:div (:@ :class "tun-markdown-table" :data-wide ,(when wide "true"))
                    (:table (:thead (:tr ,@(loop for heading in headings
                                                 for alignment in alignments
@@ -624,20 +614,9 @@ are RAW's, with their tabs, less the spaces the fence is indented by."
                            ,@(when rows `((:tbody ,@rows)))))
             end)))
 
-(defun markdown-cell (nodes alignment label)
+(defun markdown-cell (nodes alignment)
   `(:td (:@ :data-align ,alignment)
-        ,@(when label `((:span (:@ :class "tun-markdown-table-label") ,label)))
         (:span (:@ :class "tun-markdown-table-value") ,@nodes)))
-
-(defun plain-text (nodes)
-  "The text of NODES, without their markup."
-  (with-output-to-string (out)
-    (labels ((walk (node)
-               (cond ((stringp node) (write-string node out))
-                     ((and (consp node) (keywordp (first node)))
-                      (mapc #'walk (nth-value 2 (tun.html:node-parts node))))
-                     ((listp node) (mapc #'walk node)))))
-      (walk nodes))))
 
 (defstruct (md-list (:constructor make-md-list (kind start indent)))
   "A list being read: its kind, its first number, the indent of its markers
@@ -775,8 +754,22 @@ element of the text's first level of heading, so its headings stay below the pag
   }
   /* Code keeps its lines; its box scrolls instead. */
   & .tun-code-block { overflow-wrap: normal; }
+  /* A table's own box scrolls sideways, never the page.  A soft shadow at
+     an edge says there is more beyond it: the two covers scroll with the
+     rows and hide the shadows at the very start and end, as table's do. */
   & .tun-markdown-table {
     overflow-x: auto;
+    overscroll-behavior-inline: contain;
+    /* Literal sizes: the covers are wider than the shadows they hide. */
+    background:
+      linear-gradient(to right, var(--card) 30%, transparent) left / 2.5rem 100% no-repeat local,
+      linear-gradient(to left, var(--card) 30%, transparent) right / 2.5rem 100% no-repeat local,
+      radial-gradient(farthest-side at 0 50%,
+                      color-mix(in oklab, var(--foreground) 16%, transparent), transparent)
+        left / 0.875rem 100% no-repeat scroll,
+      radial-gradient(farthest-side at 100% 50%,
+                      color-mix(in oklab, var(--foreground) 16%, transparent), transparent)
+        right / 0.875rem 100% no-repeat scroll;
     & table {
       width: 100%;
       border-collapse: collapse;
@@ -792,34 +785,18 @@ element of the text's first level of heading, so its headings stay below the pag
     & th { font-weight: var(--font-weight-medium); }
     & :is(th, td)[data-align='center'] { text-align: center; }
     & :is(th, td)[data-align='end'] { text-align: end; }
-    & .tun-markdown-table-label { display: none; }
   }
-  /* Four columns or more keep their words whole and scroll in their box. */
-  & .tun-markdown-table[data-wide] { overflow-wrap: break-word; }
-  /* Narrow, as on a phone: each row of such a table is a card, each value
-     under its column's heading. */
-  @container tun-markdown (width < 36rem) {
-    & .tun-markdown-table[data-wide] {
-      overflow-wrap: anywhere;
-      & :is(table, tbody, tr, td) { display: block; }
-      & thead { display: none; }
-      & tbody { display: flex; flex-direction: column; gap: calc(var(--spacing) * 3); }
-      & tr {
-        padding: calc(var(--spacing) * 2) calc(var(--spacing) * 4);
-        border: 1px solid var(--border);
-        border-radius: var(--radius-lg);
-        background-color: var(--card);
-        box-shadow: var(--shadow-panel);
-      }
-      & td { padding: calc(var(--spacing) * 1.5) 0; border: 0; text-align: start; }
-      & td:has(> .tun-markdown-table-value:empty) { display: none; }
-      & .tun-markdown-table-label {
-        display: block;
-        color: var(--muted-foreground);
-        font-size: var(--text-xs);
-        line-height: var(--text-xs--line-height);
-        font-weight: var(--font-weight-medium);
-      }
+  /* Four columns or more keep their columns at every width, a phone's too,
+     and their words whole: a cell keeps its own width up to 16rem (the
+     cap of table's first column), and three quarters of the text's width,
+     so a long one is read without scrolling, and wraps beyond it; where
+     the columns do not fit the box scrolls. */
+  & .tun-markdown-table[data-wide] {
+    overflow-wrap: break-word;
+    & td > .tun-markdown-table-value {
+      display: block;
+      width: max-content;
+      max-width: min(16rem, 75cqi);
     }
   }
 }")
@@ -844,7 +821,7 @@ See [the item](/items/12) or https://example.com/docs/export_(v2).")))
 |---|---|--:|
 | Plan | Kari | Monday |
 | Build | an agent | Tuesday |")))
-   (("A wide table, cards on a phone" :layout :stack)
+   (("A wide table, scrolling in its own box on a phone" :layout :stack)
     (markdown (:text "| Order | Customer | Date | Status | Amount |
 |---|---|---|---|--:|
 | 10482 | Fjord Coffee Ltd | 12 Oct 2026 | New | €4,380.00 |

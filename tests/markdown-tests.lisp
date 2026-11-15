@@ -100,24 +100,19 @@ b</code>" (md (md-lines "````" "a" "```" "b" "````"))) "a shorter run closes not
     (is (not (search "data-wide" html)))
     (is (not (search "tun-markdown-table-label" html)) "no headings in the cells")))
 
-(test a-table-of-ten-columns-becomes-cards
+(test a-table-of-ten-columns-stays-a-table
   (let* ((header (format nil "|~{ K~d |~}" (loop for i from 1 to 10 collect i)))
          (delimiter (format nil "|~{~a~}" (loop repeat 10 collect "---|")))
          (row (format nil "|~{ v~d |~}" (loop for i from 1 to 12 collect i)))
          (html (md (md-lines header delimiter row "| a | | c |"))))
     (is (search "<div class=\"tun-markdown-table\" data-wide=\"true\">" html))
     (is (= 10 (length (cells-of html "th"))))
-    (is (search "<td><span class=\"tun-markdown-table-label\">K1</span><span class=\"tun-markdown-table-value\">v1</span></td>" html)
-        "each value has its heading before it")
+    (is (search "<td><span class=\"tun-markdown-table-value\">v1</span></td>" html)
+        "each cell holds its value alone")
+    (is (not (search "tun-markdown-table-label" html)) "no headings in the cells")
     (is (not (search "v11" html)) "cells past the headings are left out")
-    (is (search "<td><span class=\"tun-markdown-table-value\"></span></td><td><span class=\"tun-markdown-table-label\">K3</span>" html)
-        "an empty cell has no heading")))
-
-(test a-card-s-heading-is-text-cut-at-80
-  (let* ((long (make-string 100 :initial-element #\x))
-         (html (md (md-lines (format nil "| **Fet** | b | c | ~a |" long) "|-|-|-|-|" "| 1 | 2 | 3 | 4 |"))))
-    (is (search "<span class=\"tun-markdown-table-label\">Fet</span>" html) "without its marks")
-    (is (search (format nil "<span class=\"tun-markdown-table-label\">~a…</span>" (subseq long 0 79)) html))))
+    (is (search "<td><span class=\"tun-markdown-table-value\"></span></td><td><span class=\"tun-markdown-table-value\">c</span></td></tr>" html)
+        "a shorter row stays short, its empty cell a cell")))
 
 (test what-is-not-a-table
   (let ((header (format nil "|~{ ~d |~}" (loop for i from 1 to 21 collect i)))

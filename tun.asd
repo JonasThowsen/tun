@@ -212,6 +212,7 @@
                              (:file "generated-choice-tests")
                              (:file "form-nits-tests")
                              (:file "search-near-tests")
+                             (:file "ui-motion-tests")
                              (:file "review-tests")
                              (:file "review2-tests")
                              (:file "slice1-review-tests")

@@ -270,7 +270,10 @@ share's price, is `(ui:line-chart (:label "EQNR.OL" :points points :digits
 takes the same for a table cell. Text that people and agents write, such as a
 description or a comment, is `(ui:markdown (:text text))`. It shows the
 Markdown agents use (headings, lists, code, tables, bold, italic, links),
-and never passes HTML in the text on (`spec/ui.md` §6.2). Things and what
+and never passes HTML in the text on (`spec/ui.md` §6.2); a table of four
+columns or more keeps its columns on a phone too and scrolls sideways in
+its own box. `(ui:accordion (:items ...))`'s content fades in and rises
+as an item opens, and closes at once (§6). Things and what
 depends on what among them, such as a project's steps with the agents
 working on them and the items tied to each, are `(ui:graph (:label L
 :nodes NODES :edges EDGES))`: each node `(:id :title :meta :state :href
@@ -342,6 +345,13 @@ once the person agrees. Without JavaScript the control acts as it is.
                                                :detail "Ordren og linjene slettes for godt."))
   "Slett ordren")
 ```
+
+A generated record's action whose operation is `:confirm t` asks in the
+same dialog too: the first post answers the dialog with the operation's
+token and summary, and the yes posts the token back, so a client's page
+whose form posts to the same path (`/orders/10/orders_cancel`) gets the
+dialog with no change, and the confirmation page without JavaScript
+(`spec/ui.md` §8, «A record's action that asks first»).
 
 `(values 303 PATH)` to htmx becomes `HX-Location`, and a fourth value
 `(:trigger "name")` sends `HX-Trigger`. The fourth value also holds the
