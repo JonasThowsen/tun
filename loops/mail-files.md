@@ -2,13 +2,13 @@
 
 - loop: mail-files
 - mode: reviewed
-- stage: build
+- stage: stuck
 - base: fe05dc5d18dd7f3193c14db95af7aa0d50193119
 - item: sak_fa5kq5e2ep52h8ed
 - estimate: 3h 5h 9h
 - like: tun/html-mail tun/attachments-gaps tun/attachments
 - tags: kind:feature core
-- failures: 3
+- failures: 5
 
 ## Brief
 
@@ -299,6 +299,70 @@ be done well without them.
 - **A minor version, 2.41.0:** new public functions and a new keyword
   argument; no call's shape changes.
 
+## Verify rounds
+
+Load averages on the shared machine were 50 to 77 for most of the loop,
+with another builder's suites and browser checks beside these.
+
+1. Build: a parenthesis too many in the test client's new test (mine).
+   Checks: `files-one-dialog` counted every `<dialog>` of the page, the
+   search's among them (the check fixed to count the image dialog);
+   `files-language` clicked the button's place before scrolling it into
+   view (fixed); `board-drag-on-a-phone` and `ui-search` (100 ms) failed,
+   and passed alone.
+2. Tests: an unused Norwegian entry («Email attachment»: internal
+   entities' labels are not shown), the control's hover without a
+   pressed state (`:active` added), and the generated sequence test,
+   which took `logbook_file`'s `id` for an entry's id (renamed
+   `file_id`). Checks: `files-language` waited for a chooser that did not
+   come once under load; `ui-motion` (a fade sampled within 300 ms)
+   failed, and failed alone too at a load of 54.
+3. Tests: `group-commit` (passed alone). Checks: `board-order-on-a-phone`
+   (failed once alone, then passed twice alone), `files-language`'s
+   chooser again (the check now listens for the chooser from the start;
+   passed alone), `ui-search` (passed alone).
+4. With `TUN_TEST_JOBS=3`. Tests: `preview` (`pg_ctl … start exited with
+   status 1` in a test of a start that fails). Checks:
+   `push-notification-opens-its-page`, `ui-search` (124 to 215 ms
+   against 100).
+5. Build and tests green; one check, `ui-motion` (the accordion's fade at
+   390 and 1280 px, every sampled frame already at full opacity), at a
+   load of 57 to 65. Five rounds in a row failed: the loop is stuck, and
+   waits for the person.
+
+`ui-motion` alone after round 5, this tree and the base (`fe05dc5d`, a
+worktree of its own) in turns, twelve runs, with the load average when
+each began:
+
+| Time | Load | Tree | `ui-motion` |
+|---|---|---|---|
+| 10:38 | 56.6 | base | ok |
+| 10:39 | 52.7 | this | ok |
+| 10:40 | 55.2 | base | ok |
+| 10:42 | 52.4 | this | ok |
+| 10:42 | 56.6 | base | ok |
+| 10:44 | 77.1 | this | 2 of 51 failed |
+| 10:46 | 79.5 | base | 1 of 51 failed |
+| 10:48 | 85.9 | this | 1 of 51 failed |
+| 10:49 | 84.5 | base | ok |
+| 10:51 | 86.0 | this | ok |
+| 10:52 | 74.5 | base | ok |
+| 10:53 | 75.1 | this | ok |
+
+The base fails it under the same load, and this loop changes nothing the
+accordion's fade uses: the failure is the machine's load, not the change.
+
+## Clients
+
+On this loop's tree at `cdc3538b` (after verify round 4), each client's
+`bin/test` with `--override-input tun` at it (and `dashboard`, and the
+ERP client's `customers`, at their `modules/` directories of the same
+commit), one at a time, from clones in a scratch folder, unchanged, at
+core 2.41.0: kurs (352 checks), factory (690), nixploy-dashboard (1421),
+ferdig (812) and the factory's ERP client (its suites of 7828, 72716,
+378, 349, 304, 8856, 255, 109918, 90918, 16264 and 26123 checks) pass,
+with no compiler warning and no failure. No client changes.
+
 ## Log
 
 - 2026-11-15 05:12  started, reviewed
@@ -336,3 +400,5 @@ be done well without them.
 - 2026-11-15 06:53  verify 1: failed build, test, check
 - 2026-11-15 07:26  verify 2: failed test, check
 - 2026-11-15 08:18  verify 3: failed test, check
+- 2026-11-15 09:28  verify 4: failed test, check
+- 2026-11-15 10:36  verify 5: failed check
