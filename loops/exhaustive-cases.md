@@ -2,7 +2,7 @@
 
 - loop: exhaustive-cases
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: e2f1a6ed18ae20a0ef367a676fd57acc19c23774
 - item: sak_bqwf10atarkamxjq
 - estimate: 1h 2h 4h
@@ -329,6 +329,12 @@ With `(define-generated-tests … :cases t)` the guard would find, among
 others, this `status-badge`, `work-status-badge` and the quote's
 `state-badge`, each a `cond` comparing one form with values of one set.
 
+## Actuals
+
+```json
+{"loop":"exhaustive-cases","title":"A case over a declared set that misses a value stops the build","repository":"tun","mode":"reviewed","stage":"done","item":"sak_bqwf10atarkamxjq","tags":["kind:language","core"],"like":["tun/test-timing","tun/search-reads"],"started":"2026-11-15 03:46","ended":"2026-11-15 05:02","minutes":{"total":76,"waiting_person":0,"waiting_reviewer":4,"working":72,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":60,"likely":120,"worst":240,"at":"brief"},"latest_estimate":{"best":60,"likely":120,"worst":240,"at":"brief"},"within_estimate":true,"ratio":0.63,"verify":{"rounds":1,"failed":0},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-15 03:46  started, reviewed
@@ -428,3 +434,4 @@ others, this `status-badge`, `work-status-badge` and the quote's
   
     Worth fixing in a follow-up so a reader searching for the message finds it.
   - `top-level-forms` in `tests/case-guard.lisp:1092` stops reading a file at its first reader error without saying so, so the guard can miss findings in the rest of that file. A finding that says reading stopped would be safer.
+- 2026-11-15 05:02  finished at tun addedbb7
