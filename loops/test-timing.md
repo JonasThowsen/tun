@@ -2,7 +2,7 @@
 
 - loop: test-timing
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: baa99df1e5bf20ce6627e99b5e1ddcb34a65f2e1
 - item: sak_tm3r96p23ezpkxqn
 - estimate: 1h30m 3h 5h
@@ -382,6 +382,12 @@ The measure counts the Postgres server's share when the application
 being measured is `*app*`, which `with-test-server` and `with-test-app`
 bind; a test that measures another application binds `*app*` to it.
 
+## Actuals
+
+```json
+{"loop":"test-timing","title":"Tun's speed tests give the same verdict on a loaded machine","repository":"tun","mode":"reviewed","stage":"done","item":"sak_tm3r96p23ezpkxqn","tags":["kind:tooling","core"],"like":["tun/search-reads","tun/form-nits"],"started":"2026-11-15 01:10","ended":"2026-11-15 03:38","minutes":{"total":148,"waiting_person":0,"waiting_reviewer":4,"working":144,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":180,"worst":300,"at":"brief"},"latest_estimate":{"best":90,"likely":180,"worst":300,"at":"brief"},"within_estimate":true,"ratio":0.82,"verify":{"rounds":2,"failed":0},"changes":{"A":2,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-15 01:10  started, reviewed
@@ -556,3 +562,4 @@ bind; a test that measures another application binds `*app*` to it.
   - **Clients:** they were run against 038b2e10, and round 2 also touched `tests/timing.lisp`, which ships in `tun-test-support`. The only change there is the header comment, so the clients' result still holds.
   - **`over-limit-p` changes its argument:** it records the limit on the measurement it is given, through `limit-measurement`. Nothing uses the measurement afterwards, but a docstring line saying so would help the next reader.
   - **For the report (unchanged):** the search's Postgres limit has the least room. «nordmnan» reached 82.1 ms of its 90 under the made load.
+- 2026-11-15 03:38  finished at tun 29a80e9b
