@@ -838,7 +838,18 @@ see its record. An operation takes files through a parameter of type
 In its own operations a client reads a record's files with
 `(attachments-of record)`, the attachment objects `attachments_list`
 gives, or `(attachments-of records)` for many records of one entity at
-once, a hash table by id (`spec/files.md` §4.2).
+once, a hash table by id (`spec/files.md` §4.2). `(file-octets id)` gives
+one file's bytes, and its object as a second value, to a caller who may
+see its record, and fails `not_found` for anyone else, as `/files/ID`
+answers 404:
+
+```lisp
+(multiple-value-bind (octets file) (file-octets "fil_…")
+  (values (length octets) (jget file "content_type")))
+```
+
+`(ui:octets-text 48211)` writes a size as the `attachments` component
+does, «48 kB», and «1,4 MB» in Norwegian.
 
 An agent sends each file as `{"filename", "data"}`, base64, and adds files
 to a record later with `attachments_add`; `attachments_list` lists them and
@@ -974,6 +985,29 @@ and a string of HTML, fails the operation with `invalid_input`.
 `(render-mail tree :subject subject)` returns the HTML and the text that
 `send-mail` would store, and stores nothing: for a page that previews a
 mail before it is sent, or a test of what a mail says.
+
+`:attachments` is a list of files the mail carries (`spec/mail.md`
+§2.2): a stored file's id, an attachment object as `attachments-of`
+gives it, or `(:filename NAME :content OCTETS)` for bytes the client
+made, such as a PDF. A stored file is read as the caller, so one whose
+record they may not see fails `not_found`; bytes are checked as an
+uploaded file (PNG, JPEG, WebP, GIF or PDF). At most 10 files and 10 MB
+together, refused with `invalid_input` on `attachments`. The mail keeps
+its own copy of each file until it is sent, so removing the file from
+its record meanwhile does not take it from the mail, and `mail_retry`
+sends the same files.
+
+```lisp
+(send-mail :to (customer-email customer)
+           :subject (format nil "Ordre ~a" (order-number order))
+           :text "Bildene fra leveringen ligger ved."
+           :attachments (attachments-of order))
+(send-mail :to address :subject "Faktura 7" :text "Fakturaen ligger ved."
+           :attachments (list (list :filename "faktura-7.pdf" :content pdf-octets)))
+```
+
+`mail_get` and `mail_list` show each attachment's name, type, size and
+SHA-256, never its bytes.
 
 To mail someone with an account, ask for their address by the account's
 name: `(account-address name)` is the email of an active person, else
@@ -1422,7 +1456,11 @@ preview` load the module from the working tree. The generated tests check
 it as a module, not as client code: only the public interfaces of the
 kernel (`TUN.CORE`, `TUN.WEB`, `TUN.UI`, ...) and of the modules it
 depends on, and they fuzz its tools and check its translations with the
-client's (`spec/testing.md` §1).
+client's (`spec/testing.md` §1). A module sends mail and reads files
+through `TUN.CORE`, which exports `send-mail`, `render-mail`,
+`attach-files`, `attachments-of` and `file-octets` for it
+(`spec/tun-platform.md` §2.3); `TUN.MAIL` and `TUN.FILES` stay the
+kernel's own.
 
 ## Module API: retained trace erasure (core 1.1.6)
 

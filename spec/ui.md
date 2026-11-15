@@ -579,7 +579,11 @@ A component is defined with `define-component` in the package `TUN.UI`:
 | Layout and navigation (`layout`) | `app-shell`, `page-header`, `section`, `section-links`, `note`, `breadcrumbs`, `nav-list`, `stack`, `cluster`, `grid` |
 
 `file-input` and `attachments`, a record's files, are specified in
-`files.md` §6, `markdown`, text written in Markdown, in §6.2,
+`files.md` §6. `(octets-text OCTETS)`, exported from `TUN.UI`, writes a
+file's size as `attachments` writes it, in decimal units and the page
+language's decimal mark: 640 B, 12 kB, 1.4 MB (1,4 MB in Norwegian); a
+page or a module showing a size calls it rather than writing its own.
+`markdown`, text written in Markdown, in §6.2,
 `graph`, nodes and the edges between them, in §6.3, and `search-results`
 and `search-dialog`, the application's one search, in §6.4.
 

@@ -124,7 +124,7 @@ The public page dispatcher in core still knows one module's path
 
 | Need | Ash / Laravel | Tun today | Missing |
 |---|---|---|---|
-| Sending mail | Swoosh / Mail | **`send-mail`** queues in the caller's transaction; a worker delivers through **Resend** (or logs), retrying temporary failures with backoff, with an idempotency key (`spec/mail.md`) | Several recipients, attachments; bounce webhooks. The messaging module's customer outbox still has its own fake transport |
+| Sending mail | Swoosh / Mail | **`send-mail`** queues in the caller's transaction; a worker delivers through **Resend** (or logs), retrying temporary failures with backoff, with an idempotency key, and attachments (`spec/mail.md`) | Several recipients; bounce webhooks. The messaging module's customer outbox still has its own fake transport |
 | Notifications | notifiers / Notifications with channels | a client sends its own with `send-mail`, a key per record, and `account-address` | `define-notification` with channels (mail, in the app), a person's unread list and preferences, when a second client wants the same |
 | Invites | AshAuthentication add-ons / (packages) | **`accounts_create` with `invite`** mails the person how to sign in: the provider and address (`spec/auth.md` §3.6); a client invites through `(invoke 'accounts-create …)` | Sending an invitation again; an invitation that expires unused |
 

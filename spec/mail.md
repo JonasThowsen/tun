@@ -2,7 +2,7 @@
 
 Status: v1, 2026-10-15; HTML built from nodes (§2.1), core 1.22.0; the
 frame's language, and Tun's own mail in the tenant's (`i18n.md` §8), core
-2.0.0. How
+2.0.0; attachments (§2.2), core 2.41.0. How
 an application sends email: a mail is written in the same transaction as
 the work that sends it, and delivered after that work commits, through the
 application's mail provider, with retries. Resend is the provider Tun
@@ -41,9 +41,10 @@ ships; without one, mail is recorded and logged but not sent.
 
 ## 2. Sending
 
-`(send-mail &key to subject text html reply-to key)`, in the TUN package,
-is called inside a write: an operation, a workflow, or an `:on-open`
-function.
+`(send-mail &key to subject text html reply-to key attachments)`, in the
+TUN package for a client and in TUN.CORE for a module (`tun-platform.md`
+§2.3), is called inside a write: an operation, a workflow, or an
+`:on-open` function.
 
 - `to` is one address and `subject` (at most 998 characters) is
   required. `text` (at most 100 000 characters) is the plain-text part;
@@ -59,6 +60,8 @@ function.
   when a mail with that key exists, in any status, `send-mail` returns it
   and stores nothing. A notification uses one, such as
   `"answer:kom_…"`, so sending it again is harmless.
+
+- `attachments` is a list of files the mail carries (§2.2).
 
 ### 2.1 HTML from nodes
 
@@ -190,6 +193,66 @@ text, with the same checks, its subject's included, and stores nothing.
 A page that shows a mail before it is sent, or a test of what a mail
 says, uses it.
 
+### 2.2 Attachments
+
+`attachments` is a list of files, sent in its order. Each item is one of:
+
+| Item | Is |
+|---|---|
+| `"fil_…"` | a stored file's id (`files.md` §5.1) |
+| an attachment object | as `attachments-of` and `attachments_list` give it (`files.md` §4.2); its `"id"` names the stored file |
+| `(:filename NAME :content OCTETS)` | bytes the caller made, such as a PDF it wrote: OCTETS a vector of octets |
+
+```lisp
+(send-mail :to address :subject "Ordre 1042" :text "Vedlagt er bildene fra leveringen."
+           :attachments (attachments-of order))          ; every file of the order
+(send-mail :to address :subject "Faktura 7" :text "Fakturaen ligger ved."
+           :attachments (list (list :filename "faktura-7.pdf" :content pdf-octets)
+                              file-id))                  ; a made PDF, and a stored file
+```
+
+- **A stored file is read as the caller,** as `GET /files/ID` serves it
+  (`files.md` §5.2): its record fetched as `*actor*` under its record
+  policy, its entity readable by them and still taking files. A file
+  that does not exist, whose record the caller may not see, or whose
+  entity no longer takes files fails the operation `not_found` «Could not
+  find the file ID», the same for each, and nothing is written. A module
+  or client that forwards a stored file names it and never holds its
+  bytes.
+- **Bytes given are taken as an uploaded file** (`files.md` §2, §3): the
+  type decided by the bytes (PNG, JPEG, WebP, GIF or PDF), 1 byte to 10
+  MiB, the name cleaned and given its type's extension, the metadata
+  taken out. A refusal fails `invalid_input` on `attachments[N]` (N from
+  0) with the files' message, starting with the name in «», as for a
+  file a person attaches. An item that is none of the three forms fails
+  on `attachments[N]` too.
+- **Limits.** At most 10 files («A mail can carry at most 10 files.»),
+  and at most 10 MiB together, counted as stored («A mail's files can be
+  at most 10 MB together.»), each failing `invalid_input` on
+  `attachments`. Base64 makes 10 MiB about 13.4 MB on the wire, under
+  Resend's 40 MB per mail and the 20 to 25 MB many mail servers take.
+- **The mail keeps its own copy.** When the mail is stored, each file's
+  bytes are copied, in the same transaction, into a mail attachment of
+  its own: an internal record (`mail_attachments`, id `mat_…`) with its
+  position, filename, content type, size, SHA-256, the stored file it
+  came from (`file_id`, NIL for bytes given) and `kept`, its bytes in the
+  store's content table under its id (`files.md` §5.1). So a file
+  removed from its record, or a record deleted, after the mail is queued
+  does not take the file from the mail, and every attempt sends the same
+  bytes. A rollback of the caller's work takes the copies with the mail.
+- **Kept until sent.** In the write that records the mail `sent` (§3),
+  its attachments' bytes are deleted and `kept` becomes false; the record
+  of each, with its name, type, size and SHA-256, stays. A `queued`,
+  `sending` or `failed` mail keeps its bytes, so `mail_retry` (§5) sends
+  what was queued.
+- With `key`, a mail that exists is returned with the attachments it was
+  queued with: the new call's are checked as its other arguments are,
+  and not stored.
+- Attachments need the Postgres store, or the memory store in tests; the
+  SQLite store refuses them, as it refuses files (`files.md` §5.1).
+- `render-mail` (§2.1) renders the parts only; a preview shows no
+  attachments.
+
 ## 3. Delivery
 
 Each mail is delivered by a job (`jobs.md`), `send_queued_mail`, enqueued
@@ -200,7 +263,8 @@ with it in the sender's transaction; the mail's `job_id` names it.
   slow provider never holds the writer lock or delays other work.
 - In test mode `clock_set` runs it with the other due jobs and answers
   how many attempts they made, as `job_attempts`.
-- An attempt marks the mail `sending` and counts it, calls the provider
+- An attempt marks the mail `sending` and counts it, reads its
+  attachments' bytes (§2.2) in a read transaction, calls the provider
   within 10 seconds, then records the outcome:
 
 | Outcome | Status | Next |
@@ -209,6 +273,11 @@ with it in the sender's transaction; the mail's `job_id` names it.
 | temporary (a timeout, no connection, 409 from a request already in progress, 429, 5xx) | `queued` | the job's next attempt, after 30 s, 2, 10 and 30 minutes, 1 hour, then 3 hours |
 | permanent (any other answer) | `failed` | none: the job fails at once (`fail-job`) |
 
+- An attachment whose bytes are missing when they are read (the content
+  table changed by hand) makes the attempt permanent at once: the
+  provider is not called, the mail is `failed` and its job failed, and
+  `last_error` names the file («the attachment NAME is no longer
+  stored»). A mail is never sent without one of its files.
 - After the seventh attempt a temporary outcome also leaves the mail
   `failed`, and its job failed. Each delay gets up to a tenth more at
   random, so mails that failed together do not retry together; in test
@@ -231,7 +300,11 @@ The adapter POSTs to `https://api.resend.com/emails`, over HTTPS with the
 certificate verified, with `Authorization: Bearer API-KEY`,
 `Idempotency-Key: MAIL-ID` and a JSON body: `from`, `to` (a list of one),
 `subject`, `text`, and `html` and `reply_to` when the mail has them: a
-mail with HTML always sends `text` beside it. A
+mail with HTML always sends `text` beside it. A mail with attachments
+sends `attachments`, an array in their order of `{"filename", "content",
+"content_type"}`, `content` the bytes in base64 (RFC 4648 §4, the
+standard alphabet with padding, no line breaks), as Resend's API
+reference documents it; a mail without any sends no `attachments`. A
 200 answer's `id` is the mail's `provider_id`. An error answer's `name`
 and `message` go into `last_error`. The API key is never written to a
 record, a log line or a printed adapter.
@@ -242,21 +315,33 @@ Admin only. Mails are stored records, read through the tools:
 
 | Tool | Does |
 |---|---|
-| `mail_list` | The latest 100 mails, newest first, optionally only one `status` or one `to`: id, to, subject, status, attempts, last error and times, without the text. |
-| `mail_get` | One mail with its text and html. |
-| `mail_retry` | Queue a `failed` mail again with a new delivery job, due at once, its attempts reset; any other status is `invalid_transition`. |
+| `mail_list` | The latest 100 mails, newest first, optionally only one `status` or one `to`: id, to, subject, status, attempts, last error, times and attachments, without the text. |
+| `mail_get` | One mail with its text, html and attachments. |
+| `mail_retry` | Queue a `failed` mail again with a new delivery job, due at once, its attempts reset; any other status is `invalid_transition`. It sends the mail's own copies of its attachments (§2.2), whatever became of the files they were copied from. |
+
+- A mail's `attachments` is an array, in the mail's order, of `{"id",
+  "filename", "content_type", "size", "sha256", "file_id", "kept"}`:
+  never the bytes. The SHA-256 lets a test say which bytes a mail
+  carries without reading them. `mail_list` reads the attachments of its
+  mails in one query.
 
 A mail's text is shown only to admins.
 
 ## 6. Not yet
 
-- Several recipients, copies, attachments and templates. A client builds
+- Several recipients, copies and templates. A client builds
   its text and its node tree itself, in the language it binds with
   `with-language` (`i18n.md` §2.4); mail Tun sends itself is in the
   tenant's language (`i18n.md` §8).
 - A frame of the client's own, such as its logo and colours, and a
   style sheet in the head for mail apps that read one.
-- Images attached to the mail (`cid:`) or as `data:` URLs.
+- Images attached to the mail and shown in it (`cid:`), or as `data:`
+  URLs.
+- Attachments of other types than `files.md` §2.1 takes (CSV, plain
+  text), a stored file renamed for the mail, and a file fetched from a
+  URL.
+- Deleting the attachments' bytes of a mail that has stayed `failed` for
+  a long time; today they stay until it is sent.
 - Another provider (SMTP, Postmark). Each is one class with one method
   (`docs/client-api.md`).
 - Webhooks for what happens after the provider accepts a mail: bounces,
@@ -274,6 +359,13 @@ A mail's text is shown only to admins.
   real HTTP against a fake Resend in the test process that checks the
   key, the idempotency key and the body, and answers 200, 422, 429 and
   500.
+- `tests/mail-files-tests.lisp`: attachments (§2.2): a stored file by id,
+  an attachment object and bytes given, delivered whole and in order to
+  a fake provider; the tools' metadata, no bytes; each limit and each
+  refusal with nothing stored; a file the caller may not see; a file
+  removed from its record before sending, and `mail_retry` after its
+  source is gone; the bytes deleted when sent; a copy whose bytes are
+  missing; a key that exists; Resend's `attachments` member.
 - `tests/mail-html-tests.lisp`: strings escaped; each element and
   attribute outside the allow-list refused, naming it, with nothing
   stored; what is outside the grammar refused with `invalid_input`;

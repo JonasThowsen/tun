@@ -3,7 +3,8 @@
 Status: v1, built 2026-10-26, core 1.20.0; `attachments-of` and files in a
 dialog, core 1.21.0; the viewer centred, core 1.21.1; its copy in the
 page's language (`i18n.md`), core 2.0.0; the control inside its column
-on a narrow phone, core 2.35.0. How a record carries files,
+on a narrow phone, core 2.35.0; `file-octets`, a chunked post's refusal,
+the control's own button and one image dialog a page, core 2.41.0. How a record carries files,
 such as a screenshot on a reported issue: which records may, which files
 are taken and what is stripped from them, how a person attaches them in
 a form (choosing, dragging, pasting), how an agent attaches them through
@@ -295,6 +296,24 @@ An operation takes files through a parameter of the type `files`:
   read it as the system actor. A record of an entity that takes no files,
   one never stored, or a list of records of more than one entity, signal
   an error.
+- **A file's bytes in code.** `(file-octets ID)` gives the stored file
+  ID's bytes, a vector of octets, and its attachment object as a second
+  value, in the caller's transaction. It reads the file as `GET /files/ID`
+  serves it (§5.2): the record is fetched as `*actor*`, under its record
+  policy and `entity-readable-p`, and the entity must still take files. A
+  file that does not exist, whose record the caller may not see, whose
+  record was deleted, or whose entity no longer takes files fails the
+  operation `not_found` «Could not find the file ID», the same for each,
+  as the page answers the same 404. It reads the whole file (at most 10
+  MiB); a page that serves a file links `/files/ID`, which sends it a
+  part at a time (§5.4).
+- A mail carries a stored file by its id, read the same way, without the
+  caller holding its bytes (`mail.md` §2.2).
+- **For a module too.** `attach-files`, `attachments-of` and
+  `file-octets`, like `send-mail` and `render-mail`, are exported from
+  `TUN.CORE`, the kernel's interface for modules, as well as from `TUN`,
+  so a module reaches them through its interface check
+  (`tun-platform.md` §2.3).
 
 ### 4.3 Request size
 
@@ -344,6 +363,13 @@ carry files:
   when it is read (a smaller one within 30, `core.md` §7.5). One that has not, or that stops coming, is answered 408
   and its connection closed, and its place is freed, so a slow or stalled
   sender cannot hold a place.
+- **A body without its length.** A request with `Transfer-Encoding`
+  (chunked), or a `POST` without `Content-Length`, is answered 411 before
+  its body is read (`core.md` §7.5): a chunked body's size is known only
+  by reading it, and its bound, its caller and its place are decided
+  before. A page's `multipart/form-data` post answered so gets a page
+  saying «Skjemaet ble sendt uten lengden sin. Send det på nytt fra
+  siden.», signed in or not. Browsers send a form's `Content-Length`.
 - A caller Tun does not know before reading the body (no token, no
   signed-in session) never makes the server read more than 256 KiB
   (`core.md` §7.5).
@@ -509,11 +535,25 @@ A form control (`ui.md` §6, Skjema) for one or more files:
   `method="post"` and `enctype="multipart/form-data"`; `enctype` is
   allowed in extension output (`tun.html`). `:max` (default 10) is the
   most files the control takes.
-- The zone, and the browser's control in it, are never wider than the
-  field's column: the control narrows with it, the browser's text
-  beside its button shortened as the browser shortens it (Chromium cuts
-  it in the middle, «No fi…hosen»), so on a phone of 320 px the page
-  does not scroll sideways.
+- **Tun's texts, never the browser's.** A browser writes its file
+  control's button and «No file chosen» in its own language, which no
+  page can change. So the input is laid over a button Tun draws, «Velg
+  filer» («Velg fil» when `:max` is 1), and made transparent (`opacity:
+  0`): a click or a tap on the button is one on the input, which opens
+  the browser's chooser, and files dropped on it land in it. The input
+  stays the control: it is what the field's label names, in the tab
+  order, with the hint and the error as its description, and the button
+  shows the focus ring when the input has the keyboard's focus. The
+  button is drawn, not a second control: it is `aria-hidden`.
+- **What is chosen.** With JavaScript a line beside the button says
+  «Ingen filer valgt», or «Valgt: N» once N files are chosen; it is
+  `aria-hidden`, since the input tells a screen reader what it holds.
+  Without JavaScript the line is not shown: only a script knows what the
+  input holds, so a person without one sees the button alone, and the
+  form posts what they chose.
+- The zone, the button and the line are never wider than the field's
+  column: the line is cut with «…», so on a phone of 320 px the page does
+  not scroll sideways.
 - **With JavaScript:**
   - a file chosen in the control, dropped on the zone, or pasted is
     added to what is chosen: a paste (`paste` with files in its
@@ -603,7 +643,16 @@ A record's files (`ui.md` §6, Data), from `attachments_list`:
   With it, a click opens a dialog in the middle of the window with the
   whole image, as large as the window allows and never larger than its
   own size, its name, a link
-  «Åpne original» to its path, and «Lukk»; Escape closes it too.
+  «Åpne original» to its path, and «Lukk»; Escape closes it too, and the
+  focus goes back to the thumbnail.
+- **One dialog a page.** The component renders no dialog: it carries the
+  dialog's texts in its markup (`data-tun-attachments-*`), and the first
+  click on a thumbnail makes the page's one dialog at the end of the
+  body, with the texts of the component clicked. Every `attachments`
+  component on the page, also one htmx swaps in later, opens its images
+  in that dialog; a page with one component per file has one dialog.
+- The size of a PDF's tile is written by `octets-text` (`ui.md` §6),
+  which a module or client calls for the same text.
 - With no items it shows EMPTY («Ingen vedlegg» when omitted).
 - The tiles wrap in rows, three or more to a row on a phone, without
   scrolling the page sideways.
@@ -626,6 +675,16 @@ files as any other.
 - Fetching a file from a URL (§4.1).
 - Reading a file's bytes through MCP, such as an image content block; an
   agent fetches `/files/ID` with its token.
+- **Short-lived public links to a file,** for someone without an account,
+  as the other way to send a file than attaching it to a mail
+  (`mail.md` §2.2). It would need: who may make one (someone who may see
+  the record, at the entity's `:policy` or above, perhaps admins only);
+  a lifetime chosen when it is made and bounded (hours to days); a token
+  of at least 128 random bits in the URL, stored hashed; revoking one,
+  and its end when the file or its record goes; every link made, used
+  and revoked audited; the answer's headers of §5.3, served without a
+  session on a path of its own; and a sweep of links past their end.
+- Reading a multipart post sent in chunks (§4.3).
 - Removing a file from the `attachments` component, and files on the
   generated record page; a page builds its own form for
   `attachments_remove`.
@@ -665,6 +724,10 @@ files as any other.
     each with its message; a page's handle refused over MCP;
   - the limits per file, per call and per record, nothing stored when one
     file is refused or the record is full;
+  - `file-octets`: the bytes and the object; `not_found` alike for an
+    unknown id, a record the caller may not see (on Postgres, with a
+    record policy) and an entity no longer taking files; the five
+    functions external in `TUN.CORE`;
   - `attachments-of`: the tool's objects in the order added, for a record
     and for a batch by id, its errors, and none for a record its record
     policy keeps from the caller although the code read it as the system
@@ -695,6 +758,8 @@ files as any other.
     no tool with files admits, for another tool on `/api` and past each
     bound; a large `/mcp` call to `attachments_add` taken and one to
     another tool refused;
+  - a multipart post sent chunked, without `Content-Length`, over a
+    socket, answered 411 with its page, signed in or not;
   - a multipart post without a signed-in session, small or large, with
     or without a public page's session, answered 401 before reading; a
     large one from a role the page does not admit answered 403 before
@@ -726,4 +791,11 @@ files as any other.
   them and by pasting a screenshot (its name by the rule of §6.1), with
   the list, its previews and «Fjern»; a form without JavaScript; a
   thumbnail opening the whole image in a dialog; a PDF's tile; files
-  attached from a dialog (`files-in-a-dialog.py`).
+  attached from a dialog (`files-in-a-dialog.py`); the control's button
+  and line in Norwegian and English, at 390 and 1280 px, with JavaScript
+  and without, the input transparent over the button, named by its label
+  and reached by Tab (`files-language.py`); one dialog for three
+  components' images (`files-one-dialog.py`).
+- `tests/client/`: the test client's module `logbook` attaches files,
+  reads one with `file-octets` and mails an entry's files with
+  `send-mail`, through its interface check.
