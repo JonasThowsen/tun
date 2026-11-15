@@ -46,6 +46,41 @@
   (is (find "logbook" (known-texts) :key #'third :test #'equal)
       "the module writes texts for the translation test to check"))
 
+(defun png-octets ()
+  "The octets of Tun's PNG test file."
+  (coerce (alexandria:read-file-into-byte-vector
+           (asdf:system-relative-pathname "tun" "tests/fixtures/files/skjermbilde.png"))
+          '(simple-array (unsigned-byte 8) (*))))
+
+(test the-client-s-module-mails-and-reads-files-through-tun-core
+  ;; The module attaches files, mails them by their ids and reads one's
+  ;; bytes with file-octets, all through TUN.CORE, and passes its check
+  ;; (spec/tun-platform.md 2.3).
+  (is (null (client-module-violations "test-client")))
+  (with-client ()
+    (let* ((entry (jget (call-ok "logbook_add" "employee:anna" "subject_id" "ord_1"
+                                 "text" "Levert, se bildet.")
+                        "id"))
+           (files (jget (call-ok "logbook_attach" "employee:anna" "id" entry
+                                 "files" (jarr (list (jobj "filename" "levert.png"
+                                                           "data" (cl-base64:usb8-array-to-base64-string
+                                                                   (png-octets)))))))
+                        "files"))
+           (file (jget (aref files 0) "id"))
+           (read (call-ok "logbook_file" "viewer:vera" "id" file))
+           (mail (call-ok "mail_get" "admin:ada"
+                          "id" (jget (call-ok "logbook_mail" "employee:anna" "id" entry
+                                              "to" "kunde@example.no")
+                                     "mail_id"))))
+      (is (equal "levert.png" (jget read "filename")))
+      (is (= (jget (aref files 0) "size") (jget read "bytes")))
+      (let ((attachment (aref (jget mail "attachments") 0)))
+        (is (equal "levert.png" (jget attachment "filename")))
+        (is (equal file (jget attachment "file_id")))
+        (is (equal (jget read "sha256") (jget attachment "sha256"))
+            "the mail carries the bytes the module read"))
+      (is (equal "not_found" (nth-value 1 (call "logbook_file" "viewer:vera" "id" "fil_finnes_ikke")))))))
+
 (test a-planted-qualifier-in-the-client-s-module-fails-its-check
   ;; A copy of the client with logbook.lisp reaching into the kernel: the
   ;; module check names the file, from the client's directory.

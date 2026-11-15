@@ -3,7 +3,7 @@
 (defsystem "tun-logbook"
   :description "The test client's module logbook: notes the staff keep."
   :version "0.1.0"
-  :depends-on ("tun")
+  :depends-on ("tun" "ironclad")
   :serial t
   :components ((:file "logbook")
                (:file "nb")))

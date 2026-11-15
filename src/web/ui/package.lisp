@@ -26,6 +26,8 @@
    #:component-examples #:component-internal-p #:root-class #:scoped-css-problem
    ;; helpers for component bodies
    #:attrs #:option-string #:element-id #:heading-tag
+   ;; a file's size as a person reads it, as attachments writes it (spec/ui.md 6)
+   #:octets-text
    ;; the stylesheet and the script
    #:stylesheet #:stylesheet-path #:script #:script-path #:asset-content #:asset-hashes
    ;; htmx

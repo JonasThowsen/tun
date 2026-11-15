@@ -13,6 +13,8 @@
    "Uten å være logget inn kan du sende høyst 256 KB.")
   ("The form did not arrive whole. Try again."
    "Skjemaet kom ikke riktig fram. Prøv igjen.")
+  ("The form was sent without its length. Send it again from the page."
+   "Skjemaet ble sendt uten lengden sin. Send det på nytt fra siden.")
   ("You must be signed in to send files. Sign in and try again."
    "Du må være logget inn for å sende filer. Logg inn og prøv igjen.")
   ("This page is not for you, so it takes no files from you."

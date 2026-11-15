@@ -82,10 +82,11 @@
                                             (:file "runner") (:file "tools")))
                ;; HTML as data, before mail: a mail's HTML part is built of it.
                (:module "html" :pathname "web" :components ((:file "html")))
-               (:module "mail" :components ((:file "mail") (:file "html") (:file "resend")))
                (:module "outbound" :components ((:file "outbound") (:file "programs")))
                (:module "files" :components ((:file "package") (:file "formats") (:file "multipart")
                                              (:file "attachments")))
+               ;; After files: a mail's attachments are checked and read as files are.
+               (:module "mail" :components ((:file "mail") (:file "html") (:file "resend")))
                (:module "platform"
                 :components ((:file "live-definitions")
                              (:file "workflows")
@@ -187,6 +188,7 @@
                              (:file "public-title-tests")
                              (:file "mail-tests")
                              (:file "mail-html-tests")
+                             (:file "mail-files-tests")
                              (:file "push-tests")
                              (:file "jobs-tests")
                              (:file "schedule-tests")

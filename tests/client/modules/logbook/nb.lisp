@@ -14,4 +14,10 @@
   ("Add a logbook entry"
    "Skriv i loggboken")
   ("List logbook entries"
-   "Vis loggboken"))
+   "Vis loggboken")
+  ("Attach files to a logbook entry"
+   "Legg ved filer i loggboken")
+  ("Mail a logbook entry"
+   "Send en loggføring på e-post")
+  ("Read a file"
+   "Les en fil"))

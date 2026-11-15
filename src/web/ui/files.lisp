@@ -3,11 +3,13 @@
 ;;;; ATTACHMENTS, a record's files as thumbnails that open the whole image.
 ;;;;
 ;;;; Both are HTML first.  The control is an ordinary <input type="file"
-;;;; multiple>; its script keeps the files a person chose, dropped and
-;;;; pasted in that input's own list, so the form posts them as it would
-;;;; without a script.  A thumbnail is a link to the file itself; its
-;;;; script opens the image in a dialog instead.  What the scripts say is in
-;;;; the markup, written in the page's language (spec/i18n.md 3.6).
+;;;; multiple>, laid transparent over a button Tun draws, so the browser's
+;;;; own texts, in the browser's language, never show; its script keeps the
+;;;; files a person chose, dropped and pasted in that input's own list, so
+;;;; the form posts them as it would without a script.  A thumbnail is a
+;;;; link to the file itself; its script opens the image in the page's one
+;;;; image dialog instead, made when first needed.  What the scripts say is
+;;;; in the markup, written in the page's language (spec/i18n.md 3.6).
 
 (in-package #:tun.ui)
 
@@ -17,8 +19,8 @@
   "The types a file control offers: those spec/files.md 2.1 takes.")
 
 (defun octets-text (octets)
-  "OCTETS, a size, as a person reads it in the current language: 640 B,
-12 kB, 1.4 MB (1,4 MB in Norwegian)."
+  "OCTETS, a file's size, as a person reads it in the current language, in
+decimal units: 640 B, 12 kB, 1.4 MB (1,4 MB in Norwegian) (spec/ui.md 6)."
   (cond ((< octets 1000) (tr "~d B" octets))
         ((< octets 1000000) (tr "~d kB" (round octets 1000)))
         (t (tr "~a MB" (number-text (/ (round octets 100000) 10))))))
@@ -32,8 +34,9 @@
   (:doc "A field for one or more files: screenshots, images and PDF. The person chooses
 files, drags them into the field or pastes a screenshot, and sees them in a list with
 «Remove» before the form is sent. The form must have method=\"post\" and
-enctype=\"multipart/form-data\"; without JavaScript it is the browser's own file choice. MAX
-is how many files the field takes.")
+enctype=\"multipart/form-data\". The browser's file control is the control, laid
+transparent over a button in the page's language, so the browser's own texts never show;
+without JavaScript it chooses files as ever. MAX is how many files the field takes.")
   (:source "GOV.UK file upload; drag, drop and paste from GOV.UK's multi-file upload pattern")
   (:css (concatenate 'string "
 .tun-file-input {
@@ -53,29 +56,55 @@ is how many files the field takes.")
     background-color: color-mix(in oklab, var(--accent) 60%, transparent);
   }
   &:has([aria-invalid='true']) { border-color: var(--destructive); }
-  & .tun-file-input-control {
-    width: 100%;
+  /* The browser's control lies transparent over the button and the line
+     beside it: a click or a tap there is one on the control, which stays
+     the control for the label, the keyboard and a screen reader. */
+  & .tun-file-input-picker {
+    position: relative;
+    display: flex;
+    align-items: center;
+    gap: calc(var(--spacing) * 3);
     min-width: 0;
-    max-width: 100%;
+  }
+  & .tun-file-input-control {
+    position: absolute;
+    inset: 0;
+    width: 100%;
+    height: 100%;
+    margin: 0;
+    padding: 0;
+    opacity: 0;
     font-size: var(--control-font-size);
+    cursor: pointer;
+  }
+  & .tun-file-input-button {
+    display: inline-flex;
+    flex: none;
+    align-items: center;
+    height: var(--control-height);
+    padding-inline: calc(var(--spacing) * 3);
+    border: 1px solid " +control-border+ ";
+    border-radius: var(--radius-md);
+    background-color: var(--background);
+    color: var(--foreground);
+    font-size: var(--control-font-size);
+    font-weight: var(--font-weight-medium);
+    white-space: nowrap;
+  }
+  & .tun-file-input-picker:has(.tun-file-input-control:focus-visible) .tun-file-input-button {
+    box-shadow: var(--focus-ring);
+  }
+  @media (hover: hover) {
+    & .tun-file-input-picker:hover .tun-file-input-button { background-color: var(--accent); }
+  }
+  & .tun-file-input-status {
+    min-width: 0;
+    overflow: hidden;
     color: var(--muted-foreground);
-    &:focus-visible {
-      outline: none;
-      box-shadow: var(--focus-ring);
-      border-radius: var(--radius-sm);
-    }
-    &::file-selector-button {
-      height: var(--control-height);
-      margin-right: calc(var(--spacing) * 3);
-      padding-inline: calc(var(--spacing) * 3);
-      border: 1px solid " +control-border+ ";
-      border-radius: var(--radius-md);
-      background-color: var(--background);
-      color: var(--foreground);
-      font: inherit;
-      font-weight: var(--font-weight-medium);
-      cursor: pointer;
-    }
+    font-size: var(--control-font-size);
+    text-overflow: ellipsis;
+    white-space: nowrap;
+    &[hidden] { display: none; }
   }
   & .tun-file-input-drop, & .tun-file-input-message {
     margin: 0;
@@ -163,6 +192,7 @@ const setUpFileInput = (zone) => {
   const list = zone.querySelector('[data-tun-file-input-list]');
   const message = zone.querySelector('[data-tun-file-input-message]');
   const drop = zone.querySelector('[data-tun-file-input-drop]');
+  const status = zone.querySelector('[data-tun-file-input-status]');
   const most = Number(zone.dataset.tunFileInputMax || 10);
   const say = zone.dataset;
   const dropText = drop.textContent;
@@ -175,6 +205,10 @@ const setUpFileInput = (zone) => {
     input.files = files.files;
     previews.forEach((url) => URL.revokeObjectURL(url));
     previews = [];
+    // Only a script knows what the control holds: without one the line stays hidden.
+    status.textContent = chosen.length === 0 ? say.tunFileInputNone
+      : tunText(say.tunFileInputChosenCount, { count: chosen.length });
+    status.hidden = false;
     list.replaceChildren(...chosen.map((file, index) => {
       const item = document.createElement('li');
       item.className = 'tun-file-input-item';
@@ -312,11 +346,17 @@ document.addEventListener('paste', (event) => {
                   :label-hidden label-hidden)
             `(:div ,(attrs (list :class "tun-file-input" :data-tun-file-input t
                                  :data-tun-file-input-max (princ-to-string max))
-                           (file-input-texts))
-                   (:input ,(attrs (list :class "tun-file-input-control" :type "file" :name name
-                                         :multiple (when (> max 1) t) :accept +file-accept+)
-                                   (control-attributes id :hint hint :error error)
-                                   attributes))
+                           (file-input-texts max))
+                   (:div (:@ :class "tun-file-input-picker")
+                         (:input ,(attrs (list :class "tun-file-input-control" :type "file" :name name
+                                               :multiple (when (> max 1) t) :accept +file-accept+)
+                                         (control-attributes id :hint hint :error error)
+                                         attributes))
+                         ;; Drawn, not a second control: the input is the control.
+                         (:span (:@ :class "tun-file-input-button" :aria-hidden "true")
+                                ,(if (> max 1) (tr "Choose files") (tr "Choose file")))
+                         (:span (:@ :class "tun-file-input-status" :data-tun-file-input-status t
+                                    :aria-hidden "true" :hidden t)))
                    (:p (:@ :class "tun-file-input-drop" :data-tun-file-input-drop t :hidden t)
                        ,(tr "Drag files here, or paste a screenshot."))
                    (:p (:@ :class "tun-file-input-message" :data-tun-file-input-message t
@@ -324,11 +364,14 @@ document.addEventListener('paste', (event) => {
                    (:ul (:@ :class "tun-file-input-list" :data-tun-file-input-list t
                             :aria-label ,(tr "Chosen files")))))))
 
-(defun file-input-texts ()
+(defun file-input-texts (max)
   "What the file control's script says, as its data-tun-file-input-*
-attributes: a plist for ATTRS, in the current language.  {name}, {most},
-{size} and {time} are the script's to fill."
-  (list :data-tun-file-input-remove (tr "Remove")
+attributes: a plist for ATTRS, in the current language, for a control of
+MAX files.  {name}, {most}, {size}, {time} and {count} are the script's to
+fill."
+  (list :data-tun-file-input-none (if (> max 1) (tr "No files chosen") (tr "No file chosen"))
+        :data-tun-file-input-chosen-count (tr "Chosen: {count}")
+        :data-tun-file-input-remove (tr "Remove")
         :data-tun-file-input-remove-name (tr "Remove {name}")
         :data-tun-file-input-drop-here (tr "Drop to attach")
         :data-tun-file-input-not-allowed (tr "“{name}”: this file type is not allowed.")
@@ -376,7 +419,8 @@ attributes: a plist for ATTRS, in the current language.  {name}, {most},
   (:group "Data")
   (:doc "The files attached to a record, from attachments_list: an image as a thumbnail that
 opens the whole image, a PDF as a tile that downloads it. The browser scales the image itself
-and fetches it only when it is shown.")
+and fetches it only when it is shown. Every attachments on a page opens its images in the
+page's one image dialog.")
   (:source "Designsystemet and Aksel file list; the dialog is the HTML <dialog>")
   (:css "
 .tun-attachments {
@@ -427,21 +471,121 @@ and fetches it only when it is shown.")
     white-space: nowrap;
   }
   & .tun-attachments-empty { margin: 0; color: var(--muted-foreground); font-size: var(--text-sm); }
-  & .tun-attachments-dialog {
-    /* The reset takes every margin away; a modal dialog is centred by its
-       auto margins (spec/files.md 6.3). */
-    margin: auto;
-    max-width: calc(100vw - var(--spacing) * 4);
-    max-height: calc(100dvh - var(--spacing) * 4);
-    padding: calc(var(--spacing) * 3);
-    border: 1px solid var(--border);
-    border-radius: var(--radius-lg);
-    background-color: var(--popover);
-    color: var(--popover-foreground);
-    box-shadow: var(--shadow-lg);
-    &::backdrop { background-color: color-mix(in oklab, black 60%, transparent); }
-    &[open] { display: grid; gap: calc(var(--spacing) * 3); }
-  }
+}")
+  (:script "
+// The page's one image dialog (spec/files.md 6.3): found, or made at the end
+// of the body with the texts of the component SAY belongs to.  A file is not
+// a page: htmx neither boosts nor preloads its link.
+const attachmentsDialog = (say) => {
+  const found = document.querySelector('dialog.tun-attachments-dialog');
+  if (found) return found;
+  const dialog = document.createElement('dialog');
+  dialog.className = 'tun-attachments-dialog';
+  dialog.setAttribute('aria-label', say.tunAttachmentsImage);
+  dialog.setAttribute('hx-boost', 'false');
+  dialog.dataset.tunPreload = 'off';
+  const full = document.createElement('img');
+  full.className = 'tun-attachments-full';
+  full.alt = '';
+  const bar = document.createElement('div');
+  bar.className = 'tun-attachments-bar';
+  const name = document.createElement('span');
+  name.className = 'tun-attachments-name';
+  const actions = document.createElement('span');
+  actions.className = 'tun-attachments-actions';
+  const original = document.createElement('a');
+  original.className = 'tun-button';
+  original.dataset.variant = 'outline';
+  original.dataset.size = 'sm';
+  original.dataset.tunAttachmentOriginal = '';
+  original.href = '#';
+  original.textContent = say.tunAttachmentsOriginal;
+  const form = document.createElement('form');
+  form.method = 'dialog';
+  const close = document.createElement('button');
+  close.className = 'tun-button';
+  close.dataset.variant = 'primary';
+  close.dataset.size = 'sm';
+  close.type = 'submit';
+  close.textContent = say.tunAttachmentsClose;
+  form.append(close);
+  actions.append(original, form);
+  bar.append(name, actions);
+  dialog.append(full, bar);
+  // The focus goes back to the thumbnail that opened it.
+  dialog.addEventListener('close', () => {
+    if (dialog.tunOpener && dialog.tunOpener.isConnected) dialog.tunOpener.focus();
+    dialog.tunOpener = null;
+  });
+  document.body.append(dialog);
+  return dialog;
+};
+
+// A thumbnail opens the whole image in the page's dialog.
+document.addEventListener('click', (event) => {
+  const link = event.target instanceof Element
+    && event.target.closest('[data-tun-attachment-open]');
+  if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
+  const component = link.closest('[data-tun-attachments-image]');
+  if (!component || typeof HTMLDialogElement !== 'function'
+      || typeof HTMLDialogElement.prototype.showModal !== 'function') return;
+  event.preventDefault();
+  const dialog = attachmentsDialog(component.dataset);
+  const full = dialog.querySelector('.tun-attachments-full');
+  full.src = link.href;
+  full.alt = link.dataset.tunAttachmentName;
+  dialog.querySelector('.tun-attachments-name').textContent = link.dataset.tunAttachmentName;
+  dialog.querySelector('[data-tun-attachment-original]').href = link.href;
+  dialog.tunOpener = link;
+  if (!dialog.open) dialog.showModal();
+});")
+  (:examples
+   (("Without files" :layout :stack)
+    (attachments (:items '())))
+   (("A PDF" :layout :stack)
+    (attachments (:items (list (let ((item (make-hash-table :test 'equal)))
+                                 (setf (gethash "id" item) "fil_example"
+                                       (gethash "filename" item) "receipt.pdf"
+                                       (gethash "content_type" item) "application/pdf"
+                                       (gethash "size" item) 48211)
+                                 item))))))
+  (let ((items (coerce items 'list)))
+    ;; A file is not a page: htmx neither boosts nor preloads its links.
+    ;; The texts of the page's one image dialog, which the script makes
+    ;; when an image is first opened.
+    `(:div ,(attrs (append (list :class "tun-attachments" :id id :data-tun-preload "off"
+                                 :hx-boost\:inherited "false")
+                           (when (some #'attachment-image-p items)
+                             (list :data-tun-attachments-image (tr "Image")
+                                   :data-tun-attachments-original (tr "Open the original")
+                                   :data-tun-attachments-close (tr "Close"))))
+                   attributes)
+           ,(if items
+                `(:ul (:@ :class "tun-attachments-list" :aria-label ,label)
+                      ,@(mapcar #'attachment-markup items))
+                `(:p (:@ :class "tun-attachments-empty") ,empty)))))
+
+;;; The page's one image dialog (spec/files.md 6.3) has its styles here, at
+;;; a root of its own, since it sits at the end of the body, in no
+;;; attachments.  ATTACHMENTS' script makes its markup, from the texts the
+;;; component carries, the first time an image is opened; nothing renders it.
+(define-component attachments-dialog ((&key))
+  (:internal t)
+  (:css "
+.tun-attachments-dialog {
+  /* The reset takes every margin away; a modal dialog is centred by its
+     auto margins. */
+  margin: auto;
+  max-width: calc(100vw - var(--spacing) * 4);
+  max-height: calc(100dvh - var(--spacing) * 4);
+  padding: calc(var(--spacing) * 3);
+  border: 1px solid var(--border);
+  border-radius: var(--radius-lg);
+  background-color: var(--popover);
+  color: var(--popover-foreground);
+  box-shadow: var(--shadow-lg);
+  &::backdrop { background-color: color-mix(in oklab, black 60%, transparent); }
+  &[open] { display: grid; gap: calc(var(--spacing) * 3); }
   & .tun-attachments-full {
     display: block;
     max-width: 100%;
@@ -460,49 +604,4 @@ and fetches it only when it is shown.")
   & .tun-attachments-name { overflow-wrap: anywhere; }
   & .tun-attachments-actions { display: flex; gap: calc(var(--spacing) * 2); }
 }")
-  (:script "
-// A thumbnail opens the whole image in its dialog (spec/files.md 6.3).
-document.addEventListener('click', (event) => {
-  const link = event.target instanceof Element
-    && event.target.closest('[data-tun-attachment-open]');
-  if (!link || event.button !== 0 || event.ctrlKey || event.metaKey || event.shiftKey) return;
-  const dialog = link.closest('.tun-attachments').querySelector('.tun-attachments-dialog');
-  if (!dialog || typeof dialog.showModal !== 'function') return;
-  event.preventDefault();
-  dialog.querySelector('.tun-attachments-full').src = link.href;
-  dialog.querySelector('.tun-attachments-full').alt = link.dataset.tunAttachmentName;
-  dialog.querySelector('.tun-attachments-name').textContent = link.dataset.tunAttachmentName;
-  dialog.querySelector('[data-tun-attachment-original]').href = link.href;
-  dialog.showModal();
-});")
-  (:examples
-   (("Without files" :layout :stack)
-    (attachments (:items '())))
-   (("A PDF" :layout :stack)
-    (attachments (:items (list (let ((item (make-hash-table :test 'equal)))
-                                 (setf (gethash "id" item) "fil_example"
-                                       (gethash "filename" item) "receipt.pdf"
-                                       (gethash "content_type" item) "application/pdf"
-                                       (gethash "size" item) 48211)
-                                 item))))))
-  (let ((items (coerce items 'list)))
-    ;; A file is not a page: htmx neither boosts nor preloads its links.
-    `(:div ,(attrs (list :class "tun-attachments" :id id :data-tun-preload "off"
-                         :hx-boost\:inherited "false")
-                   attributes)
-           ,(if items
-                `(:ul (:@ :class "tun-attachments-list" :aria-label ,label)
-                      ,@(mapcar #'attachment-markup items))
-                `(:p (:@ :class "tun-attachments-empty") ,empty))
-           ,(when (some #'attachment-image-p items)
-              `(:dialog (:@ :class "tun-attachments-dialog" :aria-label ,(tr "Image"))
-                        (:img (:@ :class "tun-attachments-full" :alt ""))
-                        (:div (:@ :class "tun-attachments-bar")
-                              (:span (:@ :class "tun-attachments-name"))
-                              (:span (:@ :class "tun-attachments-actions")
-                                     ,(button (:variant :outline :size :sm :href "#"
-                                               :attributes '(:data-tun-attachment-original t))
-                                        (tr "Open the original"))
-                                     (:form (:@ :method "dialog")
-                                            ,(button (:size :sm :type "submit")
-                                               (tr "Close"))))))))))
+  nil)

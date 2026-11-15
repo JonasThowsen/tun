@@ -24,9 +24,9 @@
    #:attachment-content-type #:attachment-size #:attachment-width #:attachment-height
    #:attachment-sha256 #:attachment-created-at #:attachment-created-by #:attachment-account
    #:attachment-json #:upload #:upload-filename #:upload-content-type #:upload-octets
-   #:upload-width #:upload-height #:*uploads* #:register-upload #:upload-handle-size
+   #:upload-width #:upload-height #:upload-sha256 #:make-upload #:checked-upload #:*uploads* #:register-upload #:upload-handle-size
    #:*set-aside* #:set-aside-file-data #:set-aside-p #:+set-aside-octets+
-   #:attach-files #:attachments-of #:record-attachments #:servable-attachment #:attachment-content-part
+   #:attach-files #:attachments-of #:file-octets #:stored-file-octets #:record-attachments #:servable-attachment #:attachment-content-part
    #:+content-part-octets+ #:sweep-attachments #:attachments-sweep
    #:attachments-add #:attachments-list #:attachments-remove
    #:files-parameter-p #:operation-takes-files-p))

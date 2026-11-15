@@ -317,6 +317,25 @@ code read it as the system actor."
                     (gethash (attachment-record-id attachment) table)))))))
     (if batch table (gethash (entity-id records) table))))
 
+(defun stored-file-octets (id size)
+  "The SIZE octets of the content stored under ID, read in the current
+transaction, or NIL when there is none."
+  (let ((octets (store-read-content *store* id 0 (max size 1))))
+    (and octets (= (length octets) size) octets)))
+
+(defun file-octets (id)
+  "The stored file ID's bytes and, as a second value, its attachment object
+(spec/files.md 4.2), in the current transaction, read as GET /files/ID
+serves it: the record fetched as *ACTOR*.  A file that does not exist, whose
+record the caller may not see, or whose entity no longer takes files fails
+not_found, the same for each."
+  (let* ((attachment (servable-attachment id))
+         (octets (and attachment
+                      (stored-file-octets (entity-id attachment) (attachment-size attachment)))))
+    (unless octets
+      (fail :not-found "Could not find the file ~a" id))
+    (values octets (attachment-json attachment))))
+
 (defun taking-class (entity-name)
   "The entity class ENTITY-NAME, a JSON name, names when it takes files, else NIL."
   (let ((class (and (stringp entity-name) (find-entity-by-json-name entity-name))))

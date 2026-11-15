@@ -174,12 +174,32 @@
                  (forms-attribute page "input" "accept")))
       (is (equal "filer-hint filer-error" (forms-attribute page "input" "aria-describedby")))
       (is (equal "true" (forms-attribute page "input" "aria-invalid")))
-      (is (forms-in-order-p page "data-tun-file-input" "<input" "data-tun-file-input-list"))
+      (is (forms-in-order-p page "data-tun-file-input" "<input" "tun-file-input-button"
+                            "data-tun-file-input-status" "data-tun-file-input-list"))
       (is (search "Drag files here, or paste a screenshot." page))
+      (is (search "<span class=\"tun-file-input-button\" aria-hidden=\"true\">Choose files</span>"
+                  page)
+          "Tun's own button, drawn, not a control")
+      (is (cl-ppcre:scan "<span class=\"tun-file-input-status\" data-tun-file-input-status aria-hidden=\"true\" hidden></span>"
+                         page)
+          "the line of what is chosen is hidden until a script fills it")
+      (is (search "data-tun-file-input-none=\"No files chosen\"" page))
+      (is (search "data-tun-file-input-chosen-count=\"Chosen: {count}\"" page))
       (is (equal page (forms-html (tun.html:untrusted (control))))
           "the same in extension output")))
   (is (not (search " multiple" (forms-html (tun.ui:file-input (:label "Kvittering" :max 1)))))
       "one file only")
+  (let ((one (forms-html (tun.ui:file-input (:label "Kvittering" :max 1)))))
+    (is (search ">Choose file</span>" one))
+    (is (search "data-tun-file-input-none=\"No file chosen\"" one)))
+  (let ((page (with-language ("nb") (forms-html (tun.ui:file-input (:label "Skjermbilder"))))))
+    (is (search ">Velg filer</span>" page) "in the page's language, not the browser's")
+    (is (search "data-tun-file-input-none=\"Ingen filer valgt\"" page))
+    (is (search "data-tun-file-input-chosen-count=\"Valgt: {count}\"" page)))
+  (is (equal "1,4 MB" (with-language ("nb") (tun.ui:octets-text 1400000))))
+  (is (equal "1.4 MB" (tun.ui:octets-text 1400000)))
+  (is (equal "640 B" (tun.ui:octets-text 640)))
+  (is (equal "12 kB" (tun.ui:octets-text 12000)))
   (is (search "enctype=\"multipart/form-data\""
               (forms-html (tun.html:untrusted
                            '(:form (:@ :method "post" :enctype "multipart/form-data")))))

@@ -397,6 +397,49 @@ status, the body as text and the headers."
                               401)
             "a public page's session is not one")))))
 
+(defun whole-answer (port head body)
+  "Send HEAD, the request line and headers as lines, and BODY's octets over a
+socket of its own; the whole answer, read until the server closes the
+connection, as text (Latin-1, so every octet is a character)."
+  (let ((socket (usocket:socket-connect "127.0.0.1" port :element-type '(unsigned-byte 8))))
+    (unwind-protect
+         (let ((stream (usocket:socket-stream socket)))
+           (write-sequence (sb-ext:string-to-octets (apply #'crlf (append head (list "")))
+                                                    :external-format :utf-8)
+                           stream)
+           (write-sequence body stream)
+           (finish-output stream)
+           (let ((octets (loop for byte = (handler-case (read-byte stream nil nil)
+                                            (error () nil))
+                               while byte collect byte)))
+             (sb-ext:octets-to-string (coerce octets '(vector (unsigned-byte 8)))
+                                      :external-format :latin-1)))
+      (usocket:socket-close socket))))
+
+(defun chunked-body (octets)
+  "OCTETS as a chunked body (RFC 9112 7.1): one chunk, then the last."
+  (bytes (format nil "~x" (length octets)) 13 10 octets 13 10 "0" 13 10 13 10))
+
+(test a-chunked-multipart-post-is-refused-with-its-page
+  (with-files-page ()
+    (with-test-server (port)
+      (let ((body (chunked-body (multipart-octets "b" (list (list "title" "Med fil")
+                                                       (list "filer" "a.pdf" (padded-pdf 2000)))))))
+        (dolist (signed-in '(t nil))
+          (let ((answer (whole-answer port
+                                      (append (list "POST /filprove HTTP/1.1" "Host: x"
+                                                    "Content-Type: multipart/form-data; boundary=b"
+                                                    "Transfer-Encoding: chunked")
+                                              (and signed-in (list "X-Tun-Actor: employee:anna")))
+                                      body)))
+            (is (eql 0 (search "HTTP/1.1 411" answer)) "411, not 500: ~a"
+                (subseq answer 0 (min 80 (length answer))))
+            (is (search (format nil "Connection: close~c~c" #\Return #\Newline) answer))
+            (is (search "The form was sent without its length. Send it again from the page."
+                        answer)
+                "a page that says why, ~:[from no one~;signed in~]" signed-in)
+            (is (not (search "mottatt" answer)) "the post reaches no page")))))))
+
 (test a-multipart-post-is-read-within-its-bounds
   (with-files-page ()
     (with-test-server (port)

@@ -333,7 +333,8 @@ its descendants does not count as its own."
     blocks))
 
 (test every-dialog-a-component-renders-sets-its-margin
-  (let* ((css (format nil "~{~a~%~}" (mapcar #'tun.ui:component-css (tun.ui:all-components))))
+  (let* ((css (format nil "~{~a~%~}" (mapcar #'tun.ui:component-css
+                                              (tun.ui:all-components :internal t))))
          (image (let ((item (make-hash-table :test 'equal)))
                   (setf (gethash "id" item) "fil_bilde" (gethash "filename" item) "bilde.png"
                         (gethash "content_type" item) "image/png" (gethash "size" item) 1024
@@ -348,9 +349,11 @@ its descendants does not count as its own."
                                                                       component)
                                               append (dialog-classes (funcall thunk)))))
                    :test #'string=)))
-    (dolist (known '("tun-dialog" "tun-attachments-dialog"))
-      (is (member known classes :test #'string=) "the examples render a ~a" known))
-    (dolist (class classes)
+    (is (member "tun-dialog" classes :test #'string=) "the examples render a tun-dialog")
+    (is (not (member "tun-attachments-dialog" classes :test #'string=))
+        "attachments renders none: its script makes the page's one (spec/files.md 6.3)")
+    ;; The dialog attachments' script makes is held to the same rule.
+    (dolist (class (cons "tun-attachments-dialog" classes))
       (is (some (lambda (body) (cl-ppcre:scan "(^|[;{\\s])margin\\s*:" body))
                 (class-blocks css class))
           "the <dialog> with class ~a sets no margin, so the reset leaves it in the corner"

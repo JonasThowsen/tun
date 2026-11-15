@@ -2,7 +2,7 @@
 
 - loop: mail-files
 - mode: reviewed
-- stage: brief
+- stage: build
 - base: fe05dc5d18dd7f3193c14db95af7aa0d50193119
 - item: sak_fa5kq5e2ep52h8ed
 - estimate: 3h 5h 9h
@@ -281,6 +281,20 @@ be done well without them.
   which needs a decision of its own (who may make one, how long it
   lives, revoking it, audit) and adds a path served without a session.
   Written under files.md «Not yet» with what it would need.
+- **Existing tests that change, and why.** The behaviour they pinned
+  changed by the spec: `tests/mail-tests.lisp`'s scripted provider takes
+  the files `deliver-mail` now passes, and records them; `tests/ui-data-tests.lisp`
+  asserted that `attachments` renders a `<dialog>`, now that it renders
+  none and carries the dialog's texts; `tests/ui-interaction-tests.lisp`
+  found the `tun-attachments-dialog` among the dialogs the examples
+  render, and now holds the script-made dialog's CSS to the same margin
+  rule; `tests/ui-forms-tests.lisp` checks the control's order with the
+  button and the line in it. Nothing else in them changes.
+- **The test client's module shows it.** `logbook`'s entry takes files;
+  `logbook_attach`, `logbook_mail` (the entry's note with its files, by
+  their ids) and `logbook_file` (`file-octets`) use the five functions
+  through `TUN.CORE`, so the module interface check of a client's own
+  module runs over a real use of them.
 - **A minor version, 2.41.0:** new public functions and a new keyword
   argument; no call's shape changes.
 
@@ -288,3 +302,33 @@ be done well without them.
 
 - 2026-11-15 05:12  started, reviewed
 - 2026-11-15 05:13  estimated 3h 5h 9h at brief, like tun/html-mail tun/attachments-gaps tun/attachments
+- 2026-11-15 05:20  gate A asked of a reviewer
+- 2026-11-15 05:21  gate A: approve (reviewer)
+  I'm approving this gate. The criteria cover everything the brief asks for, each one can be settled by a test or check, the spec says the same things, and none of the decisions should have gone back to the asker.
+  
+  **Brief vs. criteria**
+  - **Point 1 and the orchestrator's additions:**
+    - Criterion 1: the fake provider gets each attachment's name, type and exact bytes; `mail_get` and `mail_list` show metadata only.
+    - Criterion 2: Resend's request shape.
+    - Criterion 3: limits are refused when the mail is queued, on `attachments` / `attachments[N]`.
+    - Criterion 4: retries send the same bytes; the decisions say where the bytes live before sending.
+  - **Point 2:** criterion 5 covers `file-octets` with the same `not_found` rule as `/files/ID`. It also covers attaching a stored file by its id, and a real module (`logbook`) passing the interface check.
+  - **Point 3:** criterion 6, a real chunked request over a socket answered 411 with a page. This matches `spec/core.md:747-748`, which already answers a chunked body 411. The cause the decision gives (`+upload-refusals+` had no 411 message) is a plausible reason for the 500.
+  - **Points 4 to 6:** criteria 7, 8 and 9. Criterion 8 keeps the real `<input type="file">` as the control, reachable by Tab and named by its label, and requires the five existing file checks to pass unchanged.
+  - **Point 7:** not built, and written under files.md «Not yet» with what it would need. That is the orchestrator's own reading, so it didn't need to go to the owner.
+  - **Nothing beyond the brief** except the release bookkeeping (version 2.41.0, the roadmap row).
+  
+  **Spec vs. criteria**
+  - **mail.md §2.2 matches criteria 1–4:** the three forms of an attachment, the limits and their messages, the copy (`mat_…`) kept until the mail is sent, a missing copy failing the mail at once, and the tools' metadata members.
+  - **Resend:** mail.md §4 matches criterion 2.
+  - **files.md** matches criteria 5–9: §4.2 for `file-octets`, §4.3 for the 411 page, §6.1 and §6.3 for the button, the line and the one dialog. The section numbers named in criterion 11 exist.
+  - **Other docs:** `tun-platform.md` §2.3 and `ui.md` §6 cover the `TUN.CORE` exports and `octets-text`.
+  - **Units:** the «10 MB» messages for limits counted in MiB follow the existing convention (`spec/files.md:93-95`).
+  
+  **Decisions:** the brief handed the builder where the bytes live, the limits and `mail_retry`, and these choices are reasoned. Copying at queueing time, so the mail doesn't need the sender's rights when it is delivered, is the sound choice. Deleting the bytes once a mail is sent follows from `mail_retry` only taking failed mails. Exporting from `TUN.CORE` rather than opening `TUN.MAIL` or `TUN.FILES` keeps the kernel's internals away from modules. A name clash with clients is settled by criterion 10. In Tun's own code, the other `octets-text` is in `tun.outbound`, which doesn't use `TUN.UI`, so it doesn't clash.
+  
+  **Notes for gate B (they don't block this one):**
+  - **The attachment-object form:** criterion 1 tests a stored file's id and bytes given, but not the attachment-object form. That is the form in the main docs example, `:attachments (attachments-of order)`. The test list in mail.md §7 includes it; make sure the test does too.
+  - **The nightly sweep:** the mail's copies sit in `attachment_contents` beside files' own bytes. `attachments_sweep` (files.md §5.1) must not delete a `mat_` row as an orphan, and a test of a queued mail surviving the sweep would show it.
+  - **A record deleted before sending:** the decision covers it, but only removal through `attachments_remove` is in criterion 4.
+  - **Without JavaScript:** the person no longer sees any line saying what they chose. This is a stated trade-off (files.md §6.1), and criterion 8 makes the without-JavaScript state checkable.

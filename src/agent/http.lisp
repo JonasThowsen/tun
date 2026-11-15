@@ -1080,6 +1080,8 @@ redirect's location, or NIL."
   (list (cons 400 (deferred-tr "The form did not arrive whole. Try again."))
         (cons 401 (deferred-tr "You must be signed in to send files. Sign in and try again."))
         (cons 403 (deferred-tr "This page is not for you, so it takes no files from you."))
+        ;; A chunked body, or one without Content-Length (core.md 7.5).
+        (cons 411 (deferred-tr "The form was sent without its length. Send it again from the page."))
         (cons 413 (deferred-tr "The form is too large: at most 25 MB of files at a time."))
         (cons 503 (deferred-tr "The server is taking many files now. Try again in a moment.")))
   "What a page's multipart post refused before its body is read is told.")

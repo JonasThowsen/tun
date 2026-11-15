@@ -8,6 +8,10 @@
 ;;;; growing delay; every attempt carries the mail's id as the provider's
 ;;;; idempotency key, so a retry after a lost answer is not a second mail.
 ;;;;
+;;;; A mail's attachments are copies of its own, made when it is queued and
+;;;; kept until it is sent, so what it carries does not change with the
+;;;; files it was made from (spec/mail.md 2.2).
+;;;;
 ;;;; An adapter is a class with one method, DELIVER-MAIL.  This file has the
 ;;;; log adapter, which sends nothing; resend.lisp has Resend's.  html.lisp
 ;;;; makes a mail's HTML and text parts from a node tree.
@@ -16,10 +20,19 @@
   (:use #:cl #:tun.core)
   (:import-from #:tun.jobs #:define-job #:enqueue-job #:fail-job #:last-attempt-p)
   (:import-from #:tun.html #:render-html #:trusted #:node-parts)
+  (:import-from #:tun.files #:servable-attachment #:stored-file-octets #:checked-upload
+                #:attachment-filename #:attachment-content-type #:attachment-size
+                #:attachment-sha256 #:upload-filename #:upload-content-type #:upload-octets
+                #:upload-sha256 #:make-upload #:+most-given-name+)
   (:export #:mail #:mail-to #:mail-subject #:mail-text #:mail-html #:mail-reply-to #:mail-key
            #:mail-status #:mail-attempts #:mail-job-id #:mail-last-error
            #:mail-provider #:mail-provider-id #:mail-created-at #:mail-sent-at
            #:send-mail #:render-mail #:+mail-retry-delays+ #:+mail-time-limit+
+           #:mail-attachment #:mail-attachment-mail-id #:mail-attachment-filename
+           #:mail-attachment-content-type #:mail-attachment-size #:mail-attachment-sha256
+           #:mail-attachment-file-id #:mail-attachment-kept #:mail-attachments
+           #:mail-file #:make-mail-file #:mail-file-filename #:mail-file-content-type
+           #:mail-file-octets #:+most-mail-files+ #:+most-mail-octets+
            #:mail-adapter #:deliver-mail #:provider-name #:log-mail
            #:resend-mail #:resend-endpoint #:resend-from
            #:make-mail-adapter #:mail-problems #:send-queued-mail
@@ -49,6 +62,28 @@
    (created-at :type timestamp :input nil :label "Created")
    (sent-at :type timestamp :input nil :label "Sent")))
 
+(define-entity mail-attachment (:label "Email attachment" :id-prefix "mat" :table "mail_attachments"
+                                       :internal t :indexes (("mail_id")))
+  ((mail-id :type (string :min 1 :max 64) :required t :input nil :label "Email")
+   (filename :type (string :min 1 :max 255) :required t :input nil :label "Filename")
+   (content-type :type (string :min 1 :max 40) :required t :input nil :label "Type")
+   (size :type integer :required t :input nil :label "Size")
+   (sha256 :type (string :max 64) :required t :input nil :label "SHA-256")
+   (file-id :type (string :max 64) :input nil :label "File"
+            :description "The stored file it was copied from; NIL for bytes the sender gave.")
+   (kept :type boolean :input nil :initform t :label "Kept"
+         :description "Whether its bytes are still stored: until the mail is sent.")))
+
+(defparameter +most-mail-files+ 10 "The most files one mail carries.")
+
+(defparameter +most-mail-octets+ (* 10 1024 1024)
+  "The most octets a mail's files have together, as stored: about 13.4 MB
+in base64, which most mail servers take.")
+
+(defstruct mail-file
+  "A file of a mail as its provider is given it."
+  filename content-type octets)
+
 ;;; ------------------------------------------------------------------
 ;;; Sending
 
@@ -59,25 +94,132 @@ error is collected for COLLECTING-INPUT-ERRORS."
       (when required (input-error name "must be filled in"))
       (coerce-input (field-type (find-field (find-class 'mail) name)) value name)))
 
-(defun send-mail (&key to subject text html reply-to key)
+(defun send-mail (&key to subject text html reply-to key attachments)
   "Queue a mail to TO, inside the current write, and return it: it is sent
 after the write commits, and never when it rolls back (spec/mail.md 2).
 HTML is a node tree, rendered as RENDER-MAIL renders it; without TEXT, the
-text part is made from it.  When a mail with KEY exists, return that one
-and store nothing.  A bad argument fails the operation with invalid_input."
-  (let ((mail (collecting-input-errors
-               (let ((to (mail-argument "to" to :required t))
-                     (subject (mail-argument "subject" subject :required t)))
-                 (multiple-value-bind (html-part text-part) (checked-parts html subject text)
-                   (make-instance 'mail :to to :subject subject :text text-part :html html-part
-                                        :reply-to (mail-argument "reply_to" reply-to)
-                                        :key (mail-argument "key" key)))))))
+text part is made from it.  ATTACHMENTS is a list of files (2.2): a stored
+file's id, an attachment object, or (:FILENAME NAME :CONTENT OCTETS); the
+mail keeps a copy of each.  When a mail with KEY exists, return that one
+and store nothing.  A bad argument fails the operation with invalid_input,
+a stored file the caller may not see with not_found."
+  (destructuring-bind (mail . files)
+      (collecting-input-errors
+       (let ((to (mail-argument "to" to :required t))
+             (subject (mail-argument "subject" subject :required t)))
+         (multiple-value-bind (html-part text-part) (checked-parts html subject text)
+           (cons (make-instance 'mail :to to :subject subject :text text-part :html html-part
+                                      :reply-to (mail-argument "reply_to" reply-to)
+                                      :key (mail-argument "key" key))
+                 (mail-attachment-files attachments)))))
     (or (and (mail-key mail)
              (select-one 'mail :where `(:= "key" ,(mail-key mail))))
         (progn
           (setf (mail-created-at mail) (now))
           (insert mail)
+          (dolist (file files)
+            (store-mail-attachment mail file))
           (queue-delivery mail)))))
+
+;;; ------------------------------------------------------------------
+;;; Attachments (spec/mail.md 2.2)
+
+(defun mail-attachment-files (attachments)
+  "ATTACHMENTS, send-mail's, as (UPLOAD . FILE-ID) in order, each read and
+checked; input errors for what cannot be sent are collected."
+  (let ((items (if (typep attachments 'sequence) (coerce attachments 'list) :invalid)))
+    (cond ((eq items :invalid)
+           (input-error "attachments" "must be a list of files"))
+          ((> (length items) +most-mail-files+)
+           (input-error "attachments" "A mail can carry at most ~d files." +most-mail-files+))
+          (t (let ((files (loop for item in items
+                                for i from 0
+                                for file = (mail-attachment-file item (format nil "attachments[~d]" i))
+                                when file collect file)))
+               (when (> (reduce #'+ files :key (lambda (file) (length (upload-octets (car file)))))
+                        +most-mail-octets+)
+                 (input-error "attachments" "A mail's files can be at most 10 MB together."))
+               files)))))
+
+(defun given-file-p (item)
+  "True when ITEM is (:FILENAME NAME :CONTENT OCTETS), in either order."
+  (and (consp item) (= (length item) 4)
+       (null (set-exclusive-or (list (first item) (third item)) '(:filename :content)))))
+
+(defun mail-attachment-file (item path)
+  "ITEM, one of send-mail's attachments, as (UPLOAD . FILE-ID): a stored
+file read as the caller, or bytes checked as an uploaded file.  NIL with an
+input error at PATH when it cannot be sent."
+  (cond ((given-file-p item)
+         (let ((name (getf item :filename))
+               (content (getf item :content)))
+           (cond ((not (stringp name)) (input-error path "filename must be text"))
+                 ((> (length name) +most-given-name+)
+                  (input-error path "The filename cannot be longer than 255 characters."))
+                 ((not (typep content '(vector (unsigned-byte 8))))
+                  (input-error path "content must be a vector of octets"))
+                 (t (let ((upload (checked-upload name (coerce content '(simple-array (unsigned-byte 8) (*)))
+                                                  path)))
+                      (and upload (cons upload nil)))))))
+        ((or (stringp item) (and (hash-table-p item) (stringp (jget item "id"))))
+         (stored-mail-file (if (stringp item) item (jget item "id"))))
+        (t (input-error path "must be a file's id, an attachment object or (:filename NAME :content OCTETS)"))))
+
+(defun stored-mail-file (id)
+  "The stored file ID, as (UPLOAD . ID), read as GET /files/ID serves it to
+the caller; not_found when they may not see it or it is gone."
+  (let* ((attachment (servable-attachment id))
+         (octets (and attachment (stored-file-octets id (attachment-size attachment)))))
+    (unless octets
+      (fail :not-found "Could not find the file ~a" id))
+    (cons (make-upload :filename (attachment-filename attachment)
+                       :content-type (attachment-content-type attachment)
+                       :octets octets
+                       :sha256 (attachment-sha256 attachment))
+          id)))
+
+(defun store-mail-attachment (mail file)
+  "Store FILE, (UPLOAD . FILE-ID), as MAIL's own copy, in the current write."
+  (destructuring-bind (upload . file-id) file
+    (let ((attachment (make-instance 'mail-attachment
+                                     :mail-id (entity-id mail)
+                                     :filename (upload-filename upload)
+                                     :content-type (upload-content-type upload)
+                                     :size (length (upload-octets upload))
+                                     :sha256 (upload-sha256 upload)
+                                     :file-id file-id
+                                     :kept t)))
+      (setf (entity-id attachment) (concatenate 'string "mat_" (random-token-string 26)))
+      (insert attachment)
+      (store-write-content *store* (entity-id attachment) (upload-octets upload)))))
+
+(defun mail-attachments (mail-ids)
+  "The attachments of the mails MAIL-IDS, in each mail's order."
+  (and mail-ids
+       (select 'mail-attachment :where `(:in "mail_id" ,mail-ids) :order-by '(("seq" :asc)))))
+
+(defun mail-files (mail-id)
+  "In a transaction: the files of the mail MAIL-ID with their bytes, in
+order.  NIL and the name of the first one whose bytes are gone, when one is."
+  (let ((files '()))
+    (dolist (attachment (mail-attachments (list mail-id)) (values (nreverse files) nil))
+      (let ((octets (and (mail-attachment-kept attachment)
+                         (stored-file-octets (entity-id attachment) (mail-attachment-size attachment)))))
+        (unless octets
+          (return (values nil (mail-attachment-filename attachment))))
+        (push (make-mail-file :filename (mail-attachment-filename attachment)
+                              :content-type (mail-attachment-content-type attachment)
+                              :octets octets)
+              files)))))
+
+(defun drop-sent-files (mail-id)
+  "In a write: delete the bytes of the sent mail MAIL-ID's attachments,
+keeping what they were."
+  (dolist (attachment (mail-attachments (list mail-id)))
+    (when (mail-attachment-kept attachment)
+      (store-delete-content *store* (entity-id attachment))
+      (setf (mail-attachment-kept attachment) nil)
+      (save attachment))))
 
 ;;; ------------------------------------------------------------------
 ;;; Adapters
@@ -86,10 +228,11 @@ and store nothing.  A bad argument fails the operation with invalid_input."
   (:documentation "A mail provider.  A subclass has a DELIVER-MAIL method and a
 PROVIDER-NAME."))
 
-(defgeneric deliver-mail (adapter mail)
+(defgeneric deliver-mail (adapter mail files)
   (:documentation "Send MAIL through ADAPTER's provider, with (ENTITY-ID MAIL) as
-the idempotency key.  Values :SENT and the provider's id for the mail, or
-:RETRY or :FAILED and a reason.  An error it signals counts as :RETRY."))
+the idempotency key, carrying FILES, its attachments as MAIL-FILEs in order.
+Values :SENT and the provider's id for the mail, or :RETRY or :FAILED and a
+reason.  An error it signals counts as :RETRY."))
 
 (defgeneric provider-name (adapter)
   (:documentation "The provider's name in a mail's provider field, such as \"resend\"."))
@@ -100,10 +243,10 @@ subject, not its text, to standard output (spec/mail.md 1)."))
 
 (defmethod provider-name ((adapter log-mail)) "log")
 
-(defmethod deliver-mail ((adapter log-mail) mail)
+(defmethod deliver-mail ((adapter log-mail) mail files)
   (unless (test-mode-p)
-    (format t "~&tun: mail ~a to ~a, not sent (no mail provider): ~a~%"
-            (entity-id mail) (mail-to mail) (mail-subject mail))
+    (format t "~&tun: mail ~a to ~a, not sent (no mail provider): ~a~@[, ~d files~]~%"
+            (entity-id mail) (mail-to mail) (mail-subject mail) (and files (length files)))
     (finish-output))
   (values :sent (entity-id mail)))
 
@@ -175,13 +318,13 @@ counted, or NIL when it is gone or already sent or failed."
       (incf (mail-attempts mail))
       (save mail))))
 
-(defun attempt-delivery (adapter mail)
-  "Values the outcome and its detail of one call to ADAPTER for MAIL, within
-+MAIL-TIME-LIMIT+ seconds."
+(defun attempt-delivery (adapter mail files)
+  "Values the outcome and its detail of one call to ADAPTER for MAIL with
+FILES, within +MAIL-TIME-LIMIT+ seconds."
   (let ((app *application*))
     (handler-case
         (multiple-value-bind (outcome detail)
-            (call-with-time-limit (lambda () (with-application (app) (deliver-mail adapter mail)))
+            (call-with-time-limit (lambda () (with-application (app) (deliver-mail adapter mail files)))
                                   +mail-time-limit+)
           (if (and (member outcome '(:sent :retry :failed)) (stringp detail))
               (values outcome detail)
@@ -202,7 +345,8 @@ after the last."
        (setf (mail-status current) "sent"
              (mail-provider-id current) detail
              (mail-sent-at current) (now)
-             (mail-last-error current) nil))
+             (mail-last-error current) nil)
+       (drop-sent-files (entity-id current)))
       ((:retry :failed)
        (setf (mail-status current) (if (or (eq outcome :failed) (last-attempt-p)) "failed" "queued")
              (mail-last-error current) (subseq detail 0 (min 2000 (length detail))))))
@@ -221,7 +365,12 @@ provider, with the mail's id as the idempotency key (spec/mail.md 3)."
   (let ((mail (with-transaction (:write) (start-attempt mail-id)))
         (adapter (or (application-mail *application*) (make-instance 'log-mail))))
     (when mail
-      (multiple-value-bind (outcome detail) (attempt-delivery adapter mail)
+      (multiple-value-bind (outcome detail)
+          (multiple-value-bind (files missing) (with-transaction (:read) (mail-files mail-id))
+            (if missing
+                ;; Never sent without one of its files (spec/mail.md 3).
+                (values :failed (format nil "the attachment ~a is no longer stored" missing))
+                (attempt-delivery adapter mail files)))
         (with-transaction (:write)
           (record-outcome mail adapter outcome detail))
         (case outcome
@@ -231,34 +380,57 @@ provider, with the mail's id as the idempotency key (spec/mail.md 3)."
 ;;; ------------------------------------------------------------------
 ;;; Tools (spec/mail.md 5)
 
+(defun mail-attachment-json (attachment)
+  "A mail's ATTACHMENT as the tools give it: what it is, never its bytes."
+  (jobj "id" (entity-id attachment)
+        "filename" (mail-attachment-filename attachment)
+        "content_type" (mail-attachment-content-type attachment)
+        "size" (mail-attachment-size attachment)
+        "sha256" (mail-attachment-sha256 attachment)
+        "file_id" (or (mail-attachment-file-id attachment) :null)
+        "kept" (and (mail-attachment-kept attachment) t)))
+
+(defun mails->json (mails &key with-text)
+  "MAILS as the tools give them, each with its attachments, read in one query."
+  (let ((attachments (make-hash-table :test 'equal)))
+    (dolist (attachment (mail-attachments (mapcar #'entity-id mails)))
+      (push (mail-attachment-json attachment)
+            (gethash (mail-attachment-mail-id attachment) attachments)))
+    (mapcar (lambda (mail)
+              (let ((json (entity->json mail)))
+                (unless with-text
+                  (remhash "text" json)
+                  (remhash "html" json))
+                (setf (gethash "attachments" json)
+                      (jarr (reverse (gethash (entity-id mail) attachments))))
+                json))
+            mails)))
+
 (defun mail->json (mail &key with-text)
-  (let ((json (entity->json mail)))
-    (unless with-text
-      (remhash "text" json)
-      (remhash "html" json))
-    json))
+  (first (mails->json (list mail) :with-text with-text)))
 
 (define-operation mail-list ((status :type (enum "queued" "sending" "sent" "failed")
                                      :label "Status")
                              (to :type (email :max 320) :label "To"))
     (:entity mail :kind :read :policy :admin :title "Email"
              :description "The last 100 mails, newest first, without their text: recipient,
-subject, status, attempts and last error. Can be limited to one status or one recipient.")
+subject, status, attempts, last error and attachments (name, type and size). Can be limited to
+one status or one recipient.")
   (let ((conditions (remove nil (list (and status `(:= "status" ,status))
                                       (and to `(:= "to" ,to))))))
-    (jobj "items" (jarr (mapcar #'mail->json
-                                (select 'mail :where (and conditions `(:and ,@conditions))
-                                        :order-by '(("seq" :desc)) :limit 100))))))
+    (jobj "items" (jarr (mails->json (select 'mail :where (and conditions `(:and ,@conditions))
+                                             :order-by '(("seq" :desc)) :limit 100))))))
 
 (define-operation mail-get ((id :type (id mail) :required t :label "Email"))
     (:entity mail :kind :read :policy :admin :title "Read an email"
-             :description "One mail with its text and HTML.")
+             :description "One mail with its text, HTML and attachments: each file's name, type,
+size and SHA-256, never its bytes.")
   (mail->json (fetch! 'mail id) :with-text t))
 
 (define-operation mail-retry ((id :type (id mail) :required t :label "Email"))
     (:entity mail :kind :update :policy :admin :title "Send an email again"
              :description "Queues a mail that failed again, with its attempts set to zero. It
-is sent at once.")
+is sent at once, with the copies of its files it was queued with.")
   (let ((mail (fetch! 'mail id)))
     (unless (equal (mail-status mail) "failed")
       (fail :invalid-transition "Only an email that failed can be sent again; this one is ~a"

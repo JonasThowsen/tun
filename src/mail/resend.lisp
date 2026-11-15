@@ -27,8 +27,9 @@ verified in Resend.")
 
 (defmethod provider-name ((adapter resend-mail)) "resend")
 
-(defun resend-body (adapter mail)
-  "The JSON body of the request that sends MAIL."
+(defun resend-body (adapter mail files)
+  "The JSON body of the request that sends MAIL with FILES, its MAIL-FILEs:
+each as Resend's attachments take it, its content in base64."
   (let ((json (jobj "from" (resend-from adapter)
                     "to" (jarr (list (mail-to mail)))
                     "subject" (mail-subject mail)
@@ -37,6 +38,14 @@ verified in Resend.")
       (setf (gethash "html" json) (mail-html mail)))
     (when (mail-reply-to mail)
       (setf (gethash "reply_to" json) (mail-reply-to mail)))
+    (when files
+      (setf (gethash "attachments" json)
+            (jarr (mapcar (lambda (file)
+                            (jobj "filename" (mail-file-filename file)
+                                  "content" (cl-base64:usb8-array-to-base64-string
+                                             (mail-file-octets file))
+                                  "content_type" (mail-file-content-type file)))
+                          files))))
     json))
 
 (defun temporary-answer-p (status name)
@@ -62,12 +71,12 @@ and the email's id, or :RETRY or :FAILED and a reason."
                   (format nil "resend ~d~@[ ~a~]~@[: ~a~]" status (text "name")
                           (if (= status 200) "answered without an id" (text "message"))))))))
 
-(defmethod deliver-mail ((adapter resend-mail) mail)
+(defmethod deliver-mail ((adapter resend-mail) mail files)
   (multiple-value-bind (body status)
       (drakma:http-request (resend-endpoint adapter)
                            :method :post
                            :content-type "application/json"
-                           :content (to-json-string (resend-body adapter mail))
+                           :content (to-json-string (resend-body adapter mail files))
                            :additional-headers
                            `(("Authorization" . ,(format nil "Bearer ~a" (resend-api-key adapter)))
                              ("Idempotency-Key" . ,(entity-id mail))

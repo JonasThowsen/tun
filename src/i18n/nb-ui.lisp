@@ -154,6 +154,16 @@
    "Filene kan ikke være større enn 25 MB til sammen.")
   ("screenshot-{time}"
    "skjermbilde-{time}")
+  ("Choose files"
+   "Velg filer")
+  ("Choose file"
+   "Velg fil")
+  ("No files chosen"
+   "Ingen filer valgt")
+  ("No file chosen"
+   "Ingen fil valgt")
+  ("Chosen: {count}"
+   "Valgt: {count}")
   ("Attachments"
    "Vedlegg")
   ("No attachments"

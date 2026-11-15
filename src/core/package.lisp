@@ -144,6 +144,10 @@
    #:application-allow-eval-p #:application-repl-port #:application-identity #:claimed-identity-p
    #:application-auth-state #:application-jobs-state #:application-queue-limit #:declare-queue-default #:application-push-service #:application-log-requests-p
    #:application-public-url #:absolute-url
+   ;; Mail and files for a module, whose interface is this package, not
+   ;; TUN.MAIL or TUN.FILES: defined there, exported here and from TUN
+   ;; (spec/tun-platform.md 2.3)
+   #:send-mail #:render-mail #:attach-files #:attachments-of #:file-octets
    #:application-started-us #:application-max-inflight #:application-inflight-cell
    #:operation-eval-only-p
    #:*application* #:test-mode-p

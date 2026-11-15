@@ -145,8 +145,9 @@ the listed symbols (the same symbol objects, not copies)."
   ;; caller's write, delivered after it commits (spec/push.md)
   (#:tun.push #:notify-push)
   ;; Files attached to records: the FILES parameter type is above
-  ;; (spec/files.md 4.1); a record's files in a client's operation (4.2)
-  (#:tun.files #:attach-files #:attachments-of)
+  ;; (spec/files.md 4.1); a record's files, and one file's bytes, in a
+  ;; client's operation (4.2)
+  (#:tun.files #:attach-files #:attachments-of #:file-octets)
   ;; Calling other systems' JSON APIs and running the programs an
   ;; application declares, and answering for both in tests
   ;; (spec/outbound.md)

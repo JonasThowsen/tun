@@ -16,13 +16,17 @@
              :documentation "What the next calls answer, in order: (OUTCOME DETAIL), :ERROR
 to signal, or :SILENT to answer too late.  Then (:SENT \"ok\").")
    (calls :initform nil :accessor scripted-calls
-          :documentation "The id of the mail each call sent, newest first."))
+          :documentation "The id of the mail each call sent, newest first.")
+   (files :initform nil :accessor scripted-files
+          :documentation "The files each call carried, as MAIL-FILEs in order, newest
+call first."))
   (:documentation "A mail provider whose answers the test chooses."))
 
 (defmethod tun.mail:provider-name ((adapter scripted-mail)) "scripted")
 
-(defmethod tun.mail:deliver-mail ((adapter scripted-mail) mail)
+(defmethod tun.mail:deliver-mail ((adapter scripted-mail) mail files)
   (push (entity-id mail) (scripted-calls adapter))
+  (push files (scripted-files adapter))
   (let ((next (or (pop (scripted-outcomes adapter)) '(:sent "ok"))))
     (case next
       (:error (error "the connection to the provider broke"))

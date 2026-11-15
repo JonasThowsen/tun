@@ -58,4 +58,14 @@
   ("“~a” is not a node: a node is a text, a number, a list or an element such as (:p …)"
    "«~a» er ikke en node: en node er en tekst, et tall, en liste eller et element som (:p …)")
   ("html is nodes, such as (:p \"…\"), not text with HTML; plain text goes in text"
-   "html er noder, som (:p \"…\"), ikke tekst med HTML; ren tekst går i text"))
+   "html er noder, som (:p \"…\"), ikke tekst med HTML; ren tekst går i text")
+  ("Email attachment"
+   "Vedlegg til e-post")
+  ("A mail can carry at most ~d files."
+   "En e-post kan ha høyst ~d vedlegg.")
+  ("A mail's files can be at most 10 MB together."
+   "Vedleggene til en e-post kan være høyst 10 MB til sammen.")
+  ("must be a file's id, an attachment object or (:filename NAME :content OCTETS)"
+   "må være en fils id, et vedleggsobjekt eller (:filename NAVN :content OKTETTER)")
+  ("content must be a vector of octets"
+   "content må være en vektor av oktetter"))
