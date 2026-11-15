@@ -2,12 +2,14 @@
 
 - loop: mail-files
 - mode: reviewed
-- stage: build
+- stage: ship
 - base: fe05dc5d18dd7f3193c14db95af7aa0d50193119
 - item: sak_fa5kq5e2ep52h8ed
 - estimate: 3h 5h 9h
 - like: tun/html-mail tun/attachments-gaps tun/attachments
 - tags: kind:feature core
+- verified: a91a07afd07c16e3085808d3276491bb6d92b87a
+- shown: a91a07afd07c16e3085808d3276491bb6d92b87a
 
 ## Brief
 
@@ -406,3 +408,42 @@ with no compiler warning and no failure. No client changes.
 - 2026-11-15 09:28  verify 4: failed test, check
 - 2026-11-15 10:36  verify 5: failed check
 - 2026-11-15 11:05  resumed (jonas): Jonas, Ferdig kom_7k2j6vd2m8k3p5fv: resume; rounds 3 to 5 failed only on clock-timed browser checks while another builder's checks ran (load 50 to 86); the verify now runs only while no other builder's verify runs
+- 2026-11-15 12:27  verify 6: passed build, test, check
+- 2026-11-15 12:28  shown (/attachments, /ui/file-input, /ui/attachments)
+- 2026-11-15 12:28  gate B asked of a reviewer
+- 2026-11-15 12:29  gate B: approve (reviewer)
+  I'm approving this gate. Every criterion has a test or check that would fail without the change, round 6 of verification passed (build, test and check), and no browser check in `checks/` failed.
+  
+  **Criteria against the diff**
+  - **1. Two attachments, delivered whole.** The test sends a stored file and a PDF given as bytes. The fake provider gets both, in order, with their exact bytes. The test also checks that `mail_get` shows exactly the seven named fields and no bytes, and that `mail_list` shows the attachments too (`tests/mail-files-tests.lisp:1856`). Gate A asked that the attachment-object form be tested. It is, twice: once as an object (`:1893`) and once as `(attachments-of record)` passed as it is (`:1905`).
+  - **2. Resend's shape.** `src/mail/resend.lisp:1180` builds the `attachments` array. The test checks each item's keys, its base64 content, that the content has no line breaks, and that a mail without attachments sends no `attachments` member (`:1917`).
+  - **3. Limits refused at queueing.** The test covers 11 files, more than 10 MiB together, each kind of refused file by its index, and an item of no known form. Exactly 10 MiB is accepted. A file the sender may not see, an unknown id and an entity that no longer takes files all fail `not_found`. Each case asserts that no mail, no mail attachment and no delivery job was stored (`:1957`, `:1989`).
+  - **4. Copies, retries and the source gone.**
+    - A queued mail survives its file being removed, its record being deleted and the sweep running. This settles both gate A notes about the sweep and a deleted record (`:2027`).
+    - `mail_retry` after the source file is gone sends the same bytes.
+    - Once a mail is sent, its copies' bytes are gone and `kept` is false.
+    - A mail whose copy is missing fails without calling the provider, and its job fails too (`:2077`).
+  - **5. A module reads a file.**
+    - `file-octets` has tests on the memory store and with a record policy on Postgres.
+    - The five symbols are external in `TUN.CORE` and are the same symbols as in `TUN` (`:2153`).
+    - `logbook` uses all of them, and its interface check passes (`tests/client/tests/interface-tests.lisp:1743`).
+  - **6. A chunked multipart post.** A real socket request with `Transfer-Encoding: chunked`, signed in and not, gets 411, `Connection: close` and the page's message (`tests/safety-tests.lisp:2213`). The fix is the missing 411 entry in `src/agent/http.lisp:1083`, which matches the cause the decision gave.
+  - **7. The size as text.** `octets-text` is exported, and the tests cover 640 B, 12 kB, 1.4 MB and 1,4 MB, plus a tile showing exactly what the function writes.
+  - **8. `file-input` in the page's language.** `files-language.json` passes for nb and en, at 390 and 1280 px, with and without JavaScript:
+    - the browser's control has opacity 0 and lies over Tun's button;
+    - the label names the input, and Tab reaches it;
+    - the button shows the focus ring;
+    - with JavaScript a click opens the browser's chooser, and the line reads «Valgt: 2» after two files are chosen.
+    
+    The five existing file checks pass. The screenshots show «Velg filer / Valgt: 2» on a phone and «Choose files / No files chosen» on desktop.
+  - **9. One image dialog.** `files-one-dialog.json` passes at both widths:
+    - there is no dialog before an image is opened, then exactly one, at the end of the body;
+    - each component's image opens in it;
+    - Escape closes it and gives the focus back to the thumbnail.
+    
+    The markup test asserts that the component renders no `<dialog>` and carries the dialog's texts. The 390 px screenshot shows the dialog centred.
+  - **10–12. Clients, docs and the build.** The record lists five clients passing unchanged. The spec and docs sections named in criterion 11 are all changed, and both «Not yet» lists are updated. The version is 2.41.0 in both places.
+  
+  **Code.** It reads cleanly, with no leftover debugging or dead code. The adapters now get each mail's files as a third argument to `deliver-mail`, so every method that defines it changed with it. Moving the mail module after files in `tun.asd` is explained in a comment. The bytes are dropped in the same write that records the mail `sent`, as the decision says. The existing tests that changed are the ones listed under Decisions, for the reasons given.
+  
+  **One small point, not blocking.** `src/mail/mail.lisp:923` takes any sequence, so a single id passed as a string, `:attachments "fil_…"`, is read as a list of characters. The caller then gets «A mail can carry at most 10 files.» instead of a message saying what is wrong. It would be worth fixing later, for example by refusing a string for `attachments` as a whole.
