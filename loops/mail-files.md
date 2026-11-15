@@ -8,7 +8,7 @@
 - estimate: 3h 5h 9h
 - like: tun/html-mail tun/attachments-gaps tun/attachments
 - tags: kind:feature core
-- failures: 2
+- failures: 3
 
 ## Brief
 
@@ -335,3 +335,4 @@ be done well without them.
   - **Without JavaScript:** the person no longer sees any line saying what they chose. This is a stated trade-off (files.md §6.1), and criterion 8 makes the without-JavaScript state checkable.
 - 2026-11-15 06:53  verify 1: failed build, test, check
 - 2026-11-15 07:26  verify 2: failed test, check
+- 2026-11-15 08:18  verify 3: failed test, check

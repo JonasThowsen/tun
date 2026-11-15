@@ -62,6 +62,9 @@ def tab_to(page, selector, most=60):
 
 def control_in(t, language, width, make, javascript):
     page = make(javascript=javascript)
+    # A listener from the start, so the browser's chooser is already
+    # intercepted when the button is clicked, however loaded the machine.
+    page.on("filechooser", lambda chooser: None)
     page.sign_in("employee:anna")
     _files.card_page(page, "Item 3")
     say = TEXTS[language]
