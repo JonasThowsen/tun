@@ -2,7 +2,7 @@
 
 - loop: mail-files
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: fe05dc5d18dd7f3193c14db95af7aa0d50193119
 - item: sak_fa5kq5e2ep52h8ed
 - estimate: 3h 5h 9h
@@ -368,6 +368,12 @@ ferdig (812) and the factory's ERP client (its suites of 7828, 72716,
 378, 349, 304, 8856, 255, 109918, 90918, 16264 and 26123 checks) pass,
 with no compiler warning and no failure. No client changes.
 
+## Actuals
+
+```json
+{"loop":"mail-files","title":"A mail carries attachments, a module reads a stored file, and the file gaps a client found","repository":"tun","mode":"reviewed","stage":"done","item":"sak_fa5kq5e2ep52h8ed","tags":["kind:feature","core"],"like":["tun/html-mail","tun/attachments-gaps","tun/attachments"],"started":"2026-11-15 05:12","ended":"2026-11-15 12:30","minutes":{"total":438,"waiting_person":0,"waiting_reviewer":2,"working":436,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"latest_estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"within_estimate":true,"ratio":1.46,"verify":{"rounds":6,"failed":5},"changes":{"A":0,"B":0,"C":0},"interventions":1,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-15 05:12  started, reviewed
@@ -447,3 +453,4 @@ with no compiler warning and no failure. No client changes.
   **Code.** It reads cleanly, with no leftover debugging or dead code. The adapters now get each mail's files as a third argument to `deliver-mail`, so every method that defines it changed with it. Moving the mail module after files in `tun.asd` is explained in a comment. The bytes are dropped in the same write that records the mail `sent`, as the decision says. The existing tests that changed are the ones listed under Decisions, for the reasons given.
   
   **One small point, not blocking.** `src/mail/mail.lisp:923` takes any sequence, so a single id passed as a string, `:attachments "fil_…"`, is read as a list of characters. The caller then gets «A mail can carry at most 10 files.» instead of a message saying what is wrong. It would be worth fixing later, for example by refusing a string for `attachments` as a whole.
+- 2026-11-15 12:30  finished at tun e03e339c
