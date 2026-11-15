@@ -2,13 +2,12 @@
 
 - loop: mail-files
 - mode: reviewed
-- stage: stuck
+- stage: build
 - base: fe05dc5d18dd7f3193c14db95af7aa0d50193119
 - item: sak_fa5kq5e2ep52h8ed
 - estimate: 3h 5h 9h
 - like: tun/html-mail tun/attachments-gaps tun/attachments
 - tags: kind:feature core
-- failures: 5
 
 ## Brief
 
@@ -264,7 +263,11 @@ be done well without them.
   browser's own «No file chosen», which was the only such line, goes,
   and a person without JavaScript sees no count of what they chose; the
   files are posted as before. The line is `aria-hidden`: the control
-  itself tells a screen reader what is chosen.
+  itself tells a screen reader what is chosen. The owner chose this
+  reading over showing the browser's own control without JavaScript:
+  «21 A» (Ferdig kom_7k2j6vd2m8k3p5fv, 2026-11-15), to «as built: never
+  the browser's English text; a person without JavaScript gets no
+  confirmation of the choice».
 - **One image dialog, made when first needed.** The component carries
   the dialog's three texts (its label, «Open the original», «Close»)
   as data attributes; the script, on the first click on a thumbnail,
@@ -402,3 +405,4 @@ with no compiler warning and no failure. No client changes.
 - 2026-11-15 08:18  verify 3: failed test, check
 - 2026-11-15 09:28  verify 4: failed test, check
 - 2026-11-15 10:36  verify 5: failed check
+- 2026-11-15 11:05  resumed (jonas): Jonas, Ferdig kom_7k2j6vd2m8k3p5fv: resume; rounds 3 to 5 failed only on clock-timed browser checks while another builder's checks ran (load 50 to 86); the verify now runs only while no other builder's verify runs
