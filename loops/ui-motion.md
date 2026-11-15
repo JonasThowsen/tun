@@ -2,7 +2,7 @@
 
 - loop: ui-motion
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: f2201238d04fb335d8a16eabb35b3fbfbc55b5ad
 - item: sak_28fv8fkx6mk2baca
 - estimate: 1h30m 2h30m 4h
@@ -301,6 +301,12 @@ ferdig takes this Tun. No client check goes through a generated record's
 confirmation page (tun-erp's `checks/_stock.py` confirms on a page of
 its own, which is unchanged).
 
+## Actuals
+
+```json
+{"loop":"ui-motion","title":"An accordion fades and rises as it opens, a generated record page confirms in the dialog, a Markdown table scrolls in its own box on a phone","repository":"tun","mode":"reviewed","stage":"done","item":"sak_28fv8fkx6mk2baca","tags":["kind:ui","core","module:ui"],"like":["tun/ui-sheets","tun/ui-nits"],"started":"2026-11-14 21:30","ended":"2026-11-15 01:04","minutes":{"total":214,"waiting_person":0,"waiting_reviewer":5,"working":209,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":90,"likely":150,"worst":240,"at":"brief"},"latest_estimate":{"best":90,"likely":150,"worst":240,"at":"brief"},"within_estimate":true,"ratio":1.43,"verify":{"rounds":6,"failed":4},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-14 21:30  started, reviewed
@@ -446,3 +452,5 @@ its own, which is unchanged).
   - **Confirmation:** the token is still checked on the server. Without scripts the confirmation page is as before. The dialog's colour and focus are measured at 390 and 1280 px.
   - **Markdown:** the wide table scrolls in its own box at 320, 360 and 390 px, the screenshots show it, and Tab reaches the box.
   - **Version and docs:** 2.38.0 is in `src/core/module.lisp` and `flake.nix`, and `docs/client-api.md` describes the change.
+- 2026-11-15 01:04  pushed f22c274 to Tun's main, core 2.38.0
+- 2026-11-15 01:04  finished at tun f22c274e
