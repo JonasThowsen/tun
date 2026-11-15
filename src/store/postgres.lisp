@@ -29,8 +29,8 @@
 
 (defpackage #:tun.store.postgres
   (:use #:cl #:tun.core)
-  (:export #:postgres-store #:postgres-url-p #:parse-postgres-url #:postgres-create-database
-           #:postgres-drop-database))
+  (:export #:postgres-store #:postgres-store-url #:postgres-url-p #:parse-postgres-url
+           #:postgres-create-database #:postgres-drop-database))
 
 (in-package #:tun.store.postgres)
 

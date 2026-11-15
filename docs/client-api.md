@@ -1186,6 +1186,36 @@ the same seed every run; `TUN_FUZZ_SEED=N` replays a failure's seed,
 calls per tool and actor. A client's own test can make inputs with
 `generate-input` and `generate-value` from a tool's input schema.
 
+A test that asserts a speed uses `tun.test-support`'s `is-fast`, which
+measures processor time, this process's and the Postgres server's for the
+test application's database, so another suite on the same machine does
+not decide it; a deadline or a timeout is asserted with
+`is-within-seconds`, in wall time (`spec/tooling.md`, «Speed and time in
+tests»):
+
+```lisp
+(is-fast (:why "search of 2000 customers" :limit-ms 100)
+  (call-ok "search" "employee:anna" "query" "kunde 19"))
+
+(let ((before (measure-speed (lambda () (web-request port "/orders" :jar jar)))))
+  (add-many-customers 2000)
+  (is-fast (:why "the orders' list, 2000 customers" :over before :limit-ms 50)
+    (web-request port "/orders" :jar jar)))
+
+(is-within-seconds (:why "the call ends at its timeout" :over 1 :under 2.5)
+  (failure-of (lambda () (http-json-post url (jobj) :timeout 1))))
+```
+
+`is-fast` runs its body nine times (`:runs`) and compares the median
+with the limit; a failure names the time, the limit, the wall time and
+the machine's load. A stopwatch (`start-stopwatch`, `stop-stopwatch`,
+`lap-stopwatch`, `stopwatch-past-p`, `stopwatch-seconds`) is for a wait
+that gives up and a report's seconds; one stopped in another thread is
+asserted with `(is-within-seconds (:why TEXT :under 0.5 :watch WATCH))`.
+A test about something else than time whose calls a loaded machine would
+stop at the operation's deadline runs them in `(with-deadline-lifted ()
+...)`.
+
 A browser check is `checks/NAME.py`, with `run(t)`;
 `tun check` runs each against a fresh preview of its scenario
 (`SCENARIO = "NAME"`, else `default`) in Chromium:

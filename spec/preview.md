@@ -226,6 +226,11 @@ ends. A check gets:
   gives its `body` and `status`;
 - `t.check(condition, text)`, which records a screenshot when it fails
   and carries on, so one run lists every failure;
+- a default timeout of 120 s for a navigation and for any wait that
+  names none, in place of Playwright's 30 s: a check is not a speed
+  test (`tooling.md`, «Speed and time in tests»), and a page that a
+  loaded machine serves slowly is waited for, while one that never
+  loads still fails;
 - everything else of Playwright's page.
 
 A check that raises, checks nothing, or leaves a JavaScript error on one

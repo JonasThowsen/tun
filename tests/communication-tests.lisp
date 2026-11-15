@@ -74,13 +74,11 @@
       (let* ((customer (make-customer)) (product (make-product))
              (order (jget (new-order customer "lines" (lines product 1)) "id"))
              (preview (call-ok "messages_preview" "employee:e" "template" "unit_note" "order_id" order))
-             (started (get-internal-real-time))
-             (message (call-ok "messages_send" "employee:e" "template" "unit_note" "order_id" order
-                                "snapshot_hash" (jget preview "snapshot_hash"))))
-        (is (< (- (get-internal-real-time) started) internal-time-units-per-second))
-        (setf started (get-internal-real-time))
-        (is (equal order (jget (call-ok "orders_get" "viewer:v" "id" order) "id")))
-        (is (< (- (get-internal-real-time) started) internal-time-units-per-second))
+             (message (is-within-seconds (:why "sent without waiting for the slow provider" :under 1)
+                        (call-ok "messages_send" "employee:e" "template" "unit_note" "order_id" order
+                                 "snapshot_hash" (jget preview "snapshot_hash")))))
+        (is-within-seconds (:why "an unrelated read does not wait for it" :under 1)
+          (is (equal order (jget (call-ok "orders_get" "viewer:v" "id" order) "id"))))
         (loop repeat 80 until (equal "accepted" (jget (jget (call-ok "messages_get" "viewer:v" "id" (jget message "id")) "delivery") "status"))
               do (sleep 0.05))
         (is (equal "accepted" (jget (jget (call-ok "messages_get" "viewer:v" "id" (jget message "id")) "delivery") "status")))))))

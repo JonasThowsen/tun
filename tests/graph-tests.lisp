@@ -309,11 +309,10 @@ later one, chosen by a fixed walk from SEED."
                                     :badges (list (list :text "agent" :kind :agent)))))
          (edges (mapcar (lambda (pair) (edge (first pair) (second pair)))
                         (random-edges 150 300 11)))
-         (start (get-internal-real-time))
-         (html (graph-html :label "x" :nodes nodes :edges edges))
-         (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
-    (is (= 300 (count-matches "class=\"tun-graph-edge\"" html)))
-    (is (< seconds 1) "rendered in ~,2fs" (float seconds))))
+         (html (nth-value 1 (is-fast (:why "the largest graph allowed, 150 nodes and 300 edges"
+                                      :limit-ms 1000 :runs 1)
+                              (graph-html :label "x" :nodes nodes :edges edges)))))
+    (is (= 300 (count-matches "class=\"tun-graph-edge\"" html)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Badges that fit, and «+N»

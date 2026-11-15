@@ -79,10 +79,10 @@
     (:entity widget :kind :read :title "Spinn uten fristsjekk")
   ;; A runaway loop that never reaches a deadline check: only the watchdog
   ;; can stop it.
-  (let ((end (+ (get-internal-real-time) (round (* ms internal-time-units-per-second) 1000)))
+  (let ((watch (start-stopwatch))
         (x 0))
     (declare (type fixnum x))
-    (loop while (< (get-internal-real-time) end)
+    (loop until (stopwatch-past-p watch (/ ms 1000))
           do (setf x (logand (+ x 3) #xffff)))
     (setf *spin-sink* x)
     (jobj "spun" ms)))

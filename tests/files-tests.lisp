@@ -400,45 +400,47 @@ pointer, and a GPS IFD holding a latitude."
     (and fields (plusp (length fields)) (jget (aref fields 0) "message"))))
 
 (test sizes-are-bounded-per-file-per-call-and-per-record
-  (with-test-app ()
-    (let* ((png (fixture "skjermbilde.png"))
-           (exactly (bytes png (make-array (- (* 10 1024 1024) (length png)) :initial-element 0)))
-           (over (bytes exactly 0)))
-      ;; Bytes after IEND are dropped, so a file of exactly 10 MiB is taken.
-      (is (null (nth-value 1 (call-files "employee:anna" (file-json "stor.png" exactly)))))
-      (multiple-value-bind (json code) (call-files "employee:anna" (file-json "for-stor.png" over))
-        (is (string= "invalid_input" code))
-        (is (equal "“for-stor.png”: The file is larger than 10 MB." (field-message json))))
-      (multiple-value-bind (json code) (call-files "employee:anna" (file-json "tom.png" (bytes)))
-        (is (string= "invalid_input" code))
-        (is (equal "“tom.png”: The file is empty." (field-message json)))))
-    (multiple-value-bind (json code)
-        (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" "fnt_x"
-              "files" (jarr (loop repeat 11
-                                  collect (file-json "a.png" (fixture "skjermbilde.png")))))
-      (is (string= "invalid_input" code))
-      (is (search "at most 10 files" (field-message json))))
-    (let* ((padding (make-array (* 9 1024 1024) :initial-element 0))
-           (nine (bytes (fixture "skjermbilde.png") padding))
-           (id (jget (call-ok "file_notes_create" "employee:anna" "title" "Tom") "id")))
+  ;; Files of 10 MiB and more: about their bounds, not the time they take.
+  (with-deadline-lifted ()
+    (with-test-app ()
+      (let* ((png (fixture "skjermbilde.png"))
+             (exactly (bytes png (make-array (- (* 10 1024 1024) (length png)) :initial-element 0)))
+             (over (bytes exactly 0)))
+        ;; Bytes after IEND are dropped, so a file of exactly 10 MiB is taken.
+        (is (null (nth-value 1 (call-files "employee:anna" (file-json "stor.png" exactly)))))
+        (multiple-value-bind (json code) (call-files "employee:anna" (file-json "for-stor.png" over))
+          (is (string= "invalid_input" code))
+          (is (equal "“for-stor.png”: The file is larger than 10 MB." (field-message json))))
+        (multiple-value-bind (json code) (call-files "employee:anna" (file-json "tom.png" (bytes)))
+          (is (string= "invalid_input" code))
+          (is (equal "“tom.png”: The file is empty." (field-message json)))))
       (multiple-value-bind (json code)
-          (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
-                "files" (files-json "1.png" nine "2.png" nine "3.png" nine))
+          (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" "fnt_x"
+                "files" (jarr (loop repeat 11
+                                    collect (file-json "a.png" (fixture "skjermbilde.png")))))
         (is (string= "invalid_input" code))
-        (is (search "25 MB together" (field-message json))))
-      (call-ok "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
-               "files" (files-json "1.png" (fixture "skjermbilde.png")
-                                   "2.png" (fixture "skjermbilde.png")))
-      (multiple-value-bind (json code)
-          (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
-                "files" (files-json "3.png" (fixture "skjermbilde.png")
-                                    "4.png" (fixture "skjermbilde.png")))
-        (is (string= "invalid_input" code))
-        (is (equal "At most 3 files per notat." (field-message json))))
-      (is (= 2 (length (jget (call-ok "attachments_list" "viewer:vera" "entity" "file_note"
-                                      "record_id" id)
-                             "items")))
-          "none of the refused call's files is stored"))))
+        (is (search "at most 10 files" (field-message json))))
+      (let* ((padding (make-array (* 9 1024 1024) :initial-element 0))
+             (nine (bytes (fixture "skjermbilde.png") padding))
+             (id (jget (call-ok "file_notes_create" "employee:anna" "title" "Tom") "id")))
+        (multiple-value-bind (json code)
+            (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
+                  "files" (files-json "1.png" nine "2.png" nine "3.png" nine))
+          (is (string= "invalid_input" code))
+          (is (search "25 MB together" (field-message json))))
+        (call-ok "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
+                 "files" (files-json "1.png" (fixture "skjermbilde.png")
+                                     "2.png" (fixture "skjermbilde.png")))
+        (multiple-value-bind (json code)
+            (call "attachments_add" "employee:anna" "entity" "file_note" "record_id" id
+                  "files" (files-json "3.png" (fixture "skjermbilde.png")
+                                      "4.png" (fixture "skjermbilde.png")))
+          (is (string= "invalid_input" code))
+          (is (equal "At most 3 files per notat." (field-message json))))
+        (is (= 2 (length (jget (call-ok "attachments_list" "viewer:vera" "entity" "file_note"
+                                        "record_id" id)
+                               "items")))
+            "none of the refused call's files is stored")))))
 
 ;;; ------------------------------------------------------------------
 ;;; 5. What is taken out (spec/files.md 3)
@@ -1007,27 +1009,29 @@ store described it, READ CONTENT ID START LENGTH."
           collect detail)))
 
 (test a-file-is-read-and-sent-a-part-at-a-time
-  (with-test-server (port)
-    (let* ((large (large-png (- (* 10 1024 1024) 20000)))
-           (stored (tun.files:examine-file large))
-           (id (jget (call-ok "file_notes_create" "employee:anna" "title" "Stor") "id"))
-           (file (jget (first (attach-over-api "employee:anna" "file_note" id "stor.png" large))
-                       "id")))
-      (multiple-value-bind (status body headers) (fetch-file port (format nil "/files/~a" file)
-                                                             :actor "viewer:vera")
-        (is (= 200 status))
-        (is (equalp stored body))
-        (is (> (length body) (* 9 1024 1024)) "a file kept whole, of about 10 MiB")
-        (let ((reads (content-reads :get file)))
-          (is (= (ceiling (length stored) (* 1024 1024)) (length reads)))
-          (is (every (lambda (read) (search (format nil " ~d" (* 1024 1024)) read)) reads)
-              "parts of at most 1 MiB: ~s" reads))
-        (let ((etag (response-header :etag headers)))
-          (fetch-file port (format nil "/files/~a" file) :actor "viewer:vera" :method :head)
-          (is (null (content-reads :head file)) "HEAD reads no content")
-          (fetch-file port (format nil "/files/~a" file) :actor "viewer:vera"
-                      :headers `(("If-None-Match" . ,etag)))
-          (is (null (content-reads :get file)) "nor does a 304"))))))
+  ;; A file of 10 MiB: about how it is sent, not the time it takes.
+  (with-deadline-lifted ()
+    (with-test-server (port)
+      (let* ((large (large-png (- (* 10 1024 1024) 20000)))
+             (stored (tun.files:examine-file large))
+             (id (jget (call-ok "file_notes_create" "employee:anna" "title" "Stor") "id"))
+             (file (jget (first (attach-over-api "employee:anna" "file_note" id "stor.png" large))
+                         "id")))
+        (multiple-value-bind (status body headers) (fetch-file port (format nil "/files/~a" file)
+                                                               :actor "viewer:vera")
+          (is (= 200 status))
+          (is (equalp stored body))
+          (is (> (length body) (* 9 1024 1024)) "a file kept whole, of about 10 MiB")
+          (let ((reads (content-reads :get file)))
+            (is (= (ceiling (length stored) (* 1024 1024)) (length reads)))
+            (is (every (lambda (read) (search (format nil " ~d" (* 1024 1024)) read)) reads)
+                "parts of at most 1 MiB: ~s" reads))
+          (let ((etag (response-header :etag headers)))
+            (fetch-file port (format nil "/files/~a" file) :actor "viewer:vera" :method :head)
+            (is (null (content-reads :head file)) "HEAD reads no content")
+            (fetch-file port (format nil "/files/~a" file) :actor "viewer:vera"
+                        :headers `(("If-None-Match" . ,etag)))
+            (is (null (content-reads :get file)) "nor does a 304")))))))
 
 (test a-file-deleted-while-it-is-sent-ends-short
   (with-test-server (port)
@@ -1077,14 +1081,12 @@ store described it, READ CONTENT ID START LENGTH."
                                     stream)
                     (finish-output stream)
                     (sleep 4)               ; reads nothing for longer than the limit
-                    (let ((got 0)
-                          (start (get-internal-real-time)))
-                      (handler-case (loop while (read-byte stream nil nil) do (incf got))
-                        (error () nil))
-                      (is (< got (length large)) "the connection was closed short of the file")
-                      (is (< (/ (- (get-internal-real-time) start) internal-time-units-per-second)
-                             3)
-                          "and closed at once, not kept for another request")))
+                    (let ((got 0))
+                      (is-within-seconds (:why "and closed at once, not kept for another request"
+                                               :under 3)
+                                         (handler-case (loop while (read-byte stream nil nil) do (incf got))
+                                           (error () nil)))
+                      (is (< got (length large)) "the connection was closed short of the file")))
                (usocket:socket-close socket))))
       (setf tun.web::*file-send-seconds* limit))))
 

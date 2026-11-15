@@ -310,30 +310,22 @@ each line break a <br>, as ferdig's paragraphs showed text."
 
 (test costly-texts-render-within-a-second
   (loop for (name . text) in (costly-texts)
-        do (let* ((start (get-internal-real-time))
-                  (html (md text))
-                  (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
-             (is (< seconds 1) "~a (~d characters) took ~,2f s" name (length text) seconds)
+        do (let ((html (nth-value 1 (is-fast (:why (format nil "~a (~d characters)" name (length text))
+                                              :limit-ms 1000 :runs 1)
+                                      (md text)))))
              (is (< (length html) (* 200 (length text)))
                  "~a: ~d characters of output for ~d" name (length html) (length text)))))
-
-(defun render-seconds (text)
-  "How long TEXT takes to render, the shorter of two tries."
-  (loop repeat 2
-        minimize (let ((start (get-internal-real-time)))
-                   (md text)
-                   (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
 
 (test costly-texts-take-time-in-proportion-to-their-length
   ;; Four times the text in at most about four times the time: a cost that
   ;; grows with the square of the length would take sixteen.
   (loop for (name . small) in (costly-texts 1/8)
         for (nil . large) in (costly-texts 1/2)
-        do (let ((once (render-seconds small))
-                 (four (render-seconds large)))
-             (is (< four (+ (* 8 once) 0.02))
-                 "~a: ~,3f s for ~d characters, ~,3f s for ~d" name
-                 four (length large) once (length small)))))
+        do (let ((once (measure-speed (lambda () (md small)) :runs 3
+                                      :why (format nil "~a, ~d characters" name (length small)))))
+             (is-fast (:why (format nil "~a, ~d characters" name (length large))
+                       :over once :factor 8 :limit-ms 20 :runs 3)
+               (md large)))))
 
 (defparameter +mark-characters+
   (concatenate 'string "*_`[]()<>|#-+:.!\\/\"' aht1ps" (string #\Newline) (string #\Newline))

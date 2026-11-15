@@ -384,17 +384,18 @@
                              (uiop:read-file-string
                               (merge-pathnames ".build/loop/down/tracker.log" directory)))))
                (with-environment-variable ("TUN_TRACKER" (namestring hanging))
-                 (let ((tun.cli:*tracker-limit* 1)
-                       (started (get-internal-real-time)))
-                   (is (= 0 (tun "start" "slow" "--title" "x")))
-                   (is (< (- (get-internal-real-time) started) (* 10 internal-time-units-per-second))
-                       "stopped at the limit")
+                 (let ((tun.cli:*tracker-limit* 1))
+                   (is-within-seconds (:why "stopped at the limit" :under 10)
+                     (is (= 0 (tun "start" "slow" "--title" "x"))))
                    (is (search "tracker: start failed: no answer within 1 s, stopped" (log-text "slow")))
                    (let ((pid (parse-integer (uiop:read-file-string child) :junk-allowed t)))
                      (is (loop repeat 40
-                               thereis (let ((status (probe-file (format nil "/proc/~d/status" pid))))
-                                         (or (null status)
-                                             (search "State:	Z" (uiop:read-file-string status))))
+                               ;; Read at once: a process that ends between a look
+                               ;; and the read is gone, as wanted.
+                               thereis (let ((status (ignore-errors
+                                                      (uiop:read-file-string
+                                                       (format nil "/proc/~d/status" pid)))))
+                                         (or (null status) (search "State:	Z" status)))
                                do (sleep 0.05))
                          "what the tracker started is stopped with it"))))
                (with-environment-variable ("TUN_TRACKER" (namestring long))

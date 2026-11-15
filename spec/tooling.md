@@ -145,3 +145,84 @@ to run after every change:
 - `TUN_TEST_SUITES="core test-client"` limits the run as before, and
   `bin/test --only SUITE` runs one core suite in this process.
 - On a machine of 12 processors the whole run takes under 2.5 minutes.
+
+## Speed and time in tests
+
+A test's verdict does not depend on what else the machine is doing: a
+suite's speed tests pass on a machine busy with other suites, Tun's own
+or another builder's, as they do on a quiet one, and a real slowdown
+fails on both. One helper, `tests/timing.lisp` in `tun-test-support`
+(package `tun.test-support`), carries how; it is the only test source
+that reads a clock. A test that cares about time says which of three
+things it means:
+
+- **A speed: how much work something is.** `(is-fast (:why TEXT
+  :limit-ms MS [:over SPEED :factor N] [:runs N]) BODY...)` runs BODY
+  RUNS times (nine by default) and asserts that the median processor
+  time it took is under the limit: MS, or, with OVER (a speed measured
+  before by `measure-speed`), FACTOR (1 by default) times OVER plus MS.
+  Processor time is that of this process, every thread of it (a test
+  server's included), and, when the test application's store is
+  Postgres, that of the server processes serving its database, found in
+  `pg_stat_activity` and read from `/proc/PID/schedstat`. Another
+  process's load does not enter it; a slower rule, more rows read or
+  more queries sent do. When the server's processes cannot be read
+  (another machine), it measures wall time instead and says so. It
+  prints one line for each measurement: what, the median processor time,
+  the limit, the wall time, the load average and the processor count;
+  a failure says the same. It returns the speed, which `measure-speed`
+  also gives without asserting, for a limit set against an earlier
+  measurement (the same page with more records, a text four times as
+  long). A test that plants a slowdown to see it fail asks
+  `(over-limit-p SPEED :limit-ms MS [:over SPEED :factor N])`, the
+  verdict `is-fast` would give, and `measurement-milliseconds` for the
+  time that decides it.
+- **When something happens.** A deadline, a timeout, a call that must
+  not wait for a slow provider: `(is-within-seconds (:why TEXT [:over
+  LOW] [:under HIGH] [:watch STOPWATCH]) BODY...)` runs BODY once and
+  asserts that its wall time is at least LOW and under HIGH seconds; with
+  `:watch`, it asserts that stopwatch's seconds instead, after BODY: a time
+  taken where an assertion cannot be made, such as in another thread. A
+  failure names the seconds, the bounds, the load average and the
+  processor count. The bounds are the mechanism's (a deadline of 1 s
+  stops a program between 1 and 1.5 s), never a speed. Wall time is what
+  such a test is about, so a machine loaded far past its processors can
+  still delay it; its bounds leave the room the mechanism allows.
+- **A wait or a report.** `start-stopwatch` gives a stopwatch,
+  `stop-stopwatch` stops it, `lap-stopwatch` gives a copy stopped now (the
+  time of a lap, such as a line a program wrote), `stopwatch-seconds` its
+  seconds for a report, `stopwatch-past-p` whether a wait has lasted long
+  enough to give up. A stopwatch's seconds are never compared in a test;
+  a stopped one is asserted with `is-within-seconds`'s `:watch`.
+
+What processor time does not see is waiting: a sleep, a lock, a server
+that answers late costs none. Speed tests measure work; that something
+does not wait is a when, in wall time.
+
+A limit is set from what was measured on this machine, with room, and
+never raised to pass a run: a test that fails `is-fast` has become
+slower. A deadline in a test that is about something else (a refusal, a
+large file) is lifted in that test rather than met:
+`(with-deadline-lifted () BODY...)` sets the operation's deadline,
+`*deadline-ms*`, which the server's threads read too, to ten minutes
+around BODY.
+
+The suite `timing` holds `only-the-timing-helper-reads-the-clock`: it
+reads every Lisp source of `tun/tests`, `tun-test-support` and
+`test-client/tests`, and fails, naming the file and the line, on a call
+of `get-internal-real-time`, `get-internal-run-time`, `clock-gettime`,
+`get-time-of-day` or `unix-gettimeofday` outside `tests/timing.lisp`,
+and on `stopwatch-seconds` inside a comparison (`<`, `<=`, `>`, `>=`,
+`=`, `/=`) or an assertion (`is`, `is-true`, `is-false`).
+
+`scripts/make-load [start [BUSY [CLIENTS]] | stop | status]` loads the
+machine as another builder's suites do, to see a speed test's verdict
+under load: BUSY processes that only compute (twice the processor count
+by default) and, when `DATABASE_URL` names a Postgres server (inside
+`bin/with-postgres`), CLIENTS sessions sorting on it (the processor
+count). `start` returns at once; `stop` ends all of it.
+
+Browser checks are not speed tests. `scripts/tun_check.py` gives each
+page a default timeout of 120 s for a navigation and for a wait that
+names none; a check's own timeouts, which say how soon something must
+show, are its assertions and stay.

@@ -1,0 +1,54 @@
+#!/usr/bin/env bash
+# scripts/make-load [start [BUSY [CLIENTS]] | stop | status]  (spec/tooling.md,
+# "Speed tests").  Loads this machine the way another builder's suites do,
+# to prove that a speed test gives the same verdict on a busy machine as on
+# a quiet one: BUSY processes that only compute (default: twice the
+# processor count, a load average near 2 per processor), and, when
+# DATABASE_URL names a Postgres server (run under bin/with-postgres),
+# CLIENTS sessions that keep its server busy with queries (default: the
+# processor count).  start returns at once; stop ends everything start
+# began, by the process group kept in .build/make-load.pid.
+set -euo pipefail
+cd "$(dirname "$0")/.."
+pidfile=.build/make-load.pid
+mkdir -p .build
+
+case "${1:-start}" in
+  start)
+    [ ! -s "$pidfile" ] || { echo "scripts/make-load: already running (stop first)" >&2; exit 2; }
+    busy="${2:-$(( 2 * $(nproc) ))}"
+    clients="${3:-$(nproc)}"
+    # setsid gives the load a process group of its own, so stop ends all of
+    # it and nothing of the shell that started it.
+    setsid bash -c '
+      busy="$1" clients="$2"
+      for _ in $(seq "$busy"); do
+        bash -c "while :; do :; done" &
+      done
+      if [ -n "${DATABASE_URL:-}" ] && command -v psql >/dev/null; then
+        for _ in $(seq "$clients"); do
+          bash -c "while :; do psql -q -X \"\$DATABASE_URL\" -c \"select count(*) from (select md5(g::text) from generate_series(1, 300000) g order by 1) s\" >/dev/null 2>&1 || sleep 1; done" &
+        done
+      fi
+      wait' make-load "$busy" "$clients" </dev/null >/dev/null 2>&1 &
+    echo "$!" >"$pidfile"
+    echo "make-load: $busy busy processes$([ -n "${DATABASE_URL:-}" ] && echo ", $clients Postgres sessions"), group $!"
+    ;;
+  stop)
+    if [ -s "$pidfile" ]; then
+      kill -TERM -- "-$(cat "$pidfile")" 2>/dev/null || true
+      rm -f "$pidfile"
+      echo "make-load: stopped"
+    else
+      echo "make-load: not running"
+    fi
+    ;;
+  status)
+    if [ -s "$pidfile" ] && kill -0 -- "-$(cat "$pidfile")" 2>/dev/null; then
+      echo "make-load: running, group $(cat "$pidfile"); load $(cut -d' ' -f1-3 /proc/loadavg)"
+    else
+      echo "make-load: not running; load $(cut -d' ' -f1-3 /proc/loadavg)"
+    fi
+    ;;
+  *) echo "usage: scripts/make-load [start [BUSY [CLIENTS]] | stop | status]" >&2; exit 2 ;;
+esac

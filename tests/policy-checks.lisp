@@ -270,7 +270,7 @@ POLICY-REPORT."
   (let* ((actors (remove-duplicates (append actors (and scenario (scenario-actors scenario)))
                                     :test #'string= :from-end t))
          (*policy-report* (make-policy-report seed))
-         (start (get-internal-real-time))
+         (watch (start-stopwatch))
          (operations (remove-if-not #'policy-checked-p operations)))
     (when operations
       (let ((run (make-fuzz-run class scenario actors seed 0
@@ -282,8 +282,7 @@ POLICY-REPORT."
                       (run-policy-steps run operations))
             (drop-template run)))))
     (setf (policy-report-failures *policy-report*) (nreverse (policy-report-failures *policy-report*))
-          (policy-report-seconds *policy-report*) (/ (- (get-internal-real-time) start)
-                                                    internal-time-units-per-second))
+          (policy-report-seconds *policy-report*) (stopwatch-seconds watch))
     *policy-report*))
 
 (defun policy-summary (report what)

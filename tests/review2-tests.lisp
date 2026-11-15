@@ -104,25 +104,20 @@
 
 ;;; Finding 4: numbers are length-bounded before parsing; no parsing at all
 ;;; without a valid actor.
-(defun seconds-taken (thunk)
-  (let ((start (get-internal-real-time)))
-    (funcall thunk)
-    (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
-
 (test r2-4-long-numbers-are-refused-quickly
   (let ((digits (make-string 200000 :initial-element #\9)))
-    (is (< (seconds-taken (lambda () (signals json-parse-failure (parse-json digits)))) 0.5))
-    (is (< (seconds-taken (lambda () (signals json-parse-failure
-                                       (parse-json (format nil "{\"a\":[1,~a]}" digits)))))
-           0.5)))
+    (is-fast (:why "a number of 200000 digits refused" :limit-ms 500 :runs 1)
+      (signals json-parse-failure (parse-json digits)))
+    (is-fast (:why "and in an array" :limit-ms 500 :runs 1)
+      (signals json-parse-failure (parse-json (format nil "{\"a\":[1,~a]}" digits)))))
   (is (equalp #(123 -4.5d0 1d10) (parse-json "[123,-4.5,1e10]")) "ordinary numbers still parse")
   (is (string= "9999" (jget (parse-json "{\"s\":\"9999\"}") "s")))
   (with-test-app ()
     (let ((body (format nil "{\"jsonrpc\":\"2.0\",\"id\":1,\"method\":\"tools/list\",\"params\":{\"x\":~a}}"
                         (make-string 300000 :initial-element #\9))))
       (let ((response nil))
-        (is (< (seconds-taken (lambda () (setf response (nth-value 1 (tun.mcp:handle-mcp *app* nil body))))) 0.5)
-            "no actor: answered without parsing the body")
+        (is-fast (:why "no actor: answered without parsing the body" :limit-ms 500 :runs 1)
+          (setf response (nth-value 1 (tun.mcp:handle-mcp *app* nil body))))
         (is (= -32000 (jget (jget response "error") "code")))))))
 
 ;;; Finding 2: switching to a core package must neither pass the interface

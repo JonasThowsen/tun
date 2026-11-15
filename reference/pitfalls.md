@@ -94,6 +94,16 @@ repeating the history.
   `*interruptible*` (the watchdog waits), not by blocking all interrupts,
   and closes a connection whose statement was cut off halfway.
 
+## Tests
+
+- **A test timed with the wall clock fails on a busy machine.** Other
+  builders' suites share the machine, and a search that takes 40 ms alone
+  took 260 ms at a load of 60. Measure a speed with `is-fast`, which
+  counts processor time (this process's and the Postgres server's), and
+  time a deadline or a timeout with `is-within-seconds`; only
+  `tests/timing.lisp` reads a clock, and a test checks that
+  (`spec/tooling.md`, «Speed and time in tests»).
+
 ## Sandboxing
 
 - **Code in the same image cannot be sandboxed.** Package locks, the reader

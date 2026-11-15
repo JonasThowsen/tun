@@ -182,8 +182,8 @@
 (test s1r-6-eval-is-read-only-in-the-threads-it-starts
   (dolist (db (list (scratch-path "s1r-6") nil))
     (with-test-app (:allow-eval t :db db)
-      (let* ((start (get-internal-real-time))
-             (result (call-ok "eval" "admin:ops" "code"
+      (let* ((result (is-within-seconds (:why "no wait for the deadline" :under 5)
+                      (call-ok "eval" "admin:ops" "code"
                               "(let ((app tun:*application*))
                                  (sb-thread:join-thread
                                   (sb-thread:make-thread
@@ -193,10 +193,8 @@
                                                              (tun:jobj \"name\" \"Ghost\" \"actor\" \"admin:ghost\" \"role\" \"admin\")
                                                              :application app
                                                              :actor (tun.core:parse-actor \"admin:someone-else\"))
-                                       (error (e) (princ-to-string e)))))))"))
-             (seconds (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
+                                       (error (e) (princ-to-string e)))))))"))))
         (is (search "started by eval" (aref (jget result "values") 0)) "the thread's write is refused: ~a" (jget result "values"))
-        (is (< seconds 5) "no wait for the deadline (~,1f s)" seconds)
         (is (equalp #() (jget (call-ok "employees_list" "admin:a") "items")) "no employee was created")))))
 
 ;;; The rollback preflight (core.md §6.4): an older core on a newer database

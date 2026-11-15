@@ -197,11 +197,13 @@ input; and :CONFIRM, with the token it gave for this input."
   (input nil :type hash-table :read-only t)
   (purpose :call :type (member :call :ask :wrong-token :other-input :confirm) :read-only t))
 
-(defstruct (outcome (:constructor make-outcome (kind &key code result condition (seconds 0))))
+(defstruct (outcome (:constructor make-outcome (kind &key code result condition watch
+                                                    (seconds (if watch (stopwatch-seconds watch) 0)))))
   "How a call ended: KIND :RESULT with its RESULT, :ERROR with its CODE,
 :FAULT with the CONDITION Tun did not expect, or :REFUSED when the arguments
-were not JSON a request may carry, which MCP refuses before any tool runs."
-  kind code result condition seconds)
+were not JSON a request may carry, which MCP refuses before any tool runs.
+WATCH is a stopwatch stopped when it ended, SECONDS its seconds."
+  kind code result condition watch seconds)
 
 (defstruct (call-state (:constructor make-call-state
                            (fingerprint known-ids commits rejections
@@ -530,20 +532,19 @@ result written as JSON (core.md §3).  Values the outcome."
          (parsed (handler-case (parse-request-json (to-json-string arguments))
                    (error () (return-from perform-call (make-outcome :refused)))))
          (actor (parse-actor (fuzz-call-actor call)))
-         (start (get-internal-real-time)))
-    (flet ((seconds ()
-             (/ (- (get-internal-real-time) start) internal-time-units-per-second)))
-      (let ((outcome (handler-case
-                         (let ((result (call-tool (operation-tool operation) parsed
-                                                  :application *app* :actor actor)))
-                           (to-json-string result)
-                           (make-outcome :result :result result :seconds (seconds)))
-                       (operation-error (e)
-                         (make-outcome :error :code (operation-error-code e) :seconds (seconds)))
-                       (serious-condition (e)
-                         (make-outcome :fault :condition e :seconds (seconds))))))
-        (note-token call outcome state)
-        outcome))))
+         (watch (start-stopwatch)))
+    (let ((outcome (handler-case
+                       (let ((result (call-tool (operation-tool operation) parsed
+                                                :application *app* :actor actor)))
+                         (to-json-string result)
+                         (make-outcome :result :result result :watch (stop-stopwatch watch)))
+                     (operation-error (e)
+                       (make-outcome :error :code (operation-error-code e)
+                                            :watch (stop-stopwatch watch)))
+                     (serious-condition (e)
+                       (make-outcome :fault :condition e :watch (stop-stopwatch watch))))))
+      (note-token call outcome state)
+      outcome)))
 
 (defun note-token (call outcome state)
   "Keep the confirmation token OUTCOME gives for CALL's actor, and forget the
@@ -613,7 +614,8 @@ after every call."
               ((and changed (viewer-call-p call) (not (viewer-mutation-p operation)))
                (values (format nil "a viewer's call changed records of ~{~a~^, ~}" changed)
                        :viewer-wrote))
-              ((and (eq (operation-kind operation) :wait) (> (outcome-seconds outcome) 1))
+              ((and (eq (operation-kind operation) :wait) (outcome-watch outcome)
+                    (stopwatch-past-p (outcome-watch outcome) 1))
                (values (format nil "it waited ~,1f seconds" (outcome-seconds outcome)) :waited)))
       (values problem problem-kind changed))))
 
@@ -857,7 +859,7 @@ shrunk."
   (let* ((actors (remove-duplicates (append actors (and scenario (scenario-actors scenario)))
                                     :test #'string= :from-end t))
          (report (make-fuzz-report seed calls))
-         (start (get-internal-real-time)))
+         (watch (start-stopwatch)))
     (let ((run (make-fuzz-run class scenario actors seed calls
                               (append *isolated-variables* variables) database observe)))
       (with-connections-refused ()
@@ -868,8 +870,7 @@ shrunk."
                (fuzz-tools-on-copies run (remove-if-not #'fuzzed-tool-p operations) report))
           (drop-template run))))
     (setf (fuzz-report-failures report) (nreverse (fuzz-report-failures report))
-          (fuzz-report-seconds report) (/ (- (get-internal-real-time) start)
-                                          internal-time-units-per-second))
+          (fuzz-report-seconds report) (stopwatch-seconds watch))
     report))
 
 (defun shown-input (input)

@@ -12,12 +12,9 @@
        (unwind-protect (progn (setf *deadline-ms* ,ms) ,@body)
          (setf *deadline-ms* ,saved)))))
 
-(defun timed-call (tool actor &rest args)
-  "Values code (or NIL), milliseconds."
-  (let ((start (get-internal-real-time)))
-    (multiple-value-bind (json code) (apply #'call tool actor args)
-      (declare (ignore json))
-      (values code (round (* 1000 (- (get-internal-real-time) start)) internal-time-units-per-second)))))
+(defun call-code (tool actor &rest args)
+  "The error code TOOL answers as ACTOR with ARGS, or NIL."
+  (nth-value 1 (apply #'call tool actor args)))
 
 (defun debug-app (&rest args)
   (apply #'tun.runtime:open-application 'application :debug-tools t :test-clock t args))
@@ -28,9 +25,11 @@
   (with-deadline-ms (300)
     (let ((*app* (debug-app)))
       (dolist (tool '("debug_burn" "debug_sleep"))
-        (multiple-value-bind (code ms) (timed-call tool "employee:anna" "ms" 5000)
-          (is (string= "deadline_exceeded" code) "~a" tool)
-          (is (< ms 1000) "~a stopped at the deadline, not after 5 s (~d ms)" tool ms)))
+        (let ((code (is-within-seconds (:why (format nil "~a stopped at the deadline, not after 5 s"
+                                                     tool)
+                                        :under 1)
+                      (call-code tool "employee:anna" "ms" 5000))))
+          (is (string= "deadline_exceeded" code) "~a" tool)))
       (let ((entries (coerce (jget (call-ok "audit_list" "viewer:vera" "limit" 10) "items") 'list)))
         (dolist (tool '("debug_burn" "debug_sleep"))
           (is (find-if (lambda (e) (and (string= tool (jget e "tool")) (string= "rejected" (jget e "outcome"))
@@ -41,15 +40,16 @@
 (test p-deadline-rolls-back-the-transaction
   (with-deadline-ms (300)
     (with-test-app ()
-      (is (string= "deadline_exceeded" (timed-call "widgets_slow_create" "employee:anna" "name" "Treg")))
+      (is (string= "deadline_exceeded" (call-code "widgets_slow_create" "employee:anna" "name" "Treg")))
       (is (= 0 (jget (call-ok "widgets_count" "viewer:vera") "count")) "the insert before the expiry rolled back"))))
 
 (test p-watchdog-stops-code-without-deadline-checks
   (with-deadline-ms (300)
     (with-test-app ()
-      (multiple-value-bind (code ms) (timed-call "widgets_spin" "viewer:vera" "ms" 5000)
-        (is (string= "deadline_exceeded" code))
-        (is (< ms (+ 300 *watchdog-grace-ms* 700)) "interrupted by the watchdog (~d ms)" ms)))))
+      (let ((code (is-within-seconds (:why "interrupted by the watchdog"
+                                      :under (/ (+ 300 *watchdog-grace-ms* 700) 1000))
+                    (call-code "widgets_spin" "viewer:vera" "ms" 5000))))
+        (is (string= "deadline_exceeded" code))))))
 
 (test p-deadline-leaves-other-requests-alone
   (with-deadline-ms (1500)
@@ -57,13 +57,11 @@
       ;; SQLite: the in-memory store serializes reads and writes on one mutex.
       (setf (application-debug-tools-p *app*) t)
       (let* ((runaway (sb-thread:make-thread
-                       (lambda () (http-tool-call port "employee:anna" "debug_sleep" (jobj "ms" 10000)))))
-             (start (get-internal-real-time)))
-        (sleep 0.1)
-        (is (null (nth-value 1 (http-tool-call port "employee:anna" "customers_create"
-                                               (jobj "name" "Ikke berørt" "email" "x@example.no")))))
-        (is (< (- (get-internal-real-time) start) (* 1 internal-time-units-per-second))
-            "a write ran while the runaway was blocked")
+                       (lambda () (http-tool-call port "employee:anna" "debug_sleep" (jobj "ms" 10000))))))
+        (is-within-seconds (:why "a write ran while the runaway was blocked" :under 1)
+          (sleep 0.1)
+          (is (null (nth-value 1 (http-tool-call port "employee:anna" "customers_create"
+                                                 (jobj "name" "Ikke berørt" "email" "x@example.no"))))))
         (is (string= "deadline_exceeded" (error-code-of (sb-thread:join-thread runaway))))))))
 
 (define-workflow test-slow (:kind "test_slow" :label "Treg arbeidsflyt") (wf)
@@ -103,12 +101,11 @@
                                                 "params" (jobj "name" "debug_sleep" "arguments" (jobj "ms" 1500)))))
                   (results (run-concurrently 6 (lambda (i)
                                                  (declare (ignore i))
-                                                 (let ((start (get-internal-real-time)))
+                                                 (let ((watch (start-stopwatch)))
                                                    (multiple-value-bind (status headers body)
                                                        (raw-post port "employee:anna" sleepy)
                                                      (list status headers body
-                                                           (round (* 1000 (- (get-internal-real-time) start))
-                                                                  internal-time-units-per-second)))))))
+                                                           (stop-stopwatch watch)))))))
                   (shed (remove 503 (coerce results 'list) :key #'first :test-not #'eql))
                   (served (remove 200 (coerce results 'list) :key #'first :test-not #'eql)))
              (is (= 2 (length served)) "two in flight are served")
@@ -117,7 +114,7 @@
                (is (string= "1" (cdr (assoc :retry-after (second r)))))
                (is (= -32001 (jget (jget (parse-json (third r)) "error") "code")))
                (is (string= "overbelastet" (jget (jget (parse-json (third r)) "error") "message")))
-               (is (< (fourth r) 500) "shed at once, not queued (~d ms)" (fourth r))))
+               (is-within-seconds (:why "shed at once, not queued" :under 0.5 :watch (fourth r)))))
         (tun.http:stop-server acceptor)))))
 
 ;;; core.md §7.4 Fault isolation
@@ -149,11 +146,9 @@
                     (lambda () (http-tool-call port "admin:ada" "invoices_send"
                                                (jobj "id" invoice "confirmation_token" token))))))
       (sleep 0.3)
-      (let ((start (get-internal-real-time)))
+      (is-within-seconds (:why "a write is not held up by the stalled accounting call" :under 0.5)
         (is (null (nth-value 1 (http-tool-call port "employee:anna" "customers_create"
-                                               (jobj "name" "Mens vi venter" "email" "w@example.no")))))
-        (is (< (- (get-internal-real-time) start) (* 0.5 internal-time-units-per-second))
-            "a write is not held up by the stalled accounting call"))
+                                               (jobj "name" "Mens vi venter" "email" "w@example.no"))))))
       (is (string= "sent" (jget (sb-thread:join-thread sender) "status"))))))
 
 (test p-reconciliation-at-start-up-uses-lookup
@@ -229,10 +224,11 @@
 
 (test p-policy-runs-before-the-work
   (let ((*app* (debug-app)))
-    (multiple-value-bind (code ms) (timed-call "debug_burn" "viewer:vera" "ms" 5000)
-      (is (string= "forbidden" code))
-      (is (< ms 100) "no burning for a forbidden caller (~d ms)" ms))
-    (is (string= "forbidden" (timed-call "debug_schedule" "employee:anna" "due_in_ms" 10)))))
+    (let ((code (nth-value 1 (is-fast (:why "no burning for a forbidden caller"
+                                       :limit-ms 100 :runs 1)
+                               (call-code "debug_burn" "viewer:vera" "ms" 5000)))))
+      (is (string= "forbidden" code)))
+    (is (string= "forbidden" (call-code "debug_schedule" "employee:anna" "due_in_ms" 10)))))
 
 (test p-debug-schedule-runs-on-the-scheduler-tick
   (let ((*app* (tun.runtime:open-application 'application :debug-tools t)))

@@ -234,4 +234,5 @@
                              (:file "sequence-tests")
                              (:file "page-tests")
                              (:file "loop-tests")
+                             (:file "timing-tests")
                              (:file "run")))))

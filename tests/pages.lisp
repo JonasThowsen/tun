@@ -347,8 +347,7 @@ it answered with a server error: it records it as the request ends.")
   "The first line of the fault the application recorded for the request
 REQUEST-ID, its error's type and message, or NIL when it recorded none."
   (when request-id
-    (loop with deadline = (+ (get-internal-real-time)
-                             (* +fault-wait+ internal-time-units-per-second))
+    (loop with watch = (start-stopwatch)
           do (let ((fault (with-application (*app*)
                           (with-actor ((system-actor "pages"))
                             (with-transaction (:read)
@@ -364,7 +363,7 @@ REQUEST-ID, its error's type and message, or NIL when it recorded none."
                                                              occurrence)
                                                             "")))))))))))
                (when fault (return fault))
-               (when (> (get-internal-real-time) deadline) (return nil))
+               (when (stopwatch-past-p watch +fault-wait+) (return nil))
                (sleep 0.02)))))
 
 ;;; ------------------------------------------------------------------
@@ -550,7 +549,7 @@ server on PORT, then post the forms they offer; record it in REPORT.  WITHIN
 is as a PAGE-CRAWL's."
   (let* ((tally (make-actor-tally (or actor +no-actor+)))
          (crawl (make-page-crawl actor port report tally within))
-         (start (get-internal-real-time)))
+         (watch (start-stopwatch)))
     (push tally (page-report-tallies report))
     (enqueue-path crawl "/" :listed nil)
     (open-listed-pages crawl listed)
@@ -558,8 +557,7 @@ is as a PAGE-CRAWL's."
     (post-forms crawl)
     (setf (actor-tally-paths tally) (reverse (actor-tally-paths tally))
           (actor-tally-forms tally) (reverse (actor-tally-forms tally))
-          (actor-tally-seconds tally) (/ (- (get-internal-real-time) start)
-                                         internal-time-units-per-second))))
+          (actor-tally-seconds tally) (stopwatch-seconds watch))))
 
 ;;; ------------------------------------------------------------------
 ;;; Every actor
@@ -642,7 +640,7 @@ under them are opened.  Returns a PAGE-REPORT."
          (run (make-fuzz-run class scenario actors 0 0 (append *isolated-variables* variables)
                              database nil))
          (report nil)
-         (start (get-internal-real-time)))
+         (watch (start-stopwatch)))
     (with-connections-refused ()
       (take-connection-attempts)
       (unwind-protect
@@ -667,8 +665,7 @@ under them are opened.  Returns a PAGE-REPORT."
                        (page-report-failures report)))))
         (drop-template run)))
     (setf (page-report-failures report) (reverse (page-report-failures report))
-          (page-report-seconds report) (/ (- (get-internal-real-time) start)
-                                          internal-time-units-per-second))
+          (page-report-seconds report) (stopwatch-seconds watch))
     report))
 
 (defun check-every-page-answers-every-role (what &rest options)

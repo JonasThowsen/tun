@@ -59,16 +59,6 @@
 (defun orders-made ()
   (jget (call-ok "orders_list" "employee:anna") "items"))
 
-(defun median-ms (function &optional (times 9))
-  "The median of TIMES calls of FUNCTION, in milliseconds."
-  (let ((all (sort (loop repeat times
-                         collect (let ((start (get-internal-real-time)))
-                                   (funcall function)
-                                   (/ (* 1000.0 (- (get-internal-real-time) start))
-                                      internal-time-units-per-second)))
-                   #'<)))
-    (nth (floor times 2) all)))
-
 (defmacro as-web-actor ((actor) &body body)
   "Run BODY as ACTOR in the application's web pages, with nothing read yet."
   `(with-application (*app*)
@@ -212,9 +202,9 @@
                                                 :headers +htmx-part+))))
                  (funcall (ask "kunde"))           ; once to warm up
                  (dolist (text '("kunde 19" ""))
-                   (let ((ms (median-ms (ask text))))
-                     (format t "~&;; /choices/customer of 2000, ~a, «~a»: ~,1f ms~%" label text ms)
-                     (is (< ms 100) "~a «~a»: ~,1f ms" label text ms))))))))
+                   (is-fast (:why (format nil "/choices/customer of 2000, ~a, «~a»" label text)
+                             :limit-ms 100)
+                     (funcall (ask text)))))))))
     (measure "memory")
     (when (postgres-available-p) (measure "postgres"))))
 
@@ -229,21 +219,23 @@
                     (jar (web-login port "employee:anna")))
                (flet ((pages ()
                         (web-request port "/orders" :jar jar)    ; once to warm up
-                        (list (median-ms (lambda () (web-request port "/orders" :jar jar)))
-                              (median-ms (lambda ()
-                                           (web-request port (format nil "/orders/~a"
-                                                                     (first orders))
-                                                        :jar jar))))))
-                 (let ((few (pages)))
+                        (list (lambda () (web-request port "/orders" :jar jar))
+                              (lambda ()
+                                (web-request port (format nil "/orders/~a" (first orders))
+                                             :jar jar)))))
+                 (let ((few (loop for page in '("the orders' list" "an order's page")
+                                  for request in (pages)
+                                  collect (measure-speed request
+                                                         :why (format nil "~a, ~a, 10 customers"
+                                                                      label page)))))
                    (many-customers 1990)
-                   (let ((many (pages)))
-                     (format t "~&;; the orders' list and an order's page, ~a, 10 and 2000 ~
-                                customers: ~{~,1f~^ ~} and ~{~,1f~^ ~} ms~%" label few many)
-                     (loop for page in '("the orders' list" "an order's page")
-                           for before in few
-                           for after in many
-                           do (is (< (- after before) 50) "~a, ~a: ~,1f ms more"
-                                  label page (- after before))))))))))
+                   ;; At most 50 ms more with 2000 customers than with 10.
+                   (loop for page in '("the orders' list" "an order's page")
+                         for request in (pages)
+                         for before in few
+                         do (is-fast (:why (format nil "~a, ~a, 2000 customers" label page)
+                                      :over before :limit-ms 50)
+                              (funcall request)))))))))
     (measure "memory")
     (when (postgres-available-p) (measure "postgres"))))
 

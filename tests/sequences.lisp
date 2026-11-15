@@ -546,7 +546,7 @@ SEQUENCE-REPORT."
                                   operations))
          (gets (get-tools operations))
          (report (make-sequence-report seed sequences steps (and scenario (scenario-name scenario))))
-         (start (get-internal-real-time))
+         (watch (start-stopwatch))
          (run (make-fuzz-run class scenario actors seed 0
                              (append *isolated-variables* variables) database observe)))
     (setf (sequence-report-tools report) (mapcar #'operation-tool callable)
@@ -581,8 +581,7 @@ SEQUENCE-REPORT."
                                     (sequence-report-failures report)))
                             (return)))))
         (drop-template run)))
-    (setf (sequence-report-seconds report)
-          (/ (- (get-internal-real-time) start) internal-time-units-per-second))
+    (setf (sequence-report-seconds report) (stopwatch-seconds watch))
     report))
 
 ;;; ------------------------------------------------------------------

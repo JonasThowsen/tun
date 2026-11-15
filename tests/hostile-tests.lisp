@@ -403,10 +403,10 @@ fits, ASCII and astral, and a long error message."
   (let ((hunchentoot:*default-connection-timeout* 1))
     (with-test-server (port)
       (let* ((socket (usocket:socket-connect "127.0.0.1" port :element-type '(unsigned-byte 8)))
-             (stream (usocket:socket-stream socket))
-             (start (get-internal-real-time)))
+             (stream (usocket:socket-stream socket)))
         (unwind-protect
-             (progn
+             (is-within-seconds (:why "answered and ended within the connection's timeout"
+                                 :under 5)
                (write-sequence (sb-ext:string-to-octets
                                 (crlf "POST /api/registry_describe HTTP/1.1" "Host: x"
                                       "X-Tun-Actor: viewer:vera"
@@ -425,8 +425,7 @@ fits, ASCII and astral, and a long error message."
                                (sb-sys:deadline-timeout () (write-string "<open>" out))
                                (error () nil)))))
                  (is (search " 408" text) "answered 408: ~s" (subseq text 0 (min 40 (length text))))
-                 (is (not (search "<open>" text)) "and the connection ended")
-                 (is (< (- (get-internal-real-time) start) (* 5 internal-time-units-per-second)))))
+                 (is (not (search "<open>" text)) "and the connection ended")))
           (usocket:socket-close socket))))))
 
 ;;; ------------------------------------------------------------------
@@ -456,20 +455,15 @@ more than 19 significant digits.")
    (format nil "{\"id\": [~{~a~^,~}]}" (make-list count :initial-element number))
    :external-format :utf-8))
 
-(defun timed (function)
-  "Values how many seconds FUNCTION took and its values as a list."
-  (let* ((start (get-internal-real-time))
-         (values (multiple-value-list (funcall function))))
-    (values (/ (- (get-internal-real-time) start) internal-time-units-per-second) values)))
-
 (test a-number-past-a-doubles-range-is-refused-at-once
   (loop for (number why) in +numbers-refused+
-        do (multiple-value-bind (seconds result)
-               (timed (lambda ()
-                        (handler-case (parse-request-json (format nil "{\"x\": ~a}" number))
-                          (json-number-out-of-range (refusal) (json-number-message refusal)))))
-             (is (equal (list (refusal-message why)) result) "~a refused: ~s" number result)
-             (is (< seconds 0.1) "~a refused in ~,3f s" number seconds)))
+        do (let ((result (nth-value 1 (is-fast (:why (format nil "~a refused" number)
+                                                :limit-ms 100 :runs 1)
+                                        (handler-case (parse-request-json
+                                                       (format nil "{\"x\": ~a}" number))
+                                          (json-number-out-of-range (refusal)
+                                            (json-number-message refusal)))))))
+             (is (equal (refusal-message why) result) "~a refused: ~s" number result)))
   (dolist (number +numbers-in-range+)
     (is (realp (jget (parse-request-json (format nil "{\"x\": ~a}" number)) "x"))
         "~a read" number))
@@ -479,27 +473,27 @@ more than 19 significant digits.")
     (post-octets port "/api/registry_describe" (bytes "{}") :headers +viewer+)
     (loop for (number why) in +numbers-refused+
           for message = (refusal-message why)
-          do (multiple-value-bind (seconds result)
-                 (timed (lambda ()
-                          (post-octets port "/api/registry_describe"
-                                       (bytes (format nil "{\"x\": ~a}" number))
-                                       :headers +viewer+)))
+          do (let ((result (nth-value 1 (is-fast (:why (format nil "/api: ~a answered" number)
+                                                  :limit-ms 100 :runs 1)
+                                          (multiple-value-list
+                                           (post-octets port "/api/registry_describe"
+                                                        (bytes (format nil "{\"x\": ~a}" number))
+                                                        :headers +viewer+))))))
                (destructuring-bind (status text &rest rest) result
                  (declare (ignore rest))
                  (is (= 400 status) "/api: 400 for ~a" number)
                  (is (search "invalid_json" text))
-                 (is (search message text) "/api: ~a told why: ~a" number text)
-                 (is (< seconds 0.1) "/api: ~a answered in ~,3f s" number seconds)))
-             (multiple-value-bind (seconds result)
-                 (timed (lambda ()
-                          (post-octets port "/mcp"
-                                       (mcp-body "registry_describe"
-                                                 (format nil "{\"x\": ~a}" number))
-                                       :headers +viewer+)))
-               (let ((error (jget (parse-json (second result)) "error")))
-                 (is (eql -32700 (jget error "code")) "/mcp: -32700 for ~a" number)
-                 (is (equal message (jget error "message")))
-                 (is (< seconds 0.1) "/mcp: ~a answered in ~,3f s" number seconds))))))
+                 (is (search message text) "/api: ~a told why: ~a" number text)))
+             (let* ((result (nth-value 1 (is-fast (:why (format nil "/mcp: ~a answered" number)
+                                                   :limit-ms 100 :runs 1)
+                                           (multiple-value-list
+                                            (post-octets port "/mcp"
+                                                         (mcp-body "registry_describe"
+                                                                   (format nil "{\"x\": ~a}" number))
+                                                         :headers +viewer+)))))
+                    (error (jget (parse-json (second result)) "error")))
+               (is (eql -32700 (jget error "code")) "/mcp: -32700 for ~a" number)
+               (is (equal message (jget error "message")))))))
 
 (test json-tun-wrote-reads-back-whatever-numbers-it-holds
   ;; The bounds on a caller's numbers never apply to JSON Tun wrote: a
@@ -603,13 +597,12 @@ back within SECONDS and whether the connection ended."
     (setf tun.http:*header-seconds* 1)      ; global: the server's threads read it
     (unwind-protect
          (with-test-server (port)
-           (multiple-value-bind (seconds result)
-               (timed (lambda () (trickle port (list "POST /api/registry_describe HTTP/1.1"
-                                                             "Host: x" "X-Fyll: "))))
-             (destructuring-bind (text ended) result
-               (is (search " 408" text) "answered 408: ~s" text)
-               (is-true ended "and the connection ended")
-               (is (< seconds 3) "within the deadline: ~,1f s" seconds)))
+           (destructuring-bind (text ended)
+               (is-within-seconds (:why "within the deadline" :under 3)
+                 (multiple-value-list
+                  (trickle port (list "POST /api/registry_describe HTTP/1.1" "Host: x" "X-Fyll: "))))
+             (is (search " 408" text) "answered 408: ~s" text)
+             (is-true ended "and the connection ended"))
            (is (= 200 (fetch-file port "/health")) "the server answers others"))
       (setf tun.http:*header-seconds* limit))))
 
@@ -631,22 +624,21 @@ back within SECONDS and whether the connection ended."
                                                    (multiple-value-list
                                                     (trickle port head :body-length 200)))))))
                     (sleep 0.3)
-                    (let* ((start (get-internal-real-time))
-                           (statuses (loop for status = (post-octets port "/api/registry_describe"
-                                                                     (bytes "{}") :headers +viewer+)
-                                           collect status
-                                           until (or (eql status 200)
-                                                     (> (- (get-internal-real-time) start)
-                                                        (* 5 internal-time-units-per-second)))
-                                           do (sleep 0.1)))
-                           ;; Before the senders are joined: their connections
-                           ;; end only once the rest of their bodies is drained.
-                           (answered (- (get-internal-real-time) start))
+                    (let* ((watch (start-stopwatch))
+                           ;; Answered before the senders are joined: their
+                           ;; connections end only once the rest of their
+                           ;; bodies is drained.
+                           (statuses (is-within-seconds (:why "answered once a place frees"
+                                                         :under 3)
+                                       (loop for status = (post-octets port "/api/registry_describe"
+                                                                       (bytes "{}") :headers +viewer+)
+                                             collect status
+                                             until (or (eql status 200) (stopwatch-past-p watch 5))
+                                             do (sleep 0.1))))
                            (answers (mapcar #'sb-thread:join-thread senders)))
                       (is (eql 503 (first statuses)) "while both trickle, the call is told to wait")
                       (is (eql 200 (car (last statuses))) "and is answered once a place frees: ~s"
                           statuses)
-                      (is (< answered (* 3 internal-time-units-per-second)))
                       (loop for (text ended) in answers
                             do (is (search " 408" text) "the trickling sender gets 408: ~s" text)
                                (is-true ended "and its connection ends"))))
@@ -662,13 +654,13 @@ back within SECONDS and whether the connection ended."
                         (list (list "GET /login HTTP/1.1" "Host: x" "X-Forwarded-Proto: http")
                               " 301")))
       (destructuring-bind (head status) case
-        (multiple-value-bind (seconds result)
-            (timed (lambda () (trickle port head :body-length 200)))
-          (destructuring-bind (text ended) result
-            (is (search status text) "~a: answered~a: ~s" (first head) status text)
-            (is-true ended "~a: and the connection ended" (first head))
-            (is (< seconds 3.5) "~a: within the time a body is dropped for: ~,1f s"
-                (first head) seconds)))))))
+        (destructuring-bind (text ended)
+            (is-within-seconds (:why (format nil "~a: within the time a body is dropped for"
+                                             (first head))
+                                :under 3.5)
+              (multiple-value-list (trickle port head :body-length 200)))
+          (is (search status text) "~a: answered~a: ~s" (first head) status text)
+          (is-true ended "~a: and the connection ended" (first head)))))))
 
 (test the-inbox-checks-its-secret-before-it-parses
   (with-test-server (port)
@@ -694,30 +686,32 @@ back within SECONDS and whether the connection ended."
     (let ((digits (make-string 500000 :initial-element #\7)))
       (dolist (case '(("viewer:vera" 403) ("employee:anna" 422)))
         (destructuring-bind (actor status) case
-          (multiple-value-bind (seconds result)
-              (timed (lambda ()
-                       (web-request port "/orders" :method :post :jar (web-login port actor)
-                                    :parameters `(("event_date" . "2026-06-20")
-                                                  ("lines[0][product_id]" . "prd_x")
-                                                  ("lines[0][quantity]" . ,digits)))))
+          (let* ((jar (web-login port actor))
+                 (result (nth-value 1 (is-fast (:why (format nil "~a: answered" actor)
+                                                :limit-ms 2000 :runs 1)
+                                        (multiple-value-list
+                                         (web-request port "/orders" :method :post :jar jar
+                                                      :parameters `(("event_date" . "2026-06-20")
+                                                                    ("lines[0][product_id]" . "prd_x")
+                                                                    ("lines[0][quantity]" . ,digits))))))))
             (is (= status (first result)) "~a: ~a" actor (first result))
             (when (= status 422)
-              (is (search "too long for a number" (second result)) "~a: told why" actor))
-            (is (< seconds 2) "~a: answered in ~,1f s" actor seconds)))))))
+              (is (search "too long for a number" (second result)) "~a: told why" actor))))))))
 
 (test a-long-amount-in-a-generated-form-is-not-read
   (with-test-server (port)
     (let ((digits (make-string 200000 :initial-element #\7)))
-      (multiple-value-bind (seconds result)
-          (timed (lambda ()
-                   (web-request port "/orders" :method :post :jar (web-login port "employee:anna")
-                                :parameters `(("event_date" . "2026-06-20")
-                                              ("discount_input_minor" . ,digits)
-                                              ("lines[0][product_id]" . "prd_x")
-                                              ("lines[0][quantity]" . "1")))))
+      (let* ((jar (web-login port "employee:anna"))
+             (result (nth-value 1 (is-fast (:why "answered, the amount never read"
+                                            :limit-ms 1000 :runs 1)
+                                    (multiple-value-list
+                                     (web-request port "/orders" :method :post :jar jar
+                                                  :parameters `(("event_date" . "2026-06-20")
+                                                                ("discount_input_minor" . ,digits)
+                                                                ("lines[0][product_id]" . "prd_x")
+                                                                ("lines[0][quantity]" . "1"))))))))
         (is (= 422 (first result)) "refused: ~a" (first result))
-        (is (search "too long for a number" (second result)) "told why")
-        (is (< seconds 1) "answered in ~,1f s, the amount never read" seconds)))))
+        (is (search "too long for a number" (second result)) "told why")))))
 
 ;;; ------------------------------------------------------------------
 ;;; Anonymous callers send at most 256 KiB (core.md §7.5)
@@ -835,9 +829,9 @@ never ends."
 
 (defun eventually (function &optional (seconds 5))
   "True once FUNCTION is, within SECONDS."
-  (loop with end = (+ (get-internal-real-time) (* seconds internal-time-units-per-second))
+  (loop with watch = (start-stopwatch)
         thereis (funcall function)
-        while (< (get-internal-real-time) end)
+        until (stopwatch-past-p watch seconds)
         do (sleep 0.02)))
 
 (defun close-all (streams)
@@ -986,9 +980,8 @@ text."
                                  (eventually (lambda () (= (1+ i) (client-waiting-count
                                                                    "203.0.113.7"))))))))
       (is (= 32 (client-waiting-count "203.0.113.7")))
-      (let* ((start (get-internal-real-time))
-             (answer (sb-thread:join-thread (waits-for port "203.0.113.7"))))
-        (is (< (elapsed-since start) 2) "the 33rd is refused before it waits")
+      (let ((answer (is-within-seconds (:why "the 33rd is refused before it waits" :under 2)
+                      (sb-thread:join-thread (waits-for port "203.0.113.7")))))
         (is (search "unavailable" (second answer)) "~a" (second answer))
         (is (search "32 calls are already waiting from the same address" (second answer))))
       (let ((other (waits-for port "203.0.113.8")))

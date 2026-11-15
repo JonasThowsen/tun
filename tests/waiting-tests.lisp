@@ -41,9 +41,6 @@
                                         "id" id "status" "arkivert")))
                            :name "archive later")))
 
-(defun elapsed-since (start)
-  (/ (- (get-internal-real-time) start) internal-time-units-per-second))
-
 (defmacro with-global ((place value) &body body)
   "Run BODY with the global value of PLACE set to VALUE, as server threads see it."
   (let ((old (gensym)))
@@ -55,21 +52,19 @@
   (with-test-app ()
     (let* ((id (new-widget))
            (thread (archive-later id 0.3))
-           (start (get-internal-real-time))
-           (json (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 30)))
+           (json (is-within-seconds (:why "woken by the commit, not the next look" :under 3)
+                   (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 30))))
       (sb-thread:join-thread thread)
       (is (string= "arkivert" (jget json "status")))
-      (is (eq t (jget json "archived")))
-      (is (< (elapsed-since start) 3) "woken by the commit, not the next look"))))
+      (is (eq t (jget json "archived"))))))
 
 (test a-wait-ends-with-its-last-value-when-time-is-up
   (with-test-app ()
     (let* ((id (new-widget))
-           (start (get-internal-real-time))
-           (json (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 1)))
+           (json (is-within-seconds (:why "it ends when its time is up" :over 1 :under 3)
+                   (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 1))))
       (is (string= "aktiv" (jget json "status")))
-      (is (eq nil (jget json "archived")) "and says it did not happen")
-      (is (<= 1 (elapsed-since start) 3)))
+      (is (eq nil (jget json "archived")) "and says it did not happen"))
     (is (string= "not_found" (nth-value 1 (call "widgets_await_archived" "employee:anna"
                                                 "id" "wdg_none" "seconds" 5)))
         "an error ends the wait")))
@@ -119,17 +114,14 @@
 
 (test a-wait-outlasts-two-rechecks-in-real-time
   (with-test-app ()
-    ;; START is taken before the archiving thread starts, so the change is
-    ;; at least 11 s after it however the threads are scheduled.
-    (let* ((id (new-widget))
-           (start (get-internal-real-time))
-           (thread (archive-later id 11))
-           (json (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 30)))
-      (sb-thread:join-thread thread)
-      (is (string= "arkivert" (jget json "status")) "after looks at 5 and 10 seconds")
-      (let ((elapsed (elapsed-since start)))
-        (is (<= 11 elapsed 14) "woken by the change at 11 s, not a later look: ~,2f s"
-            (float elapsed))))))
+    ;; The time is taken from before the archiving thread starts, so the
+    ;; change is at least 11 s after it however the threads are scheduled.
+    (let ((id (new-widget)))
+      (is-within-seconds (:why "woken by the change at 11 s, not a later look" :over 11 :under 14)
+        (let* ((thread (archive-later id 11))
+               (json (call-ok "widgets_await_archived" "employee:anna" "id" id "seconds" 30)))
+          (sb-thread:join-thread thread)
+          (is (string= "arkivert" (jget json "status")) "after looks at 5 and 10 seconds"))))))
 
 (test waiting-calls-are-capped
   (with-test-app ()
@@ -202,9 +194,8 @@ text and the headers."
           (is (= 7 (jget (car (last (event-data text))) "id"))))
         (multiple-value-bind (status text headers)
             (with-global (tun.http::+plain-wait-seconds+ 1)
-              (let ((start (get-internal-real-time)))
-                (multiple-value-prog1 (mcp-wait-call port id 30 :accept "application/json")
-                  (is (< (elapsed-since start) 5) "a client that takes only JSON waits less"))))
+              (is-within-seconds (:why "a client that takes only JSON waits less" :under 5)
+                (mcp-wait-call port id 30 :accept "application/json")))
           (declare (ignore text))
           (is (= 200 status))
           (is (search "application/json" (cdr (assoc :content-type headers)))))))))
@@ -331,18 +322,17 @@ connections logged so far: Hunchentoot's message log, which is taken from
 (test a-wait-over-the-api-is-a-long-poll
   (with-global (tun.http::+plain-wait-seconds+ 1)
     (with-test-server (port)
-      (let* ((id (new-widget))
-             (start (get-internal-real-time)))
+      (let ((id (new-widget)))
         (multiple-value-bind (bytes status)
-            (drakma:http-request (format nil "http://127.0.0.1:~d/api/widgets_await_archived" port)
-                                 :method :post :content-type "application/json"
-                                 :content (to-json-string (jobj "id" id "seconds" 30))
-                                 :additional-headers '(("X-Tun-Actor" . "employee:anna"))
-                                 :force-binary t)
+            (is-within-seconds (:why "held to what a proxy lets stay silent" :under 5)
+              (drakma:http-request (format nil "http://127.0.0.1:~d/api/widgets_await_archived" port)
+                                   :method :post :content-type "application/json"
+                                   :content (to-json-string (jobj "id" id "seconds" 30))
+                                   :additional-headers '(("X-Tun-Actor" . "employee:anna"))
+                                   :force-binary t))
           (is (= 200 status))
           (is (string= "aktiv" (jget (parse-json (sb-ext:octets-to-string bytes :external-format :utf-8))
-                                     "status")))
-          (is (< (elapsed-since start) 5) "held to what a proxy lets stay silent"))))))
+                                     "status"))))))))
 
 (test instructions-reach-initialize
   (let ((text (jget (tun.mcp::handle-initialize 'waiting-instructions-app (jobj)) "instructions")))

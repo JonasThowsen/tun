@@ -157,6 +157,10 @@ class Page:
         post.body = response.request.post_data or ""
 
 
+PAGE_TIMEOUT_MS = 120_000
+"""How long a navigation, or a wait that names no timeout, may take."""
+
+
 class Run:
     """What a check's run(t) gets: its pages and its record of checks."""
 
@@ -168,6 +172,11 @@ class Run:
 
     def _new_page(self, touch, permissions=None, **options):
         context = self.browser.new_context(**options)
+        # A check is not a speed test (spec/tooling.md, "Speed and time in
+        # tests"): a page a loaded machine serves slowly is waited for, one
+        # that never loads still fails.  A check's own timeouts stay.
+        context.set_default_navigation_timeout(PAGE_TIMEOUT_MS)
+        context.set_default_timeout(PAGE_TIMEOUT_MS)
         if permissions:
             context.grant_permissions(permissions, origin=self.url)
         wrapped = Page(self, context.new_page(), touch)

@@ -180,10 +180,10 @@
 
 (defun raw-request (port head &key (body nil))
   "Send HEAD, the request line and headers as lines, and BODY's octets when
-given; values the response's status line, or :CLOSED, and how long it took
-in seconds."
+given; values the response's status line, or :CLOSED, and a stopwatch
+stopped when it came."
   (let ((socket (usocket:socket-connect "127.0.0.1" port :element-type '(unsigned-byte 8)))
-        (start (get-internal-real-time)))
+        (watch (start-stopwatch)))
     (unwind-protect
          (handler-case
              (let ((stream (usocket:socket-stream socket)))
@@ -196,16 +196,18 @@ in seconds."
                              (loop for byte = (read-byte stream nil nil)
                                    while (and byte (/= byte 13))
                                    do (write-char (code-char byte) out)))))
-                 (values (if (plusp (length line)) line :closed)
-                         (/ (- (get-internal-real-time) start) internal-time-units-per-second))))
-           (error () (values :closed 0)))
+                 (values (if (plusp (length line)) line :closed) (stop-stopwatch watch))))
+           (error () (values :closed (stop-stopwatch watch))))
       (usocket:socket-close socket))))
 
 (defun refused-unread-p (port head status)
   "True when HEAD, a request whose Content-Length promises a body never sent,
-is answered STATUS within two seconds: before its body is read."
-  (multiple-value-bind (line seconds) (raw-request port head)
-    (and (stringp line) (search (format nil " ~d" status) line) (< seconds 2))))
+is answered STATUS; and asserts it was within two seconds: before its body
+is read."
+  (multiple-value-bind (line watch) (raw-request port head)
+    (is-within-seconds (:why (format nil "~a answered before its body is read" (first head))
+                        :under 2 :watch watch))
+    (and (stringp line) (search (format nil " ~d" status) line))))
 
 (defun multipart-head (name filename)
   "The headers of the multipart part NAME, of a file FILENAME unless that is
@@ -573,7 +575,7 @@ return the whole response as text: what is answered before the body is read."
            (let* ((socket (usocket:socket-connect "127.0.0.1" port
                                                   :element-type '(unsigned-byte 8)))
                   (stream (usocket:socket-stream socket))
-                  (start (get-internal-real-time)))
+                  (watch (start-stopwatch)))
              (unwind-protect
                   (progn
                     (write-sequence (sb-ext:string-to-octets
@@ -591,10 +593,7 @@ return the whole response as text: what is answered before the body is read."
                                             while (and byte (/= byte 13))
                                             do (write-char (code-char byte) out))
                                     (error () nil)))))
-                      (is (< (/ (- (get-internal-real-time) start)
-                                internal-time-units-per-second)
-                             6)
-                          "cut off at the limit")
+                      (is-within-seconds (:why "cut off at the limit" :under 6 :watch watch))
                       (is (search " 408" line) "answered 408: ~s" line)))
                (usocket:socket-close socket))
              ;; With one place, a large request is taken again only if it was freed.
@@ -652,10 +651,9 @@ for how many answers were not 200."
   (loop repeat 4
         collect (sb-thread:make-thread
                  (lambda ()
-                   (let ((end (+ (get-internal-real-time)
-                                 (* seconds internal-time-units-per-second)))
+                   (let ((watch (start-stopwatch))
                          (bad 0))
-                     (loop while (< (get-internal-real-time) end)
+                     (loop until (stopwatch-past-p watch seconds)
                            do (unless (eql 200 (ignore-errors (fetch-file port "/health")))
                                 (incf bad))
                               (unless (eql 200 (ignore-errors
@@ -904,7 +902,7 @@ connection, and whether it ended within SECONDS."
            (let* ((socket (usocket:socket-connect "127.0.0.1" port
                                                   :element-type '(unsigned-byte 8)))
                   (stream (usocket:socket-stream socket))
-                  (start (get-internal-real-time))
+                  (watch (start-stopwatch))
                   (trickle nil))
              (unwind-protect
                   (progn
@@ -932,9 +930,8 @@ connection, and whether it ended within SECONDS."
                                     (error () nil)))))
                       (is (search " 408" text) "answered 408")
                       (is (not (search "<open>" text)) "and the connection ended")
-                      (is (< (- (get-internal-real-time) start)
-                             (* 4 internal-time-units-per-second))
-                          "at once, though the sender still trickles")))
+                      (is-within-seconds (:why "at once, though the sender still trickles"
+                                          :under 4 :watch watch))))
                (when trickle (sb-thread:join-thread trickle :default nil))
                (usocket:socket-close socket))))
       (setf tun.http:*large-body-seconds* limit))))

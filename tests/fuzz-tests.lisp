@@ -88,10 +88,14 @@ fuzz-records."
   (signals operation-error (date-add-months "1900-01-31" -1))
   (with-test-app ()
     (make-article "Duk")
-    (is (equal "invalid_input" (nth-value 1 (call "inventory_forecast" "employee:anna"
-                                                  "from" "9999-12-31" "to" "9999-12-31"))))
-    (is (equal "invalid_input" (nth-value 1 (call "inventory_shortages" "employee:anna"
-                                                  "before_date" "9999-12-31"))))))
+    ;; Shortages before 9999-12-31 step through every day until then, which
+    ;; takes seconds; this test is about the refusal at the end, not the
+    ;; time.
+    (with-deadline-lifted ()
+      (is (equal "invalid_input" (nth-value 1 (call "inventory_forecast" "employee:anna"
+                                                    "from" "9999-12-31" "to" "9999-12-31"))))
+      (is (equal "invalid_input" (nth-value 1 (call "inventory_shortages" "employee:anna"
+                                                    "before_date" "9999-12-31")))))))
 
 (test text-holding-nul-is-refused-not-a-fault
   ;; Postgres cannot store NUL in text: an id holding it failed the query.

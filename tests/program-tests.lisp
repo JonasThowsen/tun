@@ -28,8 +28,8 @@ run, with it current."
 
 (defun group-gone-within-p (pgid seconds)
   "True when no process of the group PGID remains within SECONDS."
-  (let ((end (+ (get-internal-real-time) (* seconds internal-time-units-per-second))))
-    (loop while (and (group-left-p pgid) (< (get-internal-real-time) end))
+  (let ((watch (start-stopwatch)))
+    (loop while (and (group-left-p pgid) (not (stopwatch-past-p watch seconds)))
           do (sleep 0.05))
     (not (group-left-p pgid))))
 
@@ -97,10 +97,10 @@ stop.  Values its exit code, NIL when it still ran, and its standard error."
                         "--port" (princ-to-string port)
                         "--db" (namestring (scratch-path "programs-server.db")))
                   :input nil :output nil :error-output :stream))
-        (end (+ (get-internal-real-time) (* 60 internal-time-units-per-second))))
+        (watch (start-stopwatch)))
     (unwind-protect
          (progn
-           (loop while (and (uiop:process-alive-p process) (< (get-internal-real-time) end))
+           (loop while (and (uiop:process-alive-p process) (not (stopwatch-past-p watch 60)))
                  do (sleep 0.1))
            (if (uiop:process-alive-p process)
                (values nil "")
@@ -226,13 +226,12 @@ that was free; again on another while another process took it first."
 
 (test a-program-past-its-time-is-stopped-with-what-it-started
   (with-program-app ()
-    (let* ((start (get-internal-real-time))
-           (c (program-failure-of
-               (lambda ()
-                 (run-program "sh" '("-c" "echo $$; echo halfway >&2; sleep 30 & sleep 30")
-                              :timeout 1))))
+    (let* ((c (is-within-seconds (:why "it fails when its time is up" :over 1 :under 1.5)
+                (program-failure-of
+                 (lambda ()
+                   (run-program "sh" '("-c" "echo $$; echo halfway >&2; sleep 30 & sleep 30")
+                                :timeout 1)))))
            (pgid (leading-pid (program-failure-output c))))
-      (is (<= 1 (elapsed-since start) 1.5) "it fails when its time is up")
       (is (equal "sh did not finish within 1 second" (operation-error-message c)))
       (is (eq :unavailable (operation-error-code c)))
       (is (equal (format nil "halfway~%") (program-failure-error-output c))
@@ -249,13 +248,12 @@ that was free; again on another while another process took it first."
 
 (test a-program-that-ends-has-ended-though-its-children-hold-its-output
   (with-program-app ()
-    (let ((start (get-internal-real-time)))
-      (multiple-value-bind (output code)
-          (run-program "sh" '("-c" "echo $$; sleep 30 & echo done; exit 4"))
-        (is (< (elapsed-since start) 1) "the answer does not wait for the child")
-        (is (eql 4 code))
-        (is (search (format nil "~%done~%") output))
-        (is (group-gone-within-p (leading-pid output) 6) "the child is stopped")))
+    (multiple-value-bind (output code)
+        (is-within-seconds (:why "the answer does not wait for the child" :under 1)
+          (run-program "sh" '("-c" "echo $$; sleep 30 & echo done; exit 4")))
+      (is (eql 4 code))
+      (is (search (format nil "~%done~%") output))
+      (is (group-gone-within-p (leading-pid output) 6) "the child is stopped"))
     (is (wait-for-no-programs))))
 
 (test a-program-may-write-at-most-8-mb-to-a-stream
@@ -286,9 +284,8 @@ that was free; again on another while another process took it first."
       (loop repeat 100 until (= 4 (programs-running)) do (sleep 0.02))
       (is (= 4 (programs-running)))
       (is (provider-call-capacity-p) "calls to other systems have places of their own")
-      (let* ((start (get-internal-real-time))
-             (c (program-failure-of (lambda () (run-program "sleep" '("0"))))))
-        (is (< (elapsed-since start) 0.2) "the fifth fails at once")
+      (let ((c (is-within-seconds (:why "the fifth fails at once" :under 0.2)
+                 (program-failure-of (lambda () (run-program "sleep" '("0")))))))
         (is (equal "sleep was not started: four programs are running already"
                    (operation-error-message c))))
       (is (equal '(0 0 0 0) (mapcar #'sb-thread:join-thread threads)))
@@ -339,17 +336,15 @@ that was free; again on another while another process took it first."
 
 (test a-program-leaves-the-operation-time-to-answer
   (with-program-app ()
-    (let* ((start (get-internal-real-time))
-           (c (program-failure-of (lambda ()
-                                    (tun.core::with-deadline (:ms 2600)
-                                      (run-program "sleep" '("30") :timeout 60))))))
-      (is (<= 1.5 (elapsed-since start) 2.2) "1.6 seconds: the deadline less one")
+    (let ((c (is-within-seconds (:why "1.6 seconds: the deadline less one" :over 1.5 :under 2.2)
+               (program-failure-of (lambda ()
+                                     (tun.core::with-deadline (:ms 2600)
+                                       (run-program "sleep" '("30") :timeout 60)))))))
       (is (equal "sleep did not finish within 2 seconds" (operation-error-message c))))
-    (let* ((start (get-internal-real-time))
-           (c (program-failure-of (lambda ()
-                                    (tun.core::with-deadline (:ms 1500)
-                                      (run-program "sleep" '("30")))))))
-      (is (< (elapsed-since start) 0.2) "under a second left: not started")
+    (let ((c (is-within-seconds (:why "under a second left: not started" :under 0.2)
+               (program-failure-of (lambda ()
+                                     (tun.core::with-deadline (:ms 1500)
+                                       (run-program "sleep" '("30"))))))))
       (is (equal "sleep was not started: the operation has less than a second left"
                  (operation-error-message c))))
     (is (wait-for-no-programs))))
@@ -453,15 +448,17 @@ function to pass it, in order."
 
 (test each-line-of-standard-error-comes-while-the-program-runs
   (with-program-app ()
-    (let ((start (get-internal-real-time))
+    (let ((watch (start-stopwatch))
           (seen '()))
       (multiple-value-bind (output code error-output)
           (run-program "sh" '("-c" "echo one >&2; echo answer; sleep 1; echo two >&2")
-                       :on-error-line (lambda (line) (push (cons line (elapsed-since start)) seen)))
+                       :on-error-line (lambda (line) (push (cons line (lap-stopwatch watch)) seen)))
         (setf seen (reverse seen))
         (is (equal '("one" "two") (mapcar #'car seen)))
-        (is (< (cdr (first seen)) 0.8) "the first line came before the program slept")
-        (is (>= (cdr (second seen)) 1) "the second when it was written")
+        (is-within-seconds (:why "the first line came before the program slept" :under 0.8
+                            :watch (cdr (first seen))))
+        (is-within-seconds (:why "the second when it was written" :over 1
+                            :watch (cdr (second seen))))
         (is (eql 0 code))
         (is (equal (format nil "answer~%") output) "standard output is unchanged")
         (is (equal (format nil "one~%two~%") error-output)
@@ -492,19 +489,18 @@ function to pass it, in order."
 
 (test an-error-in-on-error-line-stops-the-program
   (with-program-app ()
-    (let* ((start (get-internal-real-time))
-           (pgid nil)
-           (c (handler-case
-                  (run-program "sh" '("-c" "echo $$ >&2; echo stop >&2; sleep 30 & sleep 30")
-                               :timeout 60
-                               :on-error-line (lambda (line)
-                                                (if (equal "stop" line)
-                                                    (error "the caller had seen enough")
-                                                    (setf pgid (parse-integer line)))))
-                (simple-error (e) e))))
+    (let* ((pgid nil)
+           (c (is-within-seconds (:why "at once, not when the program ends" :under 1)
+                (handler-case
+                    (run-program "sh" '("-c" "echo $$ >&2; echo stop >&2; sleep 30 & sleep 30")
+                                 :timeout 60
+                                 :on-error-line (lambda (line)
+                                                  (if (equal "stop" line)
+                                                      (error "the caller had seen enough")
+                                                      (setf pgid (parse-integer line)))))
+                  (simple-error (e) e)))))
       (is (search "the caller had seen enough" (princ-to-string c))
           "the function's own error comes out of run-program")
-      (is (< (elapsed-since start) 1) "at once, not when the program ends")
       (is (group-gone-within-p pgid 6) "the program and its child are stopped"))
     (is (wait-for-no-programs) "and the place is given back")))
 

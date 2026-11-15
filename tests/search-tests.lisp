@@ -146,7 +146,14 @@ actor answering results, or NIL for none.")
 (defclass search-test-feature () ()
   (:documentation "A client's feature that finds what *SEARCH-TEST-RESULTS* says."))
 
+(defvar *search-work-times* 1
+  "How many times SEARCH-TEST-FEATURE's search does the work of every
+contributor: more than 1 only to plant a slowdown (CALL-WITH-SEARCH-SLOWED).")
+
 (defmethod search-records ((app search-test-feature) query actor)
+  (loop repeat (1- *search-work-times*)
+        do (when *search-test-results* (funcall *search-test-results* query actor))
+           (call-next-method))
   (append (and *search-test-results* (funcall *search-test-results* query actor))
           (call-next-method)))
 
@@ -457,12 +464,6 @@ actor answering results, or NIL for none.")
 ;;; ------------------------------------------------------------------
 ;;; Speed (criterion 7)
 
-(defun time-search-ms (text)
-  "The server's time for the search tool with TEXT, in milliseconds."
-  (let ((start (get-internal-real-time)))
-    (call-ok "search" "employee:anna" "query" text)
-    (/ (* 1000 (- (get-internal-real-time) start)) internal-time-units-per-second)))
-
 (defun many-customers (count)
   (with-application (*app*)
     (as-actor ("system" :write)
@@ -475,11 +476,9 @@ actor answering results, or NIL for none.")
 (test two-thousand-customers-are-searched-within-100-ms
   (flet ((measure (label)
            (many-customers 2000)
-           (time-search-ms "kunde")      ; once to warm up
-           (let ((times (sort (loop repeat 5 collect (time-search-ms "nordmann 19")) #'<)))
-             (format t "~&;; search of 2000 customers, ~a: ~{~,1f~^ ~} ms~%" label
-                     (mapcar (lambda (ms) (float ms)) times))
-             (is (< (third times) 100) "~a: ~,1f ms" label (float (third times))))))
+           (call-ok "search" "employee:anna" "query" "kunde")      ; once to warm up
+           (is-fast (:why (format nil "search of 2000 customers, ~a" label) :limit-ms 100 :runs 5)
+             (call-ok "search" "employee:anna" "query" "nordmann 19"))))
     (with-test-app () (measure "memory"))
     (when (postgres-available-p)
       (with-test-app (:db (scratch-postgres "search_speed")) (measure "postgres")))))
@@ -1065,16 +1064,50 @@ whose text is 200 words long."
                                    :from-name (format nil "Avsender ~d" i)
                                    :from-email (format nil "avsender~d@example.no" i)))))))))
 
-(defun time-search-as-ms (actor text)
-  "The server's time for the search tool as ACTOR with TEXT, in milliseconds."
-  (let ((start (get-internal-real-time)))
-    (call-ok "search" actor "query" text)
-    (/ (* 1000 (- (get-internal-real-time) start)) internal-time-units-per-second)))
-
 (defparameter +search-every-kind-limit-ms+ 90
-  "The median a search of every kind may take in the speed test: under the 100
-ms rule, with room over what this loop measured on Postgres while other suites
-ran beside it (loops/search-reads.md, criterion 5).")
+  "The median processor time a search of every kind may take in the speed
+test: under the 100 ms rule, with room over what search-reads measured on
+Postgres while other suites ran beside it (loops/search-reads.md, criterion
+5), and over the processor time test-timing measured (loops/test-timing.md).")
+
+(defun planted-search-slowdown ()
+  "How many times the search does its work in the speed test of every kind:
+3 when the test-only switch TUN_TEST_PLANT is slow-search, a slowdown
+planted to see the test fail (spec/tooling.md, \"Speed and time in
+tests\"), else 1."
+  (if (equal (uiop:getenv "TUN_TEST_PLANT") "slow-search") 3 1))
+
+(defparameter +every-kind-texts+
+  ;; The last two are misspelled words found nearly in thousands of records
+  ;; (search-near): customers and their orders, and long texts.
+  '("kunde 1999" "nordmann" "julebord rigging" "zebra" "912 19" "nordmnan" "julebrod"))
+
+(defun every-kind-speeds (label &key (slowdown 1))
+  "Search 2000 records of each kind in the application *APP*, as every-kind
+test does, and assert each search's speed; values the measurements."
+  (call-ok "search" "employee:anna" "query" "kunde")      ; once to warm up
+  (let ((*search-work-times* slowdown))
+    (loop for text in +every-kind-texts+
+          collect (is-fast (:why (format nil "search of every kind, 2000 of each, ~a, «~a»~@[, ~
+                                              its work done ~d times~]"
+                                         label text (and (> slowdown 1) slowdown))
+                            :limit-ms +search-every-kind-limit-ms+)
+                    (call-ok "search" "employee:anna" "query" text)))))
+
+(defun planted-slowdown-verdict (text)
+  "Measure the every-kind search of TEXT in *APP*, then plant a slowdown: the
+search's work done as many times as takes it to one and a half times its
+limit, at least three, as measured now, so the plant aims over the limit
+on a fast machine as on a slow one.  Values whether IS-FAST would fail it, the times, and the
+two measurements."
+  (flet ((measure ()
+           (measure-speed (lambda () (call-ok "search" "employee:anna" "query" text)) :runs 5
+                          :why (format nil "«~a», its work done ~d times" text *search-work-times*))))
+    (let* ((plain (measure))
+           (times (max 3 (ceiling (* 3/2 +search-every-kind-limit-ms+)
+                                  (max 1 (measurement-milliseconds plain)))))
+           (planted (let ((*search-work-times* times)) (measure))))
+      (values (over-limit-p planted :limit-ms +search-every-kind-limit-ms+) times plain planted))))
 
 (test every-kind-of-two-thousand-records-is-searched-within-the-limit
   (let ((*search-test-results* #'inquiry-search-results))
@@ -1083,7 +1116,6 @@ ran beside it (loops/search-reads.md, criterion 5).")
              (is (equal '("Kunde 1999 Nordmann")
                         (search-as "employee:anna" "999 19 1999" "kinds" (jarr '("customer"))))
                  "~a: a customer by the start of its national number" label)
-             (time-search-as-ms "employee:anna" "kunde")      ; once to warm up
              (is (equal '(t t t t t)
                         (map 'list (lambda (item) (jget item "near"))
                              (jget (call-ok "search" "employee:anna" "query" "nordmnan"
@@ -1092,18 +1124,14 @@ ran beside it (loops/search-reads.md, criterion 5).")
                  "~a: a misspelled word finds customers nearly" label)
              (is (= 5 (length (search-as "employee:anna" "julebrod" "kinds" (jarr '("inquiry")))))
                  "~a: and long texts" label)
-             ;; The last two are misspelled words found nearly in thousands
-             ;; of records (search-near): customers and their orders, and long
-             ;; texts.
-             (dolist (text '("kunde 1999" "nordmann" "julebord rigging" "zebra" "912 19"
-                             "nordmnan" "julebrod"))
-               (let ((times (sort (loop repeat 9 collect (time-search-as-ms "employee:anna" text))
-                                  #'<)))
-                 (format t "~&;; search of every kind, 2000 of each, ~a, «~a»: ~{~,1f~^ ~} ms~%"
-                         label text (mapcar #'float times))
-                 (is (< (fifth times) +search-every-kind-limit-ms+)
-                     "~a «~a»: ~,1f ms" label text (float (fifth times)))))))
-      (with-test-app (:class 'search-test-app) (measure "memory"))
+             (every-kind-speeds label :slowdown (planted-search-slowdown))))
+      (with-test-app (:class 'search-test-app)
+        (measure "memory")
+        ;; A slowdown planted in the search fails the limit, whatever the
+        ;; machine's load (spec/tooling.md, "Speed and time in tests").
+        (multiple-value-bind (fails times plain planted) (planted-slowdown-verdict "nordmann")
+          (is-true fails "the search's work done ~d times fails its limit: ~a, then ~a"
+                   times plain planted)))
       (when (postgres-available-p)
         (with-test-app (:class 'search-test-app :db (scratch-postgres "search_every_kind"))
           (measure "postgres"))))))

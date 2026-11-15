@@ -31,7 +31,7 @@ mkdir -p "$dir"
 # Shell scripts first: bash parses lazily, so a syntax error in a branch a
 # run never takes would otherwise surface only when some run takes it.
 for f in bin/* src/cli/template/bin/* scripts/client-systems scripts/run-suites \
-         scripts/test-*.sh; do
+         scripts/make-load scripts/test-*.sh; do
   if head -1 "$f" | grep -q bash; then
     bash -n "$f" || { echo "bin/test: shell syntax error in $f" >&2; exit 2; }
   fi

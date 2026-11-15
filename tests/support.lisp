@@ -60,7 +60,11 @@
            #:page-failure-from #:page-failure-problem #:page-failure-fault #:page-failure-text
            #:actor-tally-actor #:actor-tally-opened #:actor-tally-posted #:actor-tally-left-out
            #:actor-tally-shapes #:actor-tally-paths #:actor-tally-forms #:pages-summary
-           #:*paths-per-shape* #:*paths-per-actor*))
+           #:*paths-per-shape* #:*paths-per-actor*
+           ;; speed and time (spec/tooling.md, "Speed and time in tests")
+           #:is-fast #:measure-speed #:over-limit-p #:measurement-milliseconds #:is-within-seconds
+           #:start-stopwatch #:stop-stopwatch #:lap-stopwatch #:stopwatch-seconds
+           #:stopwatch-past-p #:with-deadline-lifted))
 
 (in-package #:tun.test-support)
 

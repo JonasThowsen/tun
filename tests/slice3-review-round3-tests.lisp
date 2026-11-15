@@ -190,9 +190,8 @@
                (let ((app *app*))
                  (with-application (app) (start-worker (lambda () (tun.messaging::drain-outbox app)) "shutdown probe")))
                (loop repeat 200 until (plusp (held-provider-calls adapter)) do (sleep .01))
-               (let ((started (get-internal-real-time)))
-                 (tun.runtime:close-application *app*)
-                 (is (< (/ (- (get-internal-real-time) started) internal-time-units-per-second) 4.5)))
+               (is-within-seconds (:why "shut down within one provider deadline" :under 4.5)
+                 (tun.runtime:close-application *app*))
                (is (= 1 (held-provider-calls adapter))))
           (release-held-provider adapter))))))
 
