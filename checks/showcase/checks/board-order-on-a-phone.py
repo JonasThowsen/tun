@@ -23,41 +23,47 @@ def run(t):
     page.on("request", lambda request: posts.append(request.url) if request.method == "POST" else None)
 
     target = page.card("Item 1").bounding_box()
-    finger = page.touch.hold(page.card("Item 3")).move_to(195, target["y"] + 4, steps=8)
+    finger = page.touch.hold_to_drag(page.card("Item 3")).move_to(195, target["y"] + 4, steps=8)
     finger.stay(0.2)
     t.check(titles(page, "new")[:4] == ["Urgent: the customer cannot sign in", "Item 3", "Item 1",
                                        "Item 2"],
             f"held and moved up, the card sits between the two: {titles(page, 'new')[:4]}")
-    with page.expect_post("/items/move") as post:
+    with page.expect_htmx(), page.expect_post("/items/move") as post:
         finger.lift()
-    page.wait_for_timeout(500)
     t.check(post.status == 200 and "column=new" in post.body
             and f"before={card_id(page, 'Item 1')}" in post.body,
             f"lifted, it posts its place: {post.body}")
     t.check(titles(page, "new")[1] == "Item 3", f"and the answer has it there: {titles(page, 'new')[:4]}")
 
-    finger = page.touch.hold(page.card("Item 5")).move_to(389, 400, steps=4)
-    finger.stay(0.8)
+    planned = page.evaluate("""() => { const box = document.querySelector('.tun-board-columns');
+      return Math.round(box.scrollLeft + document.querySelector('[data-tun-board-column="planned"]')
+        .getBoundingClientRect().left - box.getBoundingClientRect().left); }""")
+    finger = page.touch.hold_to_drag(page.card("Item 5")).move_to(389, 400, steps=4)
+    page.wait_until(f"(left) => Math.round({COLUMNS}.scrollLeft) === left", planned,
+                    what="the board to page to «Planned» under the held card")
+    # Off the edge at once, before the board pages on a second later.
+    finger.move_to(200, 400, steps=2)
     export = page.card("Export to accounting").bounding_box()
     finger.move_to(200, export["y"] + 4, steps=6)
     finger.stay(0.2)
-    with page.expect_post("/items/move") as post:
+    with page.expect_htmx(), page.expect_post("/items/move") as post:
         finger.lift()
-    page.wait_for_timeout(500)
     t.check("column=planned" in post.body and f"before={card_id(page, 'Export to accounting')}" in post.body,
             f"paged to «Planned» and lifted between two cards, it posts that place: {post.body}")
     t.check(titles(page, "planned")[:3] == ["New page for invoices", "Item 5", "Export to accounting"],
             f"and the answer has it there: {titles(page, 'planned')}")
 
     page.evaluate(f"{COLUMNS}.scrollTo({{left: 0}}); document.activeElement.blur()")
-    page.wait_for_timeout(300)
     cards = "document.querySelector('[data-tun-board-column=new] .tun-board-cards')"
     page.evaluate(f"{cards}.scrollTop = 0")
+    page.wait_until(f"() => {COLUMNS}.scrollLeft === 0 && {cards}.scrollTop === 0",
+                    what="the board back at its start")
     count = len(posts)
     box = page.locator("[data-tun-board-column=new] .tun-board-cards").bounding_box()
     middle = box["y"] + box["height"] / 2
     page.touch.swipe((195, middle), (195, middle - 150))
-    page.wait_for_timeout(500)
+    page.wait_until(f"() => {cards}.scrollTop > 50", what="the swiped column to scroll")
+    page.wait_for_timeout(500)              # a window for a post that must not come
     t.check(page.evaluate(f"{cards}.scrollTop") > 50 and len(posts) == count,
             "a swipe without a hold scrolls the column and posts nothing")
 

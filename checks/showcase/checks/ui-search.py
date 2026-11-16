@@ -6,8 +6,7 @@ one, a failed answer, Escape, a page's own Ctrl K dialog, the phone's
 sheet above a keyboard, and the page without JavaScript (spec/ui.md 6.4)."""
 
 import re
-import statistics
-import time
+from urllib.parse import parse_qs, urlparse
 
 SCENARIO = "search"
 
@@ -54,38 +53,41 @@ KEYBOARD = """(height) => {
 
 MAC = "Object.defineProperty(Navigator.prototype, 'platform', {get: () => 'MacIntel'});"
 
-# The server's time for the dialog's fragment, from the browser: the
-# median of five, after one to warm up.
-TIMING = """async (texts) => {
-  const out = {};
-  for (const text of texts) {
-    const ask = async () => {
-      const start = performance.now();
-      await (await fetch('/search?q=' + encodeURIComponent(text),
-                         {headers: {'HX-Request': 'true', 'HX-Request-Type': 'partial'}})).text();
-      return performance.now() - start;
-    };
-    await ask();
-    const times = [];
-    for (let i = 0; i < 5; i += 1) times.push(await ask());
-    times.sort((a, b) => a - b);
-    out[text] = times[2];
-  }
-  return out;
-}"""
+# The dialog's fragment, as the field asks for it.
+FRAGMENT = {"HX-Request": "true", "HX-Request-Type": "partial"}
+
+OPEN = """() => document.querySelector('dialog#tun-search').open
+                 && document.activeElement === document.querySelector('#tun-search-field')"""
+CLOSED = "() => !document.querySelector('dialog#tun-search').open"
+FAILED = """() => document.querySelector('dialog#tun-search .tun-search-results-empty')
+                   ?.textContent === 'The search failed. Try again.'"""
 
 
 def state(page):
     return page.evaluate(STATE)
 
 
-def wait_shown(page, text, timeout=3000):
-    """Wait until the dialog shows the answer for TEXT; the time it took, in ms."""
-    start = time.monotonic()
-    page.wait_for_function(
-        """(text) => document.querySelector('dialog#tun-search [data-tun-search-query]')
-                       ?.getAttribute('data-tun-search-query') === text""", arg=text, timeout=timeout)
-    return (time.monotonic() - start) * 1000
+def wait_shown(page, text):
+    """Wait until the dialog shows the answer for TEXT."""
+    page.wait_until("""(text) => document.querySelector('dialog#tun-search [data-tun-search-query]')
+                                 ?.getAttribute('data-tun-search-query') === text""",
+                    text, what=f"the search's answer for «{text}»")
+
+
+def wait_open(page):
+    page.wait_until(OPEN, what="the search open with the focus in its field")
+
+
+def wait_closed(page):
+    page.wait_until(CLOSED, what="the search closed")
+
+
+def asked(page):
+    """The texts the page asks /search for, as it asks."""
+    texts = []
+    page.on("request", lambda request: texts.append(parse_qs(urlparse(request.url).query).get("q", [""])[0])
+            if urlparse(request.url).path == "/search" else None)
+    return texts
 
 
 def opens(t):
@@ -99,25 +101,25 @@ def opens(t):
     keys = page.locator(".tun-app-shell-search-row kbd kbd").all_text_contents()
     t.check(keys == ["Ctrl", "K"], f"the row shows Ctrl K: {keys}")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    wait_open(page)
     s = state(page)
     t.check(s["open"] and s["focused"], f"Ctrl K opens the search with the focus in its field: {s}")
     page.keyboard.press("Escape")
-    page.wait_for_timeout(300)
+    wait_closed(page)
     t.check(not state(page)["open"], "Escape closes it")
 
     page.locator(".tun-app-shell-search-row").click()
-    page.wait_for_timeout(300)
+    wait_open(page)
     t.check(state(page)["open"] and state(page)["focused"], "the row opens it, the focus in the field")
     t.check("/search" not in page.url, f"and the page stays: {page.url}")
     page.keyboard.type("nord")
     wait_shown(page, "nord")
     page.keyboard.press("Escape")
-    page.wait_for_timeout(300)
+    wait_closed(page)
     back = page.evaluate("() => document.activeElement.classList.contains('tun-app-shell-search-row')")
     t.check(back, "Escape gives the focus back to the row")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    wait_open(page)
     s = state(page)
     t.check(s["value"] == "nord" and s["selected"] == [0, 4],
             f"opened again, what was typed is there and chosen: {s['value']} {s['selected']}")
@@ -129,7 +131,7 @@ def opens(t):
     keys = page.locator(".tun-app-shell-search-row kbd kbd").all_text_contents()
     t.check(keys == ["⌘", "K"], f"a Mac reads ⌘ K: {keys}")
     page.keyboard.press("Meta+k")
-    page.wait_for_timeout(300)
+    wait_open(page)
     t.check(state(page)["open"], "and ⌘ K opens it")
 
     # A page's own dialog on Ctrl K opens on it instead (/items has one).
@@ -137,7 +139,8 @@ def opens(t):
     page.sign_in("employee:anna")
     page.goto("/items")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    page.wait_until("() => document.querySelector('dialog#search')?.open",
+                    what="the page's own search dialog open")
     own = page.locator("dialog#search[open]").count()
     t.check(own == 1 and not state(page)["open"],
             "on /items Ctrl K opens the page's own search, not the shell's")
@@ -149,21 +152,24 @@ def results(t):
         page = t.desktop(scheme=scheme)
         page.sign_in("employee:anna")
         page.goto("/cards")
+        texts = asked(page)
         page.keyboard.press("Control+k")
-        page.wait_for_timeout(400)
+        wait_open(page)
+        page.wait_for_timeout(400)          # the dialog's opening transition
         closed_box = page.evaluate(BOX, DIALOG)
         field_box = page.evaluate(BOX, FIELD)
         page.keyboard.type("item")
-        took = wait_shown(page, "item")
+        wait_shown(page, "item")
         s = state(page)
-        t.check(took < 1500, f"{scheme}: results within 1.5 s of the last key: {took:.0f} ms")
+        t.check(s["shown"] == "item" and texts[-1:] == ["item"],
+                f"{scheme}: results come after the last key, with nothing more typed: {texts}")
         t.check(len(s["titles"]) == 5 and all(m.lower() == "item" for m in s["marks"]),
                 f"{scheme}: five cards, «Item» marked in each: {s['titles']} {s['marks']}")
         many_box = page.evaluate(BOX, DIALOG)
         page.fill(FIELD, "")
         page.keyboard.type("e")
-        page.wait_for_timeout(600)
-        t.check(not state(page)["titles"], "one character asks for nothing")
+        wait_shown(page, "e")               # its answer, whenever the pause lets it go
+        t.check(not state(page)["titles"], f"one character finds nothing: {state(page)['titles']}")
         page.keyboard.type("x")
         wait_shown(page, "ex")
         ten = state(page)
@@ -185,7 +191,7 @@ def results(t):
     page.sign_in("employee:anna")
     page.goto("/cards")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    wait_open(page)
     page.keyboard.type("bjorn ase")
     wait_shown(page, "bjorn ase")
     s = state(page)
@@ -212,7 +218,7 @@ def keys(t):
     page.sign_in("employee:anna")
     page.goto("/cards")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    wait_open(page)
     page.keyboard.type("item")
     wait_shown(page, "item")
     s = state(page)
@@ -228,7 +234,9 @@ def keys(t):
     t.check(len(marked) == 1 and marked[0]["ground"] != others[0]["ground"]
             and "inset" in marked[0]["ring"],
             f"the marked row has its ground and frame: {marked} {others[:1]}")
-    t.check(all(r[k] == others[0][k] for r in styles for k in ("weight", "size", "padding", "height")),
+    # A row's height is a layout's, in fractions of a pixel: within half of one.
+    t.check(all(r[k] == others[0][k] for r in styles for k in ("weight", "size", "padding"))
+            and all(abs(r["height"] - others[0]["height"]) < 0.5 for r in styles),
             f"at the others' weight, size, padding and height: {styles}")
     page.keyboard.press("ArrowUp")
     page.keyboard.press("ArrowUp")
@@ -236,8 +244,7 @@ def keys(t):
     t.check(state(page)["marked"] == 4, "↑ from the first goes round to the last")
     title = state(page)["titles"][4]
     page.keyboard.press("Enter")
-    page.wait_for_url(re.compile(r"/items/crd_"), timeout=5000)
-    page.wait_for_timeout(300)
+    page.wait_for_url(re.compile(r"/items/crd_"))
     heading = page.locator("main h1").first.text_content()
     t.check(heading.strip() == title, f"Enter opens the marked row: {title} → {heading}")
     t.check(not page.evaluate("() => document.querySelector('dialog#tun-search').open"),
@@ -248,13 +255,12 @@ def keys(t):
     # An Enter typed before the answer for the last keys waits for it.
     page.goto("/cards")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    wait_open(page)
     page.keyboard.type("item")
     wait_shown(page, "item")
     page.keyboard.type(" 2", delay=20)
     page.keyboard.press("Enter")
-    page.wait_for_url(re.compile(r"/items/crd_"), timeout=5000)
-    page.wait_for_timeout(300)
+    page.wait_for_url(re.compile(r"/items/crd_"))
     heading = page.locator("main h1").first.text_content().strip()
     t.check(heading == "Item 2", f"an Enter at once opens the latest answer's first row: {heading}")
 
@@ -281,23 +287,15 @@ def overtaken_and_failed(t):
 
     page.route(re.compile(r".*/search\?q=ite$"), hold)
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
-    page.keyboard.type("ite")
-    page.wait_for_timeout(500)
-    t.check(len(held) == 1, f"the answer for «ite» is held: {len(held)} {asked}")
-    page.keyboard.type("m 1")
-    wait_shown(page, "item 1")
-    later = state(page)["titles"]
-    stale = ('<div class="tun-search-results" data-tun-search-query="ite"><ul class="tun-search-results-list"'
-             ' role="listbox"><li role="none"><a class="tun-search-results-row" href="/cards" id="tun-search-result-0"'
-             ' role="option" aria-selected="true"><span class="tun-search-results-text">'
-             '<span class="tun-search-results-title">Stale</span></span></a></li></ul></div>')
-    try:
-        held[0].fulfill(status=200, content_type="text/html", body=stale)
-        answered = "answered late"
-    except Exception as error:
-        answered = f"cancelled by htmx ({type(error).__name__})"
-    page.wait_for_timeout(600)
+    wait_open(page)
+    with page.expect_htmx():
+        page.keyboard.type("ite")
+        page.poll_until(lambda: held, what="the request for «ite» to reach the route that holds it")
+        t.check(len(held) == 1, f"the answer for «ite» is held: {len(held)} {asked}")
+        page.keyboard.type("m 1")
+        wait_shown(page, "item 1")
+        later = state(page)["titles"]
+        answered = answer_late(held[0])
     s = state(page)
     t.check(s["shown"] == "item 1" and s["titles"] == later and "Stale" not in s["titles"],
             f"the slow earlier answer ({answered}; failed requests {len(failed)}) never replaces the later one: {s['titles']}")
@@ -308,15 +306,33 @@ def overtaken_and_failed(t):
                                            body="<!doctype html><p>Server error</p>"))
     page.fill(FIELD, "")
     page.keyboard.type("broken")
-    page.wait_for_timeout(800)
+    page.wait_until(FAILED, what="the search's failure said")
     s = state(page)
     t.check(s["empty"] == "The search failed. Try again." and "Server error" not in page.content(),
             f"a failed answer says so, and nothing of the error page shows: {s['empty']}")
     page.route(re.compile(r".*/search\?q=gone$"), lambda route: route.abort("failed"))
     page.fill(FIELD, "")
     page.keyboard.type("gone")
-    page.wait_for_timeout(800)
+    page.wait_until("() => document.querySelector('dialog#tun-search [data-tun-search-query]')"
+                    "?.getAttribute('data-tun-search-query') === 'gone' || "
+                    "document.querySelector('dialog#tun-search .tun-search-results-empty')"
+                    "?.textContent === 'The search failed. Try again.' && "
+                    "!document.querySelector('dialog#tun-search .tun-search-results-title')",
+                    what="the search's answer for «gone»")
     t.check(state(page)["empty"] == "The search failed. Try again.", "so does no answer at all")
+
+
+def answer_late(route):
+    """Answer the held ROUTE with a stale page, if htmx has not cancelled it."""
+    stale = ('<div class="tun-search-results" data-tun-search-query="ite"><ul class="tun-search-results-list"'
+             ' role="listbox"><li role="none"><a class="tun-search-results-row" href="/cards" id="tun-search-result-0"'
+             ' role="option" aria-selected="true"><span class="tun-search-results-text">'
+             '<span class="tun-search-results-title">Stale</span></span></a></li></ul></div>')
+    try:
+        route.fulfill(status=200, content_type="text/html", body=stale)
+        return "answered late"
+    except Exception as error:
+        return f"cancelled by htmx ({type(error).__name__})"
 
 
 def phone(t):
@@ -333,7 +349,9 @@ def phone(t):
         t.check(page.evaluate("() => document.documentElement.scrollWidth") <= width,
                 f"{width}px: the page does not scroll sideways")
         button.tap()
-        page.wait_for_timeout(600)
+        page.wait_until("() => document.querySelector('dialog#tun-search').open",
+                        what="the search open")
+        page.wait_for_timeout(600)          # the sheet's rise
         box = page.evaluate(BOX, DIALOG)
         t.check(abs(box["height"] - (844 - 32)) < 1 and abs(box["bottom"] - 844) < 1,
                 f"{width}px: it opens as tall as it may be: {box}")
@@ -352,7 +370,7 @@ def phone(t):
                 f"above a keyboard the field and the results stay in sight: {inset} {shrunk} {field} {results_box}")
         page.evaluate(KEYBOARD, None)
         page.locator("dialog#tun-search [role=option]").first.tap()
-        page.wait_for_url(re.compile(r"/items/crd_"), timeout=5000)
+        page.wait_for_url(re.compile(r"/items/crd_"))
         t.check(True, "a tap on a row opens it")
 
 
@@ -361,12 +379,12 @@ def without_javascript(t):
     page.sign_in("employee:anna")
     page.goto("/cards")
     page.locator(".tun-app-shell-bar > [data-tun-search-open]").click()
-    page.wait_for_url(re.compile(r"/search"), timeout=5000)
+    page.wait_for_url(re.compile(r"/search"))
     t.check(page.locator("main form[role=search] input[name=q]").count() == 1,
             f"without JavaScript the button leads to the search page: {page.url}")
     page.fill("main form[role=search] input[name=q]", "nordvik")
     page.locator("main form[role=search] button[type=submit]").click()
-    page.wait_for_url(re.compile(r"q=nordvik"), timeout=5000)
+    page.wait_for_url(re.compile(r"q=nordvik"))
     titles = page.locator("main .tun-search-results-title").all_text_contents()
     t.check(titles[:1] == ["Nordvik Bakery Ltd"], f"and its form lists the results: {titles}")
     t.check(page.locator("main .tun-search-results-title mark").first.text_content() == "Nordvik",
@@ -377,10 +395,9 @@ def timing(t):
     page = t.desktop()
     page.sign_in("employee:anna")
     page.goto("/cards")
-    times = page.evaluate(TIMING, ["it", "item", "nordvik", "bjorn", "412 34"])
-    worst = max(times.values())
-    t.check(worst < 100, "the showcase's searches answer within 100 ms: "
-            + ", ".join(f"«{k}» {v:.0f} ms" for k, v in times.items()))
+    for text in ("it", "item", "nordvik", "bjorn", "412 34"):
+        speed = page.server_speed("/search?q=" + text.replace(" ", "+"), headers=FRAGMENT)
+        t.check_fast(speed, 100, f"the showcase's search for «{text}» answers within 100 ms of the server's work")
 
 
 def pictures(t):
@@ -397,7 +414,7 @@ def pictures(t):
                 page.locator(".tun-app-shell-bar > [data-tun-search-open]").click()
             else:
                 page.keyboard.press("Control+k")
-            page.wait_for_timeout(500)
+            wait_open(page)
             page.keyboard.type("ex")
             wait_shown(page, "ex")
             page.keyboard.press("ArrowDown")

@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.41.0";
+      coreVersion = "2.42.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -407,6 +407,8 @@
         packages = [
           (sbcl.withPackages devLibs) pkgs.sqlite pkgs.postgresql pkgs.python3 pkgs.curl pkgs.cloc
           pkgs.emacs-nox mallet checkPython slynk-cli.packages.${system}.default
+          # flock(1), which the verify lock's tests hold it with (spec/preview.md 4).
+          pkgs.util-linux
         ];
         # The checkout's own systems (the kernel, modules/, the test client
         # and clients/) join

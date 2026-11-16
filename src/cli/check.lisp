@@ -6,6 +6,149 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
+;;; ------------------------------------------------------------------
+;;; The verify lock (spec/preview.md 4): one builder's checks at a time
+
+(defparameter +lock-report-seconds+ 300
+  "How often a wait for the verify lock says again what it waits for.")
+
+(defconstant +lock-ex+ 2 "flock(2)'s LOCK_EX.")
+(defconstant +lock-nb+ 4 "flock(2)'s LOCK_NB.")
+(defconstant +fd-cloexec+ 1 "fcntl(2)'s FD_CLOEXEC.")
+
+(defun call-flock (fd operation)
+  "flock(2) FD with OPERATION, again when a signal interrupts it; true when it
+took the lock, NIL when LOCK_NB found it held."
+  (loop for result = (sb-alien:alien-funcall
+                      (sb-alien:extern-alien "flock" (function sb-alien:int sb-alien:int sb-alien:int))
+                      fd operation)
+        for errno = (and (minusp result) (sb-alien:get-errno))
+        while (eql errno sb-posix:eintr)
+        finally (cond ((zerop result) (return t))
+                      ((eql errno sb-posix:ewouldblock) (return nil))
+                      (t (fail-step "cannot lock ~a: ~a" fd (sb-int:strerror errno))))))
+
+(defun flock-now-p (fd)
+  "Take an exclusive flock(2) lock on FD if no one else holds one; whether it
+was taken."
+  (call-flock fd (logior +lock-ex+ +lock-nb+)))
+
+(defun flock-wait (fd)
+  "Take an exclusive flock(2) lock on FD, waiting in the kernel's queue for
+it: a wait that only looked now and then would lose the lock to every
+`flock` waiting in that queue whenever it is let go."
+  (call-flock fd +lock-ex+))
+
+(defun file-device-and-inode (path)
+  "The device of the file PATH, as /proc/locks writes it (MAJOR:MINOR in
+hexadecimal), and its inode."
+  (let* ((stat (sb-posix:stat path))
+         (device (sb-posix:stat-dev stat)))
+    (values (format nil "~(~2,'0x:~2,'0x~)"
+                    (logior (ldb (byte 12 8) device) (ash (ldb (byte 20 44) device) 12))
+                    (logior (ldb (byte 8 0) device) (ash (ldb (byte 12 20) device) 8)))
+            (sb-posix:stat-ino stat))))
+
+(defun flock-holders (path)
+  "The processes /proc/locks names as holding a flock on the file PATH (not
+those waiting for one), or NIL where there is no /proc/locks or no PATH."
+  (let ((lines (ignore-errors (uiop:read-file-lines "/proc/locks"))))
+    (when (and lines (probe-file path))
+      (multiple-value-bind (device inode) (ignore-errors (file-device-and-inode path))
+        (let ((place (format nil "~a:~d" device inode)))
+          (loop for line in lines
+                for words = (remove "" (uiop:split-string line :separator " ") :test #'string=)
+                ;; "1: FLOCK  ADVISORY  WRITE 4242 00:2c:1234 0 EOF"; a waiter's has "->".
+                when (and (equal (second words) "FLOCK") (not (find "->" words :test #'string=))
+                          (string-equal (sixth words) place))
+                  collect (parse-integer (fifth words) :junk-allowed t)))))))
+
+(defun parent-pid (pid)
+  "The parent of process PID, or NIL."
+  (let ((stat (ignore-errors (uiop:read-file-string (format nil "/proc/~d/stat" pid)))))
+    ;; "PID (COMMAND) STATE PPID ...": the command may hold spaces and parentheses.
+    (when stat
+      (let ((fields (uiop:split-string (subseq stat (1+ (position #\) stat :from-end t)))
+                                       :separator " ")))
+        (parse-integer (third fields) :junk-allowed t)))))
+
+(defun ancestor-holds-p (path &optional (pid (sb-posix:getpid)))
+  "True when a process that the process PID descends from holds a flock on
+PATH, as `flock PATH tun loop verify` does."
+  (let ((holders (flock-holders path)))
+    (and holders
+         (loop for ancestor = (parent-pid pid) then (parent-pid ancestor)
+               while (and ancestor (> ancestor 1))
+               thereis (member ancestor holders)))))
+
+(defun process-command (pid)
+  "The command line of process PID, shortened, or ?."
+  (let ((text (ignore-errors (uiop:read-file-string (format nil "/proc/~d/cmdline" pid)))))
+    (if (plusp (length text))
+        (let ((line (string-trim " " (cl-ppcre:regex-replace-all "[\\s\\x00]+" text " "))))
+          (if (> (length line) 120) (format nil "~a…" (subseq line 0 120)) line))
+        "?")))
+
+(defun holders-text (path)
+  (let ((holders (flock-holders path)))
+    (if holders
+        (format nil ", held by ~{~a~^, ~}"
+                (mapcar (lambda (pid) (format nil "process ~d (~a)" pid (process-command pid)))
+                        holders))
+        "")))
+
+(defun duration-text (seconds)
+  (format nil "~dm~2,'0ds" (floor seconds 60) (mod seconds 60)))
+
+(defun call-with-verify-lock (function)
+  "Call FUNCTION holding the verify lock on the file TUN_VERIFY_LOCK names,
+waiting for it and saying so (spec/preview.md 4); without the variable,
+or when this process's verify or an ancestor already holds it, just call
+FUNCTION."
+  (let ((path (uiop:getenv "TUN_VERIFY_LOCK")))
+    (if (or (zerop (length path))
+            (equal (uiop:getenv "TUN_VERIFY_LOCK_HELD") path)
+            (and (probe-file path) (ancestor-holds-p path)))
+        (funcall function)
+        (let ((fd (handler-case (sb-posix:open path (logior sb-posix:o-rdonly sb-posix:o-creat) #o666)
+                    (sb-posix:syscall-error (condition)
+                      (fail-step "cannot open the verify lock ~a (TUN_VERIFY_LOCK): ~a" path condition)))))
+          (unwind-protect
+               (progn
+                 ;; The lock stays with this process: a program it starts,
+                 ;; such as a preview's server, does not keep it.
+                 (sb-posix:fcntl fd sb-posix:f-setfd +fd-cloexec+)
+                 (unless (flock-now-p fd)
+                   (let* ((started (get-universal-time))
+                          (out *standard-output*)
+                          ;; Says again, now and then, what the wait is for.
+                          (reporter (sb-thread:make-thread
+                                     (lambda ()
+                                       (loop (sleep +lock-report-seconds+)
+                                             (format out "~&tun: still waiting for the verify lock ~a (~a)~a~%"
+                                                     path (duration-text (- (get-universal-time) started))
+                                                     (holders-text path))
+                                             (finish-output out)))
+                                     :name "verify lock reporter")))
+                     (format t "~&tun: waiting for the verify lock ~a~a~%" path (holders-text path))
+                     (finish-output)
+                     (unwind-protect (flock-wait fd)
+                       (sb-thread:terminate-thread reporter))
+                     (format t "~&tun: took the verify lock ~a after ~a~%"
+                             path (duration-text (- (get-universal-time) started)))
+                     (finish-output)))
+                 (sb-posix:setenv "TUN_VERIFY_LOCK_HELD" path 1)
+                 (unwind-protect (funcall function)
+                   (sb-posix:unsetenv "TUN_VERIFY_LOCK_HELD")))
+            ;; Closing the file releases the lock.
+            (sb-posix:close fd))))))
+
+(defmacro with-verify-lock (() &body body)
+  `(call-with-verify-lock (lambda () ,@body)))
+
+;;; ------------------------------------------------------------------
+;;; The checks
+
 (defun browser-checks (directory)
   "The browser checks of the client in DIRECTORY: checks/*.py, without the
 files whose name starts with _."
@@ -82,29 +225,35 @@ ones NAMES name, each against a fresh preview of its scenario."
          (out (merge-pathnames ".build/checks/" directory))
          (name (format nil "~a-check" (preview-name client (worktree-branch directory))))
          (data (merge-pathnames ".data/check/" directory)))
-    (uiop:delete-directory-tree out :validate (lambda (path) (search "/.build/checks/" (namestring path)))
-                                    :if-does-not-exist :ignore)
-    (ensure-directories-exist out)
-    (format t "~&~a: ~d check~:p~%" client (length files))
-    (let ((results
-            (loop for file in files
-                  collect (let ((preview (start-preview :directory (namestring directory) :share nil
-                                                        :scenario (check-scenario file)
-                                                        :name name :data data)))
-                            (unwind-protect
-                                 (progn
-                                   (uiop:run-program (append runner (list (namestring out)
-                                                                          (jget preview "local_url")
-                                                                          (namestring file)))
-                                                     :output :interactive :error-output :interactive
-                                                     :ignore-error-status t)
-                                   (let ((result (check-result out file)))
-                                     (print-check-result result)
-                                     (finish-output)
-                                     result))
-                              (stop-preview preview))))))
-      (let ((failed (count-if-not (lambda (result) (jget result "passed")) results)))
-        (format t "~&~:[~d of ~d checks failed~;Every check passed~*~*~]. Results and screenshots: ~a~%"
-                (zerop failed) failed (length results) (namestring out))
-        (unless (zerop failed)
-          (fail-step "~d check~:p failed" failed))))))
+    (with-verify-lock ()
+      (run-checks client files runner out name directory data))))
+
+(defun run-checks (client files runner out name directory data)
+  "Run FILES, CLIENT's checks in DIRECTORY, each against a fresh preview NAME
+with its database in DATA, by RUNNER, their results in OUT."
+  (uiop:delete-directory-tree out :validate (lambda (path) (search "/.build/checks/" (namestring path)))
+                                  :if-does-not-exist :ignore)
+  (ensure-directories-exist out)
+  (format t "~&~a: ~d check~:p~%" client (length files))
+  (let ((results
+          (loop for file in files
+                collect (let ((preview (start-preview :directory (namestring directory) :share nil
+                                                      :scenario (check-scenario file)
+                                                      :name name :data data)))
+                          (unwind-protect
+                               (progn
+                                 (uiop:run-program (append runner (list (namestring out)
+                                                                        (jget preview "local_url")
+                                                                        (namestring file)))
+                                                   :output :interactive :error-output :interactive
+                                                   :ignore-error-status t)
+                                 (let ((result (check-result out file)))
+                                   (print-check-result result)
+                                   (finish-output)
+                                   result))
+                            (stop-preview preview))))))
+    (let ((failed (count-if-not (lambda (result) (jget result "passed")) results)))
+      (format t "~&~:[~d of ~d checks failed~;Every check passed~*~*~]. Results and screenshots: ~a~%"
+              (zerop failed) failed (length results) (namestring out))
+      (unless (zerop failed)
+        (fail-step "~d check~:p failed" failed)))))

@@ -61,12 +61,12 @@ def state(page, selector=FIELD):
     return page.evaluate(STATE, selector)
 
 
-def wait_answered(page, text, selector=FIELD, timeout=4000):
-    page.wait_for_function(
+def wait_answered(page, text, selector=FIELD):
+    page.wait_until(
         """([selector, text]) => document.querySelector(selector).closest('[data-tun-choice]')
              .querySelector('[data-tun-choice-list] [role=listbox]')
              ?.getAttribute('data-tun-choice-query') === text""",
-        arg=[selector, text], timeout=timeout)
+        [selector, text], what=f"the choice's answer for «{text}»")
 
 
 def open_meetings(t, make=None, **options):
@@ -106,7 +106,7 @@ def form(t):
             f"Enter chooses him, his id the select's value: {s['chosen']} {s['shown']}")
     page.fill("#meetings_create-name", "Planned by typing")
     page.locator(SAVE).click()
-    page.wait_for_url(re.compile(r"/meetings/mtg_"), timeout=5000)
+    page.wait_for_url(re.compile(r"/meetings/mtg_"))
     details = page.locator(".tun-summary-list").inner_text()
     t.check("Bjørn Åsen" in details and "Planned by typing" in page.content(),
             f"«Create meeting» saves a meeting for him, named on its page: {details!r}")
@@ -120,9 +120,9 @@ def filter_(t):
     page.keyboard.type("bjorn")
     wait_answered(page, "bjorn", FILTER_FIELD)
     chosen = state(page, FILTER_FIELD)["values"][0]
-    page.keyboard.press("Enter")
-    page.wait_for_url(re.compile(r"customer=cus_"), timeout=5000)
-    page.wait_for_timeout(600)
+    with page.expect_htmx():
+        page.keyboard.press("Enter")
+    page.wait_for_url(re.compile(r"customer=cus_"))
     titles = page.locator(".tun-table tbody tr td:first-child").all_inner_texts()
     button = page.locator(FILTER_BUTTON).inner_text()
     # The form's check before saved a meeting with him too.
@@ -153,7 +153,7 @@ def without_javascript(t):
     page.locator(SELECT).select_option(label="Bjørn Åsen")
     page.fill("#meetings_create-name", "Planned without scripts")
     page.locator(SAVE).click()
-    page.wait_for_url(re.compile(r"/meetings/mtg_"), timeout=5000)
+    page.wait_for_url(re.compile(r"/meetings/mtg_"))
     t.check("Bjørn Åsen" in page.locator(".tun-summary-list").inner_text(),
             "saving posts the chosen customer's id")
 
@@ -164,11 +164,11 @@ def without_javascript(t):
     page.wait_for_timeout(300)
     page.fill("#tun-list-toolbar-customer-find", "nordvik")
     page.locator("[data-tun-list-toolbar-apply]").click()
-    page.wait_for_url(re.compile(r"customer-find=nordvik"), timeout=5000)
+    page.wait_for_url(re.compile(r"customer-find=nordvik"))
     page.locator(FILTER_BUTTON).click()
     page.locator("#tun-list-toolbar-customer-choice").select_option(label="Nordvik Bakery Ltd")
     page.locator("[data-tun-list-toolbar-apply]").click()
-    page.wait_for_url(re.compile(r"customer=cus_"), timeout=5000)
+    page.wait_for_url(re.compile(r"customer=cus_"))
     titles = page.locator(".tun-table tbody tr td:first-child").all_inner_texts()
     t.check(titles == ["Bread van signage"], f"the filter's «Find» and «Apply» filter the list: {titles}")
 

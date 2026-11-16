@@ -146,6 +146,13 @@ a database with one process, knows only this process's.")
   (:documentation "Pessimistically lock one row for the rest of the write transaction."))
 (defgeneric store-description (store))
 
+(defgeneric store-server-processes (store)
+  (:documentation "The process ids of the database server processes that serve STORE's
+open connections, for what a request cost (core.md 7.7).  The default, for
+a store inside this process, is none.")
+  (:method ((store store))
+    '()))
+
 ;;; ------------------------------------------------------------------
 ;;; Which core major opened a database (spec/store.md 2, item 10)
 

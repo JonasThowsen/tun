@@ -222,7 +222,18 @@ by default) and, when `DATABASE_URL` names a Postgres server (inside
 `bin/with-postgres`), CLIENTS sessions sorting on it (the processor
 count). `start` returns at once; `stop` ends all of it.
 
-Browser checks are not speed tests. `scripts/tun_check.py` gives each
-page a default timeout of 120 s for a navigation and for a wait that
-names none; a check's own timeouts, which say how soon something must
-show, are its assertions and stay.
+Browser checks follow the same rule (`preview.md` §4): a page gets 120 s
+for a navigation and for a wait, and a check waits for the event it
+reads next rather than for a fixed time; a speed is what the server
+reports it spent (`page.server_speed`, from its `Server-Timing`,
+measured as `is-fast` measures), and motion is what was declared and
+computed, read while held still. `scripts/tun_check.py`, the runner, is
+the one place a check's time is read. The suite `timing` holds
+`checks-read-no-clock`: it reads every `.py` file under `checks/` and
+fails, naming the file and the line, on `performance.now(`,
+`Date.now(`, `.timeStamp`, `time.time(`, `time.time_ns(`,
+`time.monotonic(`, `time.monotonic_ns(` and `time.perf_counter(`.
+`TUN_TEST_PLANT` plants a slowdown for a check too: `slow-search` makes
+the showcase's search do its work 1000 times (past the check's 100 ms
+of the server's work, where one search takes about 2.5 ms), `slow-move` makes its
+board answer a move after 3 s, and `lost-move` answers a move 500.

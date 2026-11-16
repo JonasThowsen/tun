@@ -100,8 +100,10 @@
 ;;; ------------------------------------------------------------------
 ;;; The store and its connections
 
-(defstruct (connection (:constructor make-connection (handle)))
+(defstruct (connection (:constructor make-connection (handle pid store)))
   (handle nil :read-only t)
+  (pid nil :read-only t)                         ; the server process serving it
+  (store nil :read-only t)
   (statements (make-hash-table :test 'equal)))   ; SQL text -> prepared statement name
 
 (defclass postgres-store (store)
@@ -113,7 +115,9 @@
    (writer :initform nil :accessor writer-connection)
    (presence :initform nil :accessor presence-connection
              :documentation "The connection holding this process's presence lock, open as long as the store is.")
-   (writers-waiting :initform (list 0) :reader writers-waiting)) ; (count), for ATOMIC-INCF
+   (writers-waiting :initform (list 0) :reader writers-waiting) ; (count), for ATOMIC-INCF
+   (server-pids :initform (make-hash-table :synchronized t) :reader server-pids
+                :documentation "The server process of each open connection, as keys."))
   (:documentation "A store on the Postgres database a postgresql:// URL names (spec/store.md)."))
 
 (defmethod initialize-instance :after ((store postgres-store) &key url)
@@ -152,11 +156,21 @@ is over either way."
       ;; cl-postgres signals every notice as a Lisp warning; a server says
       ;; nothing the kernel acts on below WARNING.
       (cl-postgres:exec-query handle "SET client_min_messages TO WARNING")
-      (make-connection handle))))
+      (let ((pid (caar (cl-postgres:exec-query handle "SELECT pg_backend_pid()"
+                                               'cl-postgres:list-row-reader))))
+        (setf (gethash pid (server-pids store)) t)
+        (make-connection handle pid store)))))
 
 (defun close-connection (connection)
+  (remhash (connection-pid connection) (server-pids (connection-store connection)))
   (ignoring-connection-failure
     (cl-postgres:close-database (connection-handle connection))))
+
+(defmethod store-server-processes ((store postgres-store))
+  ;; A synchronized table's single operations are safe; a walk over it is
+  ;; not, while another request opens or closes a connection.
+  (sb-ext:with-locked-hash-table ((server-pids store))
+    (loop for pid being the hash-keys of (server-pids store) collect pid)))
 
 (defun connection-open-p (connection)
   (cl-postgres:database-open-p (connection-handle connection)))

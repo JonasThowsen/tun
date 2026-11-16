@@ -1106,7 +1106,57 @@ with MESSAGE or the status's own."
                       (page-text acceptor (or message (cdr (assoc status +upload-refusals+)))))
       ""))
 
+;;; ------------------------------------------------------------------
+;;; What a request cost (core.md 7.7)
+
+(defun clock-ns (clock)
+  (multiple-value-bind (seconds nanoseconds) (sb-unix:clock-gettime clock)
+    (+ (* seconds 1000000000) nanoseconds)))
+
+(defun process-schedstat-ns (pid)
+  "The processor time process PID has spent, or NIL when it cannot be read
+\(ended, or on another machine)."
+  (with-open-file (in (format nil "/proc/~d/schedstat" pid) :if-does-not-exist nil)
+    (and in (ignore-errors (parse-integer (read-line in) :junk-allowed t)))))
+
+(defun server-processes-ns (application)
+  "Each of APPLICATION's database server processes' processor time, as
+\(PID . NANOSECONDS), and whether they could be read: true when there are
+none, or when one of them could."
+  (let* ((pids (store-server-processes (application-store application)))
+         (times (loop for pid in pids
+                      for ns = (process-schedstat-ns pid)
+                      when ns collect (cons pid ns))))
+    (values times (or (null pids) (not (null times))))))
+
+(defun call-with-server-timing (application function)
+  "Call FUNCTION, the answer to this request, and say in its Server-Timing
+header what it cost: the processor time of this process and of
+APPLICATION's database server processes, their share, and the wall time,
+in milliseconds.  A server process that began during the request counts
+whole; one that could not be read leaves cpu and db out."
+  (multiple-value-bind (servers-before readable-before) (server-processes-ns application)
+    (let ((wall (clock-ns sb-unix:clock-monotonic))
+          (processor (clock-ns sb-unix:clock-process-cputime-id)))
+      (multiple-value-prog1 (funcall function)
+        (let ((processor-ns (- (clock-ns sb-unix:clock-process-cputime-id) processor))
+              (wall-ns (- (clock-ns sb-unix:clock-monotonic) wall)))
+          (multiple-value-bind (servers-after readable-after) (server-processes-ns application)
+            (let ((server-ns (loop for (pid . ns) in servers-after
+                                   sum (- ns (or (cdr (assoc pid servers-before)) 0)))))
+              (setf (hunchentoot:header-out "Server-Timing")
+                    (if (and readable-before readable-after)
+                        (format nil "cpu;dur=~,1f, db;dur=~,1f, total;dur=~,1f"
+                                (/ (+ processor-ns server-ns) 1d6) (/ server-ns 1d6) (/ wall-ns 1d6))
+                        (format nil "total;dur=~,1f" (/ wall-ns 1d6)))))))))))
+
 (defun dispatch-request (acceptor request)
+  (let ((application (acceptor-application acceptor)))
+    (if (claimed-identity-p application)
+        (call-with-server-timing application (lambda () (dispatch-untimed acceptor request)))
+        (dispatch-untimed acceptor request))))
+
+(defun dispatch-untimed (acceptor request)
   (let* ((path (hunchentoot:script-name request))
          (method (hunchentoot:request-method request))
          (upgrade (https-upgrade acceptor method)))

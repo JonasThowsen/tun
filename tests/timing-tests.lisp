@@ -127,9 +127,76 @@ knows the forms it is inside."
         "~s" (clock-violations planted))))
 
 ;;; ------------------------------------------------------------------
+;;; The scan of the browser checks (spec/preview.md 4)
+
+(defparameter +check-clock-reads+
+  '("performance.now(" "Date.now(" ".timeStamp" "time.time(" "time.time_ns("
+    "time.monotonic(" "time.monotonic_ns(" "time.perf_counter(")
+  "What reads a clock in a browser check, in its Python or in the JavaScript it
+runs in the page: only scripts/tun_check.py, the runner, does.")
+
+(defun check-clock-violations (text)
+  "Where TEXT, a browser check's source, reads a clock: a list of (LINE .
+WHAT).  A line that is only a comment is not code."
+  (loop for line in (uiop:split-string text :separator '(#\Newline))
+        for number from 1
+        unless (uiop:string-prefix-p "#" (string-left-trim '(#\Space #\Tab) line))
+          append (loop for read in +check-clock-reads+
+                       when (search read line)
+                         collect (cons number (format nil "reads the clock with ~a" read)))))
+
+(defun browser-check-files ()
+  "Every Python file under Tun's checks/: the showcase's checks and their helpers."
+  (directory (merge-pathnames (make-pathname :directory '(:relative "checks" :wild-inferiors)
+                                             :name :wild :type "py")
+                              (asdf:system-source-directory "tun"))))
+
+(test checks-read-no-clock
+  (let ((files (browser-check-files)))
+    (is (< 40 (length files)) "the browser checks are found: ~d" (length files))
+    (is (member "_push" files :key #'pathname-name :test #'string=) "their helpers too")
+    (let ((violations (loop for file in files
+                            append (loop for (line . what)
+                                           in (check-clock-violations (uiop:read-file-string file))
+                                         collect (format nil "~a:~d ~a"
+                                                         (enough-namestring
+                                                          file (asdf:system-source-directory "tun"))
+                                                         line what)))))
+      (is (null violations)
+          "a browser check reads no clock: a speed is what the server spent, motion what ~
+           was declared, a page's timer runs on page.clock (spec/preview.md 4):~%~{  ~a~%~}"
+          violations))))
+
+(test the-check-scan-names-each-clock-read
+  (let ((planted (format nil "a = page.evaluate('() => performance.now()')~%~
+                              b = page.evaluate('() => Date.now()')~%~
+                              c = page.evaluate('() => event.timeStamp')~%~
+                              d = time.time()~%~
+                              e = time.time_ns()~%~
+                              f = time.monotonic()~%~
+                              g = time.monotonic_ns()~%~
+                              h = time.perf_counter()~%~
+                              # time.time() in a comment~%~
+                              page.clock.run_for(150)")))
+    (is (equal '((1 . "reads the clock with performance.now(")
+                 (2 . "reads the clock with Date.now(")
+                 (3 . "reads the clock with .timeStamp")
+                 (4 . "reads the clock with time.time(")
+                 (5 . "reads the clock with time.time_ns(")
+                 (6 . "reads the clock with time.monotonic(")
+                 (7 . "reads the clock with time.monotonic_ns(")
+                 (8 . "reads the clock with time.perf_counter("))
+               (check-clock-violations planted))
+        "~s" (check-clock-violations planted))))
+
+;;; ------------------------------------------------------------------
 ;;; Processor time
 
 (test a-speed-is-processor-time-not-waiting
+  ;; The garbage of the tests before, collected while the body computes,
+  ;; would be counted too: SBCL's collector works in several threads, so
+  ;; its processor time can pass its wall time.
+  (sb-ext:gc :full t)
   (let ((sleeping (measure-speed (lambda () (sleep 0.2)) :runs 1 :why "a sleep")))
     (is (< (tun.test-support::measurement-processor-ms sleeping) 20)
         "a body that sleeps costs no processor time: ~a" sleeping)
@@ -185,3 +252,100 @@ knows the forms it is inside."
     (is (search "stopped at the deadline: 1.62 s, not under 1.5 s (wall time; load " text)
         "~a" text)
     (is (search " processors)" text) "~a" text)))
+
+;;; ------------------------------------------------------------------
+;;; What a request cost, as the server says (core.md 7.7)
+
+(defun server-timing (headers)
+  "The Server-Timing HEADERS hold, as an alist of (NAME . MILLISECONDS)."
+  (let ((text (cdr (assoc :server-timing headers))))
+    (and text
+         (loop for part in (uiop:split-string text :separator ",")
+               for (name duration) = (uiop:split-string (string-trim " " part) :separator ";")
+               collect (cons name (timing-milliseconds (subseq duration (length "dur="))))))))
+
+(defun timing-milliseconds (text)
+  "The number TEXT, such as 12.5, as a double."
+  (let ((*read-eval* nil) (*read-default-float-format* 'double-float))
+    (coerce (read-from-string text) 'double-float)))
+
+(defun timed-work (port work)
+  "POST WORK (sleep, compute or sort) to the test's endpoint; values the
+server's Server-Timing as an alist and its answer."
+  (multiple-value-bind (status body headers) (http-post port "/timing-work" (to-json-string (jobj "work" work)))
+    (is (= 200 status) "~a: ~a" work body)
+    (values (server-timing headers) (parse-json body))))
+
+(defun fixed-computation ()
+  "Work of a fixed size, about 100 ms of a processor on this machine."
+  (let ((x 0))
+    (declare (type fixnum x))
+    (dotimes (i 200000000 x)
+      (setf x (logand (+ x i) #xffff)))))
+
+(defun timing-work (work)
+  "Do WORK for the test's endpoint: values its status and its answer."
+  (cond ((equal work "sleep") (sleep 0.2))
+        ((equal work "compute")
+         ;; What the work cost, as the measure a test makes sees it.
+         (return-from timing-work
+           (values 200 (jobj "done" work
+                             "cpu_ms" (measurement-milliseconds
+                                       (measure-speed #'fixed-computation :runs 1 :why "the work"))))))
+        ((equal work "sort")
+         (with-transaction (:read)
+           (raw-sql "SELECT count(*) FROM (SELECT md5(g::text)
+                     FROM generate_series(1, 200000) g ORDER BY 1) s"))))
+  (values 200 (jobj "done" work)))
+
+(defun call-with-timing-endpoint (function)
+  "Call FUNCTION with /timing-work answering for *APP*: sleep 200 ms, compute,
+or sort on the database's server (TIMING-WORK)."
+  (let ((app *app*))
+    (tun.http:register-json-endpoint "/timing-work"
+                                     (lambda (body secret)
+                                       (declare (ignore secret))
+                                       (let ((*app* app))
+                                         (timing-work (jget body "work"))))))
+  (unwind-protect (funcall function)
+    (remhash "/timing-work" tun.http::*json-endpoints*)))
+
+(test a-test-server-says-what-a-request-cost
+  (with-test-server (port)
+    (call-with-timing-endpoint
+     (lambda ()
+       (let ((sleeping (timed-work port "sleep")))
+         (is (< (cdr (assoc "cpu" sleeping :test #'string=)) 20)
+             "a request that sleeps costs no processor time: ~s" sleeping)
+         (is (>= (cdr (assoc "total" sleeping :test #'string=)) 200)
+             "though it takes its wall time: ~s" sleeping)
+         (is (= 0 (cdr (assoc "db" sleeping :test #'string=))) "and no database's: ~s" sleeping))
+       (multiple-value-bind (computing answer) (timed-work port "compute")
+         (let ((work (jget answer "cpu_ms")))
+           (is (< 10 work) "the work computes: ~,1f ms" work)
+           (is (<= work (cdr (assoc "cpu" computing :test #'string=))
+                   (+ 5 (cdr (assoc "total" computing :test #'string=))))
+               "a request that computes costs at least that, no more than its wall time: ~,1f ms, ~s"
+               work computing)))
+       (multiple-value-bind (status body headers) (web-request port "/health")
+         (declare (ignore body))
+         (is (= 200 status))
+         (is (server-timing headers) "every request says it, /health too")))))
+  (with-test-server (port :identity :authenticated)
+    (multiple-value-bind (status body headers) (web-request port "/health")
+      (declare (ignore body))
+      (is (= 200 status))
+      (is (null (assoc :server-timing headers))
+          "a server with authenticated identities says nothing: ~s" headers))))
+
+(test a-test-server-counts-its-database-server-s-work
+  (if (postgres-available-p)
+      (with-test-server (port :db (scratch-postgres "timing_header"))
+        (call-with-timing-endpoint
+         (lambda ()
+           (let ((sorting (timed-work port "sort")))
+             (is (> (cdr (assoc "db" sorting :test #'string=))
+                    (* 1/2 (cdr (assoc "cpu" sorting :test #'string=))))
+                 "the database server's processes did most of the work, and it is counted: ~s"
+                 sorting)))))
+      (skip "no Postgres: run the suite under bin/with-postgres with TUN_TEST_POSTGRES set")))

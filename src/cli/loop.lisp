@@ -1038,14 +1038,17 @@ the file LOG; true when it passed."
     (ensure-directories-exist out)
     (format t "~&Verify round ~d of ~a:~%" round (record-name record))
     (let* ((results
-             (loop for (name directory . command) in steps
-                   for log = (merge-pathnames (format nil "~a.log" name) out)
-                   collect (let ((started (get-universal-time))
-                                 (ok (run-verify-step directory command log)))
-                             (format t "~&  ~:[FAIL~;ok  ~]  ~14a~4ds  ~a~%" ok name
-                                     (- (get-universal-time) started)
-                                     (enough-namestring log (record-top record)))
-                             (list name ok))))
+             ;; The whole round holds the verify lock when TUN_VERIFY_LOCK
+             ;; names one (spec/loop.md 6); its own tun check does not wait.
+             (with-verify-lock ()
+               (loop for (name directory . command) in steps
+                     for log = (merge-pathnames (format nil "~a.log" name) out)
+                     collect (let ((started (get-universal-time))
+                                   (ok (run-verify-step directory command log)))
+                               (format t "~&  ~:[FAIL~;ok  ~]  ~14a~4ds  ~a~%" ok name
+                                       (- (get-universal-time) started)
+                                       (enough-namestring log (record-top record)))
+                               (list name ok)))))
            (failed (mapcar #'first (remove-if #'second results)))
            (failures (if failed (1+ (or (ignore-errors (parse-integer (field record "failures"))) 0)) 0)))
       (write-text (merge-pathnames "summary.txt" out)

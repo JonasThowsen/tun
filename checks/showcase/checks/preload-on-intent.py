@@ -4,9 +4,23 @@ again; a preload is used once, within ten seconds, a post drops them, a
 page that remembers its query saves nothing for one, and links marked
 off are left alone (spec/ui.md 4.1)."""
 
+import datetime
 import re
-import time
 from urllib.parse import urlparse
+
+# A time for the page's clock, which the check holds and moves on: the
+# pointer's rest of 100 ms and a preload's ten seconds are the page's timers.
+PAGE_TIME = datetime.datetime(2026, 11, 2, 9, 0)
+
+
+def preload_of(path):
+    """A predicate of a request or response: a preload of PATH."""
+    def matches(event):
+        request = getattr(event, "request", event)
+        url = urlparse(request.url)
+        return (url.path + (f"?{url.query}" if url.query else "") == path
+                and request.headers.get("tun-preload") == "true")
+    return matches
 
 
 class Requests:
@@ -52,14 +66,21 @@ def run(t):
     access = menu(page, "Access")
 
     # 1. A pointer that rests loads; one that passes does not.
+    page.clock.install(time=PAGE_TIME)
+    page.clock.pause_at(PAGE_TIME + datetime.timedelta(hours=1))
     box = access.bounding_box()
     page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2)
-    page.wait_for_timeout(40)
+    page.clock.run_for(40)
     page.mouse.move(700, 500)
-    page.wait_for_timeout(300)
-    t.check(not seen.to("/access"), "a pointer passing over «Access» loads nothing")
+    page.clock.run_for(300)
+    t.check(not seen.to("/access"), "a pointer passing over «Access» within 40 ms loads nothing")
     access.hover()
-    page.wait_for_timeout(400)
+    page.clock.run_for(99)
+    early = seen.to("/access")
+    with page.expect_response(preload_of("/access")):
+        page.clock.run_for(1)
+    page.clock.resume()
+    t.check(not early, f"one resting on it waits its 100 ms: {early}")
     preloads = seen.to("/access", preload=True)
     t.check(len(preloads) == 1, f"one resting on it loads it in the background ({len(preloads)})")
     headers = preloads[0][2] if preloads else {}
@@ -74,7 +95,7 @@ def run(t):
     page.wait_for_load_state()
     t.check(not seen.to("/access"), f"the click asks the server nothing: {seen.to('/access')}")
     # htmx sets the title after it pushes the address.
-    page.wait_for_function("title => document.title === title", arg=title, timeout=2000)
+    page.wait_for_function("title => document.title === title", arg=title)
     t.check(page.title() == title, f"with the title it has without preloading: {page.title()}")
 
     # 4. Used once: following «Items» and «Access» again by script asks again.
@@ -85,22 +106,23 @@ def run(t):
 
     # 4. A post drops the preloads.
     follow(page, menu(page, "Items"), "/items")
-    menu(page, "Access").hover()
-    page.wait_for_timeout(400)
+    page.mouse.move(700, 500)               # off «Access», where the click left it
+    with page.expect_response(preload_of("/access")):
+        menu(page, "Access").hover()
     page.mouse.move(700, 500)
-    page.evaluate("""() => htmx.ajax('POST', '/items/move',
-                     {source: document.body, swap: 'none', values: {card: 'none', column: 'new'}})""")
-    page.wait_for_timeout(400)
+    with page.expect_htmx():
+        page.evaluate("""() => htmx.ajax('POST', '/items/move',
+                         {source: document.body, swap: 'none', values: {card: 'none', column: 'new'}})""")
     seen.clear()
     follow(page, menu(page, "Access"), "/access")
     t.check(seen.to("/access", preload=False), "after a post, the click asks the server")
 
     # 4. Ten seconds old is too old.
     follow(page, menu(page, "Items"), "/items")
-    menu(page, "Access").hover()
-    page.wait_for_timeout(400)
+    with page.expect_response(preload_of("/access")):
+        menu(page, "Access").hover()
     page.mouse.move(700, 500)
-    time.sleep(10.2)
+    page.clock.fast_forward(10_200)         # the page's clock, ten seconds on
     seen.clear()
     follow(page, menu(page, "Access"), "/access")
     t.check(seen.to("/access", preload=False), "a preload ten seconds old is not used")
@@ -113,8 +135,8 @@ def run(t):
     menu(page, "Access").scroll_into_view_if_needed()
     box = menu(page, "Access").bounding_box()
     page.mouse.move(box["x"] + 10, box["y"] + box["height"] / 2)
-    page.mouse.down()
-    page.wait_for_timeout(50)
+    with page.expect_request(preload_of("/access")):
+        page.mouse.down()
     t.check(seen.to("/access", preload=True), "a mouse button pressed on a link loads it at once")
     page.mouse.up()
     page.wait_for_url(re.compile(r"/access$"))
@@ -123,15 +145,15 @@ def run(t):
     # saves for the click after it.
     page.goto("/items?p=")
     website = page.get_by_role("link", name="Website", exact=True)
-    website.hover()
-    page.wait_for_timeout(400)
+    with page.expect_response(preload_of("/items?p=1")):
+        website.hover()
     page.mouse.move(700, 500)
     follow(page, menu(page, "Access"), "/access")
     follow(page, menu(page, "Items"), "/items")
     t.check(page.url.endswith("/items"), f"hovering «Website» left the saved tab as it was: {page.url}")
     website = page.get_by_role("link", name="Website", exact=True)
-    website.hover()
-    page.wait_for_timeout(400)
+    with page.expect_response(preload_of("/items?p=1")):
+        website.hover()
     website.click()
     page.wait_for_url(re.compile(r"/items\?p=1$"))
     follow(page, menu(page, "Access"), "/access")
@@ -144,10 +166,12 @@ def run(t):
     card = page.evaluate("document.querySelector('[data-tun-board-card] a[href]').getAttribute('href')")
     page.goto(card)
     seen.clear()
+    page.clock.pause_at(PAGE_TIME + datetime.timedelta(hours=2))
     for name in ("Back to the items", "Access in a new tab", "Access"):
         page.locator("main").get_by_role("link", name=name, exact=True).hover()
-        page.wait_for_timeout(300)
+        page.clock.run_for(300)             # past the pointer's rest
     page.mouse.move(700, 600)
+    page.clock.resume()
     t.check(not seen.seen, f"links marked off, inside a part marked off, or with a target load nothing: {[s[0] for s in seen.seen]}")
 
     # 2. A touch on a phone loads at once.
@@ -156,7 +180,7 @@ def run(t):
     phone.goto("/items")
     seen = Requests(phone)
     link = phone.get_by_role("link", name="Website", exact=True)
-    phone.touch.hold(link, seconds=0.05)
-    phone.wait_for_timeout(100)
+    with phone.expect_request(preload_of("/items?p=1")):
+        phone.touch.hold(link, seconds=0.05)
     t.check(seen.to("/items?p=1", preload=True), "a touch on a link loads it at once")
     phone.touch.move_to(10, 700).lift()

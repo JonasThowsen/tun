@@ -254,6 +254,14 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   step's output goes to `.build/loop/NAME/verify-N/STEP.log`. The
   round's line in the log names the steps that failed. It exits 1 when one
   failed.
+
+  When `TUN_VERIFY_LOCK` names a file, the round runs holding the verify
+  lock on it (`preview.md` §4), from before its first step to after its
+  last, so two verifies on one machine run one after the other and the
+  checks of one never meet the suites or checks of another. It prints
+  what it waits for and how long it waited, and its steps run with
+  `TUN_VERIFY_LOCK_HELD` set, so its own `tun check` does not wait for
+  it. The waiting is not part of the round's steps' times.
 - **`show`** needs the tree `verify` passed. It starts the shared preview
   of the client (`tun preview`, on the Tun worktree in Tun), and takes
   screenshots at 390×844 and 1280×800 of each PATH (default `/`), signed in

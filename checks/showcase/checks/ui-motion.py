@@ -4,34 +4,41 @@ dialog and its yes posts the server's token; a Markdown table of ten
 columns scrolls in its own box on a phone, reached by the keyboard
 (spec/ui.md 2.1, 6, 6.2, 8)."""
 
-# Opens the accordion item titled TITLE (closing it first when it is open)
-# and samples, every frame for 400ms, its content's opacity, the summary's
-# box and the next item's summary; then closes it and looks at the next
-# frame.
-OPEN_ITEM = """async (title) => {
-  const frame = () => new Promise((resolve) => requestAnimationFrame(resolve));
+# Marks the accordion item titled TITLE's summary, content and the next
+# item's summary, closing the item first when it is open.
+MARK = """(title) => {
   const item = [...document.querySelectorAll('.tun-specimen-preview .tun-accordion-item')]
     .find((each) => each.querySelector('.tun-accordion-title').textContent.includes(title));
-  const summary = item.querySelector('summary');
-  const content = item.querySelector('.tun-accordion-content');
-  const next = item.nextElementSibling.querySelector('summary');
-  const box = (element) => element.getBoundingClientRect();
-  if (item.open) { summary.click(); await frame(); await frame(); }
-  const closed = {top: box(summary).top, height: box(summary).height};
-  summary.click();
-  const style = getComputedStyle(content);
-  const started = {name: style.animationName, duration: style.animationDuration};
-  const frames = [];
-  const start = performance.now();
-  while (performance.now() - start < 400) {
-    await frame();
-    frames.push({at: performance.now() - start, opacity: parseFloat(getComputedStyle(content).opacity),
-                 next: box(next).top, top: box(summary).top, height: box(summary).height});
-  }
-  summary.click();
-  await frame();
-  return {closed, started, frames, open: item.open, shownAfterClosing: content.checkVisibility()};
+  if (item.open) item.querySelector('summary').click();
+  item.querySelector('summary').dataset.check = 'summary';
+  item.querySelector('.tun-accordion-content').dataset.check = 'content';
+  item.nextElementSibling.querySelector('summary').dataset.check = 'next';
+  return !item.open;
 }"""
+
+# The marked parts at this moment: the content's opacity and the boxes.
+MOMENT = """() => {
+  const part = (name) => document.querySelector(`[data-check=${name}]`);
+  const box = (name) => part(name).getBoundingClientRect();
+  return {opacity: parseFloat(getComputedStyle(part('content')).opacity),
+          top: box('summary').top, height: box('summary').height, next: box('next').top,
+          open: part('summary').parentElement.open};
+}"""
+
+# Closes the marked item and looks at the next frame.
+CLOSE = """async () => {
+  const summary = document.querySelector('[data-check=summary]');
+  summary.click();
+  await new Promise((resolve) => requestAnimationFrame(resolve));
+  return {open: summary.parentElement.open,
+          shown: document.querySelector('[data-check=content]').checkVisibility()};
+}"""
+
+CONTENT = "[data-check=content]"
+SUMMARY = "[data-check=summary]"
+# A click on the summary from the page's script: a pointer's click would
+# scroll it into view first, and the check measures that nothing moves.
+CLICK = "() => document.querySelector('[data-check=summary]').click()"
 
 CONFIRM = """() => {
   const dialog = document.querySelector('[data-tun-confirm-dialog] > dialog');
@@ -101,38 +108,64 @@ def rgb(text):
     return tuple(int(float(part)) for part in text[text.index("(") + 1:text.index(")")].split(",")[:3])
 
 
+def opening(page):
+    """Open the marked item with its motion held: its animations, and the
+    moments 0, 50, 100 and 150 ms into it and its end."""
+    page.hold_motion()
+    closed = page.evaluate(MOMENT)
+    page.evaluate(CLICK)
+    animations = page.animations(CONTENT)
+    moments = []
+    for ms in (0, 50, 100, 150):
+        page.seek_motion(CONTENT, ms)
+        moments.append({"at": ms, **page.evaluate(MOMENT)})
+    page.seek_motion(CONTENT, None)
+    end = page.evaluate(MOMENT)
+    page.release_motion()
+    return closed, animations, moments, end
+
+
 def accordion(t):
     for width, make in ((390, t.phone), (1280, t.desktop)):
         page = make()
         page.goto("/ui/accordion")
-        m = page.evaluate(OPEN_ITEM, "Contact details")
-        frames = m["frames"]
-        t.check(m["started"] == {"name": "tun-accordion-open", "duration": "0.2s"},
-                f"{width}px: opening runs tun-accordion-open over --duration: {m['started']}")
-        t.check(frames[0]["opacity"] < 1 and frames[-1]["opacity"] == 1
-                and any(f["opacity"] == 1 for f in frames if f["at"] <= 300),
-                f"{width}px: the content fades in within 300ms: "
-                f"{[round(f['opacity'], 2) for f in frames[:8]]}")
-        t.check(all(abs(f["top"] - m["closed"]["top"]) <= 0.5
-                    and abs(f["height"] - m["closed"]["height"]) <= 0.5 for f in frames),
-                f"{width}px: the summary row stays where it was: {m['closed']}")
-        t.check(all(abs(f["next"] - frames[-1]["next"]) <= 0.5 for f in frames),
-                f"{width}px: the next item stands where it ends from the first frame: "
-                f"{sorted({round(f['next'], 1) for f in frames})}")
-        t.check(not m["open"] and not m["shownAfterClosing"],
+        t.check(page.evaluate(MARK, "Contact details"), f"{width}px: the item starts closed")
+        closed, animations, moments, end = opening(page)
+        motion = [(a["kind"], a["name"], a["duration_ms"]) for a in animations]
+        t.check(motion == [("animation", "tun-accordion-open", 200)],
+                f"{width}px: opening runs tun-accordion-open over --duration, 200 ms: {motion}")
+        frames = animations[0]["keyframes"] if animations else []
+        t.check(frames and float(frames[0].get("opacity", 1)) < 1 and "translate" in str(frames[0]),
+                f"{width}px: from below and faded: {frames}")
+        opacities = [m["opacity"] for m in moments] + [end["opacity"]]
+        t.check(opacities[0] < 1 and opacities[-1] == 1 and opacities == sorted(opacities),
+                f"{width}px: the content fades in over it, held at 0, 50, 100, 150 ms and its end: "
+                f"{[round(o, 2) for o in opacities]}")
+        t.check(all(abs(m["top"] - closed["top"]) <= 0.5 and abs(m["height"] - closed["height"]) <= 0.5
+                    for m in moments + [end]),
+                f"{width}px: the summary row stays where it was: {closed}")
+        t.check(all(abs(m["next"] - end["next"]) <= 0.5 for m in moments),
+                f"{width}px: the next item stands where it ends from the first moment: "
+                f"{sorted({round(m['next'], 1) for m in moments + [end]})}")
+        shut = page.evaluate(CLOSE)
+        t.check(not shut["open"] and not shut["shown"],
                 f"{width}px: closing hides the content in the next frame")
         if width == 390:
-            page.locator(".tun-specimen-preview .tun-accordion-item summary",
-                         has_text="Contact details").first.click()
-            page.wait_for_timeout(60)
+            page.hold_motion()
+            page.locator(SUMMARY).scroll_into_view_if_needed()
+            page.evaluate(CLICK)
+            page.seek_motion(CONTENT, 60)
             page.screenshot(path=str(t.out / "ui-motion-accordion-opening-390.png"))
+            page.release_motion()
 
     page = t.phone()
     page._page.emulate_media(reduced_motion="reduce")
     page.goto("/ui/accordion")
-    m = page.evaluate(OPEN_ITEM, "Contact details")
-    t.check(m["started"]["name"] == "none" and m["frames"][0]["opacity"] == 1,
-            f"under reduced motion nothing moves: {m['started']}, {m['frames'][0]['opacity']}")
+    page.evaluate(MARK, "Contact details")
+    closed, animations, moments, end = opening(page)
+    t.check(animations == [] and moments[0]["opacity"] == 1 and end["open"],
+            f"under reduced motion nothing moves and the content shows: {animations}, "
+            f"{moments[0]['opacity']}")
 
     page = t.phone(javascript=False)
     page.goto("/ui/accordion")

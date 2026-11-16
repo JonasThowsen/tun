@@ -146,7 +146,14 @@ run two processes at once: the file is local to one container.
 ## 4. Adapter options
 
 - `--group-commit N` and `--sqlite-synchronous full|normal` apply to SQLite
-  only. With Postgres each write transaction commits on its own.
+  only. With Postgres each write transaction commits on its own. On
+  SQLite, a write transaction that ends while others wait for the write
+  lock hands the lock on with its batch open, and the batch commits when
+  its last member ends with no writer waiting, or at N members; no
+  member returns before that commit. A member left waiting commits the
+  batch itself only once the lock is free and no writer waits for it any
+  more (one that gave up at its deadline), never while the writer it
+  handed the lock to is still taking it.
 - The rollback preflight works on SQLite tenants only.
 
 ## 5. Queries

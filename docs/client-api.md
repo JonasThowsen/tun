@@ -1319,12 +1319,50 @@ def run(t):
     t.check(page.get_by_text("Ola Nordmann").count() == 1, "Ola is listed")
 ```
 
+A check gives the same verdict on a busy machine as on a quiet one, so it
+reads no clock (`spec/preview.md` §4). It waits for what it reads next,
+never for a fixed time that guesses how long an answer takes; it takes a
+speed from what the server says it spent; and it asserts motion as
+declared, held still:
+
+```python
+def run(t):
+    page = t.phone()
+    page.sign_in("employee:anna")
+    page.goto("/orders")
+
+    # Waiting: for the answer, with the page's one deadline (120 s).
+    with page.expect_htmx():                 # the request, its swap, its settle
+        page.get_by_label("Status").select_option("open")
+    rows = page.wait_until("() => document.querySelectorAll('tbody tr').length",
+                           what="the open orders' rows")
+
+    # Speed: what the server spent (its Server-Timing), not the browser.
+    speed = page.server_speed("/orders?status=open")
+    t.check_fast(speed, 100, "the open orders' list")
+
+    # Motion: the animation as declared, held at moments of it.
+    page.hold_motion()
+    page.get_by_role("button", name="Filters").click()
+    [sheet] = page.animations(".tun-sheet")
+    t.check(sheet["duration_ms"] == 200, f"the sheet rises over 200 ms: {sheet}")
+    page.seek_motion(".tun-sheet", 0)
+    start = page.evaluate("() => getComputedStyle(document.querySelector('.tun-sheet')).opacity")
+    page.release_motion()
+```
+
+`page.touch.hold_to_drag(card)` holds a finger on a board's card until the
+board starts the drag. A wait that passes the deadline fails the check
+saying what it waited for.
+
 From Tun's own checkout, `bin/tun preview --dir CLIENT` runs a client on
 that working tree of Tun instead of its pins, to see a change to core in
 the client that asked for it.
 
 A request for a change runs the feature loop (`docs/loop.md`,
-`spec/loop.md`). `tun loop verify` runs `bin/test` and the checks.
+`spec/loop.md`). `tun loop verify` runs `bin/test` and the checks; with
+`TUN_VERIFY_LOCK` naming a file, it and `tun check` wait for the other
+builders' rounds on the machine and run alone.
 `tun loop show` puts the verified tree at a shared preview with
 screenshots. Its record, `loops/NAME.md`, is committed with the change.
 

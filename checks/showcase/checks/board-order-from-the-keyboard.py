@@ -38,9 +38,8 @@ def choose(page, title, label):
         page.keyboard.press("ArrowDown")
         page.wait_for_function("(before) => document.activeElement.textContent.trim() !== before",
                                arg=focused)
-    with page.expect_post("/items/move") as post:
+    with page.expect_htmx(), page.expect_post("/items/move") as post:
         page.keyboard.press("Enter")
-    page.wait_for_timeout(500)
     return post
 
 

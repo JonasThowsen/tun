@@ -156,6 +156,25 @@ previews it sees are its own."
           (sb-posix:unsetenv "XDG_STATE_HOME"))
       (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
 
+(defun with-runtime-home (function)
+  "Call FUNCTION with XDG_RUNTIME_DIR naming a fresh, short directory, so a
+preview's database it starts has its socket where no other preview's is.
+Its claims are its own (WITH-STATE-HOME): without this, another builder's
+preview that has claimed the same port and is still making its database
+would start a Postgres in the same socket directory.  Its port is from
+FREE-TEST-PORTS, for the same reason."
+  (let ((directory (uiop:ensure-directory-pathname
+                    (format nil "/tmp/tun-test-~a" (new-id "r"))))
+        (before (uiop:getenv "XDG_RUNTIME_DIR")))
+    (ensure-directories-exist directory)
+    (unwind-protect
+         (progn (sb-posix:setenv "XDG_RUNTIME_DIR" (namestring directory) 1)
+                (funcall function))
+      (if before
+          (sb-posix:setenv "XDG_RUNTIME_DIR" before 1)
+          (sb-posix:unsetenv "XDG_RUNTIME_DIR"))
+      (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
+
 (defun run-tun (&rest arguments)
   "The exit status and output of the tun command line ARGUMENTS."
   (let (status)
@@ -267,6 +286,17 @@ claims: nothing on this machine listens on them, and no running database
 holds their socket directory, as another preview's may."
   (loop for port from 4200 below 4300
         when (and (tun.cli:port-free-p port) (not (tun.cli::socket-directory-held-p port)))
+          collect port into ports
+        until (= count (length ports))
+        finally (return ports)))
+
+(defun free-test-ports (count)
+  "COUNT ports from 4900 that nothing on this machine listens on: outside the
+range a preview takes its port from (+FIRST-PORT+ and the hundred after),
+so a server a test starts never meets another builder's preview, whose
+claim the test's own state directory cannot see."
+  (loop for port from 4900 below 5000
+        when (tun.cli:port-free-p port)
           collect port into ports
         until (= count (length ports))
         finally (return ports)))
@@ -392,9 +422,133 @@ holds their socket directory, as another preview's may."
                  (is (search "something already listens" output) "~a" output))
             (usocket:socket-close listener)))
         (is (equal '("lock") (ports-files)) "a port something listens on")
-        (multiple-value-bind (status output) (run-tun "preview" "--dir" client "--no-share")
-          (is (= 1 status) "~a" output)
-          (is (search "stopped before it answered" output) "~a" output))
+        (with-runtime-home
+          (lambda ()
+            (multiple-value-bind (status output)
+                (run-tun "preview" "--dir" client "--no-share"
+                         "--port" (princ-to-string (first (free-test-ports 1))))
+              (is (= 1 status) "~a" output)
+              (is (search "stopped before it answered" output) "~a" output))))
         (is (equal '("lock") (ports-files)) "a server that exits before it answers")
         (is (null (directory (merge-pathnames "*.json" (tun.cli:state-directory))))
             "and no preview's file")))))
+
+;;; ------------------------------------------------------------------
+;;; The verify lock (spec/preview.md 4)
+
+(defun call-with-lock-variable (path function)
+  "Call FUNCTION with TUN_VERIFY_LOCK naming PATH, and no holder's mark."
+  (let ((before (uiop:getenv "TUN_VERIFY_LOCK")))
+    (sb-posix:unsetenv "TUN_VERIFY_LOCK_HELD")
+    (sb-posix:setenv "TUN_VERIFY_LOCK" (namestring path) 1)
+    (unwind-protect (funcall function)
+      (if before
+          (sb-posix:setenv "TUN_VERIFY_LOCK" before 1)
+          (sb-posix:unsetenv "TUN_VERIFY_LOCK")))))
+
+(defun lock-path ()
+  (let ((directory (cli-scratch-directory)))
+    (ensure-directories-exist directory)
+    (merge-pathnames "verify.lock" directory)))
+
+(defun wait-for (predicate &optional (seconds 60))
+  "Ask PREDICATE until it is true, for at most SECONDS; its last value."
+  (loop with watch = (start-stopwatch)
+        for value = (funcall predicate)
+        until (or value (stopwatch-past-p watch seconds))
+        do (sleep 0.05)
+        finally (return value)))
+
+(defun flock-exit (path)
+  "The exit status of flock -n PATH true: 0 when no one holds PATH's lock."
+  (nth-value 2 (uiop:run-program (list "flock" "-n" (namestring path) "true")
+                                 :ignore-error-status t)))
+
+(defvar *kept-output* (make-hash-table :test 'eq :synchronized t))
+
+(defun get-output-stream-string-keeping (stream)
+  "All STREAM has been given so far: GET-OUTPUT-STREAM-STRING empties it."
+  (setf (gethash stream *kept-output*)
+        (concatenate 'string (gethash stream *kept-output* "") (get-output-stream-string stream))))
+
+(test the-verify-lock-waits-for-its-holder-says-so-and-a-killed-one-releases-it
+  (let* ((path (lock-path))
+         ;; -o: flock's command does not keep the lock; flock itself holds it.
+         (holder (uiop:launch-program (list "flock" "-o" (namestring path) "sleep" "60")))
+         (pid (uiop:process-info-pid holder))
+         (output (make-string-output-stream)))
+    (unwind-protect
+         (call-with-lock-variable
+          path
+          (lambda ()
+            (is (wait-for (lambda () (member pid (tun.cli::flock-holders (namestring path)))))
+                "/proc/locks names flock's process as the holder")
+            (let ((waiter (sb-thread:make-thread
+                           (lambda ()
+                             (let ((*standard-output* output))
+                               (tun.cli::call-with-verify-lock (lambda () :ran)))))))
+              (is (wait-for (lambda () (search "waiting for the verify lock"
+                                               (get-output-stream-string-keeping output)))
+                            30)
+                  "the second says it waits")
+              (let ((said (get-output-stream-string-keeping output)))
+                (is (search (format nil "held by process ~d (flock -o" pid) said) "~a" said))
+              (is (sb-thread:thread-alive-p waiter) "and does not run while flock holds it")
+              (uiop:terminate-process holder :urgent t)
+              (is (eq :ran (sb-thread:join-thread waiter :timeout 30 :default :still-waiting))
+                  "a holder killed releases it")
+              (let ((said (get-output-stream-string-keeping output)))
+                (is (search "took the verify lock" said) "~a" said)))))
+      (uiop:terminate-process holder :urgent t)
+      (uiop:wait-process holder))))
+
+(test a-holder-of-the-verify-lock-excludes-flock-and-its-children-do-not-wait
+  (let ((path (lock-path)))
+    (call-with-lock-variable
+     path
+     (lambda ()
+       (is (eq :inside
+               (tun.cli::call-with-verify-lock
+                (lambda ()
+                  (is (= 1 (flock-exit path)) "flock -n cannot take it while it is held")
+                  (is (equal (namestring path) (uiop:getenv "TUN_VERIFY_LOCK_HELD")))
+                  (is (equal (namestring path)
+                             (string-trim '(#\Newline)
+                                          (uiop:run-program '("sh" "-c" "echo $TUN_VERIFY_LOCK_HELD")
+                                                            :output :string)))
+                      "a program the holder starts knows it holds it")
+                  (is (eq :nested (tun.cli::call-with-verify-lock (lambda () :nested)))
+                      "a check its verify runs does not wait for it")
+                  :inside))))
+       (is (= 0 (flock-exit path)) "released when it is done")
+       (is (null (uiop:getenv "TUN_VERIFY_LOCK_HELD")))))))
+
+(test a-command-under-flock-of-the-same-file-does-not-wait
+  (let* ((path (lock-path))
+         (holder (uiop:launch-program (list "flock" (namestring path) "sleep" "60")))
+         (pid (uiop:process-info-pid holder)))
+    (unwind-protect
+         (let ((child (wait-for (lambda ()
+                                  (let ((children (ignore-errors
+                                                   (uiop:read-file-string
+                                                    (format nil "/proc/~d/task/~d/children" pid pid)))))
+                                    (and (plusp (length children))
+                                         (parse-integer children :junk-allowed t)))))))
+           (is (integerp child) "flock started its command")
+           (is (wait-for (lambda () (tun.cli::ancestor-holds-p (namestring path) child)))
+               "its command, flock's child, sees its ancestor holds the lock")
+           (is (not (tun.cli::ancestor-holds-p (namestring path)))
+               "this process, not under that flock, does not"))
+      (uiop:terminate-process holder :urgent t)
+      (uiop:wait-process holder))))
+
+(test without-the-variable-nothing-is-locked
+  (let ((before (uiop:getenv "TUN_VERIFY_LOCK")))
+    (sb-posix:unsetenv "TUN_VERIFY_LOCK")
+    (unwind-protect
+         (let* ((value nil)
+                (said (with-output-to-string (*standard-output*)
+                        (setf value (tun.cli::call-with-verify-lock (lambda () :ran))))))
+           (is (eq :ran value))
+           (is (string= "" said) "and nothing is said: ~s" said))
+      (when before (sb-posix:setenv "TUN_VERIFY_LOCK" before 1)))))

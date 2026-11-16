@@ -32,7 +32,7 @@ def refused_item(page):
     page.goto("/items/new")
     page.fill("input[name=reported_on]", "32.13.2026")
     page.locator(SUBMIT).click()
-    page.wait_for_selector(ALERT, timeout=5000)
+    page.wait_for_selector(ALERT)
     return page.evaluate(LINES, ALERT)
 
 
@@ -118,7 +118,7 @@ def enter_saves(t):
     page.wait_for_function("() => document.querySelector('[data-tun-choice][data-tun-ready]')")
     page.fill("input[name=title]", "Saved by Enter with scripts")
     page.press("input[name=title]", "Enter")
-    page.wait_for_url(re.compile(r"/items/crd_"), timeout=5000)
+    page.wait_for_url(re.compile(r"/items/crd_"))
     t.check(True, "with JavaScript, Enter in «New item»'s title saves the item too")
 
 

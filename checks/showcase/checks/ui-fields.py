@@ -74,7 +74,7 @@ def post_fields(page, date="", ret="", time="", price=""):
     page.locator("#field-time").fill(time)
     page.locator("#field-price").fill(price)
     page.locator("form[action='/fields'] button[type=submit]").click()
-    page.wait_for_selector("output[data-read], .tun-field-error", timeout=10000)
+    page.wait_for_selector("output[data-read], .tun-field-error")
     return (page.evaluate("() => Object.fromEntries([...document.querySelectorAll('output[data-read]')].map((e) => [e.dataset.read, e.textContent]))"),
             page.evaluate("() => [...document.querySelectorAll('.tun-field-error')].map((e) => e.textContent)"))
 
@@ -176,11 +176,13 @@ def desktop(t):
                 and len(set(c["weights"])) == 1 and len(set(c["sizes"])) == 1,
                 f"1280px: it opens on the chosen day, chosen and today at the others' weight and size: "
                 f"{c['chosen']} {c['weights']} {c['sizes']}")
+        page.hold_motion()
         page.keyboard.press("Escape")
-        page.wait_for_timeout(60)
+        page.seek_motion("#field-date-calendar", 60)
         midway = page.evaluate(CALENDAR, "field-date-calendar")
-        page.wait_for_timeout(300)
+        page.seek_motion("#field-date-calendar", None)
         gone = page.evaluate(CALENDAR, "field-date-calendar")
+        page.release_motion()
         t.check(not midway["open"] and midway["rects"] > 0 and float(midway["opacity"]) < 1
                 and midway["duration"].startswith("0.16s") and gone["rects"] == 0,
                 f"1280px: Escape closes it, still leaving midway over --duration-close, then gone: "
@@ -275,12 +277,12 @@ def period(t):
     page.wait_for_timeout(300)
     t.check(page.evaluate("() => document.activeElement.textContent") == "Today",
             "the period opens on its quick choices, not a field a phone would type in")
-    page.locator("#days-toolbar-from-choices a", has_text="This month").click()
+    with page.expect_htmx():
+        page.locator("#days-toolbar-from-choices a", has_text="This month").click()
     start = today.replace(day=1)
     end = add_months(start, 1) - datetime.timedelta(days=1)
     page.wait_for_function("(from) => decodeURIComponent(location.search.replace(/\\+/g, ' ')).includes(from)",
-                           arg=f"from={written_en(start)}", timeout=10000)
-    page.wait_for_timeout(300)
+                           arg=f"from={written_en(start)}")
     t.check(rows(page) == within(iso(start), iso(end)) and len(requests) == 1
             and page.evaluate("() => history.length") == history + 1,
             f"«This month» applies once: {rows(page)} rows, {len(requests)} requests")
@@ -296,8 +298,8 @@ def period(t):
     page.wait_for_timeout(300)
     page.locator(".tun-date-input:has(#days-toolbar-from-start) .tun-date-input-open").click()
     page.wait_for_timeout(300)
-    page.locator("#days-toolbar-from-start-calendar td[data-date]:not([data-outside])").nth(4).click()
-    page.wait_for_timeout(800)
+    with page.expect_htmx():
+        page.locator("#days-toolbar-from-start-calendar td[data-date]:not([data-outside])").nth(4).click()
     t.check(len(requests) == 2 and page.evaluate("() => history.length") == history + 2
             and page.evaluate("() => document.getElementById('days-toolbar-from-choices').matches(':popover-open')"),
             f"a day chosen in the calendar applies once, the period still open: {len(requests)} requests")
@@ -308,9 +310,9 @@ def period(t):
     to.type("15.11.2026", delay=20)
     page.wait_for_timeout(300)
     t.check(len(requests) == 2, f"nothing is sent while a date is typed: {len(requests)}")
-    to.press("Enter")
-    page.wait_for_function("() => location.search.includes('to=15.11.2026')", timeout=10000)
-    page.wait_for_timeout(300)
+    with page.expect_htmx():
+        to.press("Enter")
+    page.wait_for_function("() => location.search.includes('to=15.11.2026')")
     page.keyboard.press("Tab")
     page.wait_for_timeout(500)
     t.check(len(requests) == 3 and page.evaluate("() => history.length") == history + 3,
@@ -319,15 +321,15 @@ def period(t):
 
     page.keyboard.press("Escape")
     page.go_back()
-    page.wait_for_function("() => !location.search.includes('15.11.2026')", timeout=10000)
+    page.wait_for_function("() => !location.search.includes('15.11.2026')")
     page.go_back()
     page.wait_for_function("(from) => decodeURIComponent(location.search.replace(/\\+/g, ' ')).includes(from)",
-                           arg=f"from={written_en(start)}", timeout=10000)
+                           arg=f"from={written_en(start)}")
     page.wait_for_function("(count) => document.querySelectorAll('.tun-table tbody tr').length === count",
-                           arg=within(iso(start), iso(end)), timeout=10000)
+                           arg=within(iso(start), iso(end)))
     t.check(rows(page) == within(iso(start), iso(end)), "Back steps through each period chosen")
     page.locator("#days-toolbar-from a.tun-list-toolbar-filter-clear").first.click()
-    page.wait_for_function("() => location.search.includes('from=&to=')", timeout=10000)
+    page.wait_for_function("() => location.search.includes('from=&to=')")
     t.check(rows(page) == sum(REPORTED.values()), "× clears the period")
     t.check(not page.evaluate(WIDE_PAGE), "the page does not scroll sideways")
 
@@ -347,9 +349,9 @@ def sheet(t):
     t.check(row["open"] and row["heading"] and row["quick"] == 4 and row["fields"] == 2,
             f"390px: the period is a row of the «Filters» sheet, its choices and fields under it: {row}")
     page.screenshot(path=str(t.out / "ui-fields-period-sheet-390-light.png"))
-    page.locator("#days-toolbar-sheet a", has_text="Last month").tap()
-    page.wait_for_function("() => location.search.includes('from=')", timeout=10000)
-    page.wait_for_timeout(300)
+    with page.expect_htmx():
+        page.locator("#days-toolbar-sheet a", has_text="Last month").tap()
+    page.wait_for_function("() => location.search.includes('from=')")
     t.check(page.evaluate("() => document.getElementById('days-toolbar-sheet').open"),
             "390px: a quick choice applies with the sheet open")
     t.check(not page.evaluate(WIDE_PAGE), "390px: the page does not scroll sideways")

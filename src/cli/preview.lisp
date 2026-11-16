@@ -270,9 +270,17 @@ socket in SOCKET-DIRECTORY, and return the URL of its database."
     (run-checked (list "initdb" "-D" cluster "-U" "preview" "--auth=trust"
                        "--encoding=UTF8" "--no-locale")
                  :output (namestring (merge-pathnames "initdb.log" data)) :error-output :output)
-    (run-checked (list "pg_ctl" "-D" cluster "-l" (namestring (merge-pathnames "postgres.log" data))
-                       "-w" "-o" (format nil "-c listen_addresses= -k ~a" socket) "start")
-                 :output nil)
+    ;; Waited for as long as the server is (+READY-SECONDS+), not pg_ctl's
+    ;; own 60 s: a busy machine starts it slowly.  A start that fails says
+    ;; why in Postgres's own log.
+    (let ((log (merge-pathnames "postgres.log" data)))
+      (handler-case
+          (run-checked (list "pg_ctl" "-D" cluster "-l" (namestring log)
+                             "-w" "-t" (princ-to-string +ready-seconds+)
+                             "-o" (format nil "-c listen_addresses= -k ~a" socket) "start")
+                       :output nil)
+        (step-failed (condition)
+          (fail-step "~a. Postgres's log ended:~%~a" condition (log-tail log 15)))))
     (run-checked (list "createdb" "-h" socket "-U" "preview" "preview"))
     (format nil "postgresql://preview@/preview?host=~a" socket)))
 

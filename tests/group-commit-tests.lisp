@@ -24,15 +24,31 @@
   (sb-thread:join-thread
    (gc-thread (lambda () (with-transaction (:read) (sort (mapcar #'widget-name (select 'widget)) #'string<))))))
 
+(defparameter +gc-queue-seconds+ 120
+  "How long the first writer waits for the second to queue: one generous
+deadline (spec/tooling.md, \"Speed and time in tests\"), since a busy
+machine may run the second writer's thread seconds late.")
+
+(defun gc-wait-for-queue ()
+  "Wait until a writer queues for the write lock, or +GC-QUEUE-SECONDS+ have
+passed; whether one did."
+  (loop with watch = (start-stopwatch)
+        when (plusp (gc-waiting)) return t
+        when (stopwatch-past-p watch +gc-queue-seconds+) return nil
+        do (sleep 0.005)))
+
 (defun gc-first-member (name inside &key before-end)
   "A writer that inserts NAME, signals INSIDE and stays in its transaction until
-another writer queues for the lock; returns :returned after its transaction."
+another writer queues for the lock; returns :returned after its transaction.
+When none queues within +GC-QUEUE-SECONDS+ its transaction fails, saying so,
+and the test's check of what it returned shows that error."
   (gc-thread (lambda ()
                (with-transaction (:write)
                  (insert (make-instance 'widget :name name))
                  (when before-end (funcall before-end))
                  (sb-thread:signal-semaphore inside)
-                 (loop repeat 1000 until (plusp (gc-waiting)) do (sleep 0.005)))
+                 (unless (gc-wait-for-queue)
+                   (error "No second writer queued for the lock within ~d s" +gc-queue-seconds+)))
                :returned)))
 
 (defmacro with-sqlite-app ((name &key (group-commit 16)) &body body)
@@ -103,19 +119,33 @@ another writer queues for the lock; returns :returned after its transaction."
 
 (test gc-a-batch-whose-queued-writer-left-is-committed-by-its-member
   (with-sqlite-app ("group-rescue")
-    (let ((waiting (tun.store.sqlite::writers-waiting (gc-store))))
+    (let* ((store (gc-store))
+           (waiting (tun.store.sqlite::writers-waiting store))
+           (left nil))
       ;; A writer that queues and then gives up (its lock wait hit the
-      ;; deadline) after the lock was handed to it: simulated by the count.
+      ;; deadline) after the lock was handed to it: simulated by the count,
+      ;; which the giving up takes back.
       (sb-ext:atomic-incf (car waiting))
-      (let ((result (unwind-protect
-                         (sb-thread:join-thread
-                          (gc-thread (lambda ()
-                                       (with-transaction (:write) (insert (make-instance 'widget :name "en")))
-                                       :returned))
-                          :timeout 5 :default :hung)
-                      (sb-ext:atomic-decf (car waiting)))))
-        (is (eq :returned result))
-        (is (equal '("en") (gc-names)))))))
+      (unwind-protect
+           (let ((member (gc-thread (lambda ()
+                                      (with-transaction (:write) (insert (make-instance 'widget :name "en")))
+                                      :returned))))
+             ;; The member handed the lock on and waits with its batch open.
+             (loop with watch = (start-stopwatch)
+                   until (or (and (tun.store.sqlite::open-batch store)
+                                  (null (sb-thread:mutex-owner (tun.store.sqlite::write-lock store))))
+                             (stopwatch-past-p watch +gc-queue-seconds+))
+                   do (sleep 0.005))
+             ;; While the queued writer still counts, as one still waking to
+             ;; take the lock does, the member does not commit alone.
+             (sleep 0.2)
+             (is (sb-thread:thread-alive-p member) "the member waits for the writer still queued")
+             (sb-ext:atomic-decf (car waiting))
+             (setf left t)
+             (is (eq :returned (sb-thread:join-thread member :timeout +gc-queue-seconds+ :default :hung))
+                 "once the queued writer has gone, the member commits its batch")
+             (is (equal '("en") (gc-names))))
+        (unless left (sb-ext:atomic-decf (car waiting)))))))
 
 (test gc-group-commit-1-commits-every-transaction-alone
   (with-sqlite-app ("group-off" :group-commit 1)
@@ -165,7 +195,7 @@ another writer queues for the lock; returns :returned after its transaction."
                                  (with-transaction (:write)
                                    (insert (make-instance 'widget :name "to"))
                                    (sb-thread:signal-semaphore inside-2)
-                                   (loop repeat 1000 until (plusp (gc-waiting)) do (sleep 0.005))
+                                   (gc-wait-for-queue)
                                    (tun.store.sqlite::exec "ROLLBACK") ; what SQLite does on SQLITE_FULL
                                    (error "disken er full"))))))
         (sb-thread:wait-on-semaphore inside-2)

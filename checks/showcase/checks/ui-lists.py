@@ -6,7 +6,6 @@ that keeps the address and the filters, the rows staying while a slow
 answer comes; and the same without JavaScript (spec/ui.md 6, table)."""
 
 import re
-import time
 
 WIDE_PAGE = "() => document.scrollingElement.scrollWidth > innerWidth + 1"
 
@@ -88,25 +87,31 @@ TITLES = "() => [...document.querySelectorAll('main .tun-table tbody .tun-table-
 
 # Every 100 ms after the next press: the rows, the table's height and the
 # loading sign, until a later answer replaces the rows.
-WATCH = """() => {
-  window.tunListSeen = [];
-  const look = () => {
-    const box = document.querySelector('main .tun-table-box');
-    window.tunListSeen.push({
-      rows: document.querySelectorAll('main .tun-table tbody tr').length,
-      height: box ? box.getBoundingClientRect().height : 0,
-      bar: document.querySelector('[data-tun-loading]')?.hidden === false,
-      search: location.search});
-  };
-  for (let ms = 100; ms <= 1400; ms += 100) setTimeout(look, ms);
-}"""
+WAITING = """() => ({
+  rows: document.querySelectorAll('main .tun-table tbody tr').length,
+  height: document.querySelector('main .tun-table-box').getBoundingClientRect().height,
+  bar: document.querySelector('[data-tun-loading]')?.hidden === false,
+  search: location.search})"""
 
 
-def held(seconds):
-    def handler(route):
-        time.sleep(seconds)
-        route.continue_()
-    return handler
+class Held:
+    """The page's requests to the cards, held until let go: the check reads
+    the page while their answer is under way, however long that takes."""
+
+    def __init__(self, page):
+        self.page, self.routes = page, []
+        page.route(re.compile(r".*/cards\?.*"), lambda route: self.routes.append(route))
+
+    def wait(self):
+        self.page.poll_until(lambda: self.routes, what="the list's request to be held")
+
+    def go(self):
+        while self.routes:
+            self.routes.pop().continue_()
+
+    def end(self):
+        self.go()
+        self.page.unroute(re.compile(r".*/cards\?.*"))
 
 
 def near(a, b, slack=1):
@@ -210,7 +215,7 @@ def the_row_is_one_target(t):
             page.touchscreen.tap(p["x"], p["y"])
         else:
             page.mouse.click(p["x"], p["y"])
-        page.wait_for_url(re.compile(re.escape(p["href"]) + "$"), timeout=10000)
+        page.wait_for_url(re.compile(re.escape(p["href"]) + "$"))
         t.check(page.url.endswith(p["href"]), f"{name}: a tap there opens the row's page: {page.url}")
 
     page = t.desktop()
@@ -276,7 +281,7 @@ def sorting_keeps_the_address(t):
     page.sign_in("employee:anna")
     page.goto("/cards?q=&status=&status=new&estimate=&files=")
     page.locator("main .tun-table thead .tun-table-sort", has_text="Title").click()
-    page.wait_for_url(re.compile(r"sort=title"), timeout=10000)
+    page.wait_for_url(re.compile(r"sort=title"))
     t.check("status=new" in page.url and "direction=asc" in page.url,
             f"sorting keeps the filter in the address: {page.url}")
     titles = page.evaluate(TITLES)
@@ -286,33 +291,33 @@ def sorting_keeps_the_address(t):
     weights = page.evaluate("() => [...new Set([...document.querySelectorAll('main .tun-table thead th')].map((th) => getComputedStyle(th).fontWeight))]")
     t.check(len(weights) == 1, f"the sorted header at the others' weight: {weights}")
 
-    page.route(re.compile(r".*/cards\?.*"), held(1.5))
+    held = Held(page)
     before = page.evaluate("() => document.querySelector('main .tun-table-box').getBoundingClientRect().height")
     rows = page.evaluate("() => document.querySelectorAll('main .tun-table tbody tr').length")
-    page.evaluate(WATCH)
     page.locator("main .tun-table thead .tun-table-sort", has_text="Estimate").click()
-    page.wait_for_url(re.compile(r"sort=estimate"), timeout=15000)
-    page.wait_for_timeout(300)
-    seen = page.evaluate("() => window.tunListSeen || []")
-    waiting = [s for s in seen if "sort=estimate" not in s["search"]]
-    t.check(waiting and all(s["rows"] == rows and near(s["height"], before) for s in waiting),
-            f"while the sort's answer is held the rows stay, the height too: {waiting[:3]}")
-    t.check(any(s["bar"] for s in waiting), "and the loading sign shows")
+    held.wait()
+    waiting = page.wait_until(f"() => ({WAITING})().bar && ({WAITING})()",
+                              what="the loading sign while the sort's answer is held")
+    t.check(waiting["rows"] == rows and near(waiting["height"], before) and "sort=estimate" not in waiting["search"],
+            f"while the sort's answer is held the rows stay, the height too: {waiting}")
+    t.check(waiting["bar"], "and the loading sign shows")
+    held.go()
+    page.wait_for_url(re.compile(r"sort=estimate"))
     t.check("status=new" in page.url, f"the sorted address keeps the filter: {page.url}")
 
     before = page.evaluate("() => document.querySelector('main .tun-table-box').getBoundingClientRect().height")
     rows = page.evaluate("() => document.querySelectorAll('main .tun-table tbody tr').length")
-    page.evaluate(WATCH)
     page.locator("#cards-toolbar .tun-list-toolbar-toggle").first.click()
-    page.wait_for_url(re.compile(r"files=true"), timeout=15000)
-    page.wait_for_timeout(300)
-    seen = page.evaluate("() => window.tunListSeen || []")
-    waiting = [s for s in seen if "files=true" not in s["search"]]
-    t.check(waiting and all(s["rows"] == rows and near(s["height"], before) for s in waiting),
-            f"while a filter's answer is held the rows stay, the height too: {waiting[:3]}")
-    t.check(any(s["bar"] for s in waiting), "and the loading sign shows")
+    held.wait()
+    waiting = page.wait_until(f"() => ({WAITING})().bar && ({WAITING})()",
+                              what="the loading sign while the filter's answer is held")
+    t.check(waiting["rows"] == rows and near(waiting["height"], before) and "files=true" not in waiting["search"],
+            f"while a filter's answer is held the rows stay, the height too: {waiting}")
+    t.check(waiting["bar"], "and the loading sign shows")
+    held.go()
+    page.wait_for_url(re.compile(r"files=true"))
     t.check("sort=estimate" in page.url, f"the filter keeps the sort: {page.url}")
-    page.unroute(re.compile(r".*/cards\?.*"))
+    held.end()
 
 
 def without_javascript(t):
@@ -320,13 +325,13 @@ def without_javascript(t):
     page.sign_in("employee:anna")
     page.goto("/cards?q=&status=&status=new&estimate=&files=")
     page.locator("main .tun-table thead .tun-table-sort", has_text="Title").click()
-    page.wait_for_url(re.compile(r"sort=title"), timeout=10000)
+    page.wait_for_url(re.compile(r"sort=title"))
     t.check("status=new" in page.url, f"without JavaScript a sort link sorts: {page.url}")
     cell = page.locator("main .tun-table tbody tr").nth(1).locator("td").last
     href = page.locator("main .tun-table tbody tr").nth(1).locator(".tun-table-row-link").get_attribute("href")
     box = cell.bounding_box()
     page.touchscreen.tap(box["x"] + box["width"] / 2, box["y"] + box["height"] / 2)
-    page.wait_for_url(re.compile(re.escape(href) + "$"), timeout=10000)
+    page.wait_for_url(re.compile(re.escape(href) + "$"))
     t.check(page.url.endswith(href), f"without JavaScript a tap on the row's last cell opens it: {page.url}")
 
 

@@ -41,9 +41,9 @@ def run(t):
     t.check(len(preloads) <= 1, f"one click on «Items» preloads it once at most ({len(preloads)})")
 
     # 1. The tracker's case: the tab cleared in between is not undone by a preload.
-    page.get_by_role("link", name="All", exact=True).click()
+    with page.expect_htmx():
+        page.get_by_role("link", name="All", exact=True).click()
     page.wait_for_url(re.compile(r"/items\?p=$"))
-    page.wait_for_timeout(250)
     visit(page, "Access", "/access")
     visit(page, "Items", "/items")
     t.check(page.url.endswith("/items"), f"after «All», «Items» in the menu shows them all: {page.url}")
@@ -52,8 +52,8 @@ def run(t):
 
     # 3. A GET drops the other preloads: «Access» preloaded, then «Items»
     # followed, then «Access» asks the server.
-    menu(page, "Access").hover()
-    page.wait_for_timeout(300)
+    with page.expect_request(lambda r: path_of(r.url) == "/access" and r.headers.get("tun-preload") == "true"):
+        menu(page, "Access").hover()
     page.mouse.move(700, 500)
     menu(page, "Items").evaluate("link => link.click()")
     page.wait_for_url(re.compile(r"/items$"))
@@ -71,8 +71,8 @@ def run(t):
     page.wait_for_timeout(250)
     visit(page, "Access", "/access")
     seen.clear()
-    menu(page, "Items").hover()
-    page.wait_for_timeout(500)
+    with page.expect_request(lambda r: r.redirected_from is not None and path_of(r.url) == "/items?p=1"):
+        menu(page, "Items").hover()
     hops = [r for r in seen if r.redirected_from is not None and path_of(r.url) == "/items?p=1"]
     t.check(hops, "a preload of the bare /items is sent on to the kept tab")
     t.check(hops and all(r.all_headers().get("tun-preload") == "true" for r in hops),

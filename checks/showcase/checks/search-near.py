@@ -6,7 +6,6 @@ narrowed the same way, the exact ones first (spec/ui.md 6, choice-input)."""
 
 import json
 import pathlib
-import time
 
 SCENARIO = "search"
 
@@ -36,10 +35,11 @@ GIVEN_STATE = """(selector) => {
 }"""
 
 
-def wait_shown(page, text, timeout=3000):
-    page.wait_for_function(
+def wait_shown(page, text):
+    page.wait_until(
         """(text) => document.querySelector('dialog#tun-search [data-tun-search-query]')
-                       ?.getAttribute('data-tun-search-query') === text""", arg=text, timeout=timeout)
+                       ?.getAttribute('data-tun-search-query') === text""", text,
+        what=f"the search's answer for «{text}»")
 
 
 def ask(page, text):
@@ -67,7 +67,8 @@ def dialog(t):
     page.sign_in("employee:anna")
     page.goto("/cards")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    page.wait_until("""() => document.activeElement === document.querySelector('#tun-search-field')""",
+                    what="the search open with the focus in its field")
     rows = ask(page, "nordvk")
     t.check(rows and rows[0]["title"] == "Nordvik Bakery Ltd" and rows[0]["marks"] == ["Nordvik"],
             f"«nordvk» finds Nordvik Bakery Ltd, «Nordvik» marked whole: {rows}")

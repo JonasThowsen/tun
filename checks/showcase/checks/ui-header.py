@@ -194,7 +194,8 @@ def section_links(t):
     page.evaluate("() => { document.body.style.paddingBottom = '2000px'; }")
     page.evaluate("() => scrollTo(0, document.getElementById('order-delivery').getBoundingClientRect().top + scrollY)")
     target = page.evaluate("() => scrollY")
-    page.wait_for_timeout(200)
+    page.wait_until(f"() => ({SECTION_LINKS})().current[0] === 'Delivery'",
+                    what="the section links to mark «Delivery»")
     m = page.evaluate(SECTION_LINKS)
     t.check(m["current"] == ["Delivery"], f"scrolled to «Delivery», its link is marked: {m['current']}")
     t.check(abs(page.evaluate("() => scrollY") - target) < 1,
@@ -203,7 +204,8 @@ def section_links(t):
             f"at the others' weight and size: {m['weights']} {m['sizes']}")
     page.evaluate("() => { document.body.style.paddingBottom = ''; }")
     page.locator(".tun-specimen-preview .tun-section-links a", has_text="History").click()
-    page.wait_for_timeout(300)
+    page.wait_until(f"() => ({SECTION_LINKS})().current[0] === 'History'",
+                    what="the section links to mark «History»")
     t.check(page.evaluate(SECTION_LINKS)["current"] == ["History"], "a followed link is marked")
 
     plain = t.phone(javascript=False)

@@ -226,21 +226,87 @@ ends. A check gets:
   gives its `body` and `status`;
 - `t.check(condition, text)`, which records a screenshot when it fails
   and carries on, so one run lists every failure;
+- `t.close_pages()`, which closes the pages the check has opened so far,
+  their JavaScript errors recorded, so a check of many pages frees their
+  connections (which the server bounds per address, `core.md` §7.5)
+  before it opens more;
 - a default timeout of 120 s for a navigation and for any wait that
   names none, in place of Playwright's 30 s: a check is not a speed
   test (`tooling.md`, «Speed and time in tests»), and a page that a
   loaded machine serves slowly is waited for, while one that never
   loads still fails;
+- for waiting, `page.wait_until(function, arg=None, what="...")`, which
+  waits until the page's function, `"(arg) => ..."`, gives a true value
+  and returns that value; `page.poll_until(predicate, what="...")`, the
+  same for a Python function of the check's own, such as one that says a
+  route holds a request; `with page.expect_htmx():`, which after its
+  block waits until every htmx request the block began has been
+  answered, swapped and settled; and `page.touch.hold_to_drag(target)`,
+  a finger held on a board's card until its drag begins;
+- for speed, `page.server_speed(path, headers=None, runs=9)`, the
+  medians of what the server reports it spent on PATH (its
+  `Server-Timing`, `core.md` §7.7) over RUNS requests after one to warm
+  up, as `speed.ms` (processor time), `speed.db_ms` and `speed.wall_ms`,
+  and `t.check_fast(speed, limit_ms, text)`, which records whether
+  `speed.ms` is under the limit, naming the time, the limit, the wall
+  time and the machine's load;
+- for motion, `page.hold_motion()`, which holds every animation and
+  transition of the page at its start until `page.release_motion()`;
+  `page.animations(selector)`, the element's running animations and
+  transitions (`getAnimations()`; with `None`, the whole page's, a
+  dialog's `::backdrop` among them), each a dict with `kind`
+  (`"animation"` or `"transition"`), `name` (the animation's, or the
+  property a transition runs on), `duration_ms`, `delay_ms`, `easing`
+  and `keyframes`; and `page.seek_motion(selector, ms)`, which puts them
+  at MS (`None`: their end), so what is read next is that moment's;
 - everything else of Playwright's page.
 
-A check that raises, checks nothing, or leaves a JavaScript error on one
-of its pages fails. The runner is Tun's `scripts/tun_check.py`, run with
+A check gives the same verdict on a busy machine as on a quiet one, so
+it never reads a clock:
+
+- **Speed** is what the server spent, `server_speed`, never a time the
+  browser or the check measured.
+- **Motion** is what the stylesheet declared and the element computes:
+  the animation's name, duration and keyframes, and the style and boxes
+  at a moment of it, held still (`hold_motion`, `seek_motion`); never
+  frames sampled while it runs. Reduced motion is no animation and the
+  end state shown.
+- **Waiting** is for the event the check reads next (the answer swapped
+  in, the page a post leads to, a drag's result, a chooser, a
+  notification) with the one deadline of 120 s, never a fixed time that
+  guesses how long an answer takes. A fixed wait stays only for a
+  transition to reach its end (it ends by the clock) and for a window
+  in which nothing may happen, when no later event can stand in.
+- **A page's own timer** (a debounce, a delay before something shows, a
+  lifetime) runs on the page's clock, Playwright's `page.clock`, which
+  the check holds and advances (`pause_at`, `run_for`, `resume`): «no
+  request 149 ms after the last key, one at 150 ms», never measured.
+
+`wait_until`, `poll_until` and `expect_htmx` that pass the deadline, and
+an `AssertionError` a check raises, fail the check with their message:
+what they waited for and, for `wait_until`, what the function last
+gave. A check that raises, checks nothing, or leaves a JavaScript error
+on one of its pages fails. The runner is Tun's `scripts/tun_check.py`, run with
 `tun-check-python`, Python with Playwright and Chromium (the whole
 browser, headless, so that notifications and service workers behave as
 they do in Chrome), which the dev
 shells of Tun and of a client have. It writes `NAME.json` with each
 check's results and `NAME-N.png` for each failure to `DIR/.build/checks/`.
 `tun check` prints which passed and exits 0 only when every one did.
+
+**The verify lock.** When `TUN_VERIFY_LOCK` names a file, `tun check`
+runs its checks holding an exclusive `flock(2)` lock on it (the file is
+made when missing), the lock `flock(1)` takes on that path, so two
+builders' check runs on one machine follow each other. While another
+process holds it, `tun check` prints «waiting for the verify lock PATH,
+held by process N (COMMAND)», again every five minutes, and «took the
+verify lock after MmSs» once it has it. The lock is the open file's, so
+a holder that ends, however it ends, releases it. A `tun check` whose
+environment has `TUN_VERIFY_LOCK_HELD` set to that path (a holder puts
+it in its children's), or one of whose ancestor processes holds a
+`flock` on that file, runs without taking it again. `tun loop verify`
+holds it for its whole round (`loop.md` §6). Without the variable
+nothing is locked and nothing printed.
 `bin/test` does not run checks, because Chromium makes them slow. The
 loop's verify stage (`loop.md` §3) runs both.
 
@@ -285,6 +351,14 @@ with paging and autoscroll, and dragging with a mouse.
   database; `list` shows it running; `stop` leaves no server, database
   or file. A check that sees the customer passes `tun check`; broken, it
   fails, named, with a screenshot.
+- `tests/preview-tests.lisp`, the verify lock: a holder of `flock(1)`
+  makes `tun check` wait, saying for whom, until it is killed; a holder
+  keeps `flock -n` out, and its own children and nested calls do not
+  wait; a command under `flock` of the same file does not; without
+  `TUN_VERIFY_LOCK` nothing is locked or said. `tests/timing-tests.lisp`:
+  a test server's `Server-Timing` (a sleep costs no `cpu`, a computation
+  at least what it measured, a sort on Postgres counted in `db`, none from
+  a server with authenticated identities), and `checks-read-no-clock`.
 - `bin/check`: the showcase's checks pass. With the board's snapping fix
   of 2026-10-22 taken out, the phone check fails on «the columns do not
   snap while a card is dragged».

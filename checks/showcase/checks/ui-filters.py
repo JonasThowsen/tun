@@ -47,7 +47,7 @@ def wait_for(page, search, count):
     page.wait_for_function(
         "([search, count]) => location.search.includes(search)"
         " && document.querySelectorAll('.tun-table tbody tr').length === count",
-        arg=[search, count], timeout=10000)
+        arg=[search, count])
 
 
 def desktop(t):
@@ -143,7 +143,7 @@ def desktop(t):
     t.check(rows(page) == 1, "and again, each choice a step")
     page.go_back()
     page.go_back()
-    page.wait_for_function("() => location.pathname === '/graph'", timeout=10000)
+    page.wait_for_function("() => location.pathname === '/graph'")
     t.check(True, "and from the first state Back leaves the list")
 
     # Three in use: still one row, the toolbar and the list where they were.

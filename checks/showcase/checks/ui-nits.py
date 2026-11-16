@@ -143,11 +143,12 @@ def search_marks_the_line(t):
     page.sign_in("employee:anna")
     page.goto("/cards")
     page.keyboard.press("Control+k")
-    page.wait_for_timeout(300)
+    page.wait_until("""() => document.activeElement === document.querySelector('#tun-search-field')""",
+                    what="the search open with the focus in its field")
     page.keyboard.type("ex")
     page.wait_for_function(
         """() => document.querySelector('dialog#tun-search [data-tun-search-query]')
-                   ?.getAttribute('data-tun-search-query') === 'ex'""", timeout=3000)
+                   ?.getAttribute('data-tun-search-query') === 'ex'""")
     rows = page.evaluate("""() => [...document.querySelectorAll('dialog#tun-search [role=option]')]
       .map((row) => ({title: row.querySelector('.tun-search-results-title').textContent,
                       titleMarks: row.querySelectorAll('.tun-search-results-title mark').length,

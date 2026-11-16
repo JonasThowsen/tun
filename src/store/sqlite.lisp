@@ -183,12 +183,16 @@ The caller holds the write lock."
   "Wait until BATCH is committed; signal BATCH-COMMIT-FAILED if it failed.
 Members normally wait on the condition variable; if the writers that were
 queued when the mutex was handed on went away (a lock wait that hit its
-deadline), a waiting member commits the batch itself."
+deadline), a waiting member commits the batch itself.  A queued writer
+counts until it holds the mutex, so one that is still waking to take it,
+which on a busy machine takes longer than a member's look, is waited for:
+the member commits only when the mutex is free and no writer waits."
   (loop while (eq (batch-state batch) :open)
         do (sb-thread:with-mutex ((batch-lock store))
              (when (eq (batch-state batch) :open)
                (sb-thread:condition-wait (batch-done store) (batch-lock store) :timeout 0.005)))
            (when (and (eq (batch-state batch) :open)
+                      (zerop (car (writers-waiting store)))
                       (sb-thread:grab-mutex (write-lock store) :waitp nil))
              (unwind-protect
                   (when (eq (open-batch store) batch)

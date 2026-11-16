@@ -952,6 +952,19 @@ The server exits non-zero when it cannot bind its port, and never logs that
 it listens before the socket is bound. `/health` answers once the
 application is open.
 
+A server with `--claimed-identity` (tests, previews and their browser
+checks; never a deployed one, §3.2) says what each request cost in a
+`Server-Timing` header: `cpu;dur=MS, db;dur=MS, total;dur=MS`. `cpu` is
+the processor time the server's process (every thread of it) and the
+Postgres server processes of the store's own connections spent while
+the request was answered, `db` those processes' share, `total` the wall
+time, each in milliseconds with one decimal. When the Postgres
+processes cannot be read (a server on another machine), `cpu` and `db`
+are left out. Another process's load does not enter `cpu`; another
+request answered at the same moment does. A browser check's speed is
+read from it (`preview.md` §4); a server with authenticated identities
+sends no such header.
+
 ### 7.8 Measured pressure
 
 These properties are measured against a running tenant under load, with the

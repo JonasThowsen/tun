@@ -94,6 +94,9 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
 - `tun loop verify` runs everything the repository's rules ask for and
   records the round. When it fails, read the step's log under
   `.build/loop/NAME/`, fix, and run it again.
+- On a machine where several builders verify, export `TUN_VERIFY_LOCK`
+  naming one file for all of them (the installation says which): each
+  round then waits for the others' and says so (`spec/loop.md` §6).
 - After five failed rounds in a row the loop is `stuck`. Tell the person
   what fails and what you tried, and wait. Their go-ahead, with whatever
   they decide, is `tun loop resume --by jonas --why "…"`.

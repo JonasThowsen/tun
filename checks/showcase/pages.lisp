@@ -35,10 +35,20 @@ columns."
   "Those of CARDS, cards' JSON, whose status is STATUS, in their order."
   (remove-if-not (lambda (card) (equal (jget card "status") status)) cards))
 
+(defun planted-move ()
+  "What the test-only switch TUN_TEST_PLANT plants in a move, to see the
+board's checks wait for its answer and fail without one (spec/tooling.md,
+\"Speed and time in tests\"): slow-move answers after 3 s, lost-move
+answers 500; else nothing."
+  (let ((plant (uiop:getenv "TUN_TEST_PLANT")))
+    (cond ((equal plant "slow-move") (sleep 3))
+          ((equal plant "lost-move") (error "The move was lost (TUN_TEST_PLANT=lost-move).")))))
+
 (defun move-card (form &key (ordered t))
   "Move the card FORM names to its column, and on the ordered board before
 the card before= names: answer htmx with the board, else send the browser
 back to it."
+  (planted-move)
   (let ((before (jget form "before"))
         (arguments (jobj "id" (jget form "card") "status" (jget form "column"))))
     (when (and (stringp before) (plusp (length before)))

@@ -4,6 +4,11 @@ menu leaves with motion, the focus and the keys, the one confirm for a
 marked control and for hx-confirm, the flash as a toast, and reduced motion
 (spec/ui.md 2.1, 6)."""
 
+import datetime
+
+# A time for the page's clock, which a check of the page's timers holds.
+PAGE_TIME = datetime.datetime(2026, 11, 2, 9, 0)
+
 BOX = """(selector) => {
   const element = document.querySelector(selector);
   const box = element.getBoundingClientRect();
@@ -14,32 +19,35 @@ BOX = """(selector) => {
           position: style.position, opacity: style.opacity};
 }"""
 
-# Opens (or closes) a dialog by clicking SELECTOR and samples, every frame
-# for MS, the dialog's top and its backdrop's opacity.
-SAMPLE = """async ([button, dialog, ms]) => {
+# The dialog SELECTOR's top and its backdrop's opacity at this moment.
+SHEET_MOMENT = """(dialog) => {
   const target = document.querySelector(dialog);
-  const samples = [];
-  document.querySelector(button).click();
-  const start = performance.now();
-  while (performance.now() - start < ms) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    samples.push({top: target.getBoundingClientRect().top,
-                  dim: parseFloat(getComputedStyle(target, '::backdrop').opacity)});
-  }
-  return samples;
+  return {top: target.getBoundingClientRect().top,
+          dim: parseFloat(getComputedStyle(target, '::backdrop').opacity)};
 }"""
 
-CLOSE_SAMPLE = """async ([dialog, ms]) => {
-  const target = document.querySelector(dialog);
-  const samples = [];
-  target.close();
-  const start = performance.now();
-  while (performance.now() - start < ms) {
-    await new Promise((resolve) => requestAnimationFrame(resolve));
-    samples.push(parseFloat(getComputedStyle(target, '::backdrop').opacity));
-  }
-  return samples;
-}"""
+
+def held_moments(page, start, dialog):
+    """Do START, a function of nothing, with the page's motion held; the
+    motions it began, and the dialog's top and dim at their start, at each
+    quarter of the longest and at their end."""
+    page.hold_motion()
+    start()
+    motions = page.animations(None)
+    longest = max((m["duration_ms"] + m["delay_ms"] for m in motions), default=0)
+    moments = []
+    for fraction in (0, 0.25, 0.5, 0.75):
+        page.seek_motion(None, longest * fraction)
+        moments.append(page.evaluate(SHEET_MOMENT, dialog))
+    page.seek_motion(None, None)
+    moments.append(page.evaluate(SHEET_MOMENT, dialog))
+    page.release_motion()
+    return motions, moments
+
+
+def motion_text(motions):
+    return [(m["name"], m["duration_ms"]) for m in motions]
+
 
 # A keyboard over the lower part of the window: the visual viewport shrinks
 # to HEIGHT, as Safari and Chrome on Android report it.
@@ -59,16 +67,14 @@ ACTIVE = """() => {
 
 IN_DIALOG = "(selector) => document.querySelector(selector).contains(document.activeElement)"
 
-CLOSING_MENU = """async () => {
-  const menu = document.querySelector('.tun-specimen-preview [data-tun-dropdown-menu] > [popover]');
-  menu.hidePopover();
-  const seen = (element) => element.checkVisibility({checkOpacity: false})
-    && getComputedStyle(element).display !== 'none';
-  await new Promise((resolve) => setTimeout(resolve, 80));
-  const midway = {shown: seen(menu), opacity: parseFloat(getComputedStyle(menu).opacity)};
-  await new Promise((resolve) => setTimeout(resolve, 260));
-  return {midway, after: seen(menu)};
-}"""
+MENU = ".tun-specimen-preview [data-tun-dropdown-menu] > [popover]"
+
+# Whether the menu is in the page, and its opacity and translate.
+MENU_MOMENT = f"""() => {{
+  const menu = document.querySelector('{MENU}');
+  return {{shown: menu.checkVisibility({{checkOpacity: false}}) && getComputedStyle(menu).display !== 'none',
+          opacity: parseFloat(getComputedStyle(menu).opacity), translate: getComputedStyle(menu).translate}};
+}}"""
 
 CONFIRM = """() => {
   const dialog = document.querySelector('[data-tun-confirm-dialog] > dialog');
@@ -112,13 +118,15 @@ def sheet(t):
     for scheme in ("light", "dark"):
         page = t.phone(scheme=scheme)
         page.goto("/ui/dialog")
-        samples = page.evaluate(SAMPLE, ["[commandfor=terms][command=show-modal]", "dialog#terms", 600])
-        tops = [s["top"] for s in samples]
-        dims = [s["dim"] for s in samples]
-        t.check(len(tops) > 5 and tops[0] > tops[-1] + 100,
-                f"390px {scheme}: the sheet slides up into place: {[round(x) for x in tops[:6]]} … {round(tops[-1])}")
+        motions, moments = held_moments(
+            page, lambda: page.locator("[commandfor=terms][command=show-modal]").click(), "dialog#terms")
+        tops = [m["top"] for m in moments]
+        dims = [m["dim"] for m in moments]
+        t.check(motions and tops[0] > tops[-1] + 100,
+                f"390px {scheme}: the sheet slides up into place: {[round(x) for x in tops]}, "
+                f"{motion_text(motions)}")
         t.check(never_falls(dims) and dims[-1] == 1,
-                f"390px {scheme}: the dim only gets darker while the sheet opens: {[round(d, 2) for d in dims[:10]]}")
+                f"390px {scheme}: the dim only gets darker while the sheet opens: {[round(d, 2) for d in dims]}")
         box = page.evaluate(BOX, "dialog#terms")
         t.check(abs(box["left"]) < 1 and abs(box["width"] - 390) < 1 and abs(box["bottom"] - 844) < 1,
                 f"390px {scheme}: the sheet stands at the bottom at the window's width: {box}")
@@ -140,9 +148,12 @@ def sheet(t):
                     and header2["top"] >= box["top"],
                     f"390px: the title and the actions stay while the body scrolls {scrolled}px: "
                     f"{header['top']}→{header2['top']}, {footer['top']}→{footer2['top']}")
-        closing = page.evaluate(CLOSE_SAMPLE, ["dialog#terms", 400])
+        motions, moments = held_moments(
+            page, lambda: page.evaluate("() => document.querySelector('dialog#terms').close()"), "dialog#terms")
+        closing = [m["dim"] for m in moments]
         t.check(never_rises(closing) and closing[-1] < 0.05,
-                f"390px {scheme}: the dim only gets lighter while it closes: {[round(d, 2) for d in closing[:8]]}")
+                f"390px {scheme}: the dim only gets lighter while it closes: {[round(d, 2) for d in closing]}, "
+                f"{motion_text(motions)}")
 
     # A dialog with its actions in one row, «Cancel» first.
     page = t.phone()
@@ -170,11 +181,13 @@ def sheet(t):
     for scheme in ("light", "dark"):
         page = t.desktop(scheme=scheme)
         page.goto("/ui/dialog")
-        samples = page.evaluate(SAMPLE, ["[commandfor=send-invoice][command=show-modal]", "dialog#send-invoice", 500])
-        dims = [s["dim"] for s in samples]
+        motions, moments = held_moments(
+            page, lambda: page.locator("[commandfor=send-invoice][command=show-modal]").click(),
+            "dialog#send-invoice")
+        dims = [m["dim"] for m in moments]
         t.check(never_falls(dims) and dims[-1] == 1,
-                f"1280px {scheme}: the dim only gets darker while the dialog opens: {[round(d, 2) for d in dims[:10]]}")
-        tops = [s["top"] for s in samples]
+                f"1280px {scheme}: the dim only gets darker while the dialog opens: {[round(d, 2) for d in dims]}")
+        tops = [m["top"] for m in moments]
         t.check(tops[0] > tops[-1] and tops[0] - tops[-1] <= 8.5,
                 f"1280px {scheme}: the dialog rises a few pixels: {round(tops[0], 1)} → {round(tops[-1], 1)}")
         box = page.evaluate(BOX, "dialog#send-invoice")
@@ -190,10 +203,12 @@ def sheet(t):
 def keyboard(t):
     page = t.phone()
     page.goto("/ui/dialog")
+    page.hold_motion()
     page.locator("[commandfor=add-note][command=show-modal]").click()
-    page.wait_for_timeout(50)
+    page.seek_motion(None, 50)
     first = page.evaluate(BOX, "dialog#add-note")
-    page.wait_for_timeout(500)
+    page.seek_motion(None, None)
+    page.release_motion()
     box = page.evaluate(BOX, "dialog#add-note")
     t.check(abs(box["height"] - (844 - 32)) < 1 and abs(first["height"] - box["height"]) < 1,
             f"390px: a dialog to type in is as tall as it may be from the start: {first['height']}, {box['height']}")
@@ -258,14 +273,28 @@ def menus(t):
     page = t.desktop()
     page.goto("/ui/dropdown-menu")
     page.locator(".tun-specimen-preview [data-tun-dropdown-menu] > .tun-button").first.click()
-    page.wait_for_timeout(300)
-    seen = page.evaluate(CLOSING_MENU)
-    t.check(seen["midway"]["shown"] and 0 < seen["midway"]["opacity"] < 1 and not seen["after"],
-            f"a closing menu is still in the page at 80ms, fading, and gone after --duration-close: {seen}")
+    page.wait_until(f"() => document.querySelector('{MENU}').matches(':popover-open')", what="the menu open")
+    page.wait_for_timeout(300)              # its opening transition
+    page.hold_motion()
+    page.evaluate(f"() => document.querySelector('{MENU}').hidePopover()")
+    leaving = page.animations(MENU)
+    page.seek_motion(MENU, 80)
+    midway = page.evaluate(MENU_MOMENT)
+    page.seek_motion(MENU, None)
+    after = page.evaluate(MENU_MOMENT)
+    page.release_motion()
+    t.check(midway["shown"] and 0 < midway["opacity"] < 1 and not after["shown"],
+            f"a closing menu is still in the page at 80ms, fading, and gone after --duration-close: "
+            f"{midway} {after} {motion_text(leaving)}")
+    page.hold_motion()
     page.locator(".tun-specimen-preview [data-tun-dropdown-menu] > .tun-button").first.click()
-    page.wait_for_timeout(30)
-    rising = page.evaluate("() => getComputedStyle(document.querySelector('.tun-specimen-preview [data-tun-dropdown-menu] > [popover]')).translate")
-    t.check(rising not in ("none", "0px"), f"an opening menu rises into place: translate {rising}")
+    page.seek_motion(MENU, 30)
+    rising = page.evaluate(MENU_MOMENT)["translate"]
+    page.seek_motion(MENU, None)
+    risen = page.evaluate(MENU_MOMENT)["translate"]
+    page.release_motion()
+    t.check(rising not in ("none", "0px") and risen in ("none", "0px"),
+            f"an opening menu rises into place: translate {rising} at 30 ms, {risen} at its end")
 
 
 def confirm(t):
@@ -344,8 +373,8 @@ def confirm(t):
     t.check(not archived, f"«Cancel» drops htmx's request: {len(archived)}")
     archive.click()
     page.wait_for_timeout(300)
-    page.locator("[data-tun-confirm-ok]").first.click()
-    page.wait_for_timeout(800)
+    with page.expect_htmx():
+        page.locator("[data-tun-confirm-ok]").first.click()
     t.check(len(archived) == 1, f"the action sends htmx's request once: {len(archived)}")
 
     # Words past 40 characters give «Confirm»; an hx-confirm without a
@@ -366,8 +395,8 @@ def confirm(t):
     t.check(shown["question"] == "Every finished order is archived." and shown["detail"] is None
             and shown["ok"] == "Archive the finished orders",
             f"an hx-confirm without «?» is all question, with no sentence: {shown}")
-    page.locator("[data-tun-confirm-ok]").first.click()
-    page.wait_for_timeout(800)
+    with page.expect_htmx():
+        page.locator("[data-tun-confirm-ok]").first.click()
     t.check(len(finished) == 1, f"and its request goes once agreed: {len(finished)}")
     ids = page.evaluate("() => [...document.querySelectorAll('[id]')].map((e) => e.id)")
     t.check(len(ids) == len(set(ids)), f"no id twice on the page: {sorted({i for i in ids if ids.count(i) > 1})}")
@@ -385,41 +414,63 @@ def confirm(t):
     t.check(state == [True, False, "Delete"], f"Escape closes the top one only, the focus back on «Delete»: {state}")
 
 
+def held_clock(page):
+    """Hold the page's clock before it loads: its flash's lifetime is the
+    page's timer, which the check moves on itself."""
+    page.clock.install(time=PAGE_TIME)
+    page.clock.pause_at(PAGE_TIME + datetime.timedelta(seconds=1))
+
+
+TOAST = ".tun-flash:not([data-placement])"
+
+
 def toast(t):
     page = t.desktop()
+    held_clock(page)
     page.goto("/ui/flash")
-    page.wait_for_timeout(500)
-    box = page.evaluate(BOX, ".tun-specimen-preview .tun-flash:not([data-placement])")
+    page.clock.run_for(500)
+    page.wait_for_timeout(500)              # its entrance, which runs on the browser's own time
+    box = page.evaluate(BOX, f".tun-specimen-preview {TOAST}")
     t.check(box["position"] == "fixed" and abs(box["top"] - 16) < 1 and abs(box["right"] - (1280 - 16)) < 1
             and box["width"] <= 400.5,
             f"1280px: a flash is a toast at the top right: {box}")
-    page.wait_for_timeout(3500)
-    t.check(page.locator(".tun-flash:not([data-placement])").count() == 1, "it is still there after 4 seconds")
-    page.wait_for_timeout(2000)
-    t.check(page.locator(".tun-flash:not([data-placement])").count() == 0, "and has left after 5 seconds")
+    page.clock.run_for(3500)
+    t.check(page.locator(TOAST).count() == 1, "it is still there after 4 seconds")
+    page.clock.run_for(1000)
+    page.clock.resume()
+    page.wait_until(f"() => document.querySelectorAll('{TOAST}').length === 0",
+                    what="the flash to leave after its 5 seconds")
+    t.check(page.locator(TOAST).count() == 0, "and has left after 5 seconds")
     t.check(page.locator(".tun-flash[data-placement=page]").count() >= 4, "a flash in the page stays")
 
     page = t.desktop()
+    held_clock(page)
     page.goto("/ui/flash")
-    page.locator(".tun-flash:not([data-placement])").hover()
-    page.wait_for_timeout(6000)
-    t.check(page.locator(".tun-flash:not([data-placement])").count() == 1, "pointed at, it stays")
+    page.locator(TOAST).hover()
+    page.clock.run_for(6000)
+    t.check(page.locator(TOAST).count() == 1, "pointed at, it stays")
     page.mouse.move(5, 790)
-    page.wait_for_timeout(5600)
-    t.check(page.locator(".tun-flash:not([data-placement])").count() == 0, "and leaves once the pointer has gone")
+    page.clock.run_for(5600)
+    page.clock.resume()
+    page.wait_until(f"() => document.querySelectorAll('{TOAST}').length === 0",
+                    what="the flash to leave once the pointer has gone")
+    t.check(page.locator(TOAST).count() == 0, "and leaves once the pointer has gone")
 
     # A warning stays until closed.
+    page.clock.pause_at(PAGE_TIME + datetime.timedelta(hours=1))
     page.evaluate("""() => {
       const flash = document.querySelector('.tun-flash[data-placement=page][data-variant=warning]').cloneNode(true);
       flash.removeAttribute('data-placement');
       document.querySelector('.tun-specimen-preview').append(flash);
       flash.dispatchEvent(new Event('htmx:after:settle', {bubbles: true}));
     }""")
-    page.wait_for_timeout(6000)
+    page.clock.run_for(6000)
     warning = page.locator(".tun-flash:not([data-placement])[data-variant=warning]")
     t.check(warning.count() == 1, "a warning stays after 5 seconds")
+    page.clock.resume()
     warning.locator("[data-tun-flash-close]").click()
-    page.wait_for_timeout(400)
+    page.wait_until("() => !document.querySelector('.tun-flash:not([data-placement])[data-variant=warning]')",
+                    what="the warning to leave once closed")
     t.check(warning.count() == 0, "until it is closed")
 
     page = t.phone()
@@ -455,17 +506,26 @@ def reduced_motion(t):
     page = t.phone()
     page._page.emulate_media(reduced_motion="reduce")
     page.goto("/ui/dialog")
-    samples = page.evaluate(SAMPLE, ["[commandfor=terms][command=show-modal]", "dialog#terms", 120])
-    tops = {round(s["top"]) for s in samples}
-    t.check(tops <= {844, 32} and all(s["dim"] in (0, 1) for s in samples) and samples[-1]["top"] == 32,
-            f"under reduced motion the sheet stands at once and the page dims at once: {samples[:4]}")
+    motions, moments = held_moments(
+        page, lambda: page.locator("[commandfor=terms][command=show-modal]").click(), "dialog#terms")
+    # Reduced motion leaves transitions of 0.01 ms: at once, as a person sees it.
+    t.check(all(m["duration_ms"] <= 1 for m in motions)
+            and round(moments[-1]["top"]) == 32 and moments[-1]["dim"] == 1,
+            f"under reduced motion the sheet stands at once and the page dims at once: "
+            f"{motion_text(motions)} {moments[:2]}")
     page = t.desktop()
     page._page.emulate_media(reduced_motion="reduce")
     page.goto("/ui/dropdown-menu")
     page.locator(".tun-specimen-preview [data-tun-dropdown-menu] > .tun-button").first.click()
-    page.wait_for_timeout(100)
-    seen = page.evaluate(CLOSING_MENU)
-    t.check(not seen["midway"]["shown"], f"under reduced motion a menu is gone at once: {seen}")
+    page.wait_until(f"() => document.querySelector('{MENU}').matches(':popover-open')", what="the menu open")
+    page.hold_motion()
+    page.evaluate(f"() => document.querySelector('{MENU}').hidePopover()")
+    leaving = [m for m in page.animations(MENU) if m["duration_ms"] > 1]
+    page.seek_motion(MENU, 1)
+    seen = page.evaluate(MENU_MOMENT)
+    page.release_motion()
+    t.check(not leaving and not seen["shown"],
+            f"under reduced motion a menu is gone at once: {seen} {motion_text(leaving)}")
 
 
 def run(t):

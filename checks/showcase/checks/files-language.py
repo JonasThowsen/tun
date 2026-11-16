@@ -100,9 +100,15 @@ def control_in(t, language, width, make, javascript):
     t.check(control.evaluate("(input, [x, y]) => document.elementFromPoint(x, y) === input", [x, y]),
             f"{where}: what is under the button is the input, so a click there is the input's")
     if javascript:
-        # Playwright reports the chooser of a page that runs scripts.
+        # Playwright reports the chooser of a page that runs scripts.  The
+        # click goes through the input's locator at the button's middle, so
+        # it waits until the input is visible and still: a page that moves
+        # between reading a place and clicking it takes the click elsewhere.
+        inside = control.evaluate(PARTS)
+        middle = {"x": (inside["button"]["left"] + inside["button"]["right"]) / 2 - inside["input"]["left"],
+                  "y": (inside["button"]["top"] + inside["button"]["bottom"]) / 2 - inside["input"]["top"]}
         with page.expect_file_chooser() as chooser:
-            page.mouse.click(x, y)
+            control.click(position=middle)
         t.check(chooser.value.element.evaluate("(e) => e.name") == "files",
                 f"{where}: a click on the button opens the browser's chooser for the input")
 

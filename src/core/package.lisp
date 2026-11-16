@@ -114,6 +114,7 @@
    #:store #:*store* #:*transaction-mode* #:*under-eval* #:*writes-refused* #:*now-function*
    #:store-open #:store-close #:store-migrate #:store-call-in-transaction #:store-insert
    #:store-update #:store-delete #:store-find #:store-select #:store-lock-row #:store-description
+   #:store-server-processes
    #:store-claim-presence #:store-present-p #:store-presences #:partial-fields #:partial-record
    #:+core-major-module+ #:newer-database #:ensure-core-major #:check-core-major
    #:database-unreachable #:database-unreachable-reason

@@ -6,8 +6,8 @@ given options narrowed by the search's fold, the cards' :choice filter in
 the address and in the «Filters» sheet, and the field and the filter
 without JavaScript (spec/ui.md 6, choice-input, list-toolbar)."""
 
+import datetime
 import re
-import time
 
 SCENARIO = "choices"
 
@@ -92,12 +92,20 @@ def state(page, selector=FIELD):
     return page.evaluate(STATE, selector)
 
 
-def wait_answered(page, text, selector=FIELD, timeout=4000):
-    page.wait_for_function(
+def wait_answered(page, text, selector=FIELD):
+    page.wait_until(
         """([selector, text]) => document.querySelector(selector).closest('[data-tun-choice]')
              .querySelector('[data-tun-choice-list] [role=listbox]')
              ?.getAttribute('data-tun-choice-query') === text""",
-        arg=[selector, text], timeout=timeout)
+        [selector, text], what=f"the choice's answer for «{text}»")
+
+
+# A time for the page's clock, which the check holds and moves on.
+PAGE_TIME = datetime.datetime(2026, 11, 2, 9, 0)
+
+# Counts the htmx requests the page begins.
+COUNT_ASKS = """() => { window.tunAsks = 0;
+  document.addEventListener('htmx:before:request', () => { window.tunAsks += 1; }, true); }"""
 
 
 def open_form(t, make=None, **options):
@@ -113,7 +121,7 @@ def open_form(t, make=None, **options):
 def asking(t):
     page = open_form(t)
     asked = []
-    page.on("request", lambda request: asked.append((time.monotonic(), request.url))
+    page.on("request", lambda request: asked.append(request.url)
             if "/cards/customers" in request.url else None)
     page.locator(FORM).click()
     wait_answered(page, "")
@@ -122,25 +130,24 @@ def asking(t):
             f"the button opens the list with the focus in its text field: {s['open']} {s['focus']}")
     t.check(len(s["texts"]) == 20 and s["more"] == f"{CUSTOMERS - 20} more. Type to narrow them.",
             f"it asks once for an empty text: 20 options and the rest counted: {len(s['texts'])} {s['more']}")
-    t.check(len(asked) == 1, f"one request on opening: {[u for _, u in asked]}")
+    t.check(len(asked) == 1, f"one request on opening: {asked}")
     asked.clear()
-    # The page's own clock: when each key's input came, and each request.
-    page.evaluate("""() => {
-      window.tunInputs = []; window.tunAsks = [];
-      document.addEventListener('input', () => tunInputs.push(performance.now()), true);
-      document.addEventListener('htmx:before:request', () => tunAsks.push(performance.now()), true);
-    }""")
+    # The page's own clock, held: the debounce is a timer of the page.
+    page.evaluate(COUNT_ASKS)
+    page.clock.install(time=PAGE_TIME)
+    page.clock.pause_at(PAGE_TIME + datetime.timedelta(minutes=1))
     page.keyboard.type("bjorn", delay=40)
-    last_key = time.monotonic()
+    page.clock.run_for(149)
+    early = page.evaluate("() => window.tunAsks")
+    page.clock.run_for(1)
+    page.wait_until("() => window.tunAsks > 0", what="the request 150 ms after the last key")
+    page.clock.resume()
     wait_answered(page, "bjorn")
-    took = (time.monotonic() - last_key) * 1000
-    clock = page.evaluate("() => ({inputs: tunInputs, asks: tunAsks})")
-    gaps = [round(ask - clock["inputs"][-1]) for ask in clock["asks"]]
-    t.check(len(asked) == 1 and "q=bjorn" in asked[0][1] and len(gaps) == 1 and gaps[0] >= 145,
-            f"one request, no sooner than 150 ms after the last key: {gaps} {[u for _, u in asked]}")
+    t.check(early == 0 and len(asked) == 1 and "q=bjorn" in asked[0],
+            f"one request, 150 ms after the last key and not at 149: {early} {asked}")
     s = state(page)
-    t.check(s["texts"][:1] == ["Bjørn Åsen"] and took < 1500,
-            f"«bjorn» lists «Bjørn Åsen» first, {took:.0f} ms after the last key: {s['texts'][:3]}")
+    t.check(s["texts"][:1] == ["Bjørn Åsen"],
+            f"«bjorn» lists «Bjørn Åsen» first, with nothing more typed: {s['texts'][:3]}")
     t.check(s["active"] == 0 and s["activedescendant"] == s["activeId"],
             f"and makes it active: {s['active']} {s['activedescendant']}")
 
@@ -151,21 +158,14 @@ def overtaken(t):
     page.route(re.compile(r".*/cards/customers\?q=anna$"), lambda route: held.append(route))
     page.locator(FORM).click()
     wait_answered(page, "")
-    page.keyboard.type("anna")
-    page.wait_for_timeout(500)
-    t.check(len(held) == 1, f"the answer for «anna» is held: {len(held)}")
-    page.keyboard.type(" berg")
-    wait_answered(page, "anna berg")
-    later = state(page)["texts"]
-    stale = ('<ul class="tun-choice-options" role="listbox" data-tun-choice-query="anna">'
-             '<li class="tun-choice-options-option" role="option" aria-selected="false" '
-             'data-value="cus_stale"><span class="tun-choice-options-text">Stale</span></li></ul>')
-    try:
-        held[0].fulfill(status=200, content_type="text/html", body=stale)
-        answered = "answered late"
-    except Exception as error:
-        answered = f"cancelled by htmx ({type(error).__name__})"
-    page.wait_for_timeout(600)
+    with page.expect_htmx():
+        page.keyboard.type("anna")
+        page.poll_until(lambda: held, what="the request for «anna» to reach the route that holds it")
+        t.check(len(held) == 1, f"the answer for «anna» is held: {len(held)}")
+        page.keyboard.type(" berg")
+        wait_answered(page, "anna berg")
+        later = state(page)["texts"]
+        answered = answer_late(held[0])
     s = state(page)
     t.check(s["answered"] == "anna berg" and s["texts"] == later and "Stale" not in s["texts"],
             f"the earlier answer ({answered}) never replaces the later one: {s['texts']}")
@@ -176,10 +176,24 @@ def overtaken(t):
                                            body="<!doctype html><p>Server error</p>"))
     page.fill(FIELD, "")
     page.keyboard.type("broken")
-    page.wait_for_timeout(800)
+    page.wait_until(f"() => document.querySelector('{FIELD}').closest('[data-tun-choice]')"
+                    ".textContent.includes('The choices could not be loaded. Try again.')",
+                    what="the choice's failure said")
     s = state(page)
     t.check(s["none"] == "The choices could not be loaded. Try again.",
             f"a failed answer says so: {s['none']}")
+
+
+def answer_late(route):
+    """Answer the held ROUTE with a stale list, if htmx has not cancelled it."""
+    stale = ('<ul class="tun-choice-options" role="listbox" data-tun-choice-query="anna">'
+             '<li class="tun-choice-options-option" role="option" aria-selected="false" '
+             'data-value="cus_stale"><span class="tun-choice-options-text">Stale</span></li></ul>')
+    try:
+        route.fulfill(status=200, content_type="text/html", body=stale)
+        return "answered late"
+    except Exception as error:
+        return f"cancelled by htmx ({type(error).__name__})"
 
 
 def keys(t):
@@ -231,7 +245,7 @@ def keys(t):
     # The form posts the id.
     page.fill("input[name=title]", "A card for a customer")
     page.locator("form button[type=submit]:has-text('Report the item')").click()
-    page.wait_for_url(re.compile(r"/items/crd_"), timeout=5000)
+    page.wait_for_url(re.compile(r"/items/crd_"))
     shown = page.locator(".tun-summary-list").inner_text()
     t.check(name in shown, f"the posted form carried the id, and the card is for {name}: {shown}")
 
@@ -263,12 +277,14 @@ def enter_before_the_answer(t):
     wait_answered(page, "")
     page.keyboard.type("bjorn ase")
     page.keyboard.press("Enter")
-    page.wait_for_timeout(500)
+    page.poll_until(lambda: held, what="the request for «bjorn ase» to reach the route that holds it")
     s = state(page)
     t.check(len(held) == 1 and s["open"] and s["chosen"] == "",
             f"an Enter before the answer chooses nothing yet: {len(held)} {s['open']} {s['chosen']}")
     held[0].continue_()
-    page.wait_for_timeout(800)
+    page.wait_until(f"""() => !document.querySelector('{FIELD}').closest('[data-tun-choice]')
+                               .querySelector('[popover]')?.matches(':popover-open')""",
+                    what="the list to close once the answer for «bjorn ase» came")
     s = state(page)
     t.check(not s["open"] and s["shown"] == "Bjørn Åsen",
             f"and then its first option, not the earlier answer's: {s['shown']}")
@@ -405,9 +421,9 @@ def toolbar(t):
     page.keyboard.type("bjorn")
     wait_answered(page, "bjorn", TOOLBAR_FIELD)
     chosen = state(page, TOOLBAR_FIELD)["values"][0]
-    page.keyboard.press("Enter")
-    page.wait_for_url(re.compile(r"customer=cus_"), timeout=5000)
-    page.wait_for_timeout(600)
+    with page.expect_htmx():
+        page.keyboard.press("Enter")
+    page.wait_for_url(re.compile(r"customer=cus_"))
     titles = page.locator(".tun-table tbody tr td:first-child").all_inner_texts()
     focus = page.evaluate("() => document.activeElement?.id")
     button = page.locator(TOOLBAR_BUTTON).inner_text()
@@ -438,9 +454,9 @@ def sheet(t):
     wait_answered(page, "nordvik", TOOLBAR_FIELD)
     list_box = page.evaluate(BOX, "#cards-toolbar-customer-list-box")
     t.check(list_box["height"] <= 15 * 16 + 1, f"its list scrolls in a box of at most 15rem: {list_box}")
-    page.locator(f"{TOOLBAR_FIELD} ~ [data-tun-choice-list] [role=option]").first.tap()
-    page.wait_for_url(re.compile(r"customer=cus_"), timeout=5000)
-    page.wait_for_timeout(600)
+    with page.expect_htmx():
+        page.locator(f"{TOOLBAR_FIELD} ~ [data-tun-choice-list] [role=option]").first.tap()
+    page.wait_for_url(re.compile(r"customer=cus_"))
     opened = page.evaluate("""() => ({
       sheet: document.querySelector('#cards-toolbar-sheet').open,
       popovers: [...document.querySelectorAll('[popover]')].filter((p) => {
@@ -484,7 +500,7 @@ def without_javascript(t):
     select.select_option(label="Bjørn Åsen")
     page.fill("input[name=title]", "Found without scripts")
     page.locator("button[type=submit]:has-text('Report the item')").click()
-    page.wait_for_url(re.compile(r"/items/crd_"), timeout=5000)
+    page.wait_for_url(re.compile(r"/items/crd_"))
     t.check("Bjørn Åsen" in page.locator(".tun-summary-list").inner_text(),
             "and saving posts the chosen customer's id")
 
@@ -505,11 +521,11 @@ def without_javascript(t):
             "the filter's popover opens with its select and its «Find» field")
     page.fill("#cards-toolbar-customer-find", "nordvik")
     page.locator("[data-tun-list-toolbar-apply]").click()
-    page.wait_for_url(re.compile(r"customer-find=nordvik"), timeout=5000)
+    page.wait_for_url(re.compile(r"customer-find=nordvik"))
     page.locator(TOOLBAR_BUTTON).click()
     page.locator("#cards-toolbar-customer-choice").select_option(label="Nordvik Bakery Ltd")
     page.locator("[data-tun-list-toolbar-apply]").click()
-    page.wait_for_url(re.compile(r"customer=cus_"), timeout=5000)
+    page.wait_for_url(re.compile(r"customer=cus_"))
     titles = page.locator(".tun-table tbody tr td:first-child").all_inner_texts()
     t.check(titles == ["Bread van signage"], f"«Apply» filters by the chosen customer: {titles}")
 
@@ -552,14 +568,9 @@ def pictures(t):
 
 
 def run(t):
-    asking(t)
-    overtaken(t)
-    keys(t)
-    enter_before_the_answer(t)
-    placement(t)
-    phone(t)
-    given(t)
-    toolbar(t)
-    sheet(t)
-    without_javascript(t)
-    pictures(t)
+    # Each part's pages closed before the next part's: twenty pages open at
+    # once keep more connections than the server takes from one address.
+    for part in (asking, overtaken, keys, enter_before_the_answer, placement, phone, given,
+                 toolbar, sheet, without_javascript, pictures):
+        part(t)
+        t.close_pages()

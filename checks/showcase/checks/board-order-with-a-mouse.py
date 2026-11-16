@@ -32,9 +32,8 @@ def drag_before(page, title, target):
 
 
 def drop(page, path):
-    with page.expect_post(path) as post:
+    with page.expect_htmx(), page.expect_post(path) as post:
         page.mouse.up()
-    page.wait_for_timeout(400)
     return post
 
 

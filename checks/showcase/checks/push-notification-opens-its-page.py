@@ -9,10 +9,20 @@ from urllib.parse import urlparse
 sys.path.insert(0, str(pathlib.Path(__file__).parent))
 import _push  # noqa: E402
 
-PUSH = """(data) => new Promise((done) => {
-  self.dispatchEvent(new PushEvent('push', data === null ? {} : { data }));
-  setTimeout(done, 300);
-})"""
+# Dispatches a push and waits, in the worker, for what its handler gave
+# event.waitUntil (showNotification's promise): the worker shows the
+# notification when it is ready, not at a set time.  What it came to:
+# "shown", the error it failed with, or "no answer" after 120 s.
+PUSH = """async (data) => {
+  const event = new PushEvent('push', data === null ? {} : { data });
+  let shown = null;
+  const keep = event.waitUntil.bind(event);
+  event.waitUntil = (promise) => { shown = promise; keep(promise); };
+  self.dispatchEvent(event);
+  if (!shown) return 'the handler gave waitUntil nothing';
+  const late = new Promise((resolve) => setTimeout(() => resolve('no answer in 120 s'), 120000));
+  return Promise.race([shown.then(() => 'shown', (error) => `failed: ${error}`), late]);
+}"""
 
 NOTIFICATIONS = """async () => (await self.registration.getNotifications())
   .map((n) => ({ title: n.title, body: n.body, tag: n.tag, url: n.data && n.data.url }))"""
@@ -30,8 +40,19 @@ CLICK = """async () => {
 def push(worker, data):
     """Show what a push with DATA (a text, or None for none) shows; the notifications after."""
     worker.evaluate(CLOSE_ALL)
-    worker.evaluate(PUSH, data)
+    outcome = worker.evaluate(PUSH, data)
+    if outcome != "shown":
+        raise AssertionError(f"the service worker's notification for a push: {outcome}")
     return worker.evaluate(NOTIFICATIONS)
+
+
+# The service worker's registration, for a failure that says where it stopped.
+WORKER_STATE = """async () => {
+  const registration = await navigator.serviceWorker.getRegistration();
+  return {installing: registration?.installing?.state ?? null,
+          waiting: registration?.waiting?.state ?? null,
+          active: registration?.active?.state ?? null};
+}"""
 
 
 def run(t):
@@ -39,7 +60,12 @@ def run(t):
     _push.stand_in(page)
     page.sign_in("employee:anna")
     page.goto("/notifications")
-    page.wait_for_function("() => navigator.serviceWorker.controller !== null")
+    # The service worker's state goes in the failure if it never takes the page.
+    try:
+        page.wait_until("() => navigator.serviceWorker.controller !== null",
+                        what="the service worker to control the page")
+    except Exception as waited:
+        raise AssertionError(f"{waited}; its registration: {page.evaluate(WORKER_STATE)}") from None
     worker = next(w for w in page.context.service_workers if w.url.endswith("/sw.js"))
 
     shown = push(worker, '{"title":"A new item for you","body":"The export fails",'

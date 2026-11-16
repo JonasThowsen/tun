@@ -30,9 +30,11 @@ SWAP = """async () => {
   document.body.append(holder);
   await htmx.ajax('GET', '/items', {target: '#swapped', swap: 'innerHTML',
                                     select: '.tun-page-header-actions'});
-  await new Promise((done) => setTimeout(done, 300));
-  return holder.querySelector('kbd[data-tun-key=ctrl]')?.textContent;
 }"""
+
+# The shortcut the components' script writes into the swapped copy: ⌘ once
+# it has rewritten the server's Ctrl.
+SWAPPED_MAC_KEY = "() => document.querySelector('#swapped kbd[data-tun-key=ctrl]')?.textContent === '⌘' && '⌘'"
 
 
 def run(t):
@@ -69,6 +71,8 @@ def run(t):
     page.sign_in("employee:anna")
     page.goto("/items")
     t.check(page.evaluate(MEASURE)["keys"] == ["⌘", "K"], "a Mac reads ⌘ K")
-    t.check(page.evaluate(SWAP) == "⌘", "also in what htmx swaps in")
+    page.evaluate(SWAP)
+    t.check(page.wait_until(SWAPPED_MAC_KEY, what="the script to write ⌘ into what htmx swapped in") == "⌘",
+            "also in what htmx swaps in")
     page.keyboard.press("Meta+k")
     t.check(page.locator("dialog#search[open]").count() == 1, "and ⌘K opens the search")
