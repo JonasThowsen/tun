@@ -62,6 +62,8 @@ combination and that every job can carry its arguments, and restore the virtual 
       (setf (application-accounting app) (make-instance 'tun.accounting.fake:fake-accounting)))
     (unless (application-mail app)
       (setf (application-mail app) (tun.mail:make-mail-adapter (application-mail-spec app))))
+    (unless (application-pdf-renderer app)
+      (setf (application-pdf-renderer app) (tun.pdf:default-pdf-renderer :test test-clock)))
     (unless (application-push-service app)
       (setf (application-push-service app)
             (make-instance (if test-clock 'tun.push:log-push-service 'tun.push:web-push-service))))
@@ -578,6 +580,9 @@ makes its scenario's records there (spec/preview.md 3)."
                                                            :synchronous synchronous
                                                            :group-commit group-commit)
                                         :test-clock test-clock
+                                        ;; spec/pdf.md 3.1: Typst when the
+                                        ;; environment names it, a preview's too.
+                                        :pdf-renderer (tun.pdf:environment-pdf-renderer)
                                         :debug-tools (flag "--debug-tools")
                                         :allow-eval (flag "--allow-eval")
                                         :repl-port repl-port

@@ -29,7 +29,7 @@
            #:*http-json-handler* #:*http-json-method* #:http-post
            #:query-string
            #:remote-failure #:remote-failure-status #:remote-failure-body #:remote-failure-url
-           #:run-program #:*program-handler* #:missing-programs
+           #:run-program #:*program-handler* #:missing-programs #:run-own-program
            #:program-failure #:program-failure-name #:program-failure-output
            #:program-failure-error-output))
 

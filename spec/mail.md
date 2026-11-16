@@ -61,7 +61,8 @@ TUN package for a client and in TUN.CORE for a module (`tun-platform.md`
   and stores nothing. A notification uses one, such as
   `"answer:kom_…"`, so sending it again is harmless.
 
-- `attachments` is a list of files the mail carries (§2.2).
+- `attachments` is a list of files the mail carries (§2.2), such as a
+  PDF made with `make-pdf` (`pdf.md`).
 
 ### 2.1 HTML from nodes
 

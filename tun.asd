@@ -87,6 +87,10 @@
                                              (:file "attachments")))
                ;; After files: a mail's attachments are checked and read as files are.
                (:module "mail" :components ((:file "mail") (:file "html") (:file "resend")))
+               ;; After mail and outbound: a document is a mail's node tree,
+               ;; and Typst runs as a program does (spec/pdf.md).
+               (:module "pdf" :components ((:file "pdf") (:file "fake") (:file "typst")
+                                           (:static-file "document.typ")))
                (:module "platform"
                 :components ((:file "live-definitions")
                              (:file "workflows")
@@ -141,7 +145,7 @@
                              (:file "files")))
                ;; The Norwegian catalogues of the kernel's copy (spec/i18n.md 3.2).
                (:module "i18n" :components ((:file "nb-core") (:file "nb-platform")
-                                            (:file "nb-jobs") (:file "nb-mail")
+                                            (:file "nb-jobs") (:file "nb-mail") (:file "nb-pdf")
                                             (:file "nb-files") (:file "nb-auth")
                                             (:file "nb-push") (:file "nb-agent")
                                             (:file "nb-web") (:file "nb-ui")))
@@ -189,6 +193,7 @@
                              (:file "mail-tests")
                              (:file "mail-html-tests")
                              (:file "mail-files-tests")
+                             (:file "pdf-tests")
                              (:file "push-tests")
                              (:file "jobs-tests")
                              (:file "schedule-tests")

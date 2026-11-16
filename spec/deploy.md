@@ -49,7 +49,9 @@ client, tag `latest`. Its entrypoint is the server of `nix build`, so the
 image runs exactly the pinned kernel, modules and client, and any
 arguments are the server's flags. It also holds CA certificates, a
 writable `/tmp` and `HOME=/tmp`, and sets `LANG=C.UTF-8`. It has no shell
-and no other programs. Nothing in it depends on the client's git commit:
+and no other programs but Typst and its fonts, which make PDFs
+(`pdf.md` §3.2): about 47 MB of the image, named to the server by
+`TUN_TYPST` and `TUN_PDF_FONTS`, which `buildClient` sets. Nothing in it depends on the client's git commit:
 it is built from the client's own files and the pinned kernel and
 modules, so a commit that changes none of them, such as one to another
 application of a monorepo or to the client's `deploy.nix`, builds the

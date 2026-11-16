@@ -149,6 +149,8 @@
    ;; TUN.MAIL or TUN.FILES: defined there, exported here and from TUN
    ;; (spec/tun-platform.md 2.3)
    #:send-mail #:render-mail #:attach-files #:attachments-of #:file-octets
+   ;; PDFs for a module, as mail and files (spec/pdf.md 1)
+   #:make-pdf #:pdf-text #:application-pdf-renderer
    #:application-started-us #:application-max-inflight #:application-inflight-cell
    #:operation-eval-only-p
    #:*application* #:test-mode-p

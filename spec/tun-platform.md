@@ -57,11 +57,12 @@ acceptance checks verify it from the outside.
    interface test (compiler, reader or loader) covers modules too. What a module
    exports to clients is its public interface; the rest is internal. The
    kernel's public packages for a module are `TUN.CORE`, `TUN.WORKFLOWS`,
-   `TUN.JOBS`, `TUN.WEB`, `TUN.UI` and `TUN.ACCOUNTING`; mail and files
-   reach a module through `TUN.CORE`, which exports `send-mail`,
-   `render-mail`, `attach-files`, `attachments-of` and `file-octets`
-   (`mail.md` §2, `files.md` §4.2), not through `TUN.MAIL` or
-   `TUN.FILES`, whose other symbols are the kernel's own.
+   `TUN.JOBS`, `TUN.WEB`, `TUN.UI` and `TUN.ACCOUNTING`; mail, files and
+   PDFs reach a module through `TUN.CORE`, which exports `send-mail`,
+   `render-mail`, `attach-files`, `attachments-of`, `file-octets`,
+   `make-pdf` and `pdf-text` (`mail.md` §2, `files.md` §4.2, `pdf.md`
+   §1), not through `TUN.MAIL`, `TUN.FILES` or `TUN.PDF`, whose other
+   symbols are the kernel's own.
 4. **Extension points**: a module publishes the same kinds as a client adds (`core.md` §1.1: field,
    rule, computed, before/after an operation, operation, workflow, template,
    screen) plus any named seam its domain needs (the orders module has, among others, discount,

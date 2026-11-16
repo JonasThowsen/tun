@@ -62,6 +62,10 @@ stopped included (spec/outbound.md 6).")
    (mail :initarg :mail :initform nil :accessor application-mail
          :documentation "The mail provider's adapter (spec/mail.md 1), made from the
 client's (:mail ...) when the application opens unless given here.")
+   (pdf-renderer :initarg :pdf-renderer :initform nil :accessor application-pdf-renderer
+                 :documentation "The adapter make-pdf makes a PDF with (spec/pdf.md 3.1):
+Typst, the fake, or NIL for none; chosen when the application opens unless
+given here.")
    (push-service :initarg :push-service :initform nil :accessor application-push-service
                  :documentation "The adapter push notifications are delivered through
 (spec/push.md 5): Web Push over HTTPS, or one that sends nothing with the test

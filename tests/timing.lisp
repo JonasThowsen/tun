@@ -22,9 +22,20 @@
 agrees with them to the tick."
   (get-internal-real-time))
 
-(defun process-nanoseconds ()
+(defun own-nanoseconds ()
   "The processor time of this process so far, every thread of it."
   (clock-nanoseconds sb-unix:clock-process-cputime-id))
+
+(defun children-nanoseconds ()
+  "The processor time of the programs this process ran and waited for, such
+as Typst making a PDF, as the kernel counts them for ended children."
+  (multiple-value-bind (ok user-us system-us) (sb-unix:unix-getrusage sb-unix:rusage_children)
+    (if ok (* 1000 (+ user-us system-us)) 0)))
+
+(defun process-nanoseconds ()
+  "The processor time of this process so far, every thread of it, and of the
+programs it ran and waited for."
+  (+ (own-nanoseconds) (children-nanoseconds)))
 
 (defun load-average ()
   "The machine's load average over the last minute, as /proc/loadavg says."

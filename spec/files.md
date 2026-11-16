@@ -4,7 +4,9 @@ Status: v1, built 2026-10-26, core 1.20.0; `attachments-of` and files in a
 dialog, core 1.21.0; the viewer centred, core 1.21.1; its copy in the
 page's language (`i18n.md`), core 2.0.0; the control inside its column
 on a narrow phone, core 2.35.0; `file-octets`, a chunked post's refusal,
-the control's own button and one image dialog a page, core 2.41.0. How a record carries files,
+the control's own button and one image dialog a page, core 2.41.0;
+bytes an operation made, such as a PDF, attached by `attach-files`, core
+2.43.0. How a record carries files,
 such as a screenshot on a reported issue: which records may, which files
 are taken and what is stripped from them, how a person attaches them in
 a form (choosing, dragging, pasting), how an agent attaches them through
@@ -252,6 +254,14 @@ An operation takes files through a parameter of the type `files`:
   entity that takes files, and returns them. It refuses past the entity's
   `:max` (§2.2). It is ordinary code in the operation: the operation's
   policy and the record's policy have already decided the call.
+- An item of FILES may also be `(:filename NAME :content OCTETS)`, bytes
+  the operation made, such as a PDF (`pdf.md` §4), as `send-mail` takes
+  them (`mail.md` §2.2): checked as an uploaded file by §2 and §3, NAME
+  at most 255 characters and cleaned by §2.3, each refusal failing the
+  operation `invalid_input` on `files[N]` (N from 0) with the files'
+  message, and nothing of the call stored. Its attacher is the actor, as
+  for a file a person sends. An item that is neither an uploaded file
+  nor this form is an error in the operation's code.
 
 ### 4.2 The tools
 

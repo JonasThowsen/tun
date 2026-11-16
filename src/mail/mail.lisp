@@ -23,7 +23,7 @@
   (:import-from #:tun.files #:servable-attachment #:stored-file-octets #:checked-upload
                 #:attachment-filename #:attachment-content-type #:attachment-size
                 #:attachment-sha256 #:upload-filename #:upload-content-type #:upload-octets
-                #:upload-sha256 #:make-upload #:+most-given-name+)
+                #:upload-sha256 #:make-upload #:given-file-p #:given-upload)
   (:export #:mail #:mail-to #:mail-subject #:mail-text #:mail-html #:mail-reply-to #:mail-key
            #:mail-status #:mail-attempts #:mail-job-id #:mail-last-error
            #:mail-provider #:mail-provider-id #:mail-created-at #:mail-sent-at
@@ -36,7 +36,11 @@
            #:mail-adapter #:deliver-mail #:provider-name #:log-mail
            #:resend-mail #:resend-endpoint #:resend-from
            #:make-mail-adapter #:mail-problems #:send-queued-mail
-           #:mail-list #:mail-get #:mail-retry))
+           #:mail-list #:mail-get #:mail-retry
+           ;; The node grammar's checks and the text made from a tree, which
+           ;; a PDF's document shares (spec/pdf.md 2.1)
+           #:proper-list-p #:shown #:scheme-p #:+style-value+ #:+mail-style-properties+
+           #:tree-text))
 
 (in-package #:tun.mail)
 
@@ -141,26 +145,13 @@ checked; input errors for what cannot be sent are collected."
                  (input-error "attachments" "A mail's files can be at most 10 MB together."))
                files)))))
 
-(defun given-file-p (item)
-  "True when ITEM is (:FILENAME NAME :CONTENT OCTETS), in either order."
-  (and (consp item) (= (length item) 4)
-       (null (set-exclusive-or (list (first item) (third item)) '(:filename :content)))))
-
 (defun mail-attachment-file (item path)
   "ITEM, one of send-mail's attachments, as (UPLOAD . FILE-ID): a stored
 file read as the caller, or bytes checked as an uploaded file.  NIL with an
 input error at PATH when it cannot be sent."
   (cond ((given-file-p item)
-         (let ((name (getf item :filename))
-               (content (getf item :content)))
-           (cond ((not (stringp name)) (input-error path "filename must be text"))
-                 ((> (length name) +most-given-name+)
-                  (input-error path "The filename cannot be longer than 255 characters."))
-                 ((not (typep content '(vector (unsigned-byte 8))))
-                  (input-error path "content must be a vector of octets"))
-                 (t (let ((upload (checked-upload name (coerce content '(simple-array (unsigned-byte 8) (*)))
-                                                  path)))
-                      (and upload (cons upload nil)))))))
+         (let ((upload (given-upload item path)))
+           (and upload (cons upload nil))))
         ((or (stringp item) (and (hash-table-p item) (stringp (jget item "id"))))
          (stored-mail-file (if (stringp item) item (jget item "id"))))
         (t (input-error path "must be a file's id, an attachment object or (:filename NAME :content OCTETS)"))))

@@ -17,6 +17,7 @@
                (:file "graph")
                (:file "notifications")
                (:file "mail")
+               (:file "documents")
                (:file "welcome")
                (:file "wait")
                (:file "application")

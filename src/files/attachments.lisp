@@ -347,14 +347,48 @@ its record policy admits it and the entity is readable by the caller."
   (let ((record (and (stringp id) (fetch (class-name class) id))))
     (and record (entity-readable-p record *actor*) record)))
 
+(defun given-file-p (item)
+  "True when ITEM is (:FILENAME NAME :CONTENT OCTETS), in either order: bytes
+the caller made, such as a PDF (spec/files.md 4.1, spec/mail.md 2.2)."
+  (and (consp item) (= (length item) 4)
+       (null (set-exclusive-or (list (first item) (third item)) '(:filename :content)))))
+
+(defun given-upload (item path)
+  "ITEM, (:FILENAME NAME :CONTENT OCTETS), checked as an uploaded file, as an
+UPLOAD; NIL with an input error at PATH when Tun does not take it."
+  (let ((name (getf item :filename))
+        (content (getf item :content)))
+    (cond ((not (stringp name)) (input-error path "filename must be text"))
+          ((> (length name) +most-given-name+)
+           (input-error path "The filename cannot be longer than 255 characters."))
+          ((not (typep content '(vector (unsigned-byte 8))))
+           (input-error path "content must be a vector of octets"))
+          (t (checked-upload name (coerce content '(simple-array (unsigned-byte 8) (*))) path)))))
+
+(defun given-uploads (items)
+  "ITEMS, ATTACH-FILES's, with each (:FILENAME NAME :CONTENT OCTETS) among
+them checked as an uploaded file; fails invalid_input on files[N] for one
+Tun does not take."
+  (if (notany #'given-file-p items)
+      items
+      (collecting-input-errors
+        (loop for item in items
+              for i from 0
+              collect (if (given-file-p item)
+                          (given-upload item (format nil "files[~d]" i))
+                          item)))))
+
 (defun attach-files (record uploads)
   "Store UPLOADS, the value of a FILES parameter, as attachments of RECORD,
 inside the current write, and return them (spec/files.md 4.1).  RECORD is a
-stored record of an entity that takes files.  Fails invalid_input when the
-record would hold more files than its entity's :MAX allows; then none is
-stored."
+stored record of an entity that takes files.  An item of UPLOADS may also be
+(:FILENAME NAME :CONTENT OCTETS), bytes the operation made, such as a PDF,
+checked as an uploaded file.  Fails invalid_input when the record would hold
+more files than its entity's :MAX allows, or a file given as bytes is not
+taken; then none is stored."
   (assert-writable)
-  (let* ((class (class-of record))
+  (let* ((uploads (given-uploads uploads))
+         (class (class-of record))
          (option (entity-attachments class)))
     (unless option
       (fail :invalid-input "~a does not take files" (entity-label-text class)))

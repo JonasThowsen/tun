@@ -1041,6 +1041,86 @@ missing, unless it runs with `--claimed-identity`. Admins see what was
 sent, and why a mail failed, with `mail_list` and `mail_get`, and send a
 failed one again with `mail_retry`.
 
+## Making a PDF
+
+`(make-pdf TREE :title TITLE)` returns a PDF's bytes for a document
+described as nodes, in the grammar of a mail's HTML (`spec/pdf.md`):
+headings, paragraphs, lists and tables, with a few of their `style`
+declarations (alignment, weight, size, colour, a column's width). A
+table's `thead` is repeated at the top of every page it continues on,
+and its `tfoot` comes once at the end. `:paper` is `:a4` or `:letter`,
+`:margins` millimetres, `:header` and `:footer` trees on every page, and
+the page numbers, «Page 2 of 5», are in the language the document is
+written in: the tenant's, or the one `with-language` binds. Money and
+dates are written with `money-text` and `date-text`, as on a page.
+
+An invoice-like document, made in an operation, mailed to the customer
+and kept on the order:
+
+```lisp
+(defun invoice-document (order lines)
+  "The invoice of ORDER with LINES, as a document's nodes."
+  (let ((right "text-align: right"))
+    `((:h1 ,(tr "Invoice ~a" (order-number order)))
+      ;; Two columns without lines: who it is for, and the invoice's facts.
+      (:table (:tr (:td (:strong ,(customer-name (order-customer order))) (:br)
+                        ,(customer-address (order-customer order)))
+                   (:td ,(tr "Invoice date: ~a" (date-text (local-today))) (:br)
+                        ,(tr "Due: ~a" (date-text (order-due-on order))))))
+      (:table (:thead (:tr (:th ,(tr "Description"))
+                           (:th (:@ :style ,right) ,(tr "Quantity"))
+                           (:th (:@ :style ,right) ,(tr "Price"))
+                           (:th (:@ :style ,right) ,(tr "Amount"))))
+              (:tbody ,@(mapcar (lambda (line)
+                                  `(:tr (:td ,(line-description line))
+                                        (:td (:@ :style ,right) ,(number-text (line-quantity line)))
+                                        (:td (:@ :style ,right) ,(money-text (line-price-minor line)))
+                                        (:td (:@ :style ,right) ,(money-text (line-amount-minor line)))))
+                                lines))
+              (:tfoot (:tr (:td (:@ :colspan 3 :style ,right) (:strong ,(tr "Total")))
+                           (:td (:@ :style ,right) (:strong ,(money-text (order-total-minor order))))))))))
+
+(define-operation orders-invoice ((order-id :type (id order) :required t :label "Order"))
+    (:entity order :kind :update :policy :employee :title "Send the invoice")
+  (let* ((order (fetch! 'order order-id))
+         (number (order-number order))
+         (pdf (make-pdf (invoice-document order (order-lines order))
+                        :title (tr "Invoice ~a" number)
+                        :footer (tr "Pay to account ~a by ~a"
+                                    (setting-value-at-use "invoice.account")
+                                    (date-text (order-due-on order)))))
+         (file (list :filename (format nil "invoice-~a.pdf" number) :content pdf)))
+    ;; Kept on the order: /files/ID serves it to whoever may see the order.
+    (attach-files order (list file))
+    (send-mail :to (customer-email (order-customer order))
+               :subject (tr "Invoice ~a" number)
+               :text (tr "The invoice is attached.")
+               :attachments (list file)
+               :key (format nil "invoice:~a" number))
+    order))
+```
+
+- `(pdf-text TREE)` is what the document says as text, a table's cells
+  separated by « | »: a test asserts the invoice's content with it, and
+  a page can show it before the PDF is made.
+
+  ```lisp
+  (is (search "Total | 1 250,00 kr" (pdf-text (invoice-document order lines))))
+  ```
+
+- In tests the PDF is made by a fake, without Typst: a small real PDF of
+  the document's text, which `attach-files` and `send-mail` take as they
+  take Typst's. A server makes it with Typst, which `buildClient` puts in
+  the image.
+- A page cannot answer the PDF itself as a download: an operation stores
+  it on a record with `attach-files`, and the page links to
+  `/files/ID`, which downloads it for whoever may see the record.
+- A document of hundreds of lines takes a tenth of a second or more
+  while the operation's write is open; make a long one in a job.
+- A tree a mail takes is a document too, but for `img`, which a PDF
+  refuses for now. What a mail's style sets and a PDF does not draw
+  (padding, borders) is left out of the PDF.
+
 ## Calling other systems
 
 `(http-json-post url body :headers ... :timeout ...)` posts a JSON body to

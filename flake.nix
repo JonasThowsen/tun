@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.42.0";
+      coreVersion = "2.43.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -102,6 +102,22 @@
         lispLibs = coreLibs sbcl.pkgs;
         nativeLibs = [ pkgs.sqlite ];
       };
+
+      # What makes a PDF (spec/pdf.md 3.2): Typst, and the fonts it is given,
+      # static TrueType files only (Typst 0.14 cannot draw a variable font):
+      # Liberation Sans for Latin, Greek and Cyrillic, DejaVu Sans for the
+      # letters Liberation lacks.  The server finds both through the
+      # environment, TUN_TYPST and TUN_PDF_FONTS (pdfEnvironment).
+      typst = pkgs.typst;
+      pdfFonts = pkgs.runCommand "tun-pdf-fonts" { } ''
+        mkdir -p $out
+        cp ${pkgs.liberation_ttf}/share/fonts/truetype/LiberationSans-{Regular,Bold,Italic,BoldItalic}.ttf $out/
+        cp ${pkgs.dejavu_fonts}/share/fonts/truetype/DejaVuSans{,-Bold}.ttf $out/
+      '';
+      pdfEnvironment = ''
+        export TUN_TYPST="${typst}/bin/typst"
+        export TUN_PDF_FONTS="${pdfFonts}"
+      '';
 
       # The test helpers of the core suite, as a package a client's dev shell
       # can use (spec/cli.md 6).
@@ -253,6 +269,7 @@
           export TUN_CORE_REVISION="${self.rev or self.dirtyRev or "unknown"}"
           export TUN_CLIENT_REVISION="''${TUN_CLIENT_REVISION:-${revision}}"
           ${lib.concatMapStringsSep "\n" (m: "export TUN_MODULE_REVISION_${lib.toUpper m.name}=\"${m.rev}\"") mods.ordered}
+          ${pdfEnvironment}
           exec ${env}/bin/sbcl --noinform --non-interactive --no-userinit --no-sysinit \
             --load ${launcher} --end-toplevel-options "$@"
         '';
@@ -359,6 +376,7 @@
           ] ++ packages;
           shellHook = ''
             export TUN_SOURCE="${self}"
+            ${pdfEnvironment}
             # The client's systems and its own modules', from the working tree
             # (spec/cli.md 6, tun-platform.md 2.1).
             export CL_SOURCE_REGISTRY="$PWD/:$PWD/modules//''${CL_SOURCE_REGISTRY:+:$CL_SOURCE_REGISTRY}"
@@ -409,6 +427,8 @@
           pkgs.emacs-nox mallet checkPython slynk-cli.packages.${system}.default
           # flock(1), which the verify lock's tests hold it with (spec/preview.md 4).
           pkgs.util-linux
+          # pdfinfo and pdftotext, which the PDF tests read a made PDF with.
+          pkgs.poppler-utils
         ];
         # The checkout's own systems (the kernel, modules/, the test client
         # and clients/) join
@@ -417,6 +437,7 @@
         # shell from .envrc, for one.
         shellHook = ''
           export TUN_LISP_ROOT="$PWD"
+          ${pdfEnvironment}
           export CL_SOURCE_REGISTRY="$PWD/:$PWD/modules//:$PWD/tests/client/:$PWD/clients//''${CL_SOURCE_REGISTRY:+:$CL_SOURCE_REGISTRY}"
         '';
       };

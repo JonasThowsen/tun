@@ -88,6 +88,36 @@ kundefilter finner blant (spec/ui.md 6, choice-input).")
   ("The cards as an email summary, as render-mail makes it before sending."
    "Et sammendrag av kortene som e-post, slik render-mail lager det før det sendes."))
 
+;;; The board as a PDF (documents.lisp)
+
+(define-translations "nb"
+  ("Document" "Dokument")
+  ("Documents" "Dokumenter")
+  ("Made" "Laget")
+  ("The board's estimate" "Anslag for tavla")
+  ("~d cards, as they stand on the board." "~d kort, slik de står på tavla.")
+  ("Column" "Kolonne")
+  ("Total" "Sum")
+  ("Made by the showcase" "Laget av utstillingen")
+  ("Make the board's PDF" "Lag PDF av tavla")
+  ("Makes the board's estimate as a PDF and keeps it as a document."
+   "Lager anslaget for tavla som PDF og tar vare på det som et dokument.")
+  ("The documents made, newest first, each with its file."
+   "Dokumentene som er laget, nyeste først, hvert med fila si.")
+  ("The board's document as text" "Tavlas dokument som tekst")
+  ("What the board's estimate says, as pdf-text gives it."
+   "Det anslaget for tavla sier, slik pdf-text gir det.")
+  ("No PDF has been made yet." "Ingen PDF er laget ennå.")
+  ("The board as a document" "Tavla som dokument")
+  ("What the PDF says, as pdf-text gives it before it is made."
+   "Det PDF-en sier, slik pdf-text gir det før den lages.")
+  ("The PDF" "PDF-en")
+  ("Made with make-pdf and kept as a file of a document."
+   "Laget med make-pdf og lagret som en fil på et dokument.")
+  ("Make the PDF" "Lag PDF-en")
+  ("The board's estimate as a PDF, made with make-pdf."
+   "Anslaget for tavla som PDF, laget med make-pdf."))
+
 ;;; Notifications (notifications.lisp)
 
 (define-translations "nb"

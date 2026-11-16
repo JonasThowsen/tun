@@ -157,11 +157,16 @@ directory, is skipped."
 declares that are not on the server's PATH, for the start check."
   (remove-if #'program-path (application-programs application)))
 
+(defvar *passed-environment* +passed-environment+
+  "The variables of the server's environment the program being started
+sees: +PASSED-ENVIRONMENT+ for a declared program, none for the kernel's
+own (RUN-OWN-PROGRAM).")
+
 (defun program-environment (environment)
   "The environment a program sees, as NAME=VALUE strings: those of
-+PASSED-ENVIRONMENT+ the server has, then ENVIRONMENT, whose entries replace
+*PASSED-ENVIRONMENT* the server has, then ENVIRONMENT, whose entries replace
 any of the same name."
-  (let ((entries (loop for name in +passed-environment+
+  (let ((entries (loop for name in *passed-environment*
                        for value = (sb-ext:posix-getenv name)
                        when value collect (cons name value))))
     (loop for (name . value) in environment
@@ -554,6 +559,41 @@ the tenant's programs are running (spec/outbound.md 6)."
            (run-outcome name arguments directory input environment seconds on-error-line))
       ;; Recorded also when ON-ERROR-LINE stopped the run, which then has
       ;; no outcome.
+      (note-step :external :name (run-name name arguments) :source :core
+                           :detail (outcome-detail outcome code)
+                           :started started :duration (- (trace-clock-us) started)))
+    (case outcome
+      ((:exited :signaled) (values output code error-output))
+      (t (program-failure outcome name :output output :error-output error-output
+                                       :seconds (ceiling seconds))))))
+
+;;; ------------------------------------------------------------------
+;;; The kernel's own programs
+
+(defun run-own-program (name path arguments &key directory environment (timeout 10))
+  "Run the program at PATH, an absolute path, for the kernel itself, as
+RUN-PROGRAM runs a declared one (spec/outbound.md 6): no shell, its own
+process group, its outputs bounded, one of the tenant's programs at once,
+TIMEOUT seconds held to the operation's deadline, a step of the trace named
+by NAME and ARGUMENTS.  It needs no declaration and no *PROGRAM-HANDLER*
+answers for it.  ENVIRONMENT, an alist of strings, is all of its
+environment: nothing of the server's is passed (spec/pdf.md 3.3).  Values
+its standard output, its exit code and its standard error; signals
+PROGRAM-FAILURE when no answer came."
+  (check-type path string)
+  (check-type name string)
+  (let ((seconds (seconds-allowed timeout))
+        (started (trace-clock-us))
+        (outcome nil) (code nil) (output nil) (error-output nil))
+    (unwind-protect
+         (multiple-value-setq (outcome code output error-output)
+           (cond ((< seconds 1) :no-time)
+                 (t (let ((app (claim-program-place)))
+                      (if (null app)
+                          :full
+                          (let ((*passed-environment* '()))
+                            (run-process app path arguments directory nil environment
+                                         seconds nil)))))))
       (note-step :external :name (run-name name arguments) :source :core
                            :detail (outcome-detail outcome code)
                            :started started :duration (- (trace-clock-us) started)))

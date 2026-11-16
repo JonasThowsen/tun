@@ -162,7 +162,9 @@ things it means:
   time it took is under the limit: MS, or, with OVER (a speed measured
   before by `measure-speed`), FACTOR (1 by default) times OVER plus MS.
   Processor time is that of this process, every thread of it (a test
-  server's included), and, when the test application's store is
+  server's included), that of the programs it ran and waited for, such
+  as Typst making a PDF (`pdf.md` §5), as the kernel reports them for
+  ended children, and, when the test application's store is
   Postgres, that of the server processes serving its database, found in
   `pg_stat_activity` and read from `/proc/PID/schedstat`. Another
   process's load does not enter it; a slower rule, more rows read or

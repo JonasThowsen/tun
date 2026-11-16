@@ -141,6 +141,9 @@ the listed symbols (the same symbol objects, not copies)."
   ;; whom to send it to (spec/auth.md 2).  A client
   ;; creates and invites a person with (invoke 'accounts-create ...).
   (#:tun.mail #:send-mail #:render-mail)
+  ;; A document as PDF, made from a mail's node grammar, and what it says
+  ;; as text, for tests (spec/pdf.md)
+  (#:tun.pdf #:make-pdf #:pdf-text)
   ;; Push notifications to an installed app's devices: queued in the
   ;; caller's write, delivered after it commits (spec/push.md)
   (#:tun.push #:notify-push)
@@ -174,7 +177,7 @@ the listed symbols (the same symbol objects, not copies)."
 
 (setf tun.runtime::*core-packages*
   '(#:tun #:tun.core #:tun.workflows #:tun.accounting #:tun.accounting.fake #:tun.mail #:tun.push
-    #:tun.outbound #:tun.files #:tun.jobs #:tun.platform #:tun.errors
+    #:tun.outbound #:tun.pdf #:tun.files #:tun.jobs #:tun.platform #:tun.errors
     #:tun.introspection #:tun.auth #:tun.mcp #:tun.http #:tun.html #:tun.ui #:tun.web
     #:tun.guarded
     #:tun.runtime #:tun.store.memory #:tun.store.sqlite #:tun.store.postgres #:tun.public-builder))
