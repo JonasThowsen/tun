@@ -2,7 +2,7 @@
 
 - loop: checks-under-load
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 2f0bed6d4daa5c85b4358ec203cf4377bf454d79
 - item: sak_0v26pywqkp37tewm
 - estimate: 10h 11h 13h
@@ -611,6 +611,12 @@ not broken by this loop; kurs would change it when it updates its Tun.
 
 Their checks gain from this loop once they use the helpers.
 
+## Actuals
+
+```json
+{"loop":"checks-under-load","title":"Browser checks give the same verdict on a busy machine, and two verifies do not run their checks at once","repository":"tun","mode":"reviewed","stage":"done","item":"sak_0v26pywqkp37tewm","tags":["kind:tooling","core"],"like":["tun/test-timing","tun/mail-files"],"started":"2026-11-15 12:35","ended":"2026-11-16 03:16","minutes":{"total":881,"waiting_person":0,"waiting_reviewer":5,"working":876,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":240,"likely":360,"worst":600,"at":"brief"},"latest_estimate":{"best":600,"likely":660,"worst":780,"at":"shown"},"within_estimate":false,"ratio":2.45,"verify":{"rounds":8,"failed":3},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-15 12:35  started, reviewed
@@ -751,3 +757,4 @@ Their checks gain from this loop once they use the helpers.
   - **Before gate C:** `shots/report.md:3` says the preview ran at `1ac67944-dirty`, but `loop.md` records `shown`/`verified: 72f75fdc…`. The screenshots (`/ui/accordion` and `/ui/dialog`) don't depend on this change visually, so it doesn't matter at B. Gate C must still confirm that the deployed tree is the verified one.
   - **The proof's timeline:** from the Log alone, the round numbers don't line up cleanly with the times. For example, load-13 is logged at 17:27, yet `ui-search` has 10 loaded rounds after 23:31. The detailed logs are in the scratch folder `checks-under-load-proof`, which is outside what I can read. The counts as recorded meet N = 10.
   - **Bare asserts:** a client check with a bare `assert` (no message) would now be recorded with an empty text and no traceback. No showcase check does this. Using the traceback when the message is empty would avoid it.
+- 2026-11-16 03:16  finished at tun 49b79d65
