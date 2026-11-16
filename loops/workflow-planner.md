@@ -2,7 +2,7 @@
 
 - loop: workflow-planner
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 918aea1f63587fe789b8849de4a1ab0d1964af6a
 - item: sak_823jdn478xvtr6yj
 - estimate: 3h 5h 9h
@@ -469,6 +469,12 @@ What a client sees differently on 2.45.0:
   workflow marked failed; an admin plans it again. A job that inbound
   mail's handling queued is refused like an employee's.
 
+## Actuals
+
+```json
+{"loop":"workflow-planner","title":"A workflow remembers who planned it, so a requeued run never acts as the system; and two checks' own races","repository":"tun","mode":"reviewed","stage":"done","item":"sak_823jdn478xvtr6yj","tags":["kind:fix","core"],"like":["tun/erase-audit-download","tun/pdf","tun/checks-under-load"],"started":"2026-11-16 11:00","ended":"2026-11-16 17:52","minutes":{"total":412,"waiting_person":0,"waiting_reviewer":2,"working":410,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"latest_estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"within_estimate":true,"ratio":1.37,"verify":{"rounds":3,"failed":1},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-16 11:00  started, reviewed
@@ -579,3 +585,4 @@ What a client sees differently on 2.45.0:
   - Criterion 2's case «a workflow's run job retried with `jobs_retry`» has no test of its own. It is covered in principle: `jobs_retry` keeping `enqueued_by` is tested on a plain job, and `ask-as-planned` correcting the row is tested by `a-run-job-that-names-another-runs-as-the-planner`. The base already held this case, so a dedicated test could not have failed before the fix.
   - The `add_workflows_planned_by` entry in `schema_history` (criterion 4) is not asserted by name. The test checks the column exists, and the entry comes from the store's generic additive migration.
   - For gate C: the git snapshot from the start of this session showed uncommitted changes to `checks/showcase/checks/loading-sign.py`. The tree that gets deployed must be the verified `738aca74`, with that file's final form committed.
+- 2026-11-16 17:52  finished at tun 201d93e1
