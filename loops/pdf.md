@@ -2,7 +2,7 @@
 
 - loop: pdf
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: ac5436d805099c26ab907af938381479621da21f
 - item: sak_tsfth3mm5m4013rb
 - estimate: 4h 7h 12h
@@ -424,6 +424,12 @@ the head is on every page. The preview's screenshots of `/document` at
 390 and 1280 px are in `.build/loop/pdf/show/`: the text wraps inside its
 block at 390 px, and nothing scrolls sideways.
 
+## Actuals
+
+```json
+{"loop":"pdf","title":"Tun makes a PDF from a document's nodes, for documents an application sends or hands out","repository":"tun","mode":"reviewed","stage":"done","item":"sak_tsfth3mm5m4013rb","tags":["kind:feature","core"],"like":["tun/mail-files","tun/html-mail","tun/programs","tun/checks-under-load"],"started":"2026-11-16 03:21","ended":"2026-11-16 05:40","minutes":{"total":139,"waiting_person":0,"waiting_reviewer":4,"working":135,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"latest_estimate":{"best":240,"likely":420,"worst":720,"at":"brief"},"within_estimate":false,"ratio":0.46,"verify":{"rounds":3,"failed":1},"changes":{"A":1,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-16 03:21  started, reviewed
@@ -555,3 +561,4 @@ block at 390 px, and nothing scrolls sideways.
   
   **Not blocking**
   - The test that `:page-numbers nil` gives no page numbers only checks that "1" isn't on the page. That's weak, but it passes for the right reason.
+- 2026-11-16 05:40  finished at tun f4fc0bd5
