@@ -2,7 +2,7 @@
 
 - loop: erase-audit-download
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: d9d8568bf56f5f2d0c41375dd4ddaf1a6fe047c9
 - item: sak_ygs66kh0329hq80h
 - estimate: 2h30m 4h 8h
@@ -459,6 +459,12 @@ client, its customer-relationship module) can drop, once it takes
   document) :filename "customer-….json" :content-type
   "application/json"))`, as `docs/client-api.md` («Pages») shows.
 
+## Actuals
+
+```json
+{"loop":"erase-audit-download","title":"Three gaps a client met: a job erases a customer, a read is audited, a page answers a file made on the spot","repository":"tun","mode":"reviewed","stage":"done","item":"sak_ygs66kh0329hq80h","tags":["kind:feature","core"],"like":["tun/pdf","tun/mail-files","tun/customers-update"],"started":"2026-11-16 05:49","ended":"2026-11-16 10:50","minutes":{"total":301,"waiting_person":0,"waiting_reviewer":7,"working":294,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":150,"likely":240,"worst":480,"at":"brief"},"latest_estimate":{"best":150,"likely":240,"worst":480,"at":"brief"},"within_estimate":true,"ratio":1.25,"verify":{"rounds":5,"failed":3},"changes":{"A":2,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-16 05:49  started, reviewed
@@ -610,3 +616,4 @@ client, its customer-relationship module) can drop, once it takes
   - When the application opens, `enqueue-planned-workflows` (`src/platform/workflows.lisp:199-205`) queues it again under `system:reconcile`. `admin-or-system-p` accepts that, so a workflow an employee planned could then erase.
   
   Reaching it takes three crashes of the process, not something a caller can choose, and the Decisions say what would close it: recording on the workflow itself who planned it. But it falls short of the brief's "must not be reachable by a caller who could not erase through the tool". `modules/customers/README.md` §5.1 and `docs/client-api.md` also say without exception that an employee's workflow is `forbidden`. Unlike the schedule question, the Decisions don't say this goes to the owner in the report. The report should say so, and the docs should get a one-line caveat when it is next touched.
+- 2026-11-16 10:50  finished at tun 7752ab1d
