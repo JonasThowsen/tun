@@ -313,12 +313,8 @@ def overtaken_and_failed(t):
     page.route(re.compile(r".*/search\?q=gone$"), lambda route: route.abort("failed"))
     page.fill(FIELD, "")
     page.keyboard.type("gone")
-    page.wait_until("() => document.querySelector('dialog#tun-search [data-tun-search-query]')"
-                    "?.getAttribute('data-tun-search-query') === 'gone' || "
-                    "document.querySelector('dialog#tun-search .tun-search-results-empty')"
-                    "?.textContent === 'The search failed. Try again.' && "
-                    "!document.querySelector('dialog#tun-search .tun-search-results-title')",
-                    what="the search's answer for «gone»")
+    # The dialog still says «broken» failed: wait for what it says of «gone».
+    wait_shown(page, "gone")
     t.check(state(page)["empty"] == "The search failed. Try again.", "so does no answer at all")
 
 

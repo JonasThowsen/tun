@@ -12,7 +12,7 @@
 (defpackage #:tun.jobs
   (:use #:cl #:tun.core)
   (:export #:define-job #:enqueue-job #:cancel-job #:snooze-job #:fail-job #:last-attempt-p
-           #:running-job
+           #:running-job #:job-origin #:enqueue-job-asked-by
            #:job-cancelled #:job-cancelled-reason #:job-snoozed #:job-snoozed-seconds
            #:job-given-up #:job-given-up-reason
            #:job #:job-kind #:job-queue #:job-arguments #:job-state #:job-priority #:job-due-at
@@ -335,11 +335,12 @@ same, or NIL when the kind is not unique."
                      :order-by '(("seq" :desc)))))
 
 (defun job-origin ()
-  "Who asks for a job queued now (spec/jobs.md 3): in a job's body, whoever
+  "Who asks for a job queued now (spec/jobs.md 3.1): in a job's body, whoever
 asked for that job, so a chain of jobs names the call it started from;
 else the caller of the operation it is queued in, whatever actor the code
 under it binds; else the actor; kernel code may enqueue with no actor
-bound, as the system it is."
+bound, as the system it is.  A workflow planned now records the same as
+its planned_by."
   (cond (*job* (job-enqueued-by *job*))
         (*caller* (actor-string *caller*))
         (*actor* (actor-string *actor*))
@@ -351,6 +352,20 @@ the current write: it exists only when that write commits (spec/jobs.md 3).
 It is due at AT, an instant, or IN seconds from now, else now; a job due
 now starts as soon as the write commits, in a server.  Returns the job; when KIND is unique and a matching job exists, returns that one and
 stores nothing.  A bad argument fails the operation with invalid_input."
+  (declare (ignore at in))
+  (apply #'queue-job (job-origin) kind arguments))
+
+(defun enqueue-job-asked-by (asker kind &rest arguments &key at in &allow-other-keys)
+  "Queue a job as ENQUEUE-JOB does, asked for by ASKER, an actor's text or
+NIL for nobody recorded, rather than by whoever runs this code: for the
+kernel's own requeue of work someone asked for before, such as a planned
+workflow's run job when the application opens (spec/jobs.md 3.1)."
+  (declare (ignore at in))
+  (check-type asker (or null string))
+  (apply #'queue-job asker kind arguments))
+
+(defun queue-job (asker kind &rest arguments &key at in &allow-other-keys)
+  "Queue a job of KIND with ARGUMENTS, its enqueued_by ASKER."
   (assert-writable)
   (let ((definition (or (find-job-definition kind)
                         (error "~s is not a job kind; define it with define-job" kind)))
@@ -376,5 +391,5 @@ stores nothing.  A bad argument fails the operation with invalid_input."
                                  :max-attempts (job-definition-max-attempts definition)
                                  :unique-key key
                                  :enqueued-at (now)
-                                 :enqueued-by (job-origin)
+                                 :enqueued-by asker
                                  :errors (jarr '()))))))))

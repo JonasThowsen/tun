@@ -1377,8 +1377,11 @@ if the operation commits.
   the customers module (its README §5.1): the steps of `customers_erase`
   in their order, audited as `customers_erase` by `system:job`. It
   erases only in a job or a workflow that an admin's call or the system
-  (a schedule, a trigger) asked for, however many jobs lie between; in a
-  job or workflow an employee's call asked for, and called by a person's
+  (a schedule, a trigger) asked for, however many jobs lie between and
+  however often its job is queued again: who asked is the job's
+  `enqueued_by` and a workflow's `planned_by` (`spec/jobs.md` §3.1). In
+  a job or workflow anyone else asked for (an employee's call, inbound
+  mail, a workflow planned before core 2.45.0), and called by a person's
   operation, an admin's included, it is `forbidden`, so a person erases
   through `customers_erase` and its confirmation. An erasure some days
   after it is asked for:

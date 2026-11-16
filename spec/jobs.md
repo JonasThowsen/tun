@@ -90,19 +90,57 @@ core's, and a client declares the work and never writes the loop.
 - `:at` is an instant, `:in` seconds from now; without either, the job is
   due now. Bad arguments signal an error, so the operation fails
   `invalid_input`.
-- `enqueued_by` is who asked for the job: the actor of the call that
-  queued it, the outermost operation's caller even when the code under
-  it binds another actor with `with-actor` (a system actor among them);
-  outside any call, the actor bound, and `system` when none is. A job queued in a job's
-  body, a workflow's handler among them, keeps the `enqueued_by` of the
-  job that queued it, so a chain of jobs names the call it started from,
-  never `system:job`. A workflow runs in a job (`run-workflow`) queued
-  where the workflow was planned, so its handler's job names who planned
-  it.
+- `enqueued_by` is who asked for the job (§3.1).
 - It returns the job. When `:unique` matches a job already there, it
   returns that job and stores nothing (§5).
 - A job enqueued to run now starts as soon as its transaction commits:
   the commit wakes a worker for its queue (§6).
+
+### 3.1 Who asked
+
+A job runs as `system:job` and a workflow's handler as
+`system:workflow`, whoever asked for them, so what they do is not judged
+by their actor. Where it matters who is behind the work, as for
+`erase-customer` (customers README §5.1), the job says: its
+`enqueued_by` is who asked for it, and a workflow's `planned_by` who
+asked for the workflow. This section is the one place that says what
+they hold; the others point here.
+
+| Where the job is queued, or the workflow planned | Who asked |
+|---|---|
+| in an operation a person or an agent called, through MCP, the HTTP API or a page | that caller, `role:name`: the outermost operation's, also when the code under it calls other operations or binds another actor with `with-actor`, a system actor among them |
+| in a job's body, a workflow's handler among them | whoever asked for that job, so a chain of jobs and workflows names the call it began with, never `system:job` or `system:workflow` |
+| in a schedule's or a trigger's job, or by the schedules' tending, also when `clock_set` reaches it | `system:schedule`: the application's code decides, on records it reads |
+| by `schedules_run` | the admin who called it |
+| in work that inbound mail started | `system:inbound`, which is not the system's own decision: whoever sent the mail asked |
+| on a public page, as a customer | `customer:ID` |
+| when the application opens (an `:on-open` function) | `system:reconcile` |
+| by kernel code with no actor bound | `system` |
+
+- **A workflow's run.** A workflow runs in a job, `run-workflow` (§12),
+  whose `enqueued_by` is always the workflow's `planned_by`: the job
+  queued when it is planned, the job queued again when the application
+  opens for a planned workflow whose job ended for good, a job retried
+  after a crash or with `jobs_retry`, and a waiting job an earlier core
+  queued under another name, which the job's body corrects in its row
+  before the handler runs. So what a handler does is the decision of the
+  call that planned the workflow, however its job came to be.
+- **Run again, still who asked.** A retry after a failure, a snooze, a
+  recovery after a crash and `jobs_retry` keep `enqueued_by`. An admin
+  who retries a job does not make it theirs; the retry has its own audit
+  entry, `jobs_retry`, as the admin.
+- **Running is not asking.** A job or workflow run because an admin's
+  `clock_set` moved the test clock is still who asked for it.
+- **Nobody recorded.** A workflow planned before core 2.45.0 has no
+  `planned_by` (null, added by the additive migration), and its run
+  job's `enqueued_by` is null: work that needs an admin's or the
+  system's decision refuses it, as it refuses an employee's. A job
+  queued, or a workflow planned, by such a run names nobody too, as any
+  chain names whoever asked for its first job; nothing else is queued
+  with nobody recorded.
+- `(running-job)` gives the job whose body runs (§4.3), and
+  `(job-enqueued-by job)` its who asked: a module that must know reads
+  those.
 
 ## 4. Running
 
@@ -141,8 +179,8 @@ writes through operations (`invoke`), each its own transaction.
 `cancel-job`, `snooze-job` and `fail-job` signal conditions the runner
 handles, the way `fail` ends an operation. `(running-job)`, exported from
 `TUN.JOBS` for modules, is the job whose body is running, or NIL: a
-module reads its `enqueued_by` to know who asked for the work, as the
-customers module's `erase-customer` does (its README §5.1). `(last-attempt-p)` is true
+module reads its `enqueued_by` to know who asked for the work (§3.1), as
+the customers module's `erase-customer` does (its README §5.1). `(last-attempt-p)` is true
 during a job's last attempt, so a body can record on its own records that
 the work failed for good. Each failure adds `{attempt, at, error}` to
 the job's `errors`, which keeps the last ten.
@@ -295,7 +333,7 @@ answer», «close every quote past its expiry».
 | `jobs_list` | admin | The latest jobs, narrowed by state, kind or queue: arguments, state, attempts, due time, last error. |
 | `jobs_summary` | admin | How many jobs are in each state, how many succeeded and failed in the last 24 hours, each queue (its limit, jobs waiting, due later and running, the oldest waiting), and each process running jobs (when it started, whether it is alive, how many it runs). |
 | `jobs_get` | admin | One job with its `errors` and the request of each attempt. |
-| `jobs_retry` | admin | A `failed` or `cancelled` job queued again, due now, with its attempts reset. |
+| `jobs_retry` | admin | A `failed` or `cancelled` job queued again, due now, with its attempts reset; its `enqueued_by` stays who first asked (§3.1). |
 | `jobs_cancel` | admin | A queued or retrying job cancelled. |
 | `schedules_list` | admin | Each schedule and trigger: its times, as cron and in words («hverdager kl. 07:00»), its last occurrence and job (a trigger: how many jobs its last sweep enqueued), its next occurrence. |
 | `schedules_run` | admin | Enqueue a schedule's job now, or sweep a trigger now, outside its timetable. |
@@ -339,8 +377,9 @@ job.
    fails; a crash before that commit leaves the workflow planned for the
    job's next attempt. `define-workflow`, the workflow record and tools
    stay as they are for the acceptance suites. A planned workflow without
-   a job, stored before this, gets one when the application opens. Done
-   2026-10-20.
+   a job waiting, stored before this or whose job ended for good, gets
+   one when the application opens, asked for by its `planned_by`
+   (§3.1). Done 2026-10-20.
 3. **The messaging outbox** runs on jobs: each delivery has a
    `send_delivery` job in the `:outbox` queue, one attempt,
    `:after-crash :fail`; its claim still decides whether the provider is

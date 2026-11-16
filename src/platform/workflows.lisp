@@ -15,9 +15,10 @@
 
 (defpackage #:tun.workflows
   (:use #:cl #:tun.core)
-  (:import-from #:tun.jobs #:define-job #:enqueue-job #:cancel-job #:fail-job)
+  (:import-from #:tun.jobs #:define-job #:enqueue-job #:enqueue-job-asked-by #:cancel-job
+                #:fail-job #:job-origin #:running-job #:job-enqueued-by #:job)
   (:export #:workflow #:workflow-kind #:workflow-order-id #:workflow-customer-id #:workflow-due-at
-           #:workflow-key #:workflow-request-id #:workflow-status #:workflow-executed-at #:workflow-note #:workflow-subject-id
+           #:workflow-key #:workflow-request-id #:workflow-status #:workflow-executed-at #:workflow-note #:workflow-subject-id #:workflow-planned-by
            #:schedule-workflow #:cancel-workflows #:cancel-subject-workflows #:cancel-customer-workflows #:pending-workflows #:run-due-workflows #:enqueue-planned-workflows #:note-workflow-run
            #:workflows-list #:workflows-get #:*running-workflow*))
 
@@ -38,12 +39,16 @@
    (executed-at :type timestamp :input nil :label "Executed")
    (note :type (string :max 2000) :input nil :label "Note")
    (subject-id :type id :input nil :label "Subject"
-               :description "The record a workflow not about an order is about (a catalog change).")))
+               :description "The record a workflow not about an order is about (a catalog change).")
+   (planned-by :type (string :max 200) :input nil :label "Planned by"
+               :description "Who asked for the workflow (spec/jobs.md 3.1); empty for one planned
+before core 2.45.0, whose planner was not recorded.")))
 
 (defun schedule-workflow (kind &key order order-id customer-id subject-id due-at key)
   "Plan a workflow of registered KIND for ORDER (an entity) or ORDER-ID (or,
 for a workflow about something else, SUBJECT-ID), due at DUE-AT (universal
-time)."
+time).  It records who asked for it as a job queued here would name them
+(spec/jobs.md 3.1), and its run job names the same."
   (unless (find-workflow-kind kind)
     (error "Workflow kind ~s is not registered (define it with DEFINE-WORKFLOW)" kind))
   (check-type due-at universal-time)
@@ -54,8 +59,10 @@ time)."
                                                    :order-id (or order-id (and order (entity-id order)))
                                                    :customer-id customer-id
                                                    :subject-id subject-id
-                                                   :due-at due-at))))
-    (enqueue-job 'run-workflow :workflow-id (entity-id workflow) :at due-at)
+                                                   :due-at due-at
+                                                   :planned-by (job-origin)))))
+    (enqueue-job-asked-by (workflow-planned-by workflow) 'run-workflow
+                          :workflow-id (entity-id workflow) :at due-at)
     workflow))
 
 (defun pending-workflows (order-id &key kinds)
@@ -174,6 +181,20 @@ done first and commits its own units of work."
                                                               :error-code "workflow_failed"))))
                     nil))))))))))
 
+(defun ask-as-planned (job wf)
+  "Make JOB, the run job of WF, asked for by whoever planned WF, in its row
+and as the handler sees it with RUNNING-JOB, when it names someone else: a
+job queued again, retried, or queued by an earlier core.  What the
+handler does is the planner's decision, however the job came to be
+(spec/jobs.md 3.1)."
+  (let ((planner (workflow-planned-by wf)))
+    (unless (equal planner (job-enqueued-by job))
+      (with-transaction (:write)
+        (let ((row (fetch 'job (entity-id job))))
+          (setf (job-enqueued-by row) planner)
+          (save row)))
+      (setf (job-enqueued-by job) planner))))
+
 (define-job run-workflow ((workflow-id :type (id workflow) :required t))
     (:queue :workflows :transaction nil :max-attempts 3 :unique (:keys (workflow-id)))
   "Run the workflow WORKFLOW-ID if it is still planned.  A handler that fails
@@ -185,6 +206,7 @@ committed leaves it planned, so the job's next attempt runs it."
   (let ((wf (with-transaction (:read) (fetch 'workflow workflow-id))))
     (unless (and wf (string= (workflow-status wf) "planned"))
       (cancel-job (tr "The workflow is no longer planned")))
+    (ask-as-planned (running-job) wf)
     (unless (run-one-workflow wf)
       (let ((after (with-transaction (:read) (fetch 'workflow workflow-id))))
         (if (string= (workflow-status after) "failed")
@@ -197,12 +219,15 @@ workflows that running ones schedule.  Returns how many ran."
   (nth-value 1 (tun.jobs:run-due-jobs :queue "workflows" :limit limit)))
 
 (defun enqueue-planned-workflows ()
-  "Give every planned workflow its job, due when it is, unless it has one:
-for workflows stored before they ran on jobs.  Runs when the application
-opens."
+  "Give every planned workflow its job, due when it is, unless it has one
+waiting: for workflows stored before they ran on jobs, and those whose job
+ended for good while they stayed planned.  The job is asked for by whoever
+planned the workflow, not by the application opening (spec/jobs.md 3.1).
+Runs when the application opens."
   (with-transaction (:write)
     (dolist (wf (select 'workflow :where '(:= "status" "planned")))
-      (enqueue-job 'run-workflow :workflow-id (entity-id wf) :at (workflow-due-at wf)))))
+      (enqueue-job-asked-by (workflow-planned-by wf) 'run-workflow
+                            :workflow-id (entity-id wf) :at (workflow-due-at wf)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Operations

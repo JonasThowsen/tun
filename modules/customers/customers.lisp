@@ -18,7 +18,7 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module customers
-  (:core ">= 2.44.0" "< 3.0")
+  (:core ">= 2.45.0" "< 3.0")
   (:on-open repair-customer-receipts)
   (:documentation "Customers: name, email, phone, notes, completed orders."))
 
@@ -241,12 +241,15 @@ the count is the number of orders currently completed (README §3)."
 ;;; admin's call, or the system, asked for.
 
 (defun admin-or-system-p (actor-text)
-  "True when ACTOR-TEXT, an actor as a job's enqueued_by keeps it, is an
-admin's or the system's."
+  "True when ACTOR-TEXT, who asked for a job as its enqueued_by keeps it
+(spec/jobs.md 3.1), is an admin or the system deciding on its own.  Work
+inbound mail started, system:inbound, was asked for by whoever sent the
+mail; NIL is nobody recorded.  Neither is the system's own decision."
   (and (stringp actor-text)
        (or (string-prefix-p "admin:" actor-text)
            (string= actor-text "system")
-           (string-prefix-p "system:" actor-text))))
+           (and (string-prefix-p "system:" actor-text)
+                (string/= actor-text "system:inbound")))))
 
 (defun audit-refused-erasure (id)
   "Audit the refused erasure of the customer ID as customers_erase, rejected,
@@ -275,11 +278,11 @@ workflow fails, so it is not run again."
            ;; A workflow's refusal fails the workflow, so it is not run again.
            (audit-refused-erasure id)
            (fail :forbidden "The workflow was planned by ~a, who may not erase customers"
-                 (or (tun.jobs:job-enqueued-by job) "no one known")))
+                 (or (tun.jobs:job-enqueued-by job) "nobody recorded")))
           (t
            (audit-refused-erasure id)
            (tun.jobs:fail-job (format nil "The job was asked for by ~a, who may not erase customers"
-                                      (or (tun.jobs:job-enqueued-by job) "no one known")))))))
+                                      (or (tun.jobs:job-enqueued-by job) "nobody recorded")))))))
 
 (defun erasure-origin ()
   "Where an erasure outside customers_erase ran, for its audit entry."

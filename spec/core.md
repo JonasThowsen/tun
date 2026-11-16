@@ -557,10 +557,13 @@ The account, job, mail, error and setting tools are in their own contracts.
 
 A workflow is a stored, timed piece of work about a subject, usually an
 order: `{"id", "kind", "key", "order_id"?, "customer_id"?, "subject_id"?,
-"due_at", "status", "executed_at"?, "request_id", "note"}`, with status
+"due_at", "status", "executed_at"?, "request_id", "note", "planned_by"}`, with status
 `planned`, `executed`, `cancelled` or `failed`. A kind
 has exactly one handler (`define-workflow`), which declares the templates it
-may send.
+may send. `planned_by` is who asked for the workflow, as `jobs.md` §3.1
+says: the call that planned it, whatever actor its code bound, or the
+system; null for a workflow planned before core 2.45.0. Each of its run
+jobs names it as its `enqueued_by`.
 
 - A workflow survives a restart and its handler runs at most once, in a
   transaction with its status change. Workflows run on jobs (`jobs.md`

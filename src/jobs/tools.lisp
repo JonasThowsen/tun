@@ -77,7 +77,8 @@ the request it came from (introspect_request).")
 (define-operation jobs-retry ((id :type (id job) :required t :label "Job"))
     (:entity job :kind :update :policy :admin :title "Run a job again"
              :description "Queues a job that failed or was cancelled again, due now and with
-its attempts set to zero. The errors it had are kept.")
+its attempts set to zero. The errors it had are kept, and so is who asked for it: the job is
+still theirs, not the retrier's.")
   (let ((job (fetch! 'job id)))
     (unless (member (job-state job) '("failed" "cancelled") :test #'string=)
       (fail :invalid-transition "Only a job that failed or was cancelled can run again; this one is ~a"

@@ -92,6 +92,26 @@
     (let ((*application* (make-instance 'application)))
       (is (tun.web::page-available-p page) "an application naming no modules enables all"))))
 
+(test the-dashboard-names-who-asked-for-a-job
+  ;; spec/jobs.md 3.1: a workflow's job from before core 2.45.0 names nobody.
+  (with-test-server (port)
+    (let ((admin (web-login port "admin:root")))
+      (with-application (*app*)
+        (with-actor ((parse-actor "employee:kari"))
+          (with-transaction (:write) (tun.jobs:enqueue-job 'mark-job :text "kari" :in 3600)))
+        (with-transaction (:write)
+          (tun.jobs:enqueue-job-asked-by nil 'mark-job :text "nobody" :in 3600)))
+      (let ((pages (mapcar (lambda (job)
+                             (cons (jget (jget job "arguments") "text")
+                                   (nth-value 1 (web-request port (format nil "/jobs/~a"
+                                                                          (jget job "id"))
+                                                             :jar admin))))
+                           (call-ok-items "jobs_list" "kind" "mark_job"))))
+        (is (search " by employee:kari" (cdr (assoc "kari" pages :test #'equal))))
+        (let ((nobody (cdr (assoc "nobody" pages :test #'equal))))
+          (is (search " by —" nobody) "nobody recorded is a dash")
+          (is (not (search "NULL" nobody))))))))
+
 (test the-dashboard-shows-and-acts-on-jobs-and-schedules
   (with-schedules ((tun.jobs:define-schedule test-dashboard-morning "0 7 * * 1-5" mark-job
                      :text "morgen")

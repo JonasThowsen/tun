@@ -187,7 +187,11 @@ a dash for none.  A time the clock shows twice is the earlier instant."
                                 (list (tr "Attempts") (attempts-text job))
                                 (list (tr "Enqueued")
                                       (tr "~a by ~a" (when-text (jget job "enqueued_at"))
-                                          (jget job "enqueued_by")))
+                                          ;; Nobody recorded: the job of a workflow from
+                                          ;; before core 2.45.0, or work such a run asked
+                                          ;; for (spec/jobs.md 3.1).
+                                          (let ((by (jget job "enqueued_by")))
+                                            (if (stringp by) by "—"))))
                                 (list (tr "Due at") (when-text (jget job "due_at")))
                                 (list (tr "Started") (when-text (jget job "started_at")))
                                 (list (tr "Finished") (when-text (jget job "finished_at")))

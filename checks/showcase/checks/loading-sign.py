@@ -16,12 +16,14 @@ STATUS = "[data-tun-loading-status]"
 # A time for the page's clock, which the check holds and moves on.
 PAGE_TIME = datetime.datetime(2026, 11, 2, 9, 0)
 
-# Records, in the window, how many times the bar is shown, and what the live
-# region said; htmx swaps the body, not the document, so the record lasts
-# across pages.
+# Records, in the window, how many times the bar is shown, what the live
+# region said, and how many swaps htmx has made; htmx swaps the body, not
+# the document, so the record lasts across pages.
 WATCH = """() => {
   window.tunSeen = 0;
   window.tunSaid = [];
+  window.tunSwaps = 0;
+  document.addEventListener('htmx:after:swap', () => { window.tunSwaps += 1; });
   new MutationObserver((records) => {
     for (const record of records) {
       const target = record.target;
@@ -48,6 +50,17 @@ def said(page):
 
 def seen(page):
     return page.evaluate("window.tunSeen")
+
+
+def swaps(page):
+    return page.evaluate("window.tunSwaps")
+
+
+def wait_swapped(page, before, what):
+    """Wait until htmx has swapped in more than BEFORE times: the answer to
+    the step's own request is in, and the kit's htmx:after:swap listener,
+    which runs in the same event, has had its say."""
+    page.wait_until("(before) => window.tunSwaps > before", before, what=what)
 
 
 class Held:
@@ -83,12 +96,25 @@ def run(t):
     # moves it on, so its 300 ms are exact however busy the machine is.
     page.clock.install(time=PAGE_TIME)
     page.clock.pause_at(PAGE_TIME + datetime.timedelta(hours=1))
-    with page.expect_response(re.compile(r"/wait\?ms=0$")):
-        page.get_by_role("link", name="A fast page").tap()
-    page.wait_until("() => document.body.textContent.includes('This page waited 0 ms.')",
-                    what="the fast page swapped in")
+    # The page already says «waited 0 ms», so the check counts the fast
+    # page's swap. The swap may wait on a timer of the page's, which runs
+    # only when the check moves the held clock: a millisecond at a time,
+    # until it is in, however long the machine takes to answer.
+    before = swaps(page)
+    moved = [0]
+
+    def swapped():
+        page.clock.run_for(1)
+        moved[0] += 1
+        return swaps(page) > before
+
+    # The part's request comes only from the swapped-in page.
     with page.expect_response(re.compile(r"/wait/part\?ms=1000$")):
-        page.clock.run_for(299)             # the answer came before the sign's time
+        with page.expect_response(re.compile(r"/wait\?ms=0$")):
+            page.get_by_role("link", name="A fast page").tap()
+        page.poll_until(swapped, what="the fast page swapped in")
+        t.check(moved[0] < 299, f"the fast page swapped in {moved[0]} ms after the tap")
+        page.clock.run_for(max(0, 299 - moved[0]))  # the answer came before the sign's time
     page.clock.run_for(1000)
     page.wait_for_selector("#wait-part")
     page.clock.run_for(1000)
@@ -155,8 +181,11 @@ def run(t):
         page.get_by_role("link", name="A slow page").tap()
         slow.wait()
         page.wait_for_selector(BAR, state="visible")
+        # The page already says «waited 0 ms»: wait for the fast page's own
+        # swap, since htmx brings it with a hidden bar until after:swap.
+        before = swaps(page)
         page.get_by_role("link", name="A fast page").tap()
-        page.wait_for_selector("text=This page waited 0 ms.")
+        wait_swapped(page, before, "the fast page swapped in")
         t.check(shown(page) and page.locator("text=This page waited 0 ms.").count() == 1,
                 "a fast page swapped in after the bar showed keeps it while the slow one is under way")
         slow.go()
@@ -186,15 +215,18 @@ def run(t):
     page.evaluate(WATCH)
     page.evaluate("document.addEventListener('htmx:before:history:restore', "
                   "() => { window.tunRestored = location.href; })")
-    page.get_by_role("link", name="A fast page").tap()
+    with page.expect_htmx():                # the fast page's history entry is in
+        page.get_by_role("link", name="A fast page").tap()
     page.wait_for_selector("#wait-part")
     slow = Held(page, "**/wait?ms=1500")
     page.get_by_role("link", name="A slow page").tap()
     slow.wait()
     page.wait_for_selector(BAR, state="visible")
+    before = swaps(page)
     page.go_back()
     restored = page.wait_until("() => window.tunRestored", what="htmx to restore the page Back went to")
     page.wait_until("() => location.href.endsWith('/wait?ms=0')", what="the address restored")
+    wait_swapped(page, before, "the page Back went to swapped in")
     t.check(restored and restored.endswith("/wait?ms=0") and page.url.endswith("/wait?ms=0"),
             f"Back restores the boosted page through htmx: {restored}, {page.url}")
     t.check(shown(page), "and the bar stays on it while the slow request is under way")

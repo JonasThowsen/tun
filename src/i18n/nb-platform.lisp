@@ -153,6 +153,12 @@
    "Planlagt")
   ("The record a workflow not about an order is about (a catalog change)."
    "Posten en arbeidsflyt som ikke gjelder en ordre, gjelder (en katalogendring).")
+  ("Planned by"
+   "Planlagt av")
+  ("Who asked for the workflow (spec/jobs.md 3.1); empty for one planned
+before core 2.45.0, whose planner was not recorded."
+   "Hvem som ba om arbeidsflyten (spec/jobs.md 3.1); tom for en som ble planlagt
+før kjerne 2.45.0, der det ikke ble registrert hvem som planla den.")
   ("Slow"
    "Trege")
   ("Rejected"

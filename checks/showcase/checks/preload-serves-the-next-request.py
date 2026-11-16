@@ -55,10 +55,10 @@ def run(t):
     with page.expect_request(lambda r: path_of(r.url) == "/access" and r.headers.get("tun-preload") == "true"):
         menu(page, "Access").hover()
     page.mouse.move(700, 500)
-    menu(page, "Items").evaluate("link => link.click()")
-    page.wait_for_url(re.compile(r"/items$"))
-    page.wait_for_load_state()
-    page.wait_for_timeout(250)
+    # The page is already /items: wait for the GET itself to be answered.
+    with page.expect_htmx():
+        menu(page, "Items").evaluate("link => link.click()")
+    t.check(page.url.endswith("/items"), f"«Items» followed: {page.url}")
     seen.clear()
     menu(page, "Access").evaluate("link => link.click()")
     page.wait_for_url(re.compile(r"/access$"))

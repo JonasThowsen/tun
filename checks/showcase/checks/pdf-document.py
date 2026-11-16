@@ -20,7 +20,9 @@ def run(t):
     with page.expect_navigation():
         page.get_by_role("button", name="Make the PDF").click()
     links = page.locator("[data-document-file]")
-    links.first.wait_for()
+    # The page may list PDFs made before: wait for one more.
+    page.wait_until("(n) => document.querySelectorAll('[data-document-file]').length > n",
+                    before, what="a link to the PDF made")
     t.check(links.count() == before + 1, f"a link to the PDF made: {links.count()} after {before}")
     href = links.first.get_attribute("href")
     # A file's address is whole, at the server's public URL (spec/files.md 4.2).

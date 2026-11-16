@@ -82,9 +82,11 @@ def run(t):
     page.wait_for_url("**/graph/demo")
     t.check(page.url.endswith("/graph/demo"), "a tap anywhere on a node follows its link")
     page.goto("/graph")
-    page.locator('#pilot .tun-graph-canvas [data-node="calendar"] .tun-graph-badge-link').click()
-    page.wait_for_url("**/graph")
-    t.check(page.url.endswith("/graph"), "a badge's own link stays above the node's")
+    # The badge leads to /graph, where the page already is: wait for the
+    # click's own answer before reading where it went.
+    with page.expect_htmx():
+        page.locator('#pilot .tun-graph-canvas [data-node="calendar"] .tun-graph-badge-link').click()
+    t.check(page.url.endswith("/graph"), f"a badge's own link stays above the node's: {page.url}")
 
     for name, off in (("1280px", t.desktop(javascript=False)),
                       ("390px", t.phone(width=390, javascript=False))):

@@ -5,7 +5,7 @@ ASDF system `tun-customers`, package `tun.customers`; pinned by clients through
 
 - **Owns:** `customer` (name, email, phone, notes, completed orders); `customers_create`, `customers_get`, `customers_list`, `customers_update`, `customers_set_consent`, `customers_erase`.
 - **Depends on:** none.
-- **Core range:** builds against core `>= 2.44.0, < 3.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.45.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
 - **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`); to `TUN`, the operations `customers-create`, `customers-get`, `customers-list`, `customers-update` and `customers-set-consent`, `erase-customer` (§5.1), the accessors of `customer`'s name, email, phone, revision, completed orders, consent and erasure, and `marketing-allowed-p`. Its exported symbols are its interface for
@@ -162,8 +162,8 @@ It erases only where no person could have skipped the confirmation:
 | Where it is called | What happens |
 |---|---|
 | inside `customers_erase` (its body, or a module's or client's `:before` or `:after` method on it) | it erases; the tool's own entry is the audit (core.md §3.8) |
-| in a job's body, as `system:job`, or a workflow's handler, as `system:workflow` (a workflow runs in a job of its own), when the job was asked for by an admin or by the system (its `enqueued_by`, jobs.md §3: `admin:…` or `system…`) | it erases, and writes one audit entry: tool `customers_erase`, outcome `ok`, the system actor, the customer, and `reason`: REASON, else «job JOB-ID, enqueued by ACTOR» |
-| in a job or a workflow asked for by a person or agent below admin: queued by an employee's call (also under `with-actor` of a system actor there), a workflow an employee's call planned, or a job such a job queued | `forbidden`, the customer unchanged; the job fails at once, not retried, and a workflow is marked failed, so it is not planned again |
+| in a job's body, as `system:job`, or a workflow's handler, as `system:workflow` (a workflow runs in a job of its own), when the job was asked for by an admin or by the system: its `enqueued_by` (who asked, jobs.md §3.1) is `admin:…`, or `system` or `system:…` but `system:inbound` | it erases, and writes one audit entry: tool `customers_erase`, outcome `ok`, the system actor, the customer, and `reason`: REASON, else «job JOB-ID, enqueued by ACTOR» |
+| in a job or a workflow asked for by anyone else: an employee's or a viewer's call (also under `with-actor` of a system actor there), a customer on a public page, inbound mail (`system:inbound`), or nobody recorded (a workflow planned before core 2.45.0); a workflow such a call planned, also when its job is queued again, at start or by `jobs_retry`; or a job such a job queued | `forbidden`, the customer unchanged; the job fails at once, not retried, and a workflow is marked failed, so it is not planned again |
 | anywhere else: an operation a person or agent called, an admin's included, also under `with-actor` of a system actor there; a page; the REPL | `forbidden`, the customer unchanged |
 
 A refusal writes an audit entry `customers_erase`, outcome `rejected`,
@@ -174,7 +174,8 @@ fails the tool, `conflict`, with nothing changed.
 
 So a person erases only through `customers_erase`, with its confirmation,
 as before; a job or a workflow erases only when an admin's call asked for
-it, however many jobs lie between, or when the system decided it itself:
+it, however many jobs lie between and however often its job was queued
+again, or when the system decided it itself:
 a schedule's or a trigger's job, on records the application's own code
 reads (such as erasure requests whose day has come). Who may write those
 records is the application's to decide; an erasure that waits should be

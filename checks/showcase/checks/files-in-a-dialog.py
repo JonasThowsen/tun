@@ -21,7 +21,9 @@ def run(t):
     dialog.locator("input[type=file][name=files]").set_input_files([_files.path("screenshot.png")])
     with page.expect_navigation():
         dialog.get_by_role("button", name="Attach", exact=True).click()
-    page.wait_for_selector(".tun-attachments-item")
+    # The card may have files already: wait for one more.
+    page.wait_until("(n) => document.querySelectorAll('.tun-attachments-caption').length > n",
+                    len(before), what="the file sent from the dialog on the card")
     t.check(_files.attached(page) == before + ["screenshot.png"],
             f"the card shows the file sent from the dialog: {_files.attached(page)}")
     page.goto(href)

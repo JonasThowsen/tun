@@ -233,6 +233,7 @@
                              (:file "customers-tests")
                              (:file "audited-read-tests")
                              (:file "erasure-tests")
+                             (:file "who-asked-tests")
                              (:file "slice3-review-tests")
                              (:file "slice3-review-round3-tests")
                              (:file "slice3-review-round4-tests")
