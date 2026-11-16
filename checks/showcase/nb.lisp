@@ -116,7 +116,33 @@ kundefilter finner blant (spec/ui.md 6, choice-input).")
    "Laget med make-pdf og lagret som en fil på et dokument.")
   ("Make the PDF" "Lag PDF-en")
   ("The board's estimate as a PDF, made with make-pdf."
-   "Anslaget for tavla som PDF, laget med make-pdf."))
+   "Anslaget for tavla som PDF, laget med make-pdf.")
+  ("Download the PDF" "Last ned PDF-en")
+  ("The lines of the board's estimate: each card's title, column, day reported and estimate."
+   "Linjene i anslaget for tavla: hvert korts tittel, kolonne, dag meldt og anslag."))
+
+;;; A customer's data, and the audit log (customer-data.lisp)
+
+(define-translations "nb"
+  ("Export a customer's data" "Eksporter en kundes data")
+  ("The customer's data as one JSON document; each export is in the audit log with its reason."
+   "Kundens data som ett JSON-dokument; hver eksport står i revisjonsloggen med grunnen.")
+  ("Reason" "Begrunnelse")
+  ("Why the customer's data is exported, for the audit log."
+   "Hvorfor kundens data eksporteres, for revisjonsloggen.")
+  ("Why the data is exported: it is kept in the audit log."
+   "Hvorfor dataene eksporteres: det lagres i revisjonsloggen.")
+  ("A customer's data" "En kundes data")
+  ("Everything the showcase holds about a customer, as JSON."
+   "Alt utstillingen har om en kunde, som JSON.")
+  ("Download the data" "Last ned dataene")
+  ("Customer data" "Kundedata")
+  ("An export of a customer's data, audited with its reason."
+   "En eksport av en kundes data, revidert med grunnen.")
+  ("Audit log" "Revisjonslogg")
+  ("Actor" "Aktør")
+  ("Outcome" "Utfall")
+  ("The latest entries, newest first." "De siste oppføringene, nyeste først."))
 
 ;;; Notifications (notifications.lisp)
 

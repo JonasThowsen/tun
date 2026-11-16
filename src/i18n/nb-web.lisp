@@ -290,4 +290,11 @@
   ("What to look for: words, a number, an email or a phone number."
    "Det du leter etter: ord, et nummer, en e-postadresse eller et telefonnummer.")
   ("Only results of these kinds, such as customer or order; every kind when left out."
-   "Bare treff av disse typene, som customer eller order; alle typer når det er tomt."))
+   "Bare treff av disse typene, som customer eller order; alle typer når det er tomt.")
+  ;; A file a page makes on the spot, asked for through htmx (spec/files.md 5.5)
+  ("The file was not sent"
+   "Filen ble ikke sendt")
+  ("The form hands out a file, which the page cannot show."
+   "Skjemaet gir deg en fil, som siden ikke kan vise.")
+  ("It is sent without the page's script."
+   "Det sendes uten sidens skript."))

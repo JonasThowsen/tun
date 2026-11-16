@@ -84,4 +84,9 @@
   ("Page not found"
    "Siden finnes ikke")
   ("Check the link in the email."
-   "Kontroller lenken i e-posten."))
+   "Kontroller lenken i e-posten.")
+  ;; Erasing outside customers_erase (README 5.1)
+  ("A customer is erased with customers_erase, which asks for confirmation, or in a job or a workflow an admin asked for"
+   "En kunde slettes med customers_erase, som ber om bekreftelse, eller i en jobb eller arbeidsflyt en administrator har bedt om")
+  ("The workflow was planned by ~a, who may not erase customers"
+   "Arbeidsflyten ble planlagt av ~a, som ikke kan slette kunder"))

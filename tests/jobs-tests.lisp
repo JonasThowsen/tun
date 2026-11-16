@@ -19,6 +19,9 @@
 (tun.jobs:define-job mark-job ((text :type (string :min 1 :max 100) :required t)) ()
   (insert (make-instance 'job-mark :text text)))
 
+(tun.jobs:define-job chaining-job ((text :type (string :min 1 :max 100) :required t)) ()
+  (tun.jobs:enqueue-job 'mark-job :text text))
+
 (tun.jobs:define-job failing-job ((text :type string :required t)) (:max-attempts 3 :backoff (30 120))
   (push text *job-calls*)
   (error "Det gikk galt med ~a" text))
@@ -105,6 +108,28 @@
 
 ;;; ------------------------------------------------------------------
 ;;; Enqueueing
+
+(test a-job-queued-by-a-job-names-who-asked-for-the-first
+  ;; spec/jobs.md 3: enqueued_by is who asked, through a chain of jobs.
+  (with-test-app ()
+    (with-application (*app*)
+      (with-actor ((parse-actor "employee:kari"))
+        (with-transaction (:write) (tun.jobs:enqueue-job 'chaining-job :text "kjede")))
+      (with-transaction (:write) (tun.jobs:enqueue-job 'chaining-job :text "kjerne")))
+    (is (equal '("employee:kari" "system")
+               (mapcar (lambda (job) (jget job "enqueued_by")) (enqueued-jobs 'chaining-job))))
+    (with-application (*app*)
+      (dotimes (i 2)
+        (tun.jobs:run-job-now (with-transaction (:read)
+                                (select-one 'tun.jobs:job
+                                            :where '(:and (:= "kind" "chaining_job")
+                                                          (:= "state" "queued"))
+                                            :order-by '(("seq" :asc)))))))
+    (is (equal '(("kjede" . "employee:kari") ("kjerne" . "system"))
+               (mapcar (lambda (job) (cons (jget (jget job "arguments") "text")
+                                           (jget job "enqueued_by")))
+                       (enqueued-jobs 'mark-job)))
+        "not system:job")))
 
 (test a-job-exists-only-when-its-write-commits
   (with-test-app ()

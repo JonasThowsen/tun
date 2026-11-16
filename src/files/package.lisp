@@ -12,7 +12,7 @@
   (:export
    ;; formats.lisp
    #:file-refused #:file-refused-message #:examine-file #:file-type #:content-type-of
-   #:stored-filename #:base64-octets #:control-character-p
+   #:stored-filename #:cleaned-filename #:base64-octets #:control-character-p
    #:+most-file-octets+ #:+most-call-octets+ #:+most-side+ #:+most-pixels+
    #:+most-given-name+ #:+most-stored-name+
    ;; multipart.lisp

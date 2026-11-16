@@ -12,6 +12,7 @@
 (defpackage #:tun.jobs
   (:use #:cl #:tun.core)
   (:export #:define-job #:enqueue-job #:cancel-job #:snooze-job #:fail-job #:last-attempt-p
+           #:running-job
            #:job-cancelled #:job-cancelled-reason #:job-snoozed #:job-snoozed-seconds
            #:job-given-up #:job-given-up-reason
            #:job #:job-kind #:job-queue #:job-arguments #:job-state #:job-priority #:job-due-at
@@ -227,6 +228,11 @@ the attempt."
 
 (defvar *job* nil "The job whose body is running.")
 
+(defun running-job ()
+  "The job whose body is running, a workflow's handler among them, or NIL.
+Its JOB-ENQUEUED-BY names who asked for the work (spec/jobs.md 3)."
+  *job*)
+
 (defun last-attempt-p ()
   "True when the running job's attempt is its last: a failure now fails it
 for good."
@@ -328,6 +334,17 @@ same, or NIL when the kind is not unique."
                                    ,@(when period `((:>= "enqueued_at" ,(- (now) period)))))
                      :order-by '(("seq" :desc)))))
 
+(defun job-origin ()
+  "Who asks for a job queued now (spec/jobs.md 3): in a job's body, whoever
+asked for that job, so a chain of jobs names the call it started from;
+else the caller of the operation it is queued in, whatever actor the code
+under it binds; else the actor; kernel code may enqueue with no actor
+bound, as the system it is."
+  (cond (*job* (job-enqueued-by *job*))
+        (*caller* (actor-string *caller*))
+        (*actor* (actor-string *actor*))
+        (t "system")))
+
 (defun enqueue-job (kind &rest arguments &key at in &allow-other-keys)
   "Queue a job of KIND, the symbol DEFINE-JOB named, with ARGUMENTS, inside
 the current write: it exists only when that write commits (spec/jobs.md 3).
@@ -359,7 +376,5 @@ stores nothing.  A bad argument fails the operation with invalid_input."
                                  :max-attempts (job-definition-max-attempts definition)
                                  :unique-key key
                                  :enqueued-at (now)
-                                 ;; Kernel code may enqueue with no actor bound, as the
-                                 ;; system it is.
-                                 :enqueued-by (if *actor* (actor-string *actor*) "system")
+                                 :enqueued-by (job-origin)
                                  :errors (jarr '()))))))))

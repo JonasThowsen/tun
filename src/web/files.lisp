@@ -178,3 +178,94 @@ and the same 404 to everyone else (spec/files.md 5.2)."
             (if attachment
                 (send-attachment attachment method)
                 (file-not-found)))))))
+
+;;; ------------------------------------------------------------------
+;;; A file a page makes on the spot (spec/files.md 5.5)
+
+(defparameter +download-types+
+  '(("application/pdf" "pdf")
+    ("application/json" "json")
+    ("text/csv" "csv")
+    ("text/plain" "txt")
+    ("text/calendar" "ics")
+    ("image/png" "png")
+    ("image/jpeg" "jpg" "jpeg")
+    ("image/webp" "webp")
+    ("image/gif" "gif")
+    ("application/zip" "zip")
+    ("application/vnd.openxmlformats-officedocument.spreadsheetml.sheet" "xlsx")
+    ("application/vnd.openxmlformats-officedocument.wordprocessingml.document" "docx"))
+  "The types a download is sent as, each with its extensions, the first the one
+added to a name without one: types a browser saves rather than runs.")
+
+(defparameter +octet-stream+ '("application/octet-stream" "bin")
+  "What a download of any other type is sent as, and its extension.")
+
+(defstruct (download (:constructor %make-download (octets content-type filename)))
+  "A file a page answers as a download: its octets, the type it is sent as and
+its cleaned name."
+  (octets #() :type (vector (unsigned-byte 8)) :read-only t)
+  (content-type "" :type string :read-only t)
+  (filename "" :type string :read-only t))
+
+(defun download-type (given)
+  "The entry of +DOWNLOAD-TYPES+ GIVEN names exactly, whatever its case, else
++OCTET-STREAM+: a type with parameters, HTML, SVG or anything else a page's
+data might choose is never sent as itself."
+  (or (and (stringp given) (find given +download-types+ :key #'first :test #'string-equal))
+      +octet-stream+))
+
+(defun make-download (content &key filename content-type)
+  "A file a page answers with (values 200 :download DOWNLOAD), as a download,
+without storing it (spec/files.md 5.5).  CONTENT is a vector of octets, or a
+string, sent as UTF-8.  CONTENT-TYPE is one of the types Tun allows, else the
+file is sent as application/octet-stream.  FILENAME is cleaned as a stored
+file's name and ends in its type's extension."
+  (check-type content (or string (vector (unsigned-byte 8))))
+  (check-type filename (or null string))
+  (check-type content-type (or null string))
+  (let ((type (download-type content-type)))
+    (%make-download (if (stringp content)
+                        (sb-ext:string-to-octets content :external-format :utf-8)
+                        content)
+                    (first type)
+                    (tun.files:cleaned-filename (or filename "") (rest type) "download"))))
+
+(defun download-header-type (type)
+  "TYPE as the Content-Type header says it: text, and JSON, in UTF-8."
+  (if (or (string-prefix-p "text/" type) (string= type "application/json"))
+      (format nil "~a; charset=utf-8" type)
+      type))
+
+(defun send-download (download)
+  "Answer DOWNLOAD, a page's file, with the headers of spec/files.md 5.5:
+always an attachment, kept nowhere.  A preload is declined; htmx's GET is sent
+on to the same address for the browser to fetch itself, and htmx's POST, which
+the browser cannot repeat, is refused."
+  (check-type download download)
+  (cond ((preload-request-p) (answer-declined-preload))
+        ((and (hunchentoot:header-in* :hx-request) (eq (hunchentoot:request-method*) :get))
+         (setf (hunchentoot:header-out "HX-Redirect") (hunchentoot:request-uri*))
+         "")
+        ((hunchentoot:header-in* :hx-request)
+         (respond-fragment 400 (list (ui:alert (:variant :destructive
+                                                :title (tr "The file was not sent"))
+                                       (tr "The form hands out a file, which the page cannot show.")
+                                       " "
+                                       (tr "It is sent without the page's script.")))))
+        (t
+         (let ((octets (download-octets download))
+               (name (download-filename download)))
+           (setf (hunchentoot:return-code*) 200
+                 (hunchentoot:content-type*) (download-header-type
+                                              (download-content-type download))
+                 (hunchentoot:content-length*) (length octets)
+                 (hunchentoot:header-out "Content-Disposition")
+                 (format nil "attachment; filename=\"~a\"; filename*=UTF-8''~a"
+                         (ascii-filename name) (rfc-5987-value name))
+                 (hunchentoot:header-out "X-Content-Type-Options") "nosniff"
+                 (hunchentoot:header-out "Content-Security-Policy") +file-security-policy+
+                 (hunchentoot:header-out "Cross-Origin-Resource-Policy") "same-origin"
+                 (hunchentoot:header-out "Referrer-Policy") "no-referrer"
+                 (hunchentoot:header-out "Cache-Control") "no-store")
+           octets))))

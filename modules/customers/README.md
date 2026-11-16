@@ -5,10 +5,10 @@ ASDF system `tun-customers`, package `tun.customers`; pinned by clients through
 
 - **Owns:** `customer` (name, email, phone, notes, completed orders); `customers_create`, `customers_get`, `customers_list`, `customers_update`, `customers_set_consent`, `customers_erase`.
 - **Depends on:** none.
-- **Core range:** builds against core `>= 2.36.0, < 3.0` (`flake.nix` `core`,
+- **Core range:** builds against core `>= 2.44.0, < 3.0` (`flake.nix` `core`,
   and `define-module` in the Lisp source; the client build and the module's
   load both refuse a core outside it, naming the constraint).
-- **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`); to `TUN`, the operations `customers-create`, `customers-get`, `customers-list`, `customers-update` and `customers-set-consent`, the accessors of `customer`'s name, email, phone, revision, completed orders, consent and erasure, and `marketing-allowed-p`. Its exported symbols are its interface for
+- **Publishes:** the kernel's extension kinds on `customer` (fields, rules and computed fields; core.md §1.1); the `/customers` list screen (`customer_list`); to `TUN`, the operations `customers-create`, `customers-get`, `customers-list`, `customers-update` and `customers-set-consent`, `erase-customer` (§5.1), the accessors of `customer`'s name, email, phone, revision, completed orders, consent and erasure, and `marketing-allowed-p`. Its exported symbols are its interface for
   the modules that depend on it; what clients may use is what it publishes
   to `TUN`.
 - **Rollback:** its migrations only add tables and nullable columns, so the
@@ -148,6 +148,39 @@ There is no reversal. When the module opens it redacts the receipts of
 customers erased before, so every erased customer's receipts are
 anonymised. Sends to an erased customer are refused (messaging README
 §4.2).
+
+#### 5.1 Erasing from a job or a workflow
+
+`(erase-customer ID &key reason)`, published to `TUN`, does the four
+steps above in their order, in the caller's write transaction (or in one
+of its own when none is open), and returns the erased customer.
+`customers_erase` is this function behind its confirmation: whatever
+erases a customer, by the tool or by the function, does the same.
+
+It erases only where no person could have skipped the confirmation:
+
+| Where it is called | What happens |
+|---|---|
+| inside `customers_erase` (its body, or a module's or client's `:before` or `:after` method on it) | it erases; the tool's own entry is the audit (core.md §3.8) |
+| in a job's body, as `system:job`, or a workflow's handler, as `system:workflow` (a workflow runs in a job of its own), when the job was asked for by an admin or by the system (its `enqueued_by`, jobs.md §3: `admin:…` or `system…`) | it erases, and writes one audit entry: tool `customers_erase`, outcome `ok`, the system actor, the customer, and `reason`: REASON, else «job JOB-ID, enqueued by ACTOR» |
+| in a job or a workflow asked for by a person or agent below admin: queued by an employee's call (also under `with-actor` of a system actor there), a workflow an employee's call planned, or a job such a job queued | `forbidden`, the customer unchanged; the job fails at once, not retried, and a workflow is marked failed, so it is not planned again |
+| anywhere else: an operation a person or agent called, an admin's included, also under `with-actor` of a system actor there; a page; the REPL | `forbidden`, the customer unchanged |
+
+A refusal writes an audit entry `customers_erase`, outcome `rejected`,
+`error_code` `forbidden`, as the actor it ran as and naming the
+customer, written after the caller's transaction ends so it outlives the
+rollback. A refusal by `customer_erasing` (an open order) fails it as it
+fails the tool, `conflict`, with nothing changed.
+
+So a person erases only through `customers_erase`, with its confirmation,
+as before; a job or a workflow erases only when an admin's call asked for
+it, however many jobs lie between, or when the system decided it itself:
+a schedule's or a trigger's job, on records the application's own code
+reads (such as erasure requests whose day has come). Who may write those
+records is the application's to decide; an erasure that waits should be
+asked for in an operation of `admin` with confirmation, as the tool is.
+Erasing an erased customer erases it again, as the tool does; a job that
+may run after another erasure checks `customer-erased` first.
 
 ### 6. The unsubscribe page
 

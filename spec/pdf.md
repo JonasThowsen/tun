@@ -242,9 +242,10 @@ The real adapter, `typst-pdf-renderer`, runs Typst 0.14 from nixpkgs:
   §4.1), checked as an uploaded file. Then `GET /files/ID` serves it to
   whoever may see the record, as a download (`files.md` §5.3), and a
   page links to it.
-- **Not answered by a page.** A page cannot answer bytes it made as a
-  download (`ui.md` §8); a page that offers a document makes it in an
-  operation that stores it on a record, and links to the file.
+- **Answered by a page.** A page answers a PDF it makes for the request
+  as a download, without storing it: `(values 200 :download
+  (make-download PDF :filename NAME :content-type "application/pdf"))`
+  (`files.md` §5.5), to whoever the page's policy admits.
 
 ## 5. Speed
 
@@ -279,7 +280,6 @@ of it is the accessibility tags.
   (`--pdf-standard a-3b` and `pdf.attach`), which veraPDF 1.28 passed in
   the measurements for this loop; Tun does not offer it yet.
 - Signing a PDF.
-- A page answering a made PDF as a download without storing it.
 - A page break where the client wants one, and a document's own fonts
   and colours.
 

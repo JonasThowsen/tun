@@ -90,6 +90,15 @@ core's, and a client declares the work and never writes the loop.
 - `:at` is an instant, `:in` seconds from now; without either, the job is
   due now. Bad arguments signal an error, so the operation fails
   `invalid_input`.
+- `enqueued_by` is who asked for the job: the actor of the call that
+  queued it, the outermost operation's caller even when the code under
+  it binds another actor with `with-actor` (a system actor among them);
+  outside any call, the actor bound, and `system` when none is. A job queued in a job's
+  body, a workflow's handler among them, keeps the `enqueued_by` of the
+  job that queued it, so a chain of jobs names the call it started from,
+  never `system:job`. A workflow runs in a job (`run-workflow`) queued
+  where the workflow was planned, so its handler's job names who planned
+  it.
 - It returns the job. When `:unique` matches a job already there, it
   returns that job and stores nothing (§5).
 - A job enqueued to run now starts as soon as its transaction commits:
@@ -130,7 +139,10 @@ writes through operations (`invoke`), each its own transaction.
 | calls `(fail-job reason)` | `failed` at once, with no more attempts: trying again will not help |
 
 `cancel-job`, `snooze-job` and `fail-job` signal conditions the runner
-handles, the way `fail` ends an operation. `(last-attempt-p)` is true
+handles, the way `fail` ends an operation. `(running-job)`, exported from
+`TUN.JOBS` for modules, is the job whose body is running, or NIL: a
+module reads its `enqueued_by` to know who asked for the work, as the
+customers module's `erase-customer` does (its README §5.1). `(last-attempt-p)` is true
 during a job's last attempt, so a body can record on its own records that
 the work failed for good. Each failure adds `{attempt, at, error}` to
 the job's `errors`, which keeps the last ten.

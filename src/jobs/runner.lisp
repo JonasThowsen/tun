@@ -306,7 +306,10 @@ or :yielded for a snooze of 0 seconds, which ends this pass of its queue."
   (let* ((definition (find-job-definition (job-kind job)))
          (id (new-id "req"))
          (*request-id* id)
-         (*deadline* nil))
+         (*deadline* nil)
+         ;; Whoever asked for the job is its enqueued_by, not a caller that
+         ;; runs it now (clock_set in test mode).
+         (*caller* nil))
     (with-request-record (:id id :at (now) :actor "system:job" :tool (format nil "job:~a" (job-kind job))
                           :kind :job :force-new t :application *application*
                           :input (jobj "job_id" (entity-id job) "kind" (job-kind job)

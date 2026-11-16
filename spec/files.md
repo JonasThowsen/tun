@@ -524,6 +524,80 @@ holds a whole file in memory:
 - Thirty-two fetches of a 10 MiB file at once, beside ordinary traffic,
   are answered within the default heap of 2 GiB.
 
+### 5.5 A file a page makes on the spot
+
+A page can answer a file it makes for the request, such as a PDF of a
+document or the JSON of a person's data, as a download, without storing
+it (`ui.md` §8, «A client's pages», 3):
+
+```lisp
+(values 200 :download (make-download OCTETS :filename NAME :content-type TYPE))
+```
+
+- **Who gets it.** The page's own: the answer comes from the page's
+  function, which runs only for a person its policy admits. Someone not
+  signed in goes to the login and back; a person the policy does not
+  admit gets the page's 403, and the function is not called, so nothing
+  is made.
+- **The content.** OCTETS is a vector of octets, or a string, sent as
+  UTF-8. It is sent whole, from memory, with its `Content-Length`.
+- **The type.** TYPE is one of the types below, given without
+  parameters, in any case. Anything else, `text/html`, `image/svg+xml`,
+  `application/xhtml+xml`, a script's or XML's type, a type with
+  parameters or a character outside `a-z0-9.+-/`, is sent as
+  `application/octet-stream`: a page's data never chooses a type a
+  browser would run.
+
+  | TYPE | Sent as | Extensions |
+  |---|---|---|
+  | `application/pdf` | the same | `.pdf` |
+  | `application/json` | `application/json; charset=utf-8` | `.json` |
+  | `text/csv` | `text/csv; charset=utf-8` | `.csv` |
+  | `text/plain` | `text/plain; charset=utf-8` | `.txt` |
+  | `text/calendar` | `text/calendar; charset=utf-8` | `.ics` |
+  | `image/png`, `image/jpeg`, `image/webp`, `image/gif` | the same | `.png`; `.jpg`, `.jpeg`; `.webp`; `.gif` |
+  | `application/zip` | the same | `.zip` |
+  | `application/vnd.openxmlformats-officedocument.spreadsheetml.sheet` | the same | `.xlsx` |
+  | `application/vnd.openxmlformats-officedocument.wordprocessingml.document` | the same | `.docx` |
+  | anything else | `application/octet-stream` | `.bin` |
+
+  Tun does not look at the bytes: the type is the page's word, and the
+  headers below keep a wrong one harmless.
+- **The name.** NAME is cleaned as a stored file's is (§2.3): the
+  directory part, up to the last `/` or `\`, dropped; the control
+  characters of Unicode's categories Cc and Cf (line breaks and the
+  direction controls among them), U+2028, U+2029 and `"` removed; spaces
+  at the ends trimmed. When it does not end in an extension of its type
+  (in any case), the type's first is added: `estimate.html` sent as a PDF
+  is `estimate.html.pdf`, and anything sent as `application/octet-stream`
+  ends in `.bin`, so a file saved from a download is never opened as a
+  page or a program for its name. An empty name is `download` and the
+  extension; a name longer than 200 characters, its extension included,
+  is cut to 200 by shortening what comes before its extension.
+- **The answer.** Always a download, never shown in the browser:
+
+  | Header | Value |
+  |---|---|
+  | `Content-Type` | as above |
+  | `Content-Length` | the size |
+  | `Content-Disposition` | `attachment`, with `filename` (ASCII, others and `\` as `_`) and `filename*` (UTF-8, RFC 5987), as §5.3 |
+  | `X-Content-Type-Options` | `nosniff` |
+  | `Content-Security-Policy` | as a stored file's (§5.3) |
+  | `Cross-Origin-Resource-Policy` | `same-origin` |
+  | `Referrer-Policy` | `no-referrer` |
+  | `Cache-Control` | `no-store`: made for this request, it is kept nowhere |
+
+- **Through htmx.** The link or form that asks for a download goes
+  without htmx: a link carries `download` and `hx-boost="false"`, a form
+  `hx-boost="false"`. One that does not still works for a link: htmx's
+  GET is answered with `HX-Redirect` to the same address, which the
+  browser then fetches itself, so the file is made twice. htmx's POST is
+  answered 400 with an alert saying the form sends without htmx, since
+  the browser cannot repeat its post. A preload (`Tun-Preload: true`) is
+  declined (`ui.md` §4.1), so hovering a link makes nothing to keep.
+- **Without JavaScript**, a link or a form that answers a download is
+  followed by the browser, which saves the file and stays on the page.
+
 ## 6. In pages
 
 ### 6.1 `file-input`
@@ -702,6 +776,9 @@ files as any other.
   (§4.3).
 - Files on SQLite; a quota of storage per tenant; scanning files for
   malware; taking metadata out of PDF.
+- A file made on the spot (§5.5) sent in parts as it is made, for one
+  too large to hold in memory, and an `ETag` for it: it is made again
+  each time, so it is not cached.
 
 ## 8. Evidence
 

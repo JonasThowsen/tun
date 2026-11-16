@@ -21,7 +21,9 @@
            #:staff-page-extras #:home-path #:public-page-title #:preload-request-p #:decline-preload
            #:check-http-route-conflicts #:escape-html #:register-public-page #:register-staff-page #:render-resource-extras #:staff-navigation-title
            #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
-           #:page-texts #:query-values #:query-address #:choice-answer #:choice-find))
+           #:page-texts #:query-values #:query-address #:choice-answer #:choice-find
+           #:make-download #:download #:download-octets #:download-content-type
+           #:download-filename))
 
 (in-package #:tun.web)
 
@@ -87,7 +89,8 @@ objects) that returns (values STATUS TITLE BODY [HEADER]), HEADER a plist of
 :DESCRIPTION, :ACTIONS, :BREADCRUMBS and :TRIGGER, or (values 303 PATH), or
 (values 301 PATH) for a page that moved to PATH for good, or
 (values STATUS :FRAGMENT BODY [HEADER]) to answer htmx with BODY alone
-(spec/ui.md 8.1).  TITLE and ICON are its menu entry; NAVIGATION nil keeps
+(spec/ui.md 8.1), or (values 200 :DOWNLOAD (MAKE-DOWNLOAD ...)) to answer a
+file the page made as a download (spec/files.md 5.5).  TITLE and ICON are its menu entry; NAVIGATION nil keeps
 it out of the menu, GROUP :SYSTEM puts it under «System», WIDTH :WIDE
 gives it the whole width beside the menu, and REMEMBERS, a list of query
 keys, keeps what the page was last opened with for each account."
@@ -276,6 +279,7 @@ after it keeps it (spec/ui.md 4.1)."
                   ((eql status 301) (moved-permanently title))
                   ((eq title :declined) (answer-declined-preload))
                   ((eq title :fragment) (respond-fragment status body))
+                  ((eq title :download) (send-download body))
                   (t (respond status title body :description description :meta meta
                                                 :actions actions :breadcrumbs breadcrumbs
                                                 :width (staff-page-width page))))))))))

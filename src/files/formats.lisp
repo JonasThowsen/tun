@@ -470,13 +470,15 @@ paragraph separators, and the double quote."
   (or (member (sb-unicode:general-category char) '(:cc :cf))
       (member char (list (code-char #x2028) (code-char #x2029) #\"))))
 
-(defun stored-filename (given type)
-  "The name a file of TYPE given as GIVEN is stored under (spec/files.md 2.3)."
+(defun cleaned-filename (given extensions empty)
+  "GIVEN as a file's name is kept (spec/files.md 2.3): its directory part
+dropped, control characters and the double quote removed, the ends trimmed,
+ending in one of EXTENSIONS (the first added when it ends in none), EMPTY
+when nothing is left before it, and at most +MOST-STORED-NAME+ characters."
   (let* ((base (subseq given (1+ (or (position-if (lambda (c) (member c '(#\/ #\\))) given
                                                   :from-end t)
                                      -1))))
          (clean (string-trim " " (remove-if #'control-character-p base)))
-         (extensions (cdr (assoc type +extensions+)))
          (suffix (find-if (lambda (extension)
                             (let ((ending (concatenate 'string "." extension)))
                               (and (>= (length clean) (length ending))
@@ -488,10 +490,14 @@ paragraph separators, and the double quote."
                      (subseq clean (- (length clean) (length suffix) 1))
                      (concatenate 'string "." (first extensions)))))
     (when (zerop (length stem))
-      (setf stem "file"))
+      (setf stem empty))
     (concatenate 'string
                  (subseq stem 0 (min (length stem) (- +most-stored-name+ (length ending))))
                  ending)))
+
+(defun stored-filename (given type)
+  "The name a file of TYPE given as GIVEN is stored under (spec/files.md 2.3)."
+  (cleaned-filename given (cdr (assoc type +extensions+)) "file"))
 
 ;;; ------------------------------------------------------------------
 ;;; Base64 (spec/files.md 4.1)

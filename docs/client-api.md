@@ -160,6 +160,33 @@ generated sequence test (`spec/testing.md` §4); a running server does not.
                           (item-project-id item) (and project (project-customer-id project)))))
 ```
 
+A read leaves no audit entry, unless it asks for one with `:audit t`
+(`spec/core.md` §3.8): each successful call then writes an entry as a
+mutation's, who called, the tool, the record (the one the body names
+with `(audit-target "customer" id)`, else a stored record the read
+returns, else the one its input names, `id` or an `…_id` parameter), and
+the reason the body gives with `(audit-reason text)`. Nothing
+the read returns goes into the entry. The data is returned only once the
+entry is written. An export of a person's data, asked with a reason:
+
+```lisp
+(define-operation customers-export ((customer-id :type (id customer) :required t
+                                                 :label "Customer")
+                                    (reason :type (string :min 1 :max 500) :required t
+                                            :label "Reason"
+                                            :description "Why the data is exported, for the audit log."))
+    (:entity customer :kind :read :policy :admin :audit t :title "Export a customer's data")
+  (audit-reason reason)
+  (jobj "customer" (entity->json (fetch! 'customer customer-id))
+        "orders" (jarr (mapcar #'entity->json
+                               (select 'order :where `(:= "customer_id" ,customer-id))))))
+```
+
+The entry is `{"tool": "customers_export", "actor": "admin:ada",
+"entity_type": "customer", "entity_id": "cus_…", "reason": "…", …}`, in
+`audit_list`. `audit-reason` in a mutation records its reason too; in a
+read without `:audit t` it signals an error.
+
 Rules return true to accept and false to reject. Computed fields are evaluated
 when reading the entity and declare their result type. The operation result in
 an after hook is a guarded copy: call public operations for module-owned writes.
@@ -354,6 +381,60 @@ rails beside it in a narrower box, such as on a phone (`spec/ui.md`
                       `(:form (:@ :method "post" :action "/notater")
                               ,(ui:textarea (:label "Tekst" :name "text"))
                               ,(ui:button (:type "submit") "Lagre")))))))
+```
+
+A page answers a file it makes for the request, without storing it, as
+a download: it returns `(values 200 :download (make-download CONTENT
+:filename NAME :content-type TYPE))` (`spec/files.md` §5.5). CONTENT is
+octets or a string (sent as UTF-8). TYPE is one Tun allows (PDF, JSON,
+CSV, plain text, a calendar, an image, a zip, a spreadsheet or a
+document of Office); any other is sent as `application/octet-stream`.
+NAME is cleaned of a directory, line breaks and quotes, and ends in its
+type's extension. It is always `Content-Disposition: attachment`, with
+`nosniff`, and only to a person the page's policy admits. The link to
+it carries `download` and `hx-boost="false"`, a form `hx-boost="false"`;
+it works without JavaScript and on a phone, where the browser saves the
+file and stays on the page.
+
+```lisp
+(define-page estimate-page ("estimate" :title "Estimate" :icon :file-text :policy :employee)
+    (method path form query)
+  (declare (ignore form query))
+  (if (equal path '("estimate.pdf"))
+      ;; Read through an operation, as the person signed in; made, and
+      ;; answered, here.
+      (let ((lines (jget (web-call "estimate_lines" (jobj)) "lines")))
+        (values 200 :download (make-download (make-pdf (estimate-tree lines) :title "Estimate")
+                                             :filename "estimate.pdf"
+                                             :content-type "application/pdf")))
+      (values 200 "Estimate"
+              (list (ui:button (:href "/estimate/estimate.pdf" :icon :download
+                                :attributes '(:download t :hx-boost "false"))
+                      "Download the PDF")))))
+```
+
+The export above, handed to an admin as a file: the page posts the
+reason, and the audited read writes its entry before the file is made.
+
+```lisp
+(define-page customer-export-page ("customer-export" :title "Export" :policy :admin
+                                                     :navigation nil)
+    (method path form query)
+  (declare (ignore query))
+  (multiple-value-bind (json code)
+      (and (eq method :post)
+           (web-call "customers_export" (jobj "customer_id" (first path)
+                                              "reason" (jget form "reason"))))
+    (if (and json (not code))
+        (values 200 :download
+                (make-download (to-json-string json)
+                               :filename (format nil "customer-~a.json" (first path))
+                               :content-type "application/json"))
+        (values (if code 422 200) "Export"
+                (list (when code (error-alert json))
+                      `(:form (:@ :method "post" :hx-boost "false")
+                              ,(ui:textarea (:label "Reason" :name "reason"))
+                              ,(ui:button (:type "submit" :icon :download) "Download the data")))))))
 ```
 
 `(error-alert json)` lists a refusal's field errors by their paths
@@ -1112,9 +1193,11 @@ and kept on the order:
   the document's text, which `attach-files` and `send-mail` take as they
   take Typst's. A server makes it with Typst, which `buildClient` puts in
   the image.
-- A page cannot answer the PDF itself as a download: an operation stores
-  it on a record with `attach-files`, and the page links to
-  `/files/ID`, which downloads it for whoever may see the record.
+- A page answers a PDF it makes as a download without storing it,
+  `(values 200 :download (make-download pdf :filename "invoice.pdf"
+  :content-type "application/pdf"))` («Pages»), or an operation stores
+  it on a record with `attach-files`, and the page links to `/files/ID`,
+  which downloads it for whoever may see the record.
 - A document of hundreds of lines takes a tenth of a second or more
   while the operation's write is open; make a long one in a job.
 - A tree a mail takes is a document too, but for `img`, which a PDF
@@ -1289,6 +1372,28 @@ if the operation commits.
     (send-reminder item)
     (setf (item-reminded-at item) (now))
     (save item))
+  ```
+- A job erases a customer with `(erase-customer id :reason text)` from
+  the customers module (its README §5.1): the steps of `customers_erase`
+  in their order, audited as `customers_erase` by `system:job`. It
+  erases only in a job or a workflow that an admin's call or the system
+  (a schedule, a trigger) asked for, however many jobs lie between; in a
+  job or workflow an employee's call asked for, and called by a person's
+  operation, an admin's included, it is `forbidden`, so a person erases
+  through `customers_erase` and its confirmation. An erasure some days
+  after it is asked for:
+
+  ```lisp
+  (define-job erase-customer-later ((customer-id :type (id customer) :required t))
+      (:max-attempts 5)
+    (let ((customer (fetch 'customer customer-id)))
+      (when (and customer (not (customer-erased customer)))
+        (erase-customer customer-id :reason "asked for by the customer seven days ago"))))
+
+  (define-operation customers-erase-later ((id :type (id customer) :required t))
+      (:entity customer :kind :update :policy :admin :confirm t :title "Erase in seven days")
+    (enqueue-job 'erase-customer-later :customer-id id :in (* 7 24 3600))
+    (fetch! 'customer id))
   ```
 - In tests, `clock_set` runs the schedules and the jobs due by the new
   time, and

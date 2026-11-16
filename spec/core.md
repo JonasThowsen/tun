@@ -483,6 +483,30 @@ and is left out otherwise. Other refusals may or may not be audited. Work a work
 or job does is audited with its system actor. Entries never hold tokens or
 secrets, and record the credential the call used (`auth.md`).
 
+**Audited reads.** A read leaves no entry, unless its operation is
+declared `:audit t` (only a `:read` may be: a mutation is always audited,
+and `:audit` on any other kind is refused when the definition is
+compiled). Each successful call of an audited read writes one entry as a
+mutation's is written: `actor`, `tool`, `outcome: "ok"`, the record
+(`entity_type`, `entity_id`: the one the body named with `audit-target`,
+else a stored record the call returned, else the target its input names),
+`reason` when the body gave one, `request_id` and `credential`. The
+entry holds nothing of what was read: no field of the result and no
+input but the target's id. The body gives the reason with
+`(audit-reason TEXT)`, which a mutation may call too and which signals an
+error anywhere else, so a reason is never dropped unseen: the operation
+declares the parameter the caller gives it in, so a caller is asked for
+it as for any input. The entry is written in a write transaction of its
+own after the read's, and the result is returned only once the entry is
+committed: a read whose entry cannot be written fails, and its data is
+not returned. Called inside a mutation, the entry is written in the
+mutation's transaction, and goes with it. Called inside another read,
+whose transaction cannot write, it fails before it reads, so no data
+leaves before its entry is written. A refused audited read is audited as
+any refused call is.
+`registry_describe` gives `"audit": true` for an audited read and for
+every mutation.
+
 `audit_list` keeps to the record policies (`store.md` §6): an entry whose
 `entity_type` has a record policy is listed only to a caller whose policy
 reaches its record, and, when the record no longer exists, only to a
@@ -498,7 +522,8 @@ A read for `viewer` and up, computed from the live definitions:
 - `entities`: each with its `fields` (`name`, `type`, `label`, `required`,
   `source`, `module`, `computed` for a computed field) and its `rules`;
 - `operations`: `name`, `entity` (or null), `kind` (`read`, `create`,
-  `update`, `transition`, `workflow`), `confirm`, `idempotent`, `policy`,
+  `update`, `transition`, `workflow`), `confirm`, `idempotent`, `audit`
+  (§3.8), `policy`,
   `session_only` (§3.3), `source`, `module`, and `beyond_record_policy`,
   the reason, for a tool declared to show records beyond the record policy
   (`store.md` §6);

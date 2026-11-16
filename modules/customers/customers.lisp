@@ -8,7 +8,7 @@
   (:export #:customer #:customer-revision #:customer-name #:customer-email #:customer-phone
            #:customer-completed-orders #:customer-created-at #:customer-notes
            #:customers-create #:customers-get #:customers-list #:customers-update
-           #:customers-set-consent #:customers-erase
+           #:customers-set-consent #:customers-erase #:erase-customer
            #:customer-marketing-consent #:customer-consent-source #:customer-consent-at
            #:customer-erased #:customer-erased-at #:customer-erasing #:marketing-allowed-p
            #:record-completed-order #:record-reopened-order))
@@ -18,7 +18,7 @@
 (declaim (optimize (safety 3) (debug 2)))
 
 (define-module customers
-  (:core ">= 2.36.0" "< 3.0")
+  (:core ">= 2.44.0" "< 3.0")
   (:on-open repair-customer-receipts)
   (:documentation "Customers: name, email, phone, notes, completed orders."))
 
@@ -235,6 +235,81 @@ the count is the number of orders currently completed (README §3)."
 
 (define-operation customers-erase ((id :type (id customer) :required t))
     (:entity customer :kind :update :policy :admin :confirm t :title "Erase customer data")
+  (erase-customer id))
+
+;;; Erasing outside customers_erase (README 5.1): a job or a workflow an
+;;; admin's call, or the system, asked for.
+
+(defun admin-or-system-p (actor-text)
+  "True when ACTOR-TEXT, an actor as a job's enqueued_by keeps it, is an
+admin's or the system's."
+  (and (stringp actor-text)
+       (or (string-prefix-p "admin:" actor-text)
+           (string= actor-text "system")
+           (string-prefix-p "system:" actor-text))))
+
+(defun audit-refused-erasure (id)
+  "Audit the refused erasure of the customer ID as customers_erase, rejected,
+as the actor it ran as, after the caller's transaction ends, so the entry
+outlives the rollback."
+  (let ((actor (or *actor* (system-actor "none"))))
+    (defer-audit (lambda ()
+                   (with-actor (actor)
+                     (write-system-audit "customers_erase" "rejected"
+                                         :entity-type "customer" :entity-id id
+                                         :error-code "forbidden"))))))
+
+(defun check-erasure-allowed (id)
+  "Refuse to erase the customer ID where README 5.1 does not let
+ERASE-CUSTOMER erase: anywhere but inside customers_erase and a job (a
+workflow's among them) that an admin or the system asked for.  In a job the
+job fails at once, since another attempt would be refused too, and a
+workflow fails, so it is not run again."
+  (let ((job (tun.jobs:running-job)))
+    (cond ((and *operation* (eq (operation-name *operation*) 'customers-erase)))
+          ((not (and job *actor* (eq (actor-role *actor*) :system)))
+           (audit-refused-erasure id)
+           (fail :forbidden "A customer is erased with customers_erase, which asks for confirmation, or in a job or a workflow an admin asked for"))
+          ((admin-or-system-p (tun.jobs:job-enqueued-by job)))
+          (tun.workflows:*running-workflow*
+           ;; A workflow's refusal fails the workflow, so it is not run again.
+           (audit-refused-erasure id)
+           (fail :forbidden "The workflow was planned by ~a, who may not erase customers"
+                 (or (tun.jobs:job-enqueued-by job) "no one known")))
+          (t
+           (audit-refused-erasure id)
+           (tun.jobs:fail-job (format nil "The job was asked for by ~a, who may not erase customers"
+                                      (or (tun.jobs:job-enqueued-by job) "no one known")))))))
+
+(defun erasure-origin ()
+  "Where an erasure outside customers_erase ran, for its audit entry."
+  (let ((job (tun.jobs:running-job)))
+    (format nil "job ~a, enqueued by ~a" (entity-id job) (tun.jobs:job-enqueued-by job))))
+
+(defun erase-customer (id &key reason)
+  "Erase the customer ID as customers_erase does (README 5): the
+customer_erasing point, the request traces that name it, its fields, its
+receipts; return the erased customer.  It runs in the caller's write, or in
+one of its own.  Outside customers_erase it erases only in a job or a
+workflow an admin or the system asked for, audited as customers_erase with
+REASON, else where it ran; anywhere else it is forbidden (README 5.1)."
+  (check-type id string)
+  (check-type reason (or null string))
+  (check-erasure-allowed id)
+  (flet ((erase ()
+           (let ((customer (erase-customer-records id)))
+             (unless (and *operation* (eq (operation-name *operation*) 'customers-erase))
+               (write-system-audit "customers_erase" "ok"
+                                   :entity-type "customer" :entity-id id
+                                   :reason (let ((text (or reason (erasure-origin))))
+                                             (subseq text 0 (min 500 (length text))))))
+             customer)))
+    (if (eq *transaction-mode* :write)
+        (erase)
+        (with-transaction (:write) (erase)))))
+
+(defun erase-customer-records (id)
+  "Inside a write: README 5's four steps for the customer ID, in their order."
   (let* ((customer (fetch! 'customer id)) (suffix (subseq id (max 0 (- (length id) 8)))))
     (customer-erasing *application* customer)
     (redact-request-traces (list id (customer-name customer) (customer-email customer)
@@ -279,7 +354,8 @@ the count is the number of orders currently completed (README §3)."
         (values 200 (tr "Unsubscribe me") (list (unsubscribe-form))))))
 (tun.web:register-public-page "unsubscribe" #'public-unsubscribe-page)
 
-(publish '(marketing-allowed-p customers-set-consent customer-marketing-consent customer-erased))
+(publish '(marketing-allowed-p customers-set-consent customer-marketing-consent customer-erased
+           erase-customer))
 (defun repair-customer-receipts ()
   "At startup, redact receipts of erased customers that still hold their data
 (README §5); keys remain deduplicated."

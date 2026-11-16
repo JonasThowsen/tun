@@ -160,7 +160,8 @@
    ;; system entities
    #:audit-entry #:audit-entry-at #:audit-entry-actor #:audit-entry-tool #:audit-entry-outcome
    #:audit-entry-entity-type #:audit-entry-entity-id #:audit-entry-request-key #:audit-entry-error-code
-   #:audit-entry-reason #:audit-entry-credential #:audit-as #:audit-target #:*audit-actor*
+   #:audit-entry-reason #:audit-entry-credential #:audit-as #:audit-target #:audit-reason
+   #:operation-audit-p #:*caller* #:*audit-actor*
    #:*audit-reason* #:reject #:reject-as #:input-null-p
    #:decimal #:decimal-type #:json-number->rational #:round-decimal #:quantity-json #:format-quantity
    #:receipt #:receipt-result #:receipt-redacted #:confirmation #:setting #:read-setting #:write-setting

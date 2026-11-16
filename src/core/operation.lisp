@@ -120,6 +120,8 @@ string written out: a spec is data, so +TEXT+ would not be evaluated."
    (description :initarg :description :reader operation-description)
    (policy :initarg :policy :reader operation-policy :type policy)
    (confirm :initarg :confirm :reader operation-confirm-p)
+   (audit :initarg :audit :initform nil :reader operation-audit-p
+          :documentation "A read whose every successful call is audited (core.md 3.8).")
    (session-only :initarg :session-only :initform nil :reader operation-session-only-p
                  :documentation "Only a person signed in on the page may call it (spec/core.md
 3.3): never an access token, an OAuth client or the process's own work.")
@@ -152,8 +154,9 @@ the receipt keeps the recorded result only.")
   "Idempotency receipts apply to every mutating operation; not configurable."
   (operation-mutating-p op))
 (defun operation-audited-p (op)
-  "Audit applies to every mutating operation; not configurable."
-  (operation-mutating-p op))
+  "True when OP's calls are audited: every mutating operation, and a read
+declared :audit t (core.md 3.8)."
+  (or (operation-mutating-p op) (operation-audit-p op)))
 
 (defvar *operations* (make-hash-table :test 'eq) "Generic function name -> OPERATION.")
 (defvar *operation-order* '() "Operation names in definition order.")
@@ -454,7 +457,7 @@ runs outside any transaction (doing its own) and returns the final result."
 
 (defmacro define-operation (name (&rest parameters)
                             (&key tool entity (kind :read) title description
-                                  (policy nil policy-p) session-only confirm
+                                  (policy nil policy-p) session-only confirm audit
                                   (destructive nil destructive-p)
                                   test-only debug-only eval-only summary viewer-mutation live-view
                                   beyond-record-policy)
@@ -482,6 +485,10 @@ on the application), the input schema, the MCP tool and the registry entry."
     ;; access code (slice 1, 5.4), or a person's own access tokens.
     (when (and (mutating-kind-p kind) (eq policy :viewer) (not viewer-mutation))
       (error "Operation ~s mutates, so its policy cannot be :viewer (unless :viewer-mutation t)" name))
+    ;; core.md 3.8: a mutation is always audited; only a read asks.
+    (when (and audit (not (eq kind :read)))
+      (error "Operation ~s: :audit is for a :read; a ~(~s~) operation is ~:[not one~;always audited~]"
+             name kind (mutating-kind-p kind)))
     (when (and draft-spec (not (eq kind :create)))
       (error "Only :create operations take a :draft"))
     (unless (or (null beyond-record-policy)
@@ -509,6 +516,7 @@ on the application), the input schema, the MCP tool and the registry entry."
                          :title ,(or title tool) :description ,doc
                          :policy ,policy :session-only ,(and session-only t)
                          :confirm ,(and confirm t)
+                         :audit ,(and audit t)
                          :destructive ,(if destructive-p
                                            (and destructive t)
                                            (and (member kind '(:update :transition)) t))

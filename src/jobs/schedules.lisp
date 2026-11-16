@@ -164,8 +164,10 @@ recorded already, running it when it should run.  True when it ran."
   "Run every schedule whose latest occurrence has not run, as
 system:schedule.  Returns how many ran.  The tick calls it; so do
 clock_set in test mode and the application when it opens."
-  (with-actor ((system-actor "schedule"))
-    (count-if #'tend-schedule (schedules))))
+  ;; No caller asked for this work, also when clock_set runs it.
+  (let ((*caller* nil))
+    (with-actor ((system-actor "schedule"))
+      (count-if #'tend-schedule (schedules)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Tools (spec/jobs.md 9)

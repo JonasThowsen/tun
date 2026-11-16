@@ -18,6 +18,7 @@
                (:file "notifications")
                (:file "mail")
                (:file "documents")
+               (:file "customer-data")
                (:file "welcome")
                (:file "wait")
                (:file "application")

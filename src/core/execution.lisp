@@ -5,7 +5,8 @@
 ;;;;   1. actor present            (else ACTOR-ERROR, a transport-level error)
 ;;;;   2. policy                   forbidden + rejected audit entry, before any lookup
 ;;;;   3. input against schema     invalid_input
-;;;;   read:  run the methods in a read transaction (writes are impossible there)
+;;;;   read:  run the methods in a read transaction (writes are impossible there);
+;;;;          an audited read (:audit t) then writes its audit entry, before it answers
 ;;;;   mutating:
 ;;;;   4. confirm op, no token     replay an existing receipt, else issue a token
 ;;;;   5. write transaction:
@@ -130,10 +131,24 @@ than the caller: a customer answering a quote by its access code.")
   "Set by an operation's body (AUDIT-AS) to record the reason of an override.")
 
 (defun audit-as (&key actor reason)
-  "Inside a mutating operation: audit this call with ACTOR (a string such as
-\"customer:qte_x\") instead of the caller, and/or with REASON."
+  "Inside a mutating operation or an audited read: audit this call with ACTOR
+(a string such as \"customer:qte_x\") instead of the caller, and/or with REASON."
   (when actor (setf *audit-actor* actor))
   (when reason (setf *audit-reason* (subseq reason 0 (min 500 (length reason))))))
+
+(defvar *audited-call* nil
+  "True while a mutation's methods or an audited read's run: where AUDIT-REASON
+has an entry to go to.")
+
+(defun audit-reason (text)
+  "Inside a mutating operation or a read declared :audit t: give TEXT, cut to
+500 characters, as the reason of the call's audit entry (core.md 3.8).
+Anywhere else, a read that is not audited among them, it signals an error, so
+a reason never goes unrecorded unseen."
+  (check-type text string)
+  (unless *audited-call*
+    (error "AUDIT-REASON outside a mutating operation or an audited read: no audit entry would hold the reason"))
+  (audit-as :reason text))
 
 (defun storable-text (value max)
   "VALUE when it is text of 1 to MAX characters without NUL, which an audit
@@ -409,6 +424,12 @@ source text, for developers and agents (spec/i18n.md 3.5)."
   (or (ignore-errors (with-language (:source) (princ-to-string condition)))
       (string-downcase (symbol-name (type-of condition)))))
 
+(defvar *caller* nil
+  "The actor of the outermost operation call being run: the person, agent or
+system process that asked for the work, whatever WITH-ACTOR the code under
+it binds.  NIL for work no call asked for (a job's, a schedule's), which
+binds it so.")
+
 (defun run-operation (name application input body)
   "Entry point of every operation's effective method (see the OPERATION method
 combination). BODY runs the :before, primary and :after methods.  A call
@@ -417,6 +438,7 @@ code inside one (a workflow, a client method) is a step of that request."
   (let ((op (find-operation name)))
     (with-application (application)
       (let ((*operation* op)
+            (*caller* (or *caller* *actor*))
             (*request-id* (or *request-id* (new-id "req"))))
         (let ((record *request-record*))
           (cond ((null record)
@@ -528,9 +550,36 @@ code inside one (a workflow, a client method) is a step of that request."
                                (*writes-refused* "A waiting operation reads and never writes (spec/waiting.md 1)"))
                            (funcall body))))
              (with-transaction (:read) (result->json result))))
-          (t (with-transaction (:read)
-               (let ((*input* input) (*inside-operation* t))
-                 (result->json (funcall body))))))))
+          (t (execute-read op input actor body)))))
+
+(defun execute-read (op input actor body)
+  "Run the read OP's methods in a read transaction; an audited read then
+writes its entry, in the caller's write or a write of its own, before its
+result is returned (core.md 3.8).  Inside another read, whose transaction
+cannot write, an audited read is refused before it reads."
+  (flet ((read-result ()
+           (with-transaction (:read)
+             (let* ((*input* input)
+                    (*inside-operation* t)
+                    (result (funcall body)))
+               (values (result->json result) result)))))
+    (cond ((not (operation-audit-p op)) (values (read-result)))
+          ((eq *transaction-mode* :read)
+           (error 'read-only-violation
+                  :message (format nil "~a is an audited read and cannot run inside another read: its audit entry could not be written before its data is returned"
+                                   (operation-tool op))))
+          (t (let ((*audit-target* nil)
+                   (*audit-actor* nil)
+                   (*audit-reason* nil)
+                   (*audited-call* t))
+               (multiple-value-bind (json result) (read-result)
+                 (if (eq *transaction-mode* :write)
+                     (write-audit op input actor "ok" :result result)
+                     ;; A wait's body refuses writes, but not this entry.
+                     (let ((*writes-refused* nil))
+                       (with-transaction (:write)
+                         (write-audit op input actor "ok" :result result))))
+                 json))))))
 
 (defvar *shown-once* :none
   "Inside a mutation's transaction: the (key . value) pairs SHOW-ONCE added.")
@@ -597,6 +646,7 @@ own, after the commit."
                 (*audit-target* nil)
                 (*audit-actor* nil)
                 (*audit-reason* nil)
+                (*audited-call* t)
                 (*shown-once* '())
                 (json (with-transaction (:write)
                         (or (and key (with-step (:idempotency :name "receipt lookup" :source :core)

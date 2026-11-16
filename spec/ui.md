@@ -2483,7 +2483,11 @@ form of `field`s with an `error-summary`, a confirmation is a
      shown under a page header with TITLE, and may add a fourth value, a
      plist of the header's `:description`, `:meta`, `:actions` and
      `:breadcrumbs`. `(values 303 PATH)` sends the browser to PATH, as a
-     successful post should.
+     successful post should. `(values 200 :download (make-download
+     OCTETS :filename NAME :content-type TYPE))` answers a file the page
+     made for the request as a download, under the page's policy, with
+     the headers, types and names of `files.md` §5.5; the link to it
+     carries `download` and `hx-boost="false"`.
   4. `web-call TOOL ARGUMENTS` calls an operation as the logged-in
      person, through the execution path. It returns the result, or the
      error document and its code; `error-alert` shows that document.

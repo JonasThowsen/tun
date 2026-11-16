@@ -97,6 +97,8 @@ the listed symbols (the same symbol objects, not copies)."
    #:ecase-of #:case-of #:etypecase-of #:error-code #:case-not-handled
    ;; inside operations, rules, workflows
    #:fail #:input-value #:input-provided-p #:operation-result #:invoke
+   ;; what a mutation's or an audited read's audit entry names (spec/core.md 3.8)
+   #:audit-reason #:audit-target
    ;; an operation's refusal, such as a remote-failure or program-failure a
    ;; client handles: its code and its message in the current language
    #:operation-error #:operation-error-code #:operation-error-message
@@ -130,6 +132,9 @@ the listed symbols (the same symbol objects, not copies)."
    #:render-screen #:section #:json-table #:entity-detail
    #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras #:home-path
    #:preload-request-p #:decline-preload #:query-values #:query-address
+   ;; a file a page makes on the spot, answered as a download
+   ;; (spec/files.md 5.5)
+   #:make-download
    ;; what a choice's address answers, and its find step without scripts
    ;; (spec/ui.md 6, choice-input)
    #:choice-answer #:choice-find
