@@ -20,6 +20,7 @@
                (:file "documents")
                (:file "customer-data")
                (:file "welcome")
+               (:file "visits")
                (:file "wait")
                (:file "application")
                (:file "public")

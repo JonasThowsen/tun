@@ -539,6 +539,59 @@ it (`ui.md` §8, «A client's pages», 3):
   signed in goes to the login and back; a person the policy does not
   admit gets the page's 403, and the function is not called, so nothing
   is made.
+- **From a public page** (`ui.md` §8, «Public pages» 6), whom the
+  handler decides, and nothing else: no session, no policy and no
+  record policy stand in front of it. So a handler that hands over a
+  record's file by a link token checks, before it reads a byte:
+  1. the token is one of the purpose this page serves (a link to read a
+     document, not one to answer an offer or to unsubscribe) and for this
+     record: with the kernel's `(link-token PURPOSE ID)`, the token the
+     link was made with, compared with `constant-time-string=`, so a
+     token of another purpose or another record never matches;
+  2. the record is one that may still be read this way (not erased, not
+     withdrawn, not past the link's time), by the module's own rule;
+  3. the file asked for is that record's: it is taken from
+     `(attachments-of RECORD)`, never fetched by the id in the address
+     alone, since the file is read as the system, which may read any;
+  4. anything else, a GET or a HEAD, is answered as the page's wrong
+     link, its 404, the same for each, so the answer tells nothing of
+     which check failed.
+
+  ```lisp
+  (defun shared-file-page (method parts form session)
+    "/shared/ID/TOKEN/FILE-ID: the file FILE-ID of the document ID, whose
+  reading link has TOKEN, as a download; anything else, the page's 404."
+    (declare (ignore form session))
+    (let ((download
+            (and (member method '(:get :head)) (= (length parts) 3)
+                 (with-transaction (:read)
+                   (with-actor ((system-actor "shared-link"))
+                     (destructuring-bind (id token file-id) parts
+                       (let ((document (fetch 'document id)))
+                         (when (and document
+                                    (constant-time-string= token (link-token "document-reading" id))
+                                    (document-readable-by-link-p document))
+                           (let ((file (find file-id (attachments-of document)
+                                             :key (lambda (file) (jget file "id"))
+                                             :test #'equal)))
+                             (when file
+                               (make-download (file-octets file-id)
+                                              :filename (jget file "filename")
+                                              :content-type (jget file "content_type"))))))))))))
+      (if download
+          (values 200 :download download)
+          (values 404 (tr "Page not found") (list `(:p ,(tr "Check the link in the email.")))))))
+
+  (register-public-page "shared" #'shared-file-page)
+  ```
+
+  The link the module sends is `(absolute-url (format nil "/shared/~a/~a/~a"
+  id (link-token "document-reading" id) file-id))`. `document-readable-by-link-p`
+  is the module's own rule (2), which Tun cannot know, as it cannot know
+  which purposes a module's links have. The file is sent with the headers
+  below, as a made file is (`no-store`, not a stored file's ETag);
+  `/files/ID` is not involved and still answers only those who may see
+  the record (§5.2).
 - **The content.** OCTETS is a vector of octets, or a string, sent as
   UTF-8. It is sent whole, from memory, with its `Content-Length`.
 - **The type.** TYPE is one of the types below, given without

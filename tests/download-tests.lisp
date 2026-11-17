@@ -216,3 +216,212 @@ the query encoded as UTF-8 (PURI cannot parse an address that holds it)."
     (is (equal "download.bin" (tun.web:download-filename download)))
     (is (equal "application/octet-stream" (tun.web:download-content-type download)))
     (is (equalp #(195 166) (tun.web:download-octets download)))))
+
+;;; ------------------------------------------------------------------
+;;; A download from a public page (spec/ui.md 8, «Public pages» 6): decided
+;;; by the page's own handler, answered as a staff page's.
+
+(defparameter +public-made-files+
+  `(("pdf" "application/pdf" "Økonomi «2026».pdf")
+    ("json" "application/json" "data.json")
+    ("html" "text/html" "page.html")
+    ("svg" "image/svg+xml" "page.html")
+    ("header" ,(format nil "application/pdf~c~cX-Evil: 1" #\Return #\Linefeed) "page.html"))
+  "The files the test's public page makes on the spot, by the last part of
+its path: the type and the name a page's data might give.")
+
+(defun public-made-file-page (method parts form session)
+  "/public-made/KIND: a file made on the spot, of KIND in +PUBLIC-MADE-FILES+;
+anything else its 404."
+  (declare (ignore method form session))
+  (let ((made (assoc (first parts) +public-made-files+ :test #'equal)))
+    (if (and made (null (rest parts)))
+        (values 200 :download (tun.web:make-download +download-octets+
+                                                     :content-type (second made)
+                                                     :filename (third made)))
+        (values 404 "Page not found" (list '(:p "Check the link in the email."))))))
+
+(defvar *unreadable-by-link* '()
+  "The ids of the notes the test's shared page no longer hands out: the
+module's own rule of which records a link may still read.")
+
+(defun shared-test-page (method parts form session)
+  "/shared-test/ID/TOKEN/FILE-ID: the file FILE-ID of the note ID, whose
+reading link has TOKEN, as a download; anything else, the page's 404.  The
+pattern of spec/files.md 5.5, «From a public page»."
+  (declare (ignore form session))
+  (let ((download
+          (and (member method '(:get :head)) (= (length parts) 3)
+               (with-transaction (:read)
+                 (with-actor ((system-actor "shared-link"))
+                   (destructuring-bind (id token file-id) parts
+                     (let ((note (fetch 'file-note id)))
+                       (when (and note
+                                  (constant-time-string= token (link-token "note-reading" id))
+                                  (not (member id *unreadable-by-link* :test #'equal)))
+                         (let ((file (find file-id (tun.files:attachments-of note)
+                                           :key (lambda (file) (jget file "id"))
+                                           :test #'equal)))
+                           (when file
+                             (tun.web:make-download
+                              (tun.files:file-octets file-id)
+                              :filename (jget file "filename")
+                              :content-type (jget file "content_type"))))))))))))
+    (if download
+        (values 200 :download download)
+        (values 404 "Page not found" (list '(:p "Check the link in the email."))))))
+
+(defun link-token-of (purpose id)
+  "The link token of PURPOSE for the record ID in the test's application."
+  (with-application (*app*)
+    (with-transaction (:read) (link-token purpose id))))
+
+(defmacro with-public-download-pages (() &body body)
+  "Run BODY with the test's public pages /public-made and /shared-test."
+  `(unwind-protect
+        (progn (tun.web:register-public-page "public-made" 'public-made-file-page)
+               (tun.web:register-public-page "shared-test" 'shared-test-page)
+               ,@body)
+     (remhash "public-made" tun.web::*public-pages*)
+     (remhash "shared-test" tun.web::*public-pages*)))
+
+(defun is-no-file (status body headers what &key (octets +download-octets+))
+  "Check that an answer STATUS, BODY, HEADERS is the page's 404 and holds
+nothing of OCTETS.  A HEAD's BODY is NIL."
+  (setf body (or body (make-array 0 :element-type '(unsigned-byte 8))))
+  (is (= 404 status) "~a: the page's 404: ~a" what status)
+  (is (null (response-header :content-disposition headers)) "~a: no file" what)
+  (is (string-prefix-p "text/html" (response-header :content-type headers))
+      "~a: a page: ~a" what (response-header :content-type headers))
+  (is (null (search octets body)) "~a: none of the file's bytes" what)
+  (is (or (zerop (length body))
+          (search "Check the link in the email."
+                  (sb-ext:octets-to-string body :external-format :utf-8)))
+      "~a: the handler's own page" what))
+
+(test a-public-page-answers-a-file-it-made-as-a-download
+  (with-public-download-pages ()
+    (with-test-server (port)
+      (multiple-value-bind (status body headers) (fetch-address port "/public-made/pdf")
+        (is (= 200 status))
+        (is (equalp +download-octets+ body) "exactly the octets")
+        (is (equal "application/pdf" (response-header :content-type headers)))
+        (is (equal "6" (response-header :content-length headers)))
+        (is (equal (concatenate 'string "attachment; filename=\"_konomi _2026_.pdf\"; "
+                                "filename*=UTF-8''%C3%98konomi%20%C2%AB2026%C2%BB.pdf")
+                   (response-header :content-disposition headers)))
+        (is (equal "nosniff" (response-header :x-content-type-options headers)))
+        (is (equal tun.web::+file-security-policy+
+                   (response-header :content-security-policy headers)))
+        (is (equal "same-origin" (response-header :cross-origin-resource-policy headers)))
+        (is (equal "no-referrer" (response-header :referrer-policy headers)))
+        (is (equal "no-store" (response-header :cache-control headers)))
+        (is (null (response-header :set-cookie headers)) "no session for it"))
+      (multiple-value-bind (status body headers) (fetch-address port "/public-made/json")
+        (declare (ignore body))
+        (is (= 200 status))
+        (is (equal "application/json; charset=utf-8" (response-header :content-type headers))))
+      (dolist (kind '("html" "svg" "header"))
+        (multiple-value-bind (status body headers)
+            (fetch-address port (format nil "/public-made/~a" kind))
+          (declare (ignore body))
+          (is (= 200 status))
+          (is (equal "application/octet-stream" (response-header :content-type headers))
+              "~a is sent as octets: ~a" kind (response-header :content-type headers))
+          (is (null (response-header :x-evil headers)) "~a adds no header" kind)
+          (is (string-prefix-p "attachment; filename=\"page.html.bin\""
+                               (response-header :content-disposition headers))
+              "~a: named as octets: ~a" kind (response-header :content-disposition headers))))
+      (multiple-value-bind (status body headers)
+          (fetch-address port "/public-made/pdf" :headers '(("Tun-Preload" . "true")))
+        (is (= 204 status) "a preload is declined")
+        (is (zerop (length body)))
+        (is (null (response-header :content-disposition headers))))
+      (multiple-value-bind (status body headers)
+          (fetch-address port "/public-made/pdf" :method :post
+                                                 :headers '(("HX-Request" . "true")))
+        (is (= 400 status) "htmx's post is refused")
+        (is (null (response-header :content-disposition headers)))
+        (is (null (search +download-octets+ body)))))))
+
+(test a-public-pages-file-goes-only-to-the-link-its-handler-checks
+  (with-public-download-pages ()
+    (with-test-server (port)
+      (let* ((note (jget (call-ok "file_notes_create" "employee:anna" "title" "Delt") "id"))
+             (other (jget (call-ok "file_notes_create" "employee:anna" "title" "Annen") "id"))
+             (pdf (fixture "kvittering.pdf"))
+             (file (jget (first (attach-over-api "employee:anna" "file_note" note
+                                                 "kvittering ø.pdf" pdf))
+                         "id"))
+             (other-file (jget (first (attach-over-api "employee:anna" "file_note" other
+                                                       "skjermbilde.png"
+                                                       (fixture "skjermbilde.png")))
+                               "id"))
+             (token (link-token-of "note-reading" note))
+             (other-token (link-token-of "note-reading" other))
+             (answer-token (link-token-of "note-answer" note)))
+        (flet ((shared (id token file-id)
+                 (format nil "/shared-test/~a/~a/~a" id token file-id)))
+          (multiple-value-bind (status body headers) (fetch-address port (shared note token file))
+            (is (= 200 status) "the link's own file: ~a" status)
+            (is (equalp pdf body) "exactly its bytes")
+            (is (equal "application/pdf" (response-header :content-type headers)))
+            (is (equal (concatenate 'string "attachment; filename=\"kvittering _.pdf\"; "
+                                    "filename*=UTF-8''kvittering%20%C3%B8.pdf")
+                       (response-header :content-disposition headers)))
+            (is (equal "nosniff" (response-header :x-content-type-options headers)))
+            (is (equal tun.web::+file-security-policy+
+                       (response-header :content-security-policy headers)))
+            (is (equal "no-store" (response-header :cache-control headers)))
+            (is (null (response-header :set-cookie headers)) "no session for it"))
+          (multiple-value-bind (status body headers)
+              (fetch-address port (shared note token file) :method :head)
+            (is (= 200 status) "HEAD with the right link: ~a" status)
+            (is (zerop (length body)) "no body to a HEAD")
+            (is (equal (princ-to-string (length pdf)) (response-header :content-length headers))))
+          (loop for (path what) in
+                (list (list (shared note "AAAAAAAAAAAAAAAAAAAA" file) "a token that is no token")
+                      (list (shared note answer-token file) "a token of another purpose")
+                      (list (shared note other-token file) "another record's token")
+                      (list (shared other other-token file) "another record with its token")
+                      (list (shared note token other-file) "another record's file")
+                      (list (shared note token "fil_finnes_ikke") "a file that is none")
+                      (list (format nil "/shared-test/~a/~a" note token) "no file")
+                      (list (format nil "/shared-test/~a/~a/~a/x" note token file) "more after"))
+                do (multiple-value-bind (status body headers) (fetch-address port path)
+                     (is-no-file status body headers what :octets pdf))
+                   (multiple-value-bind (status body headers)
+                       (fetch-address port path :method :head)
+                     (is-no-file status body headers (format nil "HEAD, ~a" what) :octets pdf)))
+          (multiple-value-bind (status body headers)
+              (fetch-address port (shared note token file) :method :post)
+            (is-no-file status body headers "a post" :octets pdf))
+          (setf (sb-ext:symbol-global-value '*unreadable-by-link*) (list note))
+          (unwind-protect
+               (multiple-value-bind (status body headers)
+                   (fetch-address port (shared note token file))
+                 (is-no-file status body headers "a record the module no longer hands out"
+                             :octets pdf))
+            (setf (sb-ext:symbol-global-value '*unreadable-by-link*) '()))
+          (multiple-value-bind (status body headers)
+              (fetch-address port (format nil "/files/~a" file))
+            (declare (ignore body))
+            (is (= 303 status) "/files/ID still sends no session to the login: ~a" status)
+            (is (search "/login" (location headers)))))))))
+
+(test a-public-page-without-a-download-answers-as-before
+  (with-public-download-pages ()
+    (with-test-server (port)
+      (multiple-value-bind (status body headers) (fetch-address port "/public-made/none")
+        (is (= 404 status) "the status the handler gave")
+        (is (equal "text/html; charset=utf-8" (response-header :content-type headers)))
+        (is (null (response-header :content-disposition headers)))
+        (is (equal "no-referrer" (response-header :referrer-policy headers)))
+        (is (string-prefix-p "default-src 'self'; script-src 'self'"
+                             (response-header :content-security-policy headers))
+            "the page's own policy, not a file's: ~a"
+            (response-header :content-security-policy headers))
+        (let ((page (sb-ext:octets-to-string body :external-format :utf-8)))
+          (is (search "<title>Page not found" page) "the handler's heading: ~a"
+              (subseq page 0 (min 400 (length page))))
+          (is (search "Check the link in the email." page)))))))

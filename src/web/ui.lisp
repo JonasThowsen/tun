@@ -146,9 +146,10 @@ client's always, a module's only when the application enables the module."
           :description "The keys the page remembers that have a value, as an object.")))
 
 (defun query-values (query key)
-  "The values that are not empty QUERY, a page's query parameters as a JSON
-object, gives KEY, as a list of texts: one for a key given once, each in
-turn for a key given more than once (spec/ui.md 8)."
+  "The values that are not empty QUERY, a page's query parameters or its
+posted FORM as a JSON object, gives KEY, as a list of texts: one for a key
+given once, each in turn for a key given more than once, as a group of
+checkboxes posts it (spec/ui.md 8)."
   (let ((value (jget query key)))
     (remove-if-not (lambda (each) (and (stringp each) (plusp (length each))))
                    (if (vectorp value)
@@ -166,6 +167,15 @@ of its texts in order."
               (cond ((not found) (cdr pair))
                     ((stringp earlier) (vector earlier (cdr pair)))
                     (t (concatenate 'vector earlier (vector (cdr pair))))))))))
+
+(defun posted-form (method)
+  "The fields this request posted, for a page's FORM, by the query's rule
+(QUERY-OBJECT): a name posted once is its text, a name posted more than
+once, as a group of checkboxes posts it, an array of its texts in order
+(spec/ui.md 8).  An empty object for a METHOD other than :POST."
+  (if (eq method :post)
+      (query-object (hunchentoot:post-parameters*))
+      (jobj)))
 
 (defun remembered-pairs (page query)
   "The keys PAGE remembers that QUERY, a JSON object, gives a value, with
@@ -251,10 +261,8 @@ after it keeps it (spec/ui.md 4.1)."
               (respond 403 (tr "No access")
                        (list (ui:alert (:variant :warning :title (tr "This page is not for you"))
                                (tr "The page needs a role other than yours.")))))))
-      (let ((form (jobj)) (query (query-object (hunchentoot:get-parameters*))))
+      (let ((form (posted-form method)) (query (query-object (hunchentoot:get-parameters*))))
         (when (eq method :post)
-          (dolist (pair (hunchentoot:post-parameters*))
-            (setf (gethash (car pair) form) (cdr pair)))
           (add-posted-files form))
         ;; Only the page's own address, as a page: a record's page under it,
         ;; a post and a part htmx refreshes neither keep nor follow it.
@@ -330,13 +338,10 @@ menu, its title linking back to the page itself."
   (let ((handler (gethash (first parts) *public-pages*)))
     (when handler
       (setf (hunchentoot:header-out "Referrer-Policy") "no-referrer")
-      (let ((form (jobj))
+      (let ((form (posted-form method))
             (session (public-session-for-request (and (eq method :post) (= (length parts) 3)
                                                       (equal (first parts) "offer")
                                                       (equal (third parts) "open")))))
-        (when (eq method :post)
-          (dolist (pair (hunchentoot:post-parameters*))
-            (setf (gethash (car pair) form) (cdr pair))))
         (sb-thread:with-mutex ((public-session-lock session))
           (multiple-value-bind (status heading body)
               (handler-case (funcall handler method (rest parts) form
@@ -345,8 +350,11 @@ menu, its title linking back to the page itself."
                   (values 422 (tr "The message could not be saved")
                           (list (ui:alert (:variant :destructive)
                                           (operation-error-message e))))))
-            (respond status heading body :guest t :home (public-home parts)
-                                         :site-title (public-title (first parts)))))))))
+            ;; ui.md 8, «Public pages» 6: the handler alone decided who gets it.
+            (if (eq heading :download)
+                (send-download body)
+                (respond status heading body :guest t :home (public-home parts)
+                                             :site-title (public-title (first parts))))))))))
 
 (defun public-home (parts)
   "Where the title of the public page at PARTS leads: the page itself, as

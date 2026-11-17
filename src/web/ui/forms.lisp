@@ -950,7 +950,8 @@ to it, then ID-2, ID-3 ... (GOV.UK)."
   (:doc "A group of checkboxes under a heading, where the user can choose several. CHOICES
 is a list of (VALUE TEXT &key HINT DISABLED) and SELECTED a list of the chosen values; INLINE
 puts short choices on one line. ID goes to the first box, which the error summary links
-to.")
+to. The form posts NAME once for each box ticked; a page reads them as a list with
+(query-values form NAME).")
   (:source "GOV.UK checkboxes; Basecoat checkbox (Vega)")
   (:css "
 .tun-checkboxes {

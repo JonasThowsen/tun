@@ -174,6 +174,7 @@
                              (:file "record-policy-tests")
                              (:file "files-tests")
                              (:file "download-tests")
+                             (:file "posted-form-tests")
                              (:file "hostile-tests")
                              (:file "module-tests")
                              (:file "module-system-tests")

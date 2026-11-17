@@ -260,3 +260,24 @@ kundefilter finner blant (spec/ui.md 6, choice-input).")
   ("Registration number" "Registreringsnummer")
   ("A change to the card shows on the board at once."
    "En endring på kortet vises på tavla med en gang."))
+
+;;; The days a visit can be made (visits.lisp)
+
+(define-translations "nb"
+  ("Visit days" "Besøksdager")
+  ("The weekdays a visit can be made." "Ukedagene et besøk kan gjøres.")
+  ("The weekdays a visit can be made; none for none."
+   "Ukedagene et besøk kan gjøres; ingen for ingen.")
+  ("Set the visit days" "Sett besøksdagene")
+  ("Keeps the weekdays a visit can be made, in place of those kept."
+   "Tar vare på ukedagene et besøk kan gjøres, i stedet for dem som var lagret.")
+  ("The weekdays a visit can be made, as kept." "Ukedagene et besøk kan gjøres, slik de er lagret.")
+  ("Monday" "Mandag")
+  ("Tuesday" "Tirsdag")
+  ("Wednesday" "Onsdag")
+  ("Thursday" "Torsdag")
+  ("Friday" "Fredag")
+  ("Which days can we come?" "Hvilke dager kan vi komme?")
+  ("Tick every day that suits." "Kryss av for hver dag som passer.")
+  ("Saved: ~a." "Lagret: ~a.")
+  ("No days are saved." "Ingen dager er lagret."))

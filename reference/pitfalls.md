@@ -11,6 +11,15 @@ repeating the history.
   wants arrays as vectors, and uses `:null` for JSON null. Build arrays with
   `jarr`, so an empty list becomes `[]`. Build objects with `jobj`. A plain
   `NIL` where an array belongs encodes `false`, and only a test notices.
+- **A posted name is a text or an array, by how many a browser sent.** A
+  page's FORM and QUERY keep a name given once as its text and a name
+  given more than once (a group of `ui:checkboxes`, a `:several`
+  filter) as an array of its texts, in order; a name not given is
+  absent. `jget` of a set therefore gives NIL, a string or a vector, and
+  code that expects one of them loses or refuses the others. Read a set
+  with `(query-values form NAME)`, a list of its values that are not
+  empty, whatever was ticked. Until core 2.47.0 a posted form kept only
+  the last value of a repeated name.
 - **Most data crossing the MCP boundary is dynamically typed.** Inputs and
   results are hash tables. Nothing checks their shape at compile time.
   Validate at the boundary with the declared parameter types, then work with

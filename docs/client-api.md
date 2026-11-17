@@ -391,6 +391,22 @@ rails beside it in a narrower box, such as on a phone (`spec/ui.md`
                               ,(ui:button (:type "submit") "Lagre")))))))
 ```
 
+FORM and QUERY hold a name by one rule: given once, its text (`""` when
+left empty); given more than once, an array of its texts in the order
+sent; not given, absent. A group of `ui:checkboxes` posts its name once
+for each box ticked, so its name is absent, a text or an array by how
+many were ticked: read it, and any name a browser may send more than
+once, with `(query-values form NAME)`, its values that are not empty as
+a list (NIL for none ticked), never with `jget` alone (`spec/ui.md` §8,
+«A client's pages» 2):
+
+```lisp
+(ui:checkboxes (:legend "Which days can we come?" :name "days"
+                :choices '(("mon" "Mon") ("tue" "Tue") ("wed" "Wed"))
+                :selected (query-values form "days")))
+(web-call "visits_set" (jobj "days" (jarr (query-values form "days"))))
+```
+
 A page answers a file it makes for the request, without storing it, as
 a download: it returns `(values 200 :download (make-download CONTENT
 :filename NAME :content-type TYPE))` (`spec/files.md` §5.5). CONTENT is
@@ -816,7 +832,56 @@ ignores, and returns `(values STATUS TITLE BODY)` as a page does:
 ```
 
 No transaction is open around HANDLER; a page that reads records, such
-as the orders module's offer, is a module's, which opens its own.
+as the orders module's offer, is a module's, which opens its own. FORM
+holds a name posted more than once as an array, as a staff page's does
+(«Pages» above). METHOD is `:get`, `:head` or `:post`.
+
+A public page hands over a file with `(values 200 :download
+(make-download …))`, answered with the same types, names and headers as
+a staff page's download (`spec/files.md` §5.5). Nothing but HANDLER
+decides who gets it: no session, policy or record policy is in front of
+a public page. So a page that hands a record's stored file to whoever
+holds a link checks, itself, before it reads the file: that the token is
+of this page's purpose and for this record (`link-token`, an HMAC of the
+purpose and the id, compared with `constant-time-string=`), that the
+record may still be read this way (the module's own rule), and that the
+file is that record's (from `attachments-of`, never by the address's id
+alone); everything else, a HEAD included, is its 404, the same for each.
+In a module of the client's own, since `with-transaction`, `link-token`
+and `constant-time-string=` are `TUN.CORE`'s, which a module uses and a
+client's main package does not:
+
+```lisp
+(defun shared-file-page (method parts form session)
+  "/shared/ID/TOKEN/FILE-ID: the file FILE-ID of the document ID, whose
+reading link has TOKEN, as a download; anything else, the page's 404."
+  (declare (ignore form session))
+  (let ((download
+          (and (member method '(:get :head)) (= (length parts) 3)
+               (with-transaction (:read)
+                 (with-actor ((system-actor "shared-link"))
+                   (destructuring-bind (id token file-id) parts
+                     (let ((document (fetch 'document id)))
+                       (when (and document
+                                  (constant-time-string= token (link-token "document-reading" id))
+                                  (document-readable-by-link-p document))
+                         (let ((file (find file-id (attachments-of document)
+                                           :key (lambda (file) (jget file "id"))
+                                           :test #'equal)))
+                           (when file
+                             (make-download (file-octets file-id)
+                                            :filename (jget file "filename")
+                                            :content-type (jget file "content_type"))))))))))))
+    (if download
+        (values 200 :download download)
+        (values 404 (tr "Page not found") (list `(:p ,(tr "Check the link in the email.")))))))
+
+(register-public-page "shared" #'shared-file-page)
+```
+
+The link in the email is `(absolute-url (format nil "/shared/~a/~a/~a" id
+(link-token "document-reading" id) file-id))`. `/files/ID` is not
+involved: it still answers only those who may see the record.
 
 Its frame has no menu; its title, the mark beside it and the end of the
 tab's title are what `(public-page-title APPLICATION PREFIX)` answers,

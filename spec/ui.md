@@ -2474,11 +2474,15 @@ form of `field`s with an `error-summary`, a confirmation is a
   2. NAME is a function of the request. METHOD is `:get` or `:post`, PATH
      the parts after the prefix (`/saker/sak_1` gives `("sak_1")`), FORM
      and QUERY the posted and the query parameters as JSON objects. A
-     post's files arrive in FORM as `files.md` §6.2 says. A query key
-     given once is a text; given more than once, as a `:several`
-     filter sends it, an array of its texts in order.
-     `(query-values QUERY KEY)` gives a key's values that are not empty,
-     as a list, from either.
+     post's files arrive in FORM as `files.md` §6.2 says. In both, by
+     one rule, a name given once is its text (`""` when left empty); a
+     name given more than once, as `checkboxes` post it and a
+     `:several` filter sends it, an array of its texts in the order
+     given; a name not given is absent. So a name a browser may send
+     several times is a text or an array, by how many were sent:
+     `(query-values FORM-OR-QUERY KEY)` gives its values that are not
+     empty, as a list, from either shape, and is how a page reads a set
+     (none ticked is NIL).
   3. It returns `(values STATUS TITLE BODY)`, BODY a list of components
      shown under a page header with TITLE, and may add a fourth value, a
      plist of the header's `:description`, `:meta`, `:actions` and
@@ -2604,8 +2608,10 @@ form of `field`s with an `error-summary`, a confirmation is a
   or a client with `(register-public-page PREFIX HANDLER)`, in `TUN`.
   1. It serves `/PREFIX` and every path under it to anyone, signed in or
      not, with `Referrer-Policy: no-referrer`. HANDLER is called with
-     METHOD (`:get` or `:post`), the path's parts after the prefix, the
-     posted form as a JSON object, and a session, a JSON object the
+     METHOD (`:get`, `:head` or `:post`), the path's parts after the
+     prefix, the posted form as a JSON object, read as a staff page's
+     FORM is (a name posted more than once an array, «A client's pages»
+     2), and a session, a JSON object the
      orders module keeps for an offer, which a client ignores. No
      transaction is open around it (a module's handler opens its own),
      and it returns `(values STATUS TITLE BODY)`, BODY a list of
@@ -2646,6 +2652,16 @@ form of `field`s with an `error-summary`, a confirmation is a
   5. Only public pages use it: staff pages, sign-in, setup, the web
      app's manifest and every text that names the application keep
      `application-title`.
+  6. **A download.** HANDLER may return `(values 200 :download
+     (make-download OCTETS :filename NAME :content-type TYPE))`, which is
+     answered as a staff page's download is (`files.md` §5.5): the same
+     types, names and headers, a preload declined and htmx's POST
+     refused. No session or policy stands in front of it: HANDLER alone
+     decides who gets the file, so it answers the download only to a
+     request whose link it has checked (what it checks: `files.md`
+     §5.5, «Who gets it»), and everything else, a HEAD with a wrong link
+     among them, as its own wrong link (its 404). Every other answer is
+     the page, as before.
 
 ### 8.1 Answering htmx
 
