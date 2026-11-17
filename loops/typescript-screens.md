@@ -2,13 +2,15 @@
 
 - loop: typescript-screens
 - mode: reviewed
-- stage: build
+- stage: ship
 - base: bf706a67de0668287beee84cedf45bd698d5fa22
 - after: typescript-client
 - item: sak_b2dgtad9737941ws
 - estimate: 3h 5h 10h
 - like: tun/typescript-client tun/pdf
 - tags: kind:feature core
+- verified: 339acea045730bacf0ba216a323c50442df12fa6
+- shown: 339acea045730bacf0ba216a323c50442df12fa6
 
 ## Brief
 
@@ -319,6 +321,60 @@ Each criterion and what decides it:
 13. `+core-version+` and `coreVersion` 2.49.0 (the core test that
     compares them); the clients' runs under «Clients».
 
+## Verify rounds
+
+1. 78b5894e: stopped by hand while it waited for the verify lock, after
+   about three minutes and before any step ran, to put the pages' focus
+   ring in the showcase's screen (a look seen in the pictures); its
+   folder `verify-1/` holds no step's log. Not a failure.
+2. 45f9fa56: build (10 s), test (215 s, 103 suites, `test-screens` 28 s
+   among them) and check (715 s) passed, after 53m13s waiting for the
+   verify lock behind other builders' rounds.
+
+No round failed.
+
+## Pictures
+
+`~/coding/tun-wt/typescript-screens-shots/`: `tun loop show`'s
+`phone-sign-off.png` and `desktop-sign-off.png`; in `after/`, the
+screen's three states (`1-open`, `2-refused-at-the-field`,
+`3-signed-off`) on a phone and wide, light and dark, in English (`en-`)
+and on the Norwegian tenant (`nb-`), 24 pictures from a preview of
+45f9fa56; in `before/`, typescript-client's pictures of the screen in
+plain TypeScript with its own colours. The pairs that show the change
+best: `before/phone-3-signed-off.png` against
+`after/en-phone-light-3-signed-off.png` (the pages' tokens, the icon),
+and `after/nb-phone-dark-2-refused-at-the-field.png` (dark, Norwegian,
+the refusal at its field with the pages' focus ring). The pictures'
+browser has only Open Sans and Source Code Pro (`browserPython`), so
+`--font-sans` falls to the monospace one there, on the screen as on the
+pages beside it; a person's browser uses its system font.
+
+## Clients
+
+Each client's `bin/test`, from scratch clones (tunworks 87cbde1, kurs
+c2579ae, the two-client client repository 5b013cb), its Tun inputs
+(`tun`, and `dashboard` and `customers` at their `modules/` directories)
+overridden with this worktree's 45f9fa56, the tree verify round 2
+passed, all six runs one after another under one hold of the verify
+lock (`flock`, taken at 21:36 after 71 minutes' wait, let go at 21:53):
+factory 12268 checks, nixploy-dashboard 1421, ferdig 812, kurs 352; the
+two-client repository's first client's twelve suites (9674, 221, 71199,
+529, 739, 373, 8856, 255, 127271, 91207, 16264 and 28159 checks) and its
+second client's (160). Every one exit 0, no compiler warning, no
+failure, unchanged.
+
+Before the run, each client's dev shell was built with the same
+overrides (no suite, no lock): each has `sbcl` and `tun`, and no `node`,
+`npm` or `tsc` of its own on its `PATH` (the machine's own `node` is the
+host's, not the shell's).
+
+What a client sees differently on 2.49.0: nothing unless it uses it.
+`/assets/tokens.css` answers where it was 404; a single-page screen's
+`index.html` gets its `<html lang>` set; `buildClient` takes `screens`
+and the flake's `lib` has `buildScreen`; a client's shell and server
+have no Node.
+
 ## Log
 
 - 2026-11-17 18:46  started, reviewed
@@ -348,3 +404,41 @@ Each criterion and what decides it:
   - §6.2 says a build that writes no `dist/index.html` fails, but no criterion tests it. It's minor.
   - Two lines added in the diff are over-long: in `spec/typescript.md`, the line ending "Server-rendered pages stay the rule"; in `spec/ui.md`, the line ending "(`tests/typescript-tests.lisp`); pages have the viewport tag". They need rewrapping.
 - 2026-11-17 19:12  build: the browser check run with Vite's assetsInlineLimit: 0 and Svelte's css: "external" taken out failed 4 of 15 (a <style> put in the page, the screen's style sheet missing, the pages' colours lost, the icon never shown); with both, single-page-screen and single-page-screen-norwegian pass on the preview
+- 2026-11-17 20:25  verify 2: passed build, test, check
+- 2026-11-17 20:25  shown (/sign-off)
+- 2026-11-17 21:54  clients at 45f9fa56, each bin/test from a scratch clone, all under one hold of the verify lock (71 min wait, 17 min of runs): factory 12268, nixploy-dashboard 1421, ferdig 812 (tunworks 87cbde1), kurs 352 (c2579ae), the two-client client repository (5b013cb) both clients: exit 0, no compiler warning, unchanged
+- 2026-11-17 21:54  gate B asked of a reviewer
+- 2026-11-17 21:55  gate B: approve (reviewer)
+  I approve this gate. Every criterion has a test or browser check that would fail without the change, all three verify steps passed, and the code and docs match the spec.
+  
+  **Criteria against the diff**
+  - **1–3 (Nix build, `screens`, no Node for a client without a screen):** `buildScreen` in `flake.nix:2832` takes the lock's packages from `fetchNpmDeps` pinned by `npmDepsHash`. It keeps `node_modules` as a separate derivation and runs `check` then `build` with npm offline. If there is no `dist/index.html` the build fails.
+    - `scripts/test-screens.sh` checks that the output refers to no other store path. It also checks that a type error is refused with `svelte-check`'s message, and that a build which writes nothing is refused.
+    - It also checks that the showcase's server has `screen/dist/index.html` in its source in the store and no Node in its closure. A folder containing `..` stops evaluation.
+    - `checks.x86_64-linux.client-without-screen` (`flake.nix:2916`) checks both the server's closure and `clientShell`'s programs.
+  - **4–5:** The fixture is now `tests/typescript/Screen.svelte`, run through `svelte-check --fail-on-warnings`. All three changes to an operation (renamed parameter, removed enum value, removed output key) must fail and name `Screen.svelte`. The test that compared the committed `dist` byte for byte is replaced by a `git ls-files` check that `screen/dist` and `screen/public` hold nothing. The old built files are deleted in the diff.
+  - **6:** `css-root-properties` parses the whole stylesheet and the tokens file into (media query, selector, property, value). So it doesn't just compare a string with itself; its reader is also tested on its own, including that a different value counts as a difference. The headers test covers both signed out and signed in.
+  - **7:** `with-page-language` (`src/web/single-page.lisp:3385`) is tested for English, Norwegian, exactly one `lang`, an `<html>` without `lang`, and an `<html>` with a single-quoted `LANG`. The proof still comes right after `<head>`.
+  - **8–11:** `single-page-screen.json` and `single-page-screen-norwegian.json` both passed, every step `ok`. The checks look for:
+    - no inline `<script>` or `<style>` in the served file or while the page runs;
+    - the tokens and the screen's own style sheet linked;
+    - the icon served from `/sign-off/assets/signed-….svg`;
+    - colours computed in light and dark, plus a stored `tun-theme`;
+    - Norwegian words and «må fylles ut» at the field.
+  
+    The log shows the check failed with `assetsInlineLimit: 0` and `css: "external"` removed, so it really decides criterion 9.
+  - **12:** I read the docs by hand. `docs/client-api.md` now goes start to finish: the screen's files, `index.html`, the flake lines, the `npmDepsHash` workflow, `.gitignore`, the two `bin/test` lines and the editor link. `spec/typescript.md` closes §6 and splits it into 6.1–6.5. `spec/ui.md` §3 is updated, and `reference/pitfalls.md` gains five new entries. The two over-long lines gate A pointed out are rewrapped.
+  - **13:** Core version is 2.49.0 in both `+core-version+` and the flake. The record logs every client's `bin/test` passing from scratch clones.
+  
+  **Brief**
+  - The content security policy now has a test against its exact text (`tests/session-api-tests.lisp:3487`), which answers gate A's first note.
+  - npm is told to stay offline and not check for a newer npm. The only network step is the fixed-output fetch.
+  - The screenshots show the screen at 390 and 1280 px in the pages' tokens. The checks confirm dark mode and Norwegian, whose pictures are outside the packet.
+  
+  **Code**
+  - It is readable, with no leftover debugging or dead code, and the comments explain why rather than recount history.
+  - The screen's words live in `words.ts` rather than Tun's catalogues. That differs from `AGENTS.md`'s rule that copy goes in catalogues, but the spec explains the choice in `spec/typescript.md` §4: a screen's built code is not the server's to translate.
+  
+  **Not blocking**
+  - Criterion 2 lists three bad folders: empty, absolute, and containing `..`. Only the `..` case is tested (`scripts/test-screens.nix`, `outOfSource`). The code in `flake.nix:2800` handles all three plainly. Adding `""` and `"/abs"` to `test-screens.nix` would cover the rest of the criterion.
+  - Tun's own dev shell now depends on the showcase screen's npm fetch (`TUN_SCREEN_NODE_MODULES`). That is acceptable, since it is cached after the first fetch and a client's shell doesn't get it.
