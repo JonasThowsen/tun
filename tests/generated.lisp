@@ -68,29 +68,52 @@ catalogues is unused."
   "The scenario named default defined in PACKAGES, package names, or NIL."
   (find "default" (package-scenarios packages) :key #'scenario-name :test #'string=))
 
-(defun needs-postgres-p (system package)
-  "True when the client SYSTEM whose package is PACKAGE, or one of its own
-modules, defines a query or an entity with a record policy, which only
-Postgres runs (spec/store.md 5, 6)."
-  (let ((packages (cons (find-package package)
-                        (loop for name in (client-module-names system)
-                              append (mapcar #'find-package (module-packages (find-module name t)))))))
-    (flet ((own-p (name) (member (symbol-package name) packages)))
-      (or (some (lambda (query) (own-p (query-name query))) (all-queries))
-          (some (lambda (class) (and (own-p (class-name class)) (entity-record-policy class)))
-                (all-entity-classes))))))
+(defun class-enabled-modules (class)
+  "The names of the modules the application class CLASS enables: those it,
+or the nearest class it inherits them from, names in (:modules ...), with
+what they depend on; every loaded module when it names none, as
+ENABLED-MODULES has it."
+  (let ((declared (class-declared-modules class)))
+    (if declared
+        (module-dependency-closure declared)
+        (mapcar #'module-name (all-modules)))))
+
+(defun packages-need-postgres-p (packages)
+  "True when one of PACKAGES defines a query or an entity with a record
+policy, which only Postgres runs (spec/store.md 5, 6)."
+  (flet ((own-p (name) (member (symbol-package name) packages)))
+    (or (some (lambda (query) (own-p (query-name query))) (all-queries))
+        (some (lambda (class) (and (own-p (class-name class)) (entity-record-policy class)))
+              (all-entity-classes)))))
+
+(defun needs-postgres-p (class package)
+  "True when the client whose application class is CLASS and whose package
+is PACKAGE needs Postgres (spec/testing.md 2): when PACKAGE, or a package of
+a module the application enables, defines a query or an entity with a
+record policy. Which modules it enables decides, not where their files lie:
+a module beside the client, such as its repository's, counts as one in its
+tree."
+  (packages-need-postgres-p
+   (cons (find-package package)
+         (loop for name in (class-enabled-modules class)
+               for module = (find-module name)
+               when module
+                 append (mapcar #'find-package (module-packages module))))))
 
 (defun check-every-tool-of-the-client-withstands-fuzzing (class system package packages variables)
   "Fuzz every tool of the client SYSTEM defines in PACKAGE on CLASS, with
 the default scenario of PACKAGES when there is one and VARIABLES, the
 client's own, unset around each tool's run (spec/testing.md 2): in memory,
 or on Postgres when the client needs it."
-  (check-every-tool-withstands-fuzzing (client-tools system package) system
-                                       :class class :scenario (default-scenario packages)
-                                       :variables variables
-                                       :database (if (needs-postgres-p system package)
-                                                     :postgres
-                                                     :memory)))
+  (let ((postgres (needs-postgres-p class package)))
+    ;; Which store says why a tool behaves as it does; the sequence and page
+    ;; tests choose the same.
+    (format t "~&The generated tests of ~a run ~:[in memory~;on Postgres~] (spec/testing.md 2).~%"
+            system postgres)
+    (check-every-tool-withstands-fuzzing (client-tools system package) system
+                                         :class class :scenario (default-scenario packages)
+                                         :variables variables
+                                         :database (if postgres :postgres :memory))))
 
 (defun check-every-tool-of-the-client-keeps-to-the-record-policies (class system package packages
                                                                     variables)
@@ -110,7 +133,7 @@ Postgres when the client needs it."
   (check-tools-called-in-sequence (client-tools system package) system
                                   :class class :scenario (default-scenario packages)
                                   :variables variables
-                                  :database (if (needs-postgres-p system package) :postgres :memory)))
+                                  :database (if (needs-postgres-p class package) :postgres :memory)))
 
 (defun check-every-page-of-the-client (class system package packages variables)
   "Open every page of the client SYSTEM on CLASS as each role (spec/testing.md
@@ -120,7 +143,7 @@ in PACKAGE needs it."
   (check-every-page-answers-every-role system
                                        :class class :scenario (default-scenario packages)
                                        :variables variables
-                                       :database (if (needs-postgres-p system package) :postgres :memory)))
+                                       :database (if (needs-postgres-p class package) :postgres :memory)))
 
 (defun check-every-scenario-makes-its-records (class system packages variables)
   "Run each scenario defined in PACKAGES, package names, on a fresh Postgres

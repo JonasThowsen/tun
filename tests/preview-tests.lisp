@@ -142,6 +142,103 @@
                                        (tun.cli:server-command "acme" #p"/srv/acme/" nil '()))))
         "a client without modules/ names none")))
 
+(test a-further-client-s-server-loads-the-repository-s-modules
+  ;; A further client of a repository of several, in clients/NAME/ under a
+  ;; client's top, gets the top's modules/ after its own directory and
+  ;; modules, with no link to them (preview.md 2, loop.md 6).
+  (let* ((top (cli-scratch-directory))
+         (second (merge-pathnames "clients/second/" top))
+         (shared (namestring (merge-pathnames "modules/" top))))
+    (flet ((put (path)
+             (let ((file (merge-pathnames path top)))
+               (ensure-directories-exist file)
+               (with-open-file (out file :direction :output :if-exists :supersede)
+                 (write-line "x" out))))
+           (registry (directory worktree)
+             (find-if (lambda (part) (search "initialize-source-registry" part))
+                      (tun.cli:server-command "second" directory worktree '()))))
+      (unwind-protect
+           (progn
+             (put "flake.nix")
+             (put "first.asd")
+             (put "modules/notes/tun-notes.asd")
+             (put "clients/second/second.asd")
+             (is (equal shared (namestring (tun.cli:repository-modules second))))
+             (is (equal shared (namestring (tun.cli:repository-modules
+                                            (uiop:ensure-directory-pathname
+                                             (uiop:merge-pathnames* (uiop:parse-native-namestring ".")
+                                                                    second)))))
+                 "named as tun check names the current directory, with a . at its end")
+             (dolist (worktree (list nil "/srv/tun"))
+               (let* ((form (registry second worktree))
+                      (own (search (format nil "(:directory ~s)" (namestring second)) form))
+                      (modules (search (format nil "(:tree ~s)" shared) form)))
+                 (is (and own modules (< own modules))
+                     "~:[from the shell~;on Tun's working tree~]: the client, then the repository's modules: ~a"
+                     worktree form)
+                 (when modules
+                   (is (< modules (search ":inherit-configuration" form)) "before the shell's")
+                   (when worktree
+                     (is (< modules (search "/srv/tun/" form)) "before Tun's own")))))
+             (put "clients/second/modules/own/tun-own.asd")
+             (let ((form (registry second nil)))
+               (is (< (search (format nil "(:tree ~s)" (namestring (merge-pathnames "modules/" second))) form)
+                      (search (format nil "(:tree ~s)" shared) form))
+                   "its own modules first: ~a" form))
+             (is (null (tun.cli:repository-modules top)) "the top's own are its modules/, as before")
+             (is (= 1 (length (cl-ppcre:all-matches-as-strings (cl-ppcre:quote-meta-chars shared) (registry top nil))))
+                 "named once, as its own: ~a" (registry top nil))
+             (is (null (tun.cli:repository-modules
+                        (merge-pathnames "clients/x/" (asdf:system-source-directory "tun"))))
+                 "a client in Tun's own clients/ gets none")
+             (delete-file (merge-pathnames "flake.nix" top))
+             (is (null (tun.cli:repository-modules second)) "nor one under a directory that holds no client"))
+        (uiop:delete-directory-tree top :validate t :if-does-not-exist :ignore)))))
+
+;;; A server's start waits as long as the server may (preview.md 2): a busy
+;;; machine is stood in for by a start script that sleeps before it writes
+;;; the server's process id.
+
+(defun slowed-start-script (seconds)
+  (format nil "sleep ~d; ~a" seconds tun.cli:*server-start-script*))
+
+(test a-slow-server-start-is-waited-for
+  (let* ((directory (cli-scratch-directory))
+         (log (merge-pathnames "server.log" directory))
+         (pid nil))
+    (ensure-directories-exist log)
+    (unwind-protect
+         (let ((tun.cli:*server-start-script* (slowed-start-script 6)))
+           (setf pid (tun.cli:start-server '("sleep" "300") log))
+           (is (integerp pid))
+           (is (tun.cli::process-alive-p pid) "the server, started after 6 s, runs"))
+      (when pid (tun.cli::stop-process pid))
+      (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
+
+(test a-server-start-given-up-leaves-no-server
+  (let* ((directory (cli-scratch-directory))
+         (log (merge-pathnames "server.log" directory))
+         (started (merge-pathnames "started" directory)))
+    (ensure-directories-exist log)
+    (unwind-protect
+         (let ((tun.cli:*server-start-script* (slowed-start-script 3)))
+           (signals tun.cli:step-failed
+             (tun.cli:start-server (list "sh" "-c" (format nil "touch '~a'; exec sleep 300"
+                                                          (namestring started)))
+                                   log :deadline (+ (get-universal-time) 1)))
+           ;; The slowed shell writes its id at 3 s, after the give-up, and
+           ;; must then end without starting the server.
+           (loop repeat 600
+                 until (probe-file (merge-pathnames "server.pid" directory))
+                 do (sleep 0.1))
+           (sleep 1)
+           (is (not (probe-file started)) "the server never started")
+           (let ((pid (ignore-errors (parse-integer (uiop:read-file-string
+                                                     (merge-pathnames "server.pid" directory))
+                                                    :junk-allowed t))))
+             (is (and pid (not (tun.cli::process-alive-p pid))) "its shell ended")))
+      (uiop:delete-directory-tree directory :validate t :if-does-not-exist :ignore))))
+
 (defun with-state-home (function)
   "Call FUNCTION with XDG_STATE_HOME naming a fresh directory, so the
 previews it sees are its own."

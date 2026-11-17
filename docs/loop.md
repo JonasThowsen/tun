@@ -94,6 +94,9 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
 - `tun loop verify` runs everything the repository's rules ask for and
   records the round. When it fails, read the step's log under
   `.build/loop/NAME/`, fix, and run it again.
+- In a repository of several clients (`docs/client-api.md`, «Several
+  clients in one repository»), one round runs every client's suite and
+  checks, and a failure is named by its client, such as `test:second`.
 - On a machine where several builders verify, export `TUN_VERIFY_LOCK`
   naming one file for all of them (the installation says which): each
   round then waits for the others' and says so (`spec/loop.md` §6).
@@ -116,6 +119,9 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
 - `tun loop show --path /saker [--path /saker/12] [--actor employee:kari]`
   starts the shared preview and takes the screenshots. It needs the tree
   that passed verify, so change nothing between the two.
+- In a repository of several clients, `tun loop show --client NAME`
+  shows the client in `clients/NAME/` on the same verified tree; show
+  each client the change reaches.
 - Look at the screenshots yourself before asking anyone. A screenshot that
   does not show the change is a reason to fix the scenario or the path, not
   to ask.

@@ -17,12 +17,15 @@ and a check added to Tun reaches every client with `tun update`.
   2. its sources use only Tun's public interface. Its sources are the
      `.lisp` files at any depth under the directory of its `.asd`, but
      those under `tests/`, under the directory of one of its own modules
-     (test 10), and under a directory that holds a `flake.nix` and at
+     (test 10), under a directory that holds a `flake.nix` and at
      least one `.asd`, none of whose systems is loaded, such as a second
      client in the same repository or a module the client does not
-     enable. A file that a loaded system, other than one of the client's
-     own modules', has as a component is always among its sources,
-     wherever it lies;
+     enable, and under a directory `clients/NAME/` of the client's that
+     holds at least one `.asd`, none of whose systems is loaded, with a
+     `flake.nix` or without: a further client of the repository
+     (`loop.md` §6, «The repository's clients»). A file that a loaded
+     system, other than one of the client's own modules', has as a
+     component is always among its sources, wherever it lies;
   3. its application opens on a fresh Postgres database, which runs every
      record policy and query (`store.md` §5, §6), with the modules it
      enables and no others;
@@ -118,9 +121,16 @@ must hold whatever a caller sends.
   when that tool's calls left every record as they found it but the
   audit's entries, which holds the same records (most calls are refused
   and change nothing; a copy costs a database and an application). A
-  client that defines a query or an entity with a record policy, which
-  only Postgres runs (`store.md` §5, §6), gets its copies on the test
-  Postgres server instead. The tool's calls run one after another on its
+  client whose application needs Postgres gets its copies on the test
+  Postgres server instead: one whose package, or a package of a module
+  its application enables (those it names in `(:modules ...)` and what
+  they depend on; every loaded module when it names none), defines a
+  query or an entity with a record policy, which only Postgres runs
+  (`store.md` §5, §6). What decides is which modules the application
+  enables, not where their files lie: a module from beside the client,
+  such as the `modules/` of the repository a further client is in,
+  counts as one in the client's own tree does. The same choice holds for
+  §4 and §5, and the test says which store it is. The tool's calls run one after another on its
   copy. Each call goes the way `tools/call` does (`core.md` §3): its input
   written and parsed as a request's JSON, decoded against the tool's
   schema, the policy, the transaction, the audit, and its result written

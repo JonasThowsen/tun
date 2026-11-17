@@ -111,6 +111,9 @@ the listed symbols (the same symbol objects, not copies)."
    ;; the messaging port: sends through the messaging module when it is enabled
    #:notify
    #:fetch #:fetch! #:select #:select-one #:define-query
+   ;; whether the application's store runs queries and record policies,
+   ;; Postgres (spec/store.md 6, item 7)
+   #:application-runs-queries-p
    ;; JSON: a record as callers see it, for results that hold several; and
    ;; reading and writing JSON text, such as a program's output
    ;; (spec/outbound.md 6)

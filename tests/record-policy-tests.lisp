@@ -253,3 +253,54 @@
                   (signals error (select 'memo))
                   (signals error (insert (make-instance 'memo :text "x" :author "jonas")))
                   (is (null (select 'widget)) "an entity without a policy is unaffected"))))))
+
+;;; Which store a client asks about, and which its generated tests choose
+;;; (spec/store.md 6 item 7, spec/testing.md 2).
+
+(test a-client-asks-whether-its-application-runs-queries
+  (is (null (let ((*application* nil)) (application-runs-queries-p))) "outside an application")
+  (dolist (db (list nil (scratch-path "runs-queries")))
+    (with-test-app (:db db)
+      (is (null (application-runs-queries-p *app*)) "on ~a" (or db "memory"))
+      (with-application (*app*)
+        (is (null (application-runs-queries-p))))))
+  (let ((db (scratch-postgres "runs_queries")))
+    (with-test-app (:db db)
+      (is (eq t (application-runs-queries-p *app*)) "on Postgres")
+      (with-application (*app*)
+        (is (eq t (application-runs-queries-p))))))
+  (flet ((violations (text)
+           (public-interface-violations text :package "TUN.TESTS"
+                                             :public-packages '("TUN" "TUN.UI"))))
+    (is (find-symbol "APPLICATION-RUNS-QUERIES-P" "TUN"))
+    (is (null (violations "(tun:application-runs-queries-p)")) "a client may ask")
+    (is (violations "(tun.core:store-runs-queries-p nil)") "the store's is not a client's")
+    (is (not (eq :external (nth-value 1 (find-symbol "STORE-RUNS-QUERIES-P" "TUN")))))))
+
+;;; A client that enables a module beside it, as a further client of a
+;;; repository of several enables that repository's modules: the module's
+;;; package holds an entity with a record policy (this suite's memo), and its
+;;; files lie in no client's tree.
+
+(define-application store-choice-client () (:modules customers))
+(define-application store-choice-beside-client () (:modules customers store_choice_beside))
+
+(test a-client-s-generated-tests-choose-postgres-by-the-modules-it-enables
+  (let ((package (make-package (format nil "STORE-CHOICE-CLIENT-~a" (new-id "p")) :use '()))
+        (module (make-instance 'tun.core::module :name "store_choice_beside" :packages '("TUN.TESTS")
+                                                  :depends-on '("customers"))))
+    (unwind-protect
+         (progn
+           (is (null (needs-postgres-p 'store-choice-client (package-name package)))
+               "neither the client nor customers defines a query or a record policy: in memory")
+           (is (null (needs-postgres-p 'store-choice-beside-client (package-name package)))
+               "a module named but not loaded counts for nothing")
+           (setf tun.core::*loaded-modules* (append tun.core::*loaded-modules* (list module)))
+           (is (equal '("customers" "store_choice_beside")
+                      (tun.test-support::class-enabled-modules 'store-choice-beside-client)))
+           (is (needs-postgres-p 'store-choice-beside-client (package-name package))
+               "a module it enables has an entity with a record policy: on Postgres")
+           (is (null (needs-postgres-p 'store-choice-client (package-name package)))
+               "a loaded module the client does not enable does not count"))
+      (setf tun.core::*loaded-modules* (remove module tun.core::*loaded-modules*))
+      (delete-package package))))

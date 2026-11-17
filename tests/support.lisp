@@ -20,6 +20,7 @@
            #:client-violations #:module-violations #:asd-violations #:module-asd-files #:+kernel-public-packages+ #:+module-library-packages+ #:file-text
            #:module-directory #:client-module-directories #:client-module-names #:client-module-violations
            #:client-module-violations-under #:client-tools #:client-text-owners
+           #:needs-postgres-p
            #:+tun-module-names+
            #:define-scenario #:find-scenario #:run-scenario #:scenario-names #:scenario-name #:scenario-actors
            #:scenario-description #:serve-preview #:define-generated-tests
@@ -562,15 +563,25 @@ testing.md 1)."
 (defun unloaded-directories (root)
   "The directories below ROOT that hold a flake.nix and at least one .asd,
 none of whose systems is loaded: a second client of the same repository, or
-a module the client does not enable."
-  (loop for flake in (directory (merge-pathnames "**/flake.nix" root))
-        for directory = (uiop:pathname-directory-pathname flake)
-        for asds = (directory (merge-pathnames "*.asd" directory))
-        when (and (directory-namestring-under-p directory root)
-                  (not (equal (namestring directory) (namestring root)))
-                  asds
-                  (notany (lambda (asd) (loaded-system-p (pathname-name asd))) asds))
-          collect directory))
+a module the client does not enable; and each ROOT/clients/NAME/ that holds
+at least one .asd, none of whose systems is loaded, with a flake.nix or
+without: a further client of the repository (testing.md 1, test 2)."
+  (flet ((unloaded-p (directory)
+           (let ((asds (directory (merge-pathnames "*.asd" directory))))
+             (and asds (notany (lambda (asd) (loaded-system-p (pathname-name asd))) asds)))))
+    (remove-duplicates
+     (append
+      (loop for flake in (directory (merge-pathnames "**/flake.nix" root))
+            for directory = (uiop:pathname-directory-pathname flake)
+            when (and (directory-namestring-under-p directory root)
+                      (not (equal (namestring directory) (namestring root)))
+                      (unloaded-p directory))
+              collect directory)
+      (loop for directory in (uiop:subdirectories (merge-pathnames "clients/" root))
+            when (and (directory-namestring-under-p directory root)
+                      (unloaded-p directory))
+              collect directory))
+     :test #'equal :key #'namestring)))
 
 (defun loaded-files-under (root except-systems)
   "The truenames of the Lisp files under ROOT that a loaded system has as

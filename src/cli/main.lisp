@@ -26,6 +26,7 @@
        tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [--minutes N] [NAME]
        tun loop verify|finish [NAME]
        tun loop show [NAME] [--path PATH]... [--actor ACTOR] [--scenario NAME]
+                     [--client CLIENT]
        tun loop resume --by WHO --why TEXT [NAME]
        tun loop rebase [--onto REV] [--client-onto REV] [NAME]
        tun loop log TEXT [NAME]

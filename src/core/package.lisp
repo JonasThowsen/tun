@@ -125,7 +125,7 @@
    #:*core-migration-fault*
    #:with-transaction #:call-in-transaction #:assert-writable #:insert #:save #:delete-entity #:fetch #:fetch!
    #:select #:select-one #:lock-row #:where-field #:where-value->db #:read-only-violation
-   #:store-describe-schema #:store-commits #:store-write-queue-depth #:store-runs-queries-p #:store-query
+   #:store-describe-schema #:store-commits #:store-write-queue-depth #:store-runs-queries-p #:application-runs-queries-p #:store-query
    #:store-write-content #:store-read-content #:store-delete-content
    ;; queries (spec/store.md 5)
    #:define-query #:query-name #:query-parameters #:query-returns #:query-description
@@ -220,7 +220,7 @@
    #:module-dependency-closure #:define-module #:register-module #:publish
    #:seal-packages #:seal-module #:check-definition-integrity #:definition-integrity-violations
    #:snapshot-live-definitions #:live-definition-patches #:live-definition-sources
-   #:*sealed-packages* #:define-application #:application-declared-modules #:application-on-open-functions
+   #:*sealed-packages* #:define-application #:application-declared-modules #:class-declared-modules #:application-on-open-functions
    #:application-sign-in-specs #:application-mail-spec #:application-error-mail-specs #:application-web-app #:configured-value #:enabled-modules
    #:check-enabled-modules #:module-revision #:*module-revisions*
    #:entity-module #:field-module #:rule-module #:computed-field-module #:operation-module #:method-module

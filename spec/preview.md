@@ -65,7 +65,10 @@ that started it, until it is stopped.
    with its tests system, where its scenarios are, and the client's own
    modules from its `modules/` (`tun-platform.md` §2.1), which the source
    registry names before the dev shell's and Tun's, so a builder sees the
-   tree they verified. It runs with
+   tree they verified. A further client of a repository of several, in
+   `clients/CLIENT/` under a client's top (`loop.md` §6, «The repository's
+   clients»), also gets the top's `modules/`, named after its own
+   directory and its own `modules/`, so it needs no link to them. It runs with
    `--claimed-identity` (`auth.md` §1), so `/login?actor=role:name` signs
    in as anyone, and a sign-in provider or mail provider whose settings
    are missing is left out, mail going to `(:log)` (`mail.md`). It gets
@@ -101,7 +104,13 @@ that started it, until it is stopped.
 
 A server that stops before it answers, or does not answer within 180
 seconds (a first compile included), is stopped and removed, and `tun`
-prints the end of its log (exit 1).
+prints the end of its log (exit 1). The 180 seconds hold from the start:
+`tun` waits for the started server's process to be known (the file its
+starting shell writes) within the same deadline, with no shorter limit of
+its own, since a busy machine can take seconds to fork it. When it gives
+up before then, the server it started is stopped all the same: the
+starting shell, once it writes the file, finds that `tun` gave up and
+does not start the server, or `tun` stops the one it finds.
 
 **The port.** Two previews, or two `tun check` runs, that one user
 starts at the same moment in two checkouts never get the same port, as
@@ -343,7 +352,10 @@ with paging and autoscroll, and dragging with a mouse.
   process whole, a restart keeping its port, and no claim left by a
   start whose server exits before it answers; a client's revision
   `-dirty` from its own directory's changes, not another directory's;
-  the checks found and their scenarios;
+  the checks found and their scenarios; a further client's server naming
+  the top's `modules/` after its own, and a repository's top or Tun's
+  giving none; a server whose start is slowed 6 s still waited for, and
+  one slowed past a shortened deadline never left running;
   and refusals with their exit statuses.
 - `bin/test-cli`: after `tun new`, a scenario with a customer. `tun
   preview` answers `/health`, offers the scenario's sign-in link and has

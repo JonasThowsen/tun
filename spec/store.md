@@ -309,7 +309,14 @@ per role:
    check of the queries (§5.7) gives each `{ENTITY}` with a policy the
    form of item 4.
 7. **On the other adapters.** The memory and SQLite stores refuse to read
-   or write an entity with a record policy.
+   or write an entity with a record policy, and to run a query (§5).
+   Code that must work on each, such as a client's test that also runs in
+   memory, asks first: `(application-runs-queries-p)`, in `TUN`, is true
+   when the application, `*application*` or the one given, runs on
+   Postgres, and NIL on the memory and SQLite stores and outside an
+   application. A module may ask the same, or ask a store with
+   `store-runs-queries-p` (`TUN.CORE`), which is not a client's: a
+   client reaches no store.
 8. **Introspection.** `registry_describe` lists an entity's policy as
    `record_policy`: `[{role, condition}]`, condition `true` or the text.
 9. **Beyond the policy, declared.** A tool that shows a caller records
@@ -345,4 +352,11 @@ apart from the read condition; fields only some roles see.
 - `tests/record-policy-tests.lisp` covers §6 on Postgres: each kind of
   read and write for each role, a condition with a subquery, queries,
   a refused write leaving nothing, the rejected audit entry, the start
-  check, the compile-time refusals and the other stores refusing.
+  check, the compile-time refusals and the other stores refusing;
+  `application-runs-queries-p` true on Postgres and NIL in memory, on
+  SQLite and outside an application, in `TUN` while
+  `store-runs-queries-p` is not; and the generated tests' choice of
+  Postgres by the modules a client enables (`testing.md` §2): in memory
+  for a client of Tun's modules alone, on Postgres once it enables a
+  module, in no client's tree, whose package holds an entity with a
+  record policy.

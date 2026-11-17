@@ -103,6 +103,16 @@ and the failed-login counts, which live in memory only.")
 
 (defvar *application* nil "The application handling the current request.")
 
+(defun application-runs-queries-p (&optional (application *application*))
+  "True when APPLICATION, by default the current one, runs on a store that
+runs queries and record policies, Postgres; NIL on the memory and SQLite
+stores and with no application (spec/store.md 6, item 7). A client asks
+this, not STORE-RUNS-QUERIES-P, as it reaches no store."
+  (and application
+       (application-store application)
+       (store-runs-queries-p (application-store application))
+       t))
+
 (defmethod default-locale ((application application))
   (let ((options (application-locale-options application)))
     (make-locale :language (first (getf options :languages))

@@ -17,7 +17,7 @@
 
 (declaim (optimize (safety 3) (debug 2)))
 
-(defparameter +core-version+ "2.45.0"
+(defparameter +core-version+ "2.46.0"
   "The kernel's version.  Modules declare the range they build against; the
 client build (flake.nix, lib.buildClient) and DEFINE-MODULE both refuse a
 module whose range does not contain it.  The first versioned core was 0.1.0.")
@@ -747,12 +747,20 @@ declaring superclass)."
         for (functions present) = (multiple-value-list (gethash (class-name class) *application-on-open*))
         when present return functions))
 
+(defun class-declared-modules (class)
+  "The module names the application class CLASS, a class or its name, (or
+the nearest declaring superclass) enables, or NIL when no client declared
+any (core alone: everything loaded)."
+  (let ((class (if (symbolp class) (find-class class) class)))
+    (closer-mop:ensure-finalized class)
+    (loop for each in (closer-mop:class-precedence-list class)
+          for declared = (gethash (class-name each) *application-modules*)
+          when declared return declared)))
+
 (defun application-declared-modules (application)
   "The module names APPLICATION's class (or the nearest declaring superclass)
 enables, or NIL when no client declared any (core alone: everything loaded)."
-  (loop for class in (closer-mop:class-precedence-list (class-of application))
-        for declared = (gethash (class-name class) *application-modules*)
-        when declared return declared))
+  (class-declared-modules (class-of application)))
 
 (defun enabled-modules (application)
   "List of (module enabled-by) for APPLICATION, in dependency order.

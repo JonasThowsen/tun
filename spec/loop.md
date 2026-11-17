@@ -186,6 +186,7 @@ tun loop gate A|B|C [NAME]
 tun loop decide A|B|C approve|changes --by WHO [--why TEXT] [--minutes N] [NAME]
 tun loop verify [NAME]
 tun loop show [NAME] [--path PATH]... [--actor ACTOR] [--scenario S]
+              [--client CLIENT]
 tun loop resume --by WHO --why TEXT [NAME]
 tun loop rebase [--onto REV] [--client-onto REV] [NAME]
 tun loop log TEXT [NAME]
@@ -203,9 +204,23 @@ and another client's open loops in the same repository are not its.
 Without NAME, they act on the loop that is not done, and refuse when there
 are several, naming them. Each prints, last, what comes next and who acts.
 
+**The repository's clients.** A client repository may hold several
+clients that share its modules (`docs/client-api.md`, «Several clients in
+one repository»): the first at the loop's top, and each further one in a
+directory `clients/CLIENT/` directly under the top that holds an `.asd`
+file at its own top, with a `flake.nix` or without. CLIENT is the
+directory's name. The loop's top and its further clients, in the order of
+their names, are the repository's clients; a repository without such a
+directory has one, the top. Tun's repository has none: its `clients/`
+holds clients a person added locally, and a loop in Tun names its client
+with `--client`. A further client with a `flake.nix` of its own is also a
+loop's top when `tun loop` runs in it (above); without one, `tun loop`
+run in it finds the repository's top.
+
 **The tree** of a loop's top is git's tree object for that directory's
 working tree, untracked files included, ignored ones, `loops/`, `.build/`
-and `.data/` left out. It is
+and `.data/` left out, and the `.build/` and `.data/` of each
+`clients/CLIENT/`. It is
 computed with a temporary index, so git's own index is untouched. A
 change elsewhere in the repository, committed or not, does not change it,
 and a diff (a packet's `diff.patch`, the files `show` lists) holds the
@@ -246,19 +261,29 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
     `src/jobs/`, `src/store/`, `src/core/store.lisp`).
     With a client, it runs `bin/tun check --dir CLIENT`, the client's
     checks on the Tun worktree;
-  - in a client: `bin/test`, and `tun check` when it has checks.
+  - in a client: `bin/test`, and `tun check` when it has checks; then
+    the same for each further client of the repository, in its
+    directory: its `bin/test`, and `tun check` when it has checks. A
+    further client's steps are named `test:CLIENT` and `check:CLIENT`,
+    and a further client without a `bin/test` fails its `test:CLIENT`,
+    whose log says so. A repository of one client runs `test` and
+    `check` as before.
 
   Each step runs with the ASDF settings of the shell `tun` was run from,
   which `tun`'s launcher keeps in `TUN_CALLER_CL_SOURCE_REGISTRY` and
   `TUN_CALLER_ASDF_OUTPUT_TRANSLATIONS`: its own SBCL changes them. Each
-  step's output goes to `.build/loop/NAME/verify-N/STEP.log`. The
-  round's line in the log names the steps that failed. It exits 1 when one
-  failed.
+  step's output goes to `.build/loop/NAME/verify-N/STEP.log`, a further
+  client's to `test-CLIENT.log` and `check-CLIENT.log`; `summary.txt`
+  there names each step and the directory it ran in. The round's line in
+  the log names the steps that failed, so a failure says whose it is. It
+  exits 1 when one failed: the round passes only when every client's
+  suite and checks pass.
 
   When `TUN_VERIFY_LOCK` names a file, the round runs holding the verify
   lock on it (`preview.md` §4), from before its first step to after its
   last, so two verifies on one machine run one after the other and the
-  checks of one never meet the suites or checks of another. It prints
+  checks of one never meet the suites or checks of another. It is taken
+  once for the round, whatever number of clients the round runs. It prints
   what it waits for and how long it waited, and its steps run with
   `TUN_VERIFY_LOCK_HELD` set, so its own `tun check` does not wait for
   it. The waiting is not part of the round's steps' times.
@@ -270,6 +295,15 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   links, the revision, the files changed since `base`, the verification,
   and the screenshots; and the link alone to `.build/loop/NAME/show/link`.
   The log's line is `shown (PATH, …)`.
+  With `--client CLIENT`, a further client of the repository is shown
+  instead of the top: its preview, and its report, screenshots and link
+  in `.build/loop/NAME/show/clients/CLIENT/`; the log's line is `shown
+  clients/CLIENT (PATH, …)`. A show from `verified`, the first on a tree,
+  removes what earlier shows left in `show/`; another show of the same
+  tree replaces only the pictures of the client it shows, so each client
+  can be shown once on the verified tree. `--client` naming none of the
+  repository's further clients, or in a repository of one client or in
+  Tun, is a usage error that names the clients there are.
 - **`gate X`** checks the gate's precondition, writes the packet
   `.build/loop/NAME/gate-X-N/`, and asks the one who decides (§4). The
   preconditions are: for A, a criterion; for B, the shown tree; for C, a
@@ -277,7 +311,11 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
   `README.md` (the reviewer's instructions and what this gate decides),
   `loop.md` (the record), `diff.patch` (from `base`, the client's too) and,
   at B and C, `verify.txt`, the checks' results, the screenshots and
-  `link`, the preview's link.
+  `link`, the preview's link. In a repository of several clients the
+  README names them, and each further client's results are in
+  `checks/CLIENT/` and its show's report, screenshots and link in
+  `shots/CLIENT/`, beside the top's in `checks/` and `shots/`; the
+  message of gate B names each shown client's link.
 - **`decide`** records the decision of the gate the loop waits at.
   `--minutes N` is how long the person says they spent on it, as distinct
   from how long the gate waited; the log's line then ends its `(WHO)`
@@ -440,6 +478,19 @@ cheaper. The log already times each stage; these record the rest.
     the loop goes on;
   - the tree leaves out the record and `.build/`, and git's own index is
     untouched;
+  - in a repository of two clients, the top's and `clients/second/`'s
+    (stand-in `bin/test`s and a stand-in `tun` on the path): the
+    repository's clients are found with and without a `flake.nix` in
+    `clients/second/`, and `tun loop` run there finds the top's loop
+    without one; one verify round runs the four steps, each in its
+    client's directory, with the verify lock held once around them; the
+    second client's failing suite or checks fail the round, named
+    `test:second` and `check:second` in the log, the summary and the
+    tracker; a further client without `bin/test` fails its step; `show
+    --client` resolves to the second's directory and folder and refuses a
+    name that is no client's; gate B's packet holds each client's results
+    and pictures; a repository of one client runs `test` and `check` as
+    before;
   - in a repository with clients at `apps/a` and `apps/b`, each has its
     own top, records and open loop; verify runs the client's own
     `bin/test`; a commit in `apps/b` or at the root changes neither the

@@ -22,4 +22,6 @@
            #:check-files #:check-scenario #:worktree-branch #:worktree-revision #:add-to-git
            #:make-record #:text-field #:set-text-field #:gate-decider #:reviewer-verdict
            #:repository-tree #:loop-top #:*tracker-limit* #:without-links #:record-shown #:read-record #:loop-diff
-           #:parse-duration #:format-duration #:loop-actuals))
+           #:parse-duration #:format-duration #:loop-actuals
+           #:further-clients #:shown-directory #:show-directory #:clear-show-directory
+           #:repository-modules #:start-server #:*server-start-script*))

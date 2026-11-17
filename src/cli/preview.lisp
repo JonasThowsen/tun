@@ -301,6 +301,22 @@ socket in SOCKET-DIRECTORY, and return the URL of its database."
           (*print-readably* nil))
       (apply #'format nil control arguments))))
 
+(defun repository-modules (directory)
+  "The modules/ of the repository whose further client is in DIRECTORY
+(preview.md 2, loop.md 6): TOP/modules/ when DIRECTORY is TOP/clients/NAME/,
+TOP holds a client (a flake.nix and an .asd) and is not Tun's repository,
+and TOP/modules/ exists; else NIL."
+  ;; By its truename: `tun check` in the client's own directory names it
+  ;; as ., which leaves a component "." at the end of the path.
+  (let* ((directory (or (uiop:directory-exists-p directory) (uiop:ensure-directory-pathname directory)))
+         (parts (pathname-directory directory)))
+    (when (and (> (length parts) 2) (equal (first (last parts 2)) "clients"))
+      (let ((top (make-pathname :directory (butlast parts 2) :name nil :type nil :version nil
+                                :defaults directory)))
+        (and (client-directory-p top)
+             (not (tun-repository-p top))
+             (uiop:directory-exists-p (merge-pathnames "modules/" top)))))))
+
 (defun server-command (client directory worktree flags)
   "The command that serves CLIENT from DIRECTORY with FLAGS: on the Tun the
 client's dev shell provides, or with WORKTREE, on that working tree of Tun,
@@ -310,11 +326,15 @@ loads files compiled against the other's Tun. The server starts without
 the ASDF configuration tun's own launcher left in the environment, which
 its sbcl would otherwise add to its own.  The client's own modules, under
 its modules/ (tun-platform.md 2.1), come from the working tree too, named in
-the source registry before anything else (preview.md 2)."
+the source registry before anything else (preview.md 2), and so, for a
+further client of a repository of several, do the repository's modules,
+after its own."
   (let* ((client-directory (namestring directory))
          (modules (namestring (merge-pathnames "modules/" (uiop:ensure-directory-pathname directory))))
-         (own (format nil "(:directory ~s)~:[~; (:tree ~s)~]"
-                      client-directory (uiop:directory-exists-p modules) modules)))
+         (shared (repository-modules directory))
+         (own (format nil "(:directory ~s)~:[~*~; (:tree ~s)~]~@[ (:tree ~s)~]"
+                      client-directory (uiop:directory-exists-p modules) modules
+                      (and shared (namestring shared)))))
     (append
      (list "env" "-u" "CL_SOURCE_REGISTRY" "-u" "ASDF_OUTPUT_TRANSLATIONS"
            "sbcl" "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit")
@@ -337,27 +357,53 @@ the source registry before anything else (preview.md 2)."
            "--end-toplevel-options")
      flags)))
 
-(defun start-server (command log)
+(defparameter *server-start-script*
+  "echo $$ > \"$0\" && [ ! -e \"$0.given-up\" ] && exec \"$@\""
+  "The shell setsid forks: it writes its process id to the file named first,
+then becomes the server, unless the tun that started it has given up waiting
+meanwhile and left the file PID-FILE.given-up. A test slows it down.")
+
+(defun read-pid-file (file)
+  "The process id FILE holds, or NIL while it is missing or not yet written."
+  (and (probe-file file)
+       (ignore-errors (parse-integer (read-text file) :junk-allowed t))))
+
+(defun start-server (command log &key (deadline (+ (get-universal-time) +ready-seconds+)))
   "Start COMMAND in the background, writing to the file LOG, in a session of
 its own so that it outlives the terminal and the tun that started it.
 Returns its process id. setsid forks the server off; a shell in between
-writes the server's process id to a file, then becomes the server."
+writes the server's process id to a file, then becomes the server. That
+file is waited for until DEADLINE, a universal time, the server's own
+deadline (preview.md 2): a busy machine can take seconds to fork. When it
+does not come by then, the server is stopped: a shell that wrote its id
+meanwhile by that id, and one that has not yet finds the file
+PID-FILE.given-up when it has, and ends without becoming the server."
   (let ((pid-file (make-pathname :name "server" :type "pid" :defaults log))
         (setsid (ignore-errors (string-trim '(#\Newline)
                                             (uiop:run-program '("sh" "-c" "command -v setsid")
                                                               :output :string)))))
     (if (and setsid (plusp (length setsid)))
-        (progn
+        (let ((given-up (uiop:parse-native-namestring (format nil "~a.given-up" (namestring pid-file)))))
           (uiop:delete-file-if-exists pid-file)
-          (run-checked (list* "setsid" "--fork" "sh" "-c" "echo $$ > \"$0\" && exec \"$@\""
+          (uiop:delete-file-if-exists given-up)
+          (run-checked (list* "setsid" "--fork" "sh" "-c" *server-start-script*
                               (namestring pid-file) command)
                        :input nil :output (namestring log) :if-output-exists :supersede
                        :error-output :output)
-          (loop repeat 100
-                until (probe-file pid-file)
-                do (sleep 0.05))
-          (or (ignore-errors (parse-integer (read-text pid-file) :junk-allowed t))
-              (fail-step "the preview's server did not start; see ~a" (namestring log))))
+          (loop for pid = (read-pid-file pid-file)
+                when pid
+                  return pid
+                when (> (get-universal-time) deadline)
+                  ;; The shell writes its id, then looks for GIVEN-UP: made
+                  ;; before the id is read again, one of the two stops it.
+                  do (write-text given-up "")
+                     (let ((pid (read-pid-file pid-file)))
+                       (when pid
+                         (stop-process pid)))
+                     (fail-step "the preview's server was not started within ~d seconds, ~
+                                 and it was stopped; see ~a"
+                                +ready-seconds+ (namestring log))
+                do (sleep 0.05)))
         ;; Without setsid, SBCL's own process group for the child keeps an
         ;; interrupt at the terminal from reaching it.
         (uiop:process-info-pid
@@ -373,13 +419,12 @@ writes the server's process id to a file, then becomes the server."
             (nth-value 1 (drakma:http-request (format nil "http://127.0.0.1:~d/health" port)
                                               :connection-timeout 2)))))
 
-(defun wait-until-ready (port pid log)
+(defun wait-until-ready (port pid log &optional (deadline (+ (get-universal-time) +ready-seconds+)))
   "Wait until the server PID answers /health on PORT. Signals STEP-FAILED,
-with the end of its LOG, when it stops or takes longer than +READY-SECONDS+.
-The message carries the lines, as the log goes when the preview is
-removed."
-  (loop with deadline = (+ (get-universal-time) +ready-seconds+)
-        until (health-p port)
+with the end of its LOG, when it stops or is not ready by DEADLINE, a
+universal time, +READY-SECONDS+ from its start. The message carries the
+lines, as the log goes when the preview is removed."
+  (loop until (health-p port)
         do (unless (process-alive-p pid)
              (fail-step "the preview's server stopped before it answered. Its log ended:~%~a"
                         (log-tail log)))
@@ -486,13 +531,17 @@ its own."
              (uiop:delete-directory-tree data :validate #'preview-data-p
                                               :if-does-not-exist :ignore)
              (let* ((database (start-database data (socket-directory port)))
+                    ;; One deadline for the server, from its start to its
+                    ;; answer (preview.md 2).
+                    (deadline (+ (get-universal-time) +ready-seconds+))
                     (flags (list* "--port" (princ-to-string port)
                                   "--db" database
                                   "--claimed-identity"
                                   "--public-url" url
                                   "--preview-report" (namestring report)
                                   (and scenario (list "--scenario" scenario)))))
-               (setf pid (start-server (server-command client directory worktree flags) log))
+               (setf pid (start-server (server-command client directory worktree flags) log
+                                       :deadline deadline))
                (hand-over-claim port self pid)
                (let ((preview (jobj "name" name "client" client
                                     "directory" (namestring directory)
@@ -508,7 +557,7 @@ its own."
                  (handler-bind ((step-failed (lambda (condition)
                                                (declare (ignore condition))
                                                (stop-preview preview))))
-                   (wait-until-ready port pid log)
+                   (wait-until-ready port pid log deadline)
                    (when host (share port)))
                  (record-scenario preview report)
                  (write-text (state-file name) (to-json-string preview))

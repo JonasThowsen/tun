@@ -91,7 +91,10 @@
              (write-file-in directory "loops/x.md" "# x")
              (write-file-in directory ".build/loop/x/verify-1/test.log" "ok")
              (write-file-in directory ".data/loop/server.log" "ok")
-             (is (equal tree (tun.cli:repository-tree directory)))
+             (write-file-in directory "clients/second/.build/checks/day.json" "{}")
+             (write-file-in directory "clients/second/.data/check/server.log" "ok")
+             (is (equal tree (tun.cli:repository-tree directory))
+                 "nor what tun writes in a further client")
              (write-file-in directory "b.txt" "b")
              (is (not (equal tree (tun.cli:repository-tree directory))) "an untracked file counts")
              (is (equal "" (git-in directory "status" "--porcelain" "--untracked-files=no"))
@@ -773,6 +776,297 @@ it, and no bin/test at its own top."
                    (is (search "waits for the person" (expect 0 a "gate" "C")))
                    (is (equal "brief" (stage b "board")) "apps/b's loop is untouched"))
               (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))))
+
+;;; A repository of several clients (spec/loop.md 6, «The repository's
+;;; clients»): its first client at the top, a further one in clients/second/.
+
+(defun step-script (kind fail)
+  "A stand-in for a client's bin/test, or with KIND tun for the tun on the
+path: it adds a line to the file $RAN_LOG saying what ran, where, whether
+TUN_VERIFY_LOCK_HELD named a lock and whether that lock was held while it
+ran, and fails while the file FAIL is in its directory."
+  (format nil "#!/bin/sh~%~
+               if [ -n \"$TUN_VERIFY_LOCK\" ] && ! flock -n \"$TUN_VERIFY_LOCK\" true; then held=yes; else held=no; fi~%~
+               echo \"~a $* in $(pwd) lock-env=${TUN_VERIFY_LOCK_HELD:-none} lock-held=$held\" >> \"$RAN_LOG\"~%~
+               test ! -e ~a~%"
+          kind fail))
+
+(defun two-client-repository (directory &key second-flake (second t))
+  "A repository in DIRECTORY of the shape of a client repository with two
+clients: the first at the top, a flake.nix, first.asd, modules/notes/,
+bin/test and a check; the second, with SECOND, in clients/second/, its own
+second.asd, bin/test and a check, and with SECOND-FLAKE a flake.nix and a
+modules link too, as a second client was made before core 2.46.0. Each
+bin/test is STEP-SCRIPT's."
+  (ensure-directories-exist directory)
+  (git-in directory "init" "--quiet")
+  (write-file-in directory "flake.nix" "{ }")
+  (write-file-in directory "first.asd" "(defsystem \"first\")")
+  (write-file-in directory "application.lisp" ";; the first client")
+  (write-file-in directory "modules/notes/flake.nix" "{ }")
+  (write-file-in directory "modules/notes/tun-notes.asd" "(defsystem \"tun-notes\")")
+  (write-file-in directory "bin/test" (step-script "test" "fail-test") :program t)
+  (write-file-in directory "checks/front.py" "def run(t): pass")
+  (when second
+    (let ((client (merge-pathnames "clients/second/" directory)))
+      (write-file-in client "second.asd" "(defsystem \"second\")")
+      (write-file-in client "application.lisp" ";; the second client")
+      (write-file-in client "bin/test" (step-script "test" "fail-test") :program t)
+      (write-file-in client "checks/day.py" "def run(t): pass")
+      (when second-flake
+        (write-file-in client "flake.nix" "{ }")
+        (sb-posix:symlink "../../modules" (string-right-trim "/" (namestring (merge-pathnames "modules" client)))))))
+  (git-in directory "add" "--all")
+  (git-in directory "commit" "--quiet" "-m" "two clients"))
+
+(test a-repository-s-further-clients-are-in-its-clients-directory
+  (let* ((root (cli-scratch-directory))
+         (new (merge-pathnames "new/" root))
+         (old (merge-pathnames "old/" root))
+         (one (merge-pathnames "one/" root))
+         (tun (asdf:system-source-directory "tun")))
+    (unwind-protect
+         (progn
+           (two-client-repository new)
+           (two-client-repository old :second-flake t)
+           (two-client-repository one :second nil)
+           (flet ((names (top) (mapcar #'first (tun.cli:further-clients top)))
+                  (top (path) (namestring (tun.cli:loop-top path))))
+             (is (equal '("second") (names new)) "without a flake.nix")
+             (is (equal (namestring (merge-pathnames "clients/second/" new))
+                        (namestring (second (first (tun.cli:further-clients new))))))
+             (is (equal '("second") (names old)) "with a flake.nix and a modules link")
+             (is (null (names one)) "a repository of one client")
+             (write-file-in one "clients/notes.txt" "not a client")
+             (write-file-in one "clients/empty/README.md" "no .asd")
+             (is (null (names one)) "a directory without an .asd is no client")
+             (is (null (names tun)) "Tun's repository has none")
+             (is (equal (namestring new) (top (merge-pathnames "clients/second/" new)))
+                 "tun loop run in the second client finds the top")
+             (is (equal (namestring (merge-pathnames "clients/second/" old))
+                        (top (merge-pathnames "clients/second/" old)))
+                 "with a flake.nix of its own, the second is a top as before")))
+      (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))
+
+(test one-verify-round-runs-every-client-and-names-whose-step-failed
+  (let* ((root (cli-scratch-directory))
+         (directory (merge-pathnames "repository/" root))
+         (second (merge-pathnames "clients/second/" directory))
+         (dir (namestring directory))
+         (ran (merge-pathnames "ran.log" root))
+         (lock (merge-pathnames "verify.lock" root))
+         (calls (merge-pathnames "calls" root))
+         (bin (merge-pathnames "bin/" root))
+         (tracker (write-file-in root "tracker.sh"
+                                 (format nil "#!/bin/sh~%test \"$1\" = --quiet && shift~%~
+                                              { printf '%s %s ' \"$1\" \"$2\"; cat; echo; } >> '~a'~%exit 0~%"
+                                         (namestring calls))
+                                 :program t))
+         (reviewer (write-file-in root "reviewer.sh"
+                                  (format nil "#!/bin/sh~%cat > /dev/null~%echo 'Fint.'~%echo~%~
+                                               echo 'VERDICT: approve'~%")
+                                  :program t)))
+    (write-file-in bin "tun" (step-script "tun" "fail-check") :program t)
+    (labels ((tun (&rest arguments)
+               (apply #'run-tun "loop" (append arguments (list "--dir" dir))))
+             (expect (wanted &rest arguments)
+               (multiple-value-bind (status output) (apply #'tun arguments)
+                 (is (= wanted status) "tun loop ~{~a~^ ~}: ~a" arguments output)
+                 output))
+             (ran ()
+               (prog1 (and (probe-file ran) (uiop:read-file-lines ran))
+                 (uiop:delete-file-if-exists ran)))
+             (round-file (round file)
+               (merge-pathnames (format nil ".build/loop/paging/verify-~d/~a" round file) directory))
+             (last-verify ()
+               (find-if (lambda (call) (string= (first call) "verify")) (tracker-calls calls)
+                        :from-end t)))
+      (with-environment-variable ("TUN_WORKTREE" (namestring (asdf:system-source-directory "tun")))
+        (with-environment-variable ("TUN_REVIEWER" (namestring reviewer))
+          (with-environment-variable ("TUN_TRACKER" (format nil "'~a' --quiet" (namestring tracker)))
+            (with-environment-variable ("TUN_VERIFY_LOCK" (namestring lock))
+              (with-environment-variable ("TUN_VERIFY_LOCK_HELD" nil)
+                (with-environment-variable ("RAN_LOG" (namestring ran))
+                  (with-environment-variable ("PATH" (format nil "~a:~a" (namestring bin)
+                                                             (uiop:getenv "PATH")))
+                    (unwind-protect
+                         (progn
+                           (two-client-repository directory)
+                           (expect 0 "start" "paging" "--title" "To klienter" "--mode" "reviewed")
+                           (with-criteria directory "paging")
+                           (expect 0 "gate" "A")
+                           ;; One round: four steps, each in its client's directory,
+                           ;; under one hold of the lock.
+                           (let ((output (expect 0 "verify")))
+                             (is (not (search "waiting for the verify lock" output))
+                                 "no step waits for the lock the round holds: ~a" output)
+                             (dolist (step '("test " "check " "test:second" "check:second"))
+                               (is (search step output) "the round's output names ~a: ~a" step output)))
+                           (let ((lines (ran)))
+                             (is (= 4 (length lines)) "~{~a~%~}" lines)
+                             (loop for line in lines
+                                   for (what where) in `(("test " ,directory) ("tun check" ,directory)
+                                                         ("test " ,second) ("tun check" ,second))
+                                   do (is (eql 0 (search what line)) "~a: ~a" what line)
+                                      (is (search (format nil " in ~a " (string-right-trim "/" (namestring where))) line)
+                                          "~a runs in ~a: ~a" what where line)
+                                      (is (search (format nil "lock-env=~a " (namestring lock)) line)
+                                          "it knows the round holds the lock: ~a" line)
+                                      (is (search "lock-held=yes" line) "the lock is held while it runs: ~a" line)))
+                           (is (equal (format nil "Verify round 1 of paging~%ok    test~%ok    check~%~
+                                                   ok    test:second  in clients/second/~%~
+                                                   ok    check:second  in clients/second/~%")
+                                      (uiop:read-file-string (round-file 1 "summary.txt"))))
+                           (dolist (log '("test.log" "check.log" "test-second.log" "check-second.log"))
+                             (is (probe-file (round-file 1 log)) "~a" log))
+                           (is (equalp #("test" "check" "test:second" "check:second")
+                                       (jget (third (last-verify)) "steps")))
+                           ;; The second client's suite fails: the round fails, named.
+                           (write-file-in second "fail-test" "")
+                           (expect 1 "verify")
+                           (ran)
+                           (is (equalp #("test:second") (jget (third (last-verify)) "failed")))
+                           (delete-file (merge-pathnames "fail-test" second))
+                           ;; Its checks fail.
+                           (write-file-in second "fail-check" "")
+                           (expect 1 "verify")
+                           (ran)
+                           (is (equalp #("check:second") (jget (third (last-verify)) "failed")))
+                           (delete-file (merge-pathnames "fail-check" second))
+                           ;; It has no bin/test.
+                           (sb-posix:rename (namestring (merge-pathnames "bin/test" second))
+                                            (namestring (merge-pathnames "bin/test.off" second)))
+                           (expect 1 "verify")
+                           (is (= 3 (length (ran))) "the others ran")
+                           (is (search "has no bin/test" (uiop:read-file-string (round-file 4 "test-second.log"))))
+                           (sb-posix:rename (namestring (merge-pathnames "bin/test.off" second))
+                                            (namestring (merge-pathnames "bin/test" second)))
+                           (expect 0 "verify")
+                           (ran)
+                           (let ((log (uiop:read-file-string (merge-pathnames "loops/paging.md" directory))))
+                             (dolist (line '("verify 1: passed test, check, test:second, check:second"
+                                             "verify 2: failed test:second"
+                                             "verify 3: failed check:second"
+                                             "verify 4: failed test:second"
+                                             "verify 5: passed"))
+                               (is (search line log) "the log has ~s" line)))
+                           (is (equal "verified" (jget (parse-json (nth-value 1 (tun "status" "--json"))) "stage"))))
+                      (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore))))))))))))
+
+(test a-show-of-a-named-client-has-a-folder-of-its-own
+  (let* ((root (cli-scratch-directory))
+         (directory (merge-pathnames "repository/" root))
+         (one (merge-pathnames "one/" root))
+         (reviewer (write-file-in root "reviewer.sh"
+                                  (format nil "#!/bin/sh~%cat > /dev/null~%echo 'Fint.'~%echo~%~
+                                               echo 'VERDICT: approve'~%")
+                                  :program t)))
+    (labels ((tun (top &rest arguments)
+               (apply #'run-tun "loop" (append arguments (list "--dir" (namestring top)))))
+             (expect (wanted top &rest arguments)
+               (multiple-value-bind (status output) (apply #'tun top arguments)
+                 (is (= wanted status) "tun loop ~{~a~^ ~}: ~a" arguments output)
+                 output))
+             (record (top) (tun.cli:read-record top "paging"))
+             (show-file (top path) (merge-pathnames (format nil ".build/loop/paging/show/~a" path) top))
+             (packet-file (path) (merge-pathnames (format nil ".build/loop/paging/gate-B-1/~a" path)
+                                                  directory)))
+      (with-environment-variable ("TUN_WORKTREE" (namestring (asdf:system-source-directory "tun")))
+        (with-environment-variable ("TUN_REVIEWER" (namestring reviewer))
+          (with-environment-variable ("TUN_TRACKER" nil)
+            (with-environment-variable ("TUN_VERIFY_LOCK" nil)
+              (with-environment-variable ("RAN_LOG" (namestring (merge-pathnames "ran.log" root)))
+                (with-environment-variable ("PATH" (format nil "~a:~a" (namestring (merge-pathnames "bin/" root))
+                                                           (uiop:getenv "PATH")))
+                  (write-file-in root "bin/tun" (step-script "tun" "fail-check") :program t)
+                  (unwind-protect
+                       (progn
+                         (two-client-repository directory)
+                         (two-client-repository one :second nil)
+                         (dolist (top (list directory one))
+                           (expect 0 top "start" "paging" "--title" "To klienter" "--mode" "reviewed")
+                           (with-criteria top "paging")
+                           (expect 0 top "gate" "A")
+                           (expect 0 top "verify"))
+                         ;; Which client and folder a show takes.
+                         (is (equal (namestring (merge-pathnames "clients/second/" directory))
+                                    (namestring (tun.cli:shown-directory (record directory) "second"))))
+                         (is (equal (namestring directory) (namestring (tun.cli:shown-directory (record directory)))))
+                         (is (equal (namestring (show-file directory "clients/second/"))
+                                    (namestring (tun.cli:show-directory (record directory) "second"))))
+                         (is (equal (namestring (show-file directory ""))
+                                    (namestring (tun.cli:show-directory (record directory)))))
+                         (let ((refusal (handler-case (progn (tun.cli:shown-directory (record directory) "third") nil)
+                                          (tun.cli:usage-error (e) (princ-to-string e)))))
+                           (is (search "no further client third" (or refusal "")) "~a" refusal)
+                           (is (search "they are second" (or refusal "")) "~a" refusal))
+                         (let ((refusal (handler-case (progn (tun.cli:shown-directory (record one) "second") nil)
+                                          (tun.cli:usage-error (e) (princ-to-string e)))))
+                           (is (search "there is none" (or refusal "")) "a repository of one client: ~a" refusal))
+                         (is (= 2 (tun one "show" "--client" "second")) "a usage error")
+                         (let ((refusal (handler-case
+                                            (progn (tun.cli:shown-directory
+                                                    (tun.cli:make-record (asdf:system-source-directory "tun")
+                                                                         "x" "# x")
+                                                    "second")
+                                                   nil)
+                                          (tun.cli:usage-error (e) (princ-to-string e)))))
+                           (is (search "a loop in Tun shows the client it started with" (or refusal ""))
+                               "in Tun, none: ~a" refusal))
+                         ;; What show records and leaves, without its previews: the
+                         ;; top's, then the second's, then the top's again.
+                         (flet ((shown (client file)
+                                  (let ((record (record directory)))
+                                    (tun.cli:clear-show-directory record client)
+                                    (write-file-in (tun.cli:show-directory record client) file "png")
+                                    (write-file-in (tun.cli:show-directory record client) "report.md" "# report")
+                                    (tun.cli:record-shown record (tun.cli:text-field (tun.cli::record-text record)
+                                                                                     "verified")
+                                                          (format nil "https://preview.example/~a" (or client "first"))
+                                                          '("/") :client client))))
+                           (write-file-in directory ".build/loop/paging/show/old.png" "an earlier tree's")
+                           (shown nil "front-phone.png")
+                           (is (not (probe-file (show-file directory "old.png"))) "the first show clears show/")
+                           (shown "second" "day-phone.png")
+                           (is (probe-file (show-file directory "front-phone.png")) "the top's stay")
+                           (is (probe-file (show-file directory "clients/second/day-phone.png")))
+                           (is (equal "https://preview.example/second"
+                                      (string-trim '(#\Newline) (uiop:read-file-string
+                                                                 (show-file directory "clients/second/link")))))
+                           (shown nil "front-desktop.png")
+                           (is (not (probe-file (show-file directory "front-phone.png"))) "the top's own are replaced")
+                           (is (probe-file (show-file directory "clients/second/day-phone.png"))
+                               "a second show of the top keeps the second's"))
+                         (let ((log (uiop:read-file-string (merge-pathnames "loops/paging.md" directory))))
+                           (is (search "shown clients/second (/)" log))
+                           (is (search "shown (/)" log)))
+                         ;; The packet names each client's results.
+                         (write-file-in directory ".build/checks/front.json" "{}")
+                         (write-file-in directory "clients/second/.build/checks/day.json" "{}")
+                         (write-file-in directory "clients/second/.build/checks/day-1.png" "png")
+                         (expect 0 directory "gate" "B")
+                         (dolist (path '("checks/front.json" "checks/second/day.json" "checks/second/day-1.png"
+                                         "shots/front-desktop.png" "shots/report.md" "shots/link"
+                                         "shots/second/day-phone.png" "shots/second/report.md"
+                                         "shots/second/link" "link"))
+                           (is (probe-file (packet-file path)) "the packet holds ~a" path))
+                         (is (not (probe-file (packet-file "shots/clients/"))) "the second's pictures once")
+                         (is (search "`clients/second/`" (uiop:read-file-string (packet-file "README.md"))))
+                         (is (search "test:second  in clients/second/"
+                                     (uiop:read-file-string (packet-file "verify.txt"))))
+                         (let ((message (tun.cli::person-message (record directory) "B")))
+                           (is (search "https://preview.example/first" message))
+                           (is (search "clients/second: open https://preview.example/second" message)))
+                         ;; A repository of one client: its round and packet as before.
+                         (is (equal (format nil "Verify round 1 of paging~%ok    test~%ok    check~%")
+                                    (uiop:read-file-string
+                                     (merge-pathnames ".build/loop/paging/verify-1/summary.txt" one))))
+                         (as-shown one "paging")
+                         (expect 0 one "gate" "B")
+                         (is (not (search "clients" (uiop:read-file-string
+                                                     (merge-pathnames ".build/loop/paging/gate-B-1/README.md" one)))))
+                         (is (null (uiop:subdirectories (merge-pathnames ".build/loop/paging/gate-B-1/checks/" one)))))
+                    (uiop:delete-directory-tree root :validate t :if-does-not-exist :ignore)))))))))))
 
 ;;; Estimates, cost and actuals (spec/loop.md 6.2)
 

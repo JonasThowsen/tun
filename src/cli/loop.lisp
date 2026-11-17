@@ -47,8 +47,9 @@ does not hold."
   (let ((command (uiop:getenv "TUN_TRACKER")))
     (and (plusp (length command)) command)))
 
-(defparameter +outside-the-tree+ '("loops" ".build" ".data")
-  "What a loop's tree leaves out: its record, and what tun itself writes.")
+(defparameter +outside-the-tree+ '("loops" ".build" ".data" "clients/*/.build/*" "clients/*/.data/*")
+  "What a loop's tree leaves out, as git's pathspecs: its record, and what
+tun itself writes, at the top and in each further client (spec/loop.md 6).")
 
 ;;; ------------------------------------------------------------------
 ;;; The record (spec/loop.md 5)
@@ -211,6 +212,34 @@ monorepo, so has its loops to itself."
                (refuse "~a has ~d open loops, ~{~a~^, ~}; name one"
                        (namestring top) (length open) (mapcar #'record-name open)))
               (t (first open))))))
+
+;;; ------------------------------------------------------------------
+;;; The repository's clients (spec/loop.md 6)
+
+(defun further-clients (top)
+  "The further clients of the repository whose loop's top is TOP: each
+directory clients/CLIENT/ directly under TOP that holds an .asd at its own
+top, with a flake.nix or without, as (CLIENT DIRECTORY), in the order of
+their names. Tun's repository has none: its clients/ holds clients a person
+added locally, and a loop in Tun names its client at start."
+  (unless (tun-repository-p top)
+    (sort (loop for directory in (uiop:subdirectories (merge-pathnames "clients/" top))
+                when (directory (merge-pathnames "*.asd" directory))
+                  collect (list (car (last (pathname-directory directory))) directory))
+          #'string< :key #'first)))
+
+(defun further-client (top name)
+  "The directory of the further client NAME of TOP's repository; refuses a
+NAME that is none, naming the clients there are."
+  (when (tun-repository-p top)
+    (refuse "a loop in Tun shows the client it started with (--client at tun loop start); ~
+             show takes no --client"))
+  (let ((clients (further-clients top)))
+    (or (second (assoc name clients :test #'string=))
+        (refuse "~a has no further client ~a: --client names a directory clients/CLIENT/ ~
+                 holding an .asd (spec/loop.md 6), and ~:[there is none, so the repository's ~
+                 one client is its top~;they are ~:*~{~a~^, ~}~]"
+                (namestring top) name (mapcar #'first clients)))))
 
 (defun record-client (record)
   (let ((client (field record "client")))
@@ -996,9 +1025,20 @@ its checked-out one (spec/loop.md 6)."
               `(("pressure" ,top ,(pressure-command))))
           ,@(when (and client (browser-checks client))
               `(("client-check" ,top "bin/tun" "check" "--dir" ,(namestring client)))))
+        ;; The top's steps, then each further client's in its own
+        ;; directory, named by it: test:CLIENT and check:CLIENT.
         `(("test" ,top "bin/test")
           ,@(when (browser-checks top)
-              `(("check" ,top "tun" "check")))))))
+              `(("check" ,top "tun" "check")))
+          ,@(loop for (name directory) in (further-clients top)
+                  collect `(,(format nil "test:~a" name) ,directory "bin/test")
+                  when (browser-checks directory)
+                    collect `(,(format nil "check:~a" name) ,directory "tun" "check"))))))
+
+(defun step-log-name (step)
+  "The file name of STEP's log in a round's directory: test.log, or for a
+further client's step test:CLIENT, test-CLIENT.log."
+  (format nil "~a.log" (substitute #\- #\: step)))
 
 (defun caller-environment ()
   "The arguments to env that give a program the ASDF settings of whoever ran
@@ -1016,12 +1056,20 @@ the client's dev shell's would be missing."
 
 (defun run-verify-step (directory command log)
   "Run COMMAND in DIRECTORY, with the caller's ASDF settings and its output in
-the file LOG; true when it passed."
+the file LOG; true when it passed. A program named by a path DIRECTORY does
+not hold, such as a further client's missing bin/test, fails the step, and
+LOG says so."
   (finish-output *standard-output*)
-  (zerop (nth-value 2 (uiop:run-program (append '("env") (caller-environment) command)
-                                        :directory directory :ignore-error-status t
-                                        :output log :if-output-exists :supersede
-                                        :error-output :output))))
+  (let ((program (first command)))
+    (if (and (find #\/ program) (not (probe-file (merge-pathnames program directory))))
+        (progn
+          (write-text log (format nil "~a has no ~a, which this step runs (spec/loop.md 6).~%"
+                                  (namestring directory) program))
+          nil)
+        (zerop (nth-value 2 (uiop:run-program (append '("env") (caller-environment) command)
+                                              :directory directory :ignore-error-status t
+                                              :output log :if-output-exists :supersede
+                                              :error-output :output))))))
 
 (defun latest-output (record prefix)
   "RECORD's output directory PREFIX-N with the highest N, or NIL."
@@ -1042,19 +1090,26 @@ the file LOG; true when it passed."
              ;; names one (spec/loop.md 6); its own tun check does not wait.
              (with-verify-lock ()
                (loop for (name directory . command) in steps
-                     for log = (merge-pathnames (format nil "~a.log" name) out)
+                     for log = (merge-pathnames (step-log-name name) out)
                      collect (let ((started (get-universal-time))
                                    (ok (run-verify-step directory command log)))
                                (format t "~&  ~:[FAIL~;ok  ~]  ~14a~4ds  ~a~%" ok name
                                        (- (get-universal-time) started)
                                        (enough-namestring log (record-top record)))
-                               (list name ok)))))
+                               (list name ok directory)))))
            (failed (mapcar #'first (remove-if #'second results)))
            (failures (if failed (1+ (or (ignore-errors (parse-integer (field record "failures"))) 0)) 0)))
+      ;; A step of a further client says where it ran, so the summary, and
+      ;; the packet's verify.txt, name each result's client.
       (write-text (merge-pathnames "summary.txt" out)
-                  (format nil "Verify round ~d of ~a~%~:{~:[FAIL~;ok  ~]  ~a~%~}"
+                  (format nil "Verify round ~d of ~a~%~:{~:[FAIL~;ok  ~]  ~a~@[  in ~a~]~%~}"
                           round (record-name record)
-                          (mapcar (lambda (result) (list (second result) (first result))) results)))
+                          (mapcar (lambda (result)
+                                    (destructuring-bind (name ok directory) result
+                                      (list ok name
+                                            (and (not (equal directory (record-top record)))
+                                                 (enough-namestring directory (record-top record))))))
+                                  results)))
       (cond (failed
              (setf (field record "stage") (if (>= failures +verify-rounds+) "stuck" "build")
                    (field record "failures") (princ-to-string failures))
@@ -1074,12 +1129,34 @@ the file LOG; true when it passed."
 ;;; ------------------------------------------------------------------
 ;;; show
 
-(defun shown-directory (record)
-  "The client a loop is shown in: its client, the showcase in Tun, or itself."
+(defun shown-directory (record &optional client)
+  "The client a loop is shown in: the further client CLIENT of its
+repository when given, else its client, the showcase in Tun, or itself."
   (let ((top (record-top record)))
-    (cond ((record-client record))
+    (cond (client (further-client top client))
+          ((record-client record))
           ((tun-repository-p top) (merge-pathnames "checks/showcase/" top))
           (t top))))
+
+(defun show-directory (record &optional client)
+  "Where a show of RECORD's loop puts its report, screenshots and link:
+.build/loop/NAME/show/, or show/clients/CLIENT/ for a further client."
+  (output-directory record (if client (format nil "show/clients/~a/" client) "show/")))
+
+(defun clear-show-directory (record client)
+  "Remove what an earlier show left before a show of CLIENT (NIL for the
+top): all of show/ at the first show of a verified tree, else only the
+pictures of the client shown now, so each client's show of the same tree
+stands beside the others'."
+  (let ((show (show-directory record))
+        (own (show-directory record client)))
+    (flet ((remove-tree (directory)
+             (uiop:delete-directory-tree directory
+                                         :validate (lambda (path) (search "/.build/loop/" (namestring path)))
+                                         :if-does-not-exist :ignore)))
+      (cond ((string= (stage record) "verified") (remove-tree show))
+            (client (remove-tree own))
+            (t (mapc #'delete-file (uiop:directory-files show)))))))
 
 (defun take-screenshots (runner out url actor paths)
   "Screenshots of PATHS at URL, at a phone's width and a desktop's, signed in
@@ -1088,17 +1165,17 @@ as ACTOR, in OUT, taken by RUNNER; return what it says it took."
                :output :interactive :error-output :interactive)
   (coerce (parse-json (read-text (merge-pathnames "shots.json" out))) 'list))
 
-(defun show-loop (record &key paths actor scenario)
+(defun show-loop (record &key paths actor scenario client)
   "tun loop show: the verified tree at a shared preview, with screenshots
-and a report."
+and a report; of the further client CLIENT of the repository when given."
   (require-stage record "show" '("verified" "shown"))
-  (let ((tree (loop-trees record)))
+  (let ((tree (loop-trees record))
+        (shown (shown-directory record client)))
     (unless (equal tree (field record "verified"))
       (fail-step "the tree has changed since it passed verify; run ~a loop verify again"
                  (tun-command)))
     (let* ((runner (check-runner "scripts/tun_shots.py"))
-           (out (output-directory record "show/"))
-           (shown (shown-directory record))
+           (out (show-directory record client))
            ;; A preview of the loop's own, beside the one tun preview starts
            ;; for the branch, which the person may have open.
            (preview (start-preview :directory (namestring shown) :scenario scenario
@@ -1107,8 +1184,7 @@ and a report."
            (actors (coerce (jget preview "actors") 'list))
            (actor (or actor (and actors (jget (first actors) "actor"))))
            (paths (or paths '("/"))))
-      (uiop:delete-directory-tree out :validate (lambda (path) (search "/.build/loop/" (namestring path)))
-                                      :if-does-not-exist :ignore)
+      (clear-show-directory record client)
       (ensure-directories-exist out)
       (let ((shots (take-screenshots runner out (jget preview "local_url") actor paths))
             (verified (latest-output record "verify")))
@@ -1132,27 +1208,37 @@ and a report."
                                               (and errors (format nil "~{~a~^; ~}" errors)))))
                                     shots)))
         (record-shown record tree (jget preview "url")
-                      (mapcar (lambda (shot) (jget shot "path")) shots))
+                      (mapcar (lambda (shot) (jget shot "path")) shots)
+                      :client client)
         (print-preview preview)
         (format t "~&~%Report and screenshots: ~a~%" (namestring out))
         (print-next record)))))
 
-(defun preview-link (record)
-  "The link of RECORD's loop's shared preview, from the last show, or NIL."
-  (let ((file (output-directory record "show/link")))
+(defun preview-link (record &optional client)
+  "The link of RECORD's loop's shared preview, of the further client CLIENT
+when given, from the last show, or NIL."
+  (let ((file (merge-pathnames "link" (show-directory record client))))
     (and (probe-file file) (string-trim '(#\Newline #\Space) (read-text file)))))
 
-(defun record-shown (record tree link paths)
-  "Record that TREE was shown at the preview LINK, at PATHS. The link goes to
-.build/loop/NAME/show/link, not into the record (spec/loop.md 5)."
-  (let ((file (output-directory record "show/link")))
+(defun shown-further-clients (record)
+  "The further clients of RECORD's repository that a show of its tree
+pictured: those with a link in show/clients/CLIENT/."
+  (remove-if-not (lambda (name) (preview-link record name))
+                 (mapcar #'first (further-clients (record-top record)))))
+
+(defun record-shown (record tree link paths &key client)
+  "Record that TREE was shown at the preview LINK, at PATHS, of the further
+client CLIENT when given. The link goes to .build/loop/NAME/show/link, or
+show/clients/CLIENT/link, not into the record (spec/loop.md 5)."
+  (let ((file (merge-pathnames "link" (show-directory record client))))
     (ensure-directories-exist file)
     (write-text file (format nil "~a~%" link)))
   (setf (field record "stage") "shown"
         (field record "shown") tree)
-  (add-log record (format nil "shown (~{~a~^, ~})" paths))
+  (add-log record (format nil "shown ~@[clients/~a ~](~{~a~^, ~})" client paths))
   (save-record record)
-  (tell-tracker record "show" "preview" link "paths" (jarr paths)))
+  (apply #'tell-tracker record "show" "preview" link "paths" (jarr paths)
+         (and client (list "client" (format nil "clients/~a" client)))))
 
 ;;; ------------------------------------------------------------------
 ;;; Gates
@@ -1172,8 +1258,10 @@ and a report."
          (require-shown-commit record))))
 
 (defun copy-files (pattern from to)
-  "Copy the files matching PATTERN in the directory FROM into TO."
-  (dolist (file (directory (merge-pathnames pattern from)))
+  "Copy the files matching PATTERN in the directory FROM into TO, making TO
+when there is one; not the directories in FROM."
+  (dolist (file (uiop:directory-files from pattern))
+    (ensure-directories-exist to)
     (uiop:copy-file file (merge-pathnames (file-namestring file) to))))
 
 (defun write-packet (record gate)
@@ -1185,10 +1273,10 @@ its directory."
     (ensure-directories-exist packet)
     (write-text (merge-pathnames "README.md" packet)
                 (format nil "~a~%~%## This packet~%~%Gate ~a of the loop ~a, «~a»: ~a. ~
-                             Mode ~a.~%"
+                             Mode ~a.~%~@[~%~a~%~]"
                         (string-right-trim '(#\Newline) instructions) gate (record-name record)
                         (record-title record) (sixth (assoc gate +gates+ :test #'string=))
-                        (field record "mode")))
+                        (field record "mode") (clients-text record)))
     (write-text (merge-pathnames "loop.md" packet) (record-text record))
     (write-text (merge-pathnames "diff.patch" packet) (loop-diff record))
     (unless (string= gate "A")
@@ -1206,11 +1294,30 @@ its directory."
             (copy-files "*.json" results checks)
             (copy-files "*.png" results checks)))
         (ensure-directories-exist shots)
-        (copy-files "*.*" (output-directory record "show/") shots)
+        (copy-files "*.*" (show-directory record) shots)
+        ;; Each further client's results and pictures in a folder of its own.
+        (loop for (name directory) in (further-clients (record-top record))
+              for results = (merge-pathnames ".build/checks/" directory)
+              do (copy-files "*.json" results (merge-pathnames (format nil "~a/" name) checks))
+                 (copy-files "*.png" results (merge-pathnames (format nil "~a/" name) checks))
+                 (copy-files "*.*" (show-directory record name)
+                             (merge-pathnames (format nil "~a/" name) shots)))
         (let ((link (preview-link record)))
           (when link
             (write-text (merge-pathnames "link" packet) (format nil "~a~%" link))))))
     packet))
+
+(defun clients-text (record)
+  "What a packet's README says of the repository's clients, or NIL for a
+repository of one."
+  (let ((further (further-clients (record-top record))))
+    (when further
+      (format nil "The repository has ~d clients: ~a at its top, whose results are in ~
+                   `checks/` and `shots/`, and ~{~a~^, ~}, each with its results in ~
+                   `checks/CLIENT/` and `shots/CLIENT/`. `verify.txt` names the client of each ~
+                   step (`test:CLIENT`, `check:CLIENT`)."
+              (1+ (length further)) (client-name-or-tun (record-top record))
+              (mapcar (lambda (client) (format nil "`clients/~a/`" (first client))) further)))))
 
 (defun record-decision (record gate decision by why &optional reasons minutes)
   "Record DECISION at GATE by BY, with WHY, a reviewer's REASONS and the
@@ -1262,8 +1369,15 @@ input, and record its verdict."
                    (remove "" (record-section record "Criteria") :test #'string=)
                    (text-lines (string-right-trim '(#\Newline) (loop-diff record :stat t)))))
           ((string= gate "B")
-           (format out "~%Open ~a, and sign in with the links in ~a.~%"
-                   (preview-link record) (namestring (output-directory record "show/report.md"))))
+           ;; The top's link, when it was shown, then each further
+           ;; client's that was.
+           (when (or (preview-link record) (null (shown-further-clients record)))
+             (format out "~%Open ~a, and sign in with the links in ~a.~%"
+                     (preview-link record) (namestring (output-directory record "show/report.md"))))
+           (dolist (client (shown-further-clients record))
+             (format out "The client clients/~a: open ~a, and sign in with the links in ~a.~%"
+                     client (preview-link record client)
+                     (namestring (merge-pathnames "report.md" (show-directory record client))))))
           (t
            (format out "~%What is deployed: ~{~a~^, ~}.~%"
                    (loop for (directory) in (loop-repositories record)
@@ -1375,7 +1489,7 @@ input, and record its verdict."
              (actuals-command top (first arguments) :json json))
             ((string= subcommand "verify") (verify-loop (named-record)))
             ((string= subcommand "show")
-             (show-loop (named-record) :paths path :actor actor :scenario scenario))
+             (show-loop (named-record) :paths path :actor actor :scenario scenario :client client))
             ((string= subcommand "resume") (resume-loop (named-record) :by by :why why))
             ((string= subcommand "rebase")
              (rebase-loop (named-record) :onto onto :client-onto client-onto))

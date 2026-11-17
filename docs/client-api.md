@@ -87,6 +87,14 @@ does not admit, such as an item authored by someone else, is `forbidden`.
   (insert item))
 ```
 
+Queries and record policies run on Postgres only; the memory and SQLite
+stores refuse them. Code that must run on either, such as a test helper
+or a page a test opens in memory, asks first with
+`(application-runs-queries-p)`, true when the application (`*application*`,
+or the one given) runs on Postgres. The generated tests run a client on
+Postgres when it, or any module its application enables, defines a query
+or an entity with a record policy (`spec/testing.md` §2).
+
 Code that must reach records the caller cannot, such as a notice for an
 admin, runs as the system: `(with-actor ((system-actor "items")) ...)`.
 A tool that shows the caller such records on purpose, such as a system
@@ -1687,6 +1695,91 @@ through `TUN.CORE`, which exports `send-mail`, `render-mail`,
 `attach-files`, `attachments-of` and `file-octets` for it
 (`spec/tun-platform.md` §2.3); `TUN.MAIL` and `TUN.FILES` stay the
 kernel's own.
+
+## Several clients in one repository
+
+Two businesses, or two trades, may share a repository's modules: the
+first client at the repository's top, as `tun new` makes it, and each
+further client in `clients/NAME/`. The repository keeps one flake, one
+`flake.lock` and one dev shell, so every client has the same Tun and the
+same modules.
+
+```
+flake.nix  flake.lock  .envrc  .gitignore   the repository's, for every client
+first.asd  package.lisp  application.lisp  nb.lisp
+tests/  checks/  bin/test  loops/           the first client's
+modules/NAME/                               the repository's own modules
+clients/second/
+  second.asd  package.lisp  application.lisp  nb.lisp
+  tests/package.lisp  tests/scenarios.lisp  tests/tests.lisp  tests/run.lisp
+  bin/test  checks/  README.md
+```
+
+A further client has no `flake.nix` and no link to `modules/`:
+
+- Its `.asd` names its system and the modules it enables, as the first's
+  does; `tests/tests.lisp` holds `(define-generated-tests "second"
+  :package "SECOND")`. Its `tests/run.lisp` is the first's, but for its
+  source registry, which names its own directory and the repository's
+  `modules/`, and its systems, which are only its own: its modules are
+  compiled strictly and tested by the first client's `bin/test`.
+
+  ```lisp
+  (asdf:initialize-source-registry
+   `(:source-registry (:directory ,(uiop:getcwd))
+                      (:tree ,(merge-pathnames "../../modules/" (uiop:getcwd)))
+                      :inherit-configuration))
+  (defparameter *systems* '("second" "second/tests"))
+  ```
+
+  Its `bin/test` is a copy of the first's, run in its own directory. The
+  first client's `bin/test` runs only the first's suite: `tun loop
+  verify` runs each client's.
+- The root flake builds it beside the first, from the same inputs, with
+  the modules it enables, and its sources alone:
+
+  ```nix
+  second = tunLib.buildClient {
+    pname = "second";
+    # The repository's modules but notes, which only the first enables.
+    modules = modules ++ builtins.filter (m: m.name != "notes") ownModules;
+    src = lib.fileset.toSource {
+      root = ./clients/second;
+      fileset = lib.fileset.difference
+        (lib.fileset.fileFilter (f: f.hasExt "lisp" || f.hasExt "asd") ./clients/second)
+        ./clients/second/tests;
+    };
+  };
+  ```
+
+  with `packages.${system}.second = second;` and, for a deploy, its image
+  (`tunLib.clientImage { name = "second"; server = second; }`). The first
+  client's `src` leaves out `./clients`.
+- In the repository's dev shell, at its top: `tun preview --dir
+  clients/second` and `tun check --dir clients/second` run it; its server
+  finds the repository's `modules/` after its own directory
+  (`spec/preview.md` §2). `tun loop` covers every client from the top,
+  and run in `clients/second/` it finds the top's loop: one verify round
+  runs each client's `bin/test` and checks under one hold of the verify
+  lock, and fails naming the client (`test:second`, `check:second`);
+  `tun loop show --client second` takes the second's pictures; the
+  gates' packets hold each client's results (`spec/loop.md` §6).
+- Its generated tests check its own files: the first client's sources
+  leave `clients/second/` out, and the second's own modules are none, the
+  repository's modules being the first client's, checked as modules,
+  fuzzed and translated in its suite. A module only the second client
+  enables is therefore not checked as a module by either: enable it in
+  the first too, or keep it out of `modules/` until one does. The
+  second's tests run on Postgres when a module it enables needs it,
+  wherever that module's files lie (`spec/testing.md` §2).
+
+`tun new` does not make a further client: it writes a repository with a
+flake and pins of its own, and `tun add` and `tun update` edit a client's
+flake, which a further client does not have. Copy the files above from
+the first client and change the names. A further client made before core
+2.46.0, with a `flake.nix` that builds nothing and a `modules` link, is
+still found; remove both to have `tun loop` run in its directory find the
+repository's top.
 
 ## Module API: retained trace erasure (core 1.1.6)
 
