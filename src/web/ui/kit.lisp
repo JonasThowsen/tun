@@ -825,6 +825,12 @@ with).  NIL for any other path."
              (values (assets-js assets) "text/javascript; charset=utf-8"
                      (string= hash (assets-js-hash assets))))))))
 
+(defun tokens-stylesheet ()
+  "The design tokens alone (spec/ui.md 3): the text of the stylesheet's
+tokens layer, every custom property on :root light and dark, for a
+single-page screen to link at /assets/tokens.css."
+  +tokens-css+)
+
 (defun asset-hashes ()
   "The stylesheet's and the script's hashes, as the app shell sends them in
 Tun-Assets: \"CSS-HASH JS-HASH\" (spec/ui.md 4.1)."

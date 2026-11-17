@@ -4,4 +4,7 @@
 # its scenario on this working tree, in Chromium. Run inside `nix develop`.
 set -euo pipefail
 here="$(cd "$(dirname "$0")/.." && pwd)"
+# The showcase's single-page screen as Nix builds it (spec/typescript.md
+# 6.5), linked where its define-single-page looks.
+nix build "$here#showcase-screen" --out-link "$here/checks/showcase/screen/dist"
 exec "$here/bin/tun" check --dir "$here/checks/showcase" "$@"

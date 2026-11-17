@@ -136,10 +136,25 @@ repeating the history.
   single-page screen's document and swap its body into the shell, where
   its module scripts never run. The screen answers an htmx request with
   `HX-Redirect`, so the browser loads it whole.
-- **`tsc` does not rewrite import paths.** Code the browser loads
-  without a bundler imports `./api.js`, not `./api`; with
-  `"moduleResolution": "bundler"` that name finds `api.ts` when it is
-  type-checked.
+- **Nix builds a flake from the files git tracks.** A new file of a
+  screen is not in `nix build .#screen-queue` until `git add` has seen
+  it, and the build fails as if it did not exist (Svelte's «could not
+  resolve»). A changed file that git already tracks is in it.
+- **A changed lock file needs a new `npmDepsHash`.** The fixed-output
+  fetch is pinned by the hash, not by the lock: after `npm install`
+  changes `package-lock.json`, the build fails and names the hash it
+  needs.
+- **Vite inlines a small asset as a `data:` URL**, which the page's
+  policy refuses as an image and as a font: a screen sets
+  `build.assetsInlineLimit: 0`. Svelte can put a component's styles in a
+  `<style>` at run time, which the policy refuses too: `compilerOptions:
+  { css: "external" }`.
+- **npm asks its registry for a newer npm** on an ordinary `npm run`. A
+  build or a test that runs npm sets `npm_config_offline=true` and
+  `npm_config_update_notifier=false`, so no request leaves the machine.
+- **`index.html`'s link to `/assets/tokens.css` is not the screen's
+  file.** Vite would look for it at build time and warn; `vite-ignore`
+  on the `<link>` leaves it as it is, for the server to answer.
 - **`exactOptionalPropertyTypes` refuses `undefined` where a DOM type
   says `?: T | null`.** `fetch`'s `signal: options?.signal` does not
   type-check under it; `options?.signal ?? null` does. A screen's

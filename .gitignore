@@ -7,3 +7,7 @@ result
 /reference/lib
 .direnv/
 .data/
+# The showcase screen's build, a link to its Nix build (bin/check), and the
+# node_modules a person may link for an editor (spec/typescript.md 6).
+/checks/showcase/screen/dist
+/checks/showcase/screen/node_modules

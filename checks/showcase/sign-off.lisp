@@ -1,7 +1,8 @@
 ;;;; sign-off.lisp -- a single-page screen of the showcase's own
 ;;;; (spec/typescript.md 4): a person signs off with a note, through an
 ;;;; operation only a person signed in on the page may call, from a screen
-;;;; in TypeScript that calls it through its generated module (screen/).
+;;;; in Svelte that calls it through its generated module (screen/), built
+;;;; by Nix into screen/dist/ (6.5).
 
 (in-package #:showcase)
 
@@ -31,4 +32,4 @@ access token.")
 
 (define-single-page sign-off-screen ("sign-off" :title "Sign off" :icon :circle-check
                                                 :policy :employee :navigation nil)
-  :files ("showcase" "screen/public/"))
+  :files ("showcase" "screen/dist/"))

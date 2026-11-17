@@ -1043,10 +1043,15 @@ board are pages, and htmx makes them quick enough. Rarely, one screen is
 a quick run of taps on the same few things, where a page load after each
 tap is what slows a person down: answering what waits for them one
 after another on a phone, say. Such a screen may be a single-page
-application of the client's own, in TypeScript, served by the same
-application and calling its operations in the signed-in person's
-session (`spec/typescript.md`). Choose it for that one screen, not for
-the application.
+application of the client's own, in Svelte and TypeScript, served by the
+same application, calling its operations in the signed-in person's
+session, and type-checked and built by the client's own `nix build`
+(`spec/typescript.md`). Choose it for that one screen, not for the
+application.
+
+The showcase's screen is the model to copy: `checks/showcase/screen/`
+in Tun, declared in `checks/showcase/sign-off.lisp`, built by Tun's
+`flake.nix` (`showcaseScreen`, `showcase`).
 
 1. **Declare what the screen reads.** Give each operation the screen
    calls a `:returns` (`spec/core.md` §3.11), so its output is typed
@@ -1065,44 +1070,111 @@ the application.
      …)
    ```
 
-2. **Generate the module.** In the client's dev shell, `tun typescript
-   screens/queue/src` writes `screens/queue/src/api.ts`: an input and an
-   output type per operation and a function per operation. Run it again
-   after any change to an operation; never edit the file. A changed
-   operation then breaks the screen's type check where it still uses the
-   old shape.
+2. **Make the screen's folder**, `screens/queue/`, from the showcase's:
 
-3. **Call the operations.** Each function answers a value, never an
+   ```
+   screens/queue/
+     package.json        exact versions; scripts "check" and "build"
+     package-lock.json   written by npm install
+     index.html          the entry: the tokens' link and src/main.ts
+     vite.config.js      base "/queue/", assetsInlineLimit 0
+     svelte.config.js    css "external"
+     tsconfig.json       strict; includes src/**/*.ts and src/**/*.svelte
+     src/main.ts         mounts the component, in the page's language
+     src/Queue.svelte    the screen
+     src/words.ts        its words in each language the client has
+     src/api.ts          generated (step 3)
+   ```
+
+   `package.json`'s scripts are `"check": "svelte-check
+   --fail-on-warnings"` and `"build": "vite build"`, its
+   `devDependencies` Svelte, Vite, Svelte's Vite plugin, `svelte-check`
+   and TypeScript at exact versions (copy the showcase's). Write the lock
+   once, from a shell with Node (`nix shell nixpkgs#nodejs -c npm
+   install` in the folder), and commit both; nothing else needs Node.
+   `index.html`:
+
+   ```html
+   <!doctype html>
+   <html lang="en">
+   <head>
+   <meta charset="utf-8">
+   <meta name="viewport" content="width=device-width, initial-scale=1">
+   <title>Queue</title>
+   <link rel="stylesheet" href="/assets/tokens.css" vite-ignore>
+   <script type="module" src="/src/main.ts"></script>
+   </head>
+   <body><div id="screen"></div></body>
+   </html>
+   ```
+
+   `/assets/tokens.css` is the pages' design tokens (`spec/ui.md` §3),
+   served by the application; `vite-ignore` keeps Vite from looking for
+   it at build time. Write the screen's styles with them
+   (`var(--background)`, `var(--primary)`, `calc(var(--spacing) * 4)`,
+   `var(--radius-md)`), and it looks like the pages in light and dark.
+
+3. **Generate the module.** In the client's dev shell, `tun typescript
+   screens/queue/src` writes `screens/queue/src/api.ts`: an input and an
+   output type per operation and a function per operation. Never edit
+   the file; `bin/test` writes it again (step 6).
+
+4. **Call the operations.** Each function answers a value, never an
    exception: `ok` with the output, `refused` with the API's code and,
    for `invalid_input`, each field's message in the person's language,
    `confirm` for a confirm operation, `failed` when no answer came.
 
-   ```ts
-   import { questionsAnswer } from "./api";
+   ```svelte
+   <script lang="ts">
+     import { questionsAnswer, type Question } from "./api";
+     let { question }: { question: Question } = $props();
+     let offline = $state(false);
 
-   const answer = await questionsAnswer({ id, answer: "yes" });
-   switch (answer.kind) {
-     case "ok": show(answer.value); break;
-     case "refused": errors = answer.refusal.fields; break;
-     case "failed": offline = true; break;
-   }
+     async function answer(choice: "yes" | "no") {
+       const answered = await questionsAnswer({ id: question.id, answer: choice });
+       switch (answered.kind) {
+         case "ok": next(); break;
+         case "refused": show(answered.refusal.message); break;
+         case "failed": offline = true; break;
+       }
+     }
+   </script>
    ```
 
-4. **Serve the built screen.** Build the screen into a folder of the
-   client's repository with its `index.html` and its files, then declare
-   it:
+   The server writes the person's language into the screen's `<html
+   lang>`; pick the screen's words by `document.documentElement.lang`
+   from `words.ts`, a table of them for each language the client has
+   (the showcase's `src/words.ts`). To follow a theme the person chose on
+   the pages, set `data-theme` on `<html>` from
+   `localStorage.getItem("tun-theme")` (the showcase's `src/main.ts`).
+
+5. **Build it with Nix and serve it.** In the client's `flake.nix`:
+
+   ```nix
+   queue = tunLib.buildScreen {
+     name = "queue";
+     src = ./screens/queue;
+     npmDepsHash = "sha256-…";
+   };
+   server = tunLib.buildClient {
+     …
+     screens = { "screens/queue/dist" = queue; };
+   };
+   ```
+
+   and `screen-queue = queue;` beside `default = server;` in its
+   `packages`. `npmDepsHash` pins the npm dependencies: start with
+   `lib.fakeHash`, run `nix build .#screen-queue`, and take the hash the
+   failure names; a changed lock file fails the build the same way until
+   the hash is changed with it. The build fetches the dependencies once,
+   then type-checks (`npm run check`) and builds (`npm run build`) with
+   no network, and `buildClient` puts the built files in the server's
+   source at `screens/queue/dist`. Declare the screen there:
 
    ```lisp
    (define-single-page queue ("queue" :title "Queue" :icon :list-checks :policy :employee)
      :files ("my-client" "screens/queue/dist/"))
    ```
-
-   The showcase's screen is the smallest model: `checks/showcase/screen/`
-   holds `src/screen.ts` and the generated `src/api.ts`, a
-   `tsconfig.json` that compiles them with `tsc -p` into `public/dist/`
-   (one ES module each, importing `./api.js`, no bundler), and
-   `public/index.html` and `public/screen.css`; `sign-off.lisp` declares
-   its operations and the screen.
 
    It is a staff page at `/queue`, in the menu for those its policy
    admits; someone signed out is sent to sign in, and the policy decides
@@ -1112,21 +1184,38 @@ the application.
    from another site the person has open (`spec/typescript.md` §5). No
    token is ever in the browser.
 
-5. **Write it for the page's policy.** The browser holds the screen to
+6. **Test it.** Add to `.gitignore` `screens/queue/dist` and
+   `screens/queue/node_modules`, and to `bin/test`, before its suite:
+
+   ```bash
+   tun typescript screens/queue/src
+   nix build .#screen-queue --out-link screens/queue/dist --print-build-logs
+   ```
+
+   The first writes the module from the operations as they are; the
+   second type-checks the screen against it and links its build where
+   `define-single-page` looks, so a preview, `tun check` and the suite
+   serve it. An operation changed under the screen then fails
+   `bin/test` with `svelte-check`'s message naming the screen's file.
+   Nix builds from what git tracks: `git add` a new file of the screen
+   before building. For an editor's type-checking, `ln -s "$(nix build
+   .#screen-queue.nodeModules --no-link --print-out-paths)/node_modules"
+   screens/queue/node_modules`.
+
+7. **Write it for the page's policy.** The browser holds the screen to
    the same Content-Security-Policy as every page (`spec/ui.md` §4):
-   scripts and style sheets as files of the folder, loaded with `<script
-   type="module" src>` and `<link rel="stylesheet">`, no inline `<script>`
-   or `<style>`, no `eval`, calls only to its own origin. Paths in the
-   built `index.html` are under the screen's prefix (`/queue/…`).
+   scripts and style sheets as files of the folder, never an inline
+   `<script>` or `<style>`, no `eval`, no `data:` URL, calls only to its
+   own origin. Vite's and Svelte's output keeps to it with the two
+   settings above: `assetsInlineLimit: 0` writes every asset as a file,
+   `css: "external"` puts each component's styles in the style sheet.
+   Vite's `base` is the screen's prefix (`/queue/`), so the built paths
+   are under it.
 
 What a client that has no such screen pays: nothing. It declares no
-`:returns` unless it wants to, runs no `tun typescript`, has no Node in
-its shell or its build, and its `bin/test` is as before. Building a
-screen inside the client's Nix build, with Node, a bundler and its npm
-dependencies pinned there, and type-checking it in `bin/test`, come in a
-later loop (`spec/typescript.md` §6); until then a screen is built and
-type-checked with the client's own tools, and its built folder is
-committed.
+`:returns` unless it wants to, runs no `tun typescript`, passes no
+`screens` to `buildClient`, has no Node in its shell or its server's
+closure, and its `bin/test` is as before.
 
 ## Signing in
 

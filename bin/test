@@ -54,7 +54,7 @@ compile() {
 # Each compile forces what this run has not compiled yet, listed here, so
 # core compiles first and a client after it loads the kernel as it is.
 rm -f "$dir/compiled"
-jobs=(check:test-indent check:test-lint check:test-repl check:test-lisp)
+jobs=(check:test-indent check:test-lint check:test-repl check:test-lisp check:test-screens)
 if [[ " $suites " == *" core "* ]]; then
   compile core
   mapfile -t -O "${#jobs[@]}" jobs < <(sed 's/^/core:/' "$dir/core-suites")

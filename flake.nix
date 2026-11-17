@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.48.0";
+      coreVersion = "2.49.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -231,12 +231,31 @@
       # CLASSVARIABLE the symbol (in PACKAGE) naming its application class.
       buildClient = { pname, version ? "0.1.0", src, package ? lib.toUpper pname, lispLibs ? [ ], revision ? "unknown",
                       modules ? [ ], asdfSystem ? pname, classVariable ? "*APPLICATION-CLASS*",
-                      extraSystems ? [ ] }:
+                      extraSystems ? [ ], screens ? { } }:
         let
           mods = buildModules modules;
           moduleSystems = map (m: m.system) mods.ordered;
+          # SCREENS: the client's single-page screens, each built by
+          # buildScreen, by the folder of the source its files go in, the
+          # path its define-single-page's :files names ("screens/queue/dist").
+          # Without any, the source is SRC as it is.
+          folders = lib.mapAttrsToList (path: built:
+            let folder = lib.removeSuffix "/" path; in
+            if folder == "" || lib.hasPrefix "/" folder || lib.elem ".." (lib.splitString "/" folder)
+            then throw "buildClient ${pname}: a screen's folder is a path in the source, not ${path}"
+            else { inherit folder built; }) screens;
+          source = if screens == { } then src else pkgs.runCommand "${pname}-source" { } (''
+            cp -r ${src} $out
+            chmod -R u+w $out
+          '' + lib.concatMapStrings ({ folder, built }: ''
+            rm -rf "$out/${folder}"
+            mkdir -p "$(dirname "$out/${folder}")"
+            cp -r ${built} "$out/${folder}"
+            chmod -R u+w "$out/${folder}"
+          '') folders);
           clientLib = sbcl.buildASDFSystem {
-            inherit pname version src;
+            inherit pname version;
+            src = source;
             # EXTRASYSTEMS: other systems of the client's own (a base its
             # manifests share); the builder keeps only the .asd files of SYSTEMS.
             systems = [ asdfSystem ] ++ extraSystems;
@@ -273,6 +292,82 @@
           exec ${env}/bin/sbcl --noinform --non-interactive --no-userinit --no-sysinit \
             --load ${launcher} --end-toplevel-options "$@"
         '';
+      # A single-page screen's built files (spec/typescript.md 6): the folder
+      # SRC, a screen with its package.json and package-lock.json, type-checked
+      # by its `check` script and built by its `build` script into dist/,
+      # which is the output.  Its npm dependencies are the lock file's,
+      # fetched by one fixed-output derivation whose hash is NPMDEPSHASH, so
+      # the build itself has no network; a lock file changed without a new
+      # hash fails the build, naming the hash it needs.  The screen's
+      # node_modules are a derivation of their own (passthru.nodeModules),
+      # so a change to the screen's code fetches and installs nothing again.
+      buildScreen = { name, src, npmDepsHash }:
+        let
+          locked = lib.fileset.toSource {
+            root = src;
+            fileset = lib.fileset.unions [ (src + "/package.json") (src + "/package-lock.json") ];
+          };
+          npmDeps = pkgs.fetchNpmDeps { name = "${name}-npm-deps"; src = locked; hash = npmDepsHash; };
+          nodeModules = pkgs.stdenvNoCC.mkDerivation {
+            name = "${name}-node-modules";
+            src = locked;
+            inherit npmDeps;
+            nativeBuildInputs = [ pkgs.nodejs pkgs.npmHooks.npmConfigHook ];
+            dontBuild = true;
+            installPhase = ''
+              mkdir $out
+              mv node_modules $out/
+            '';
+          };
+        in
+        pkgs.stdenvNoCC.mkDerivation {
+          name = "${name}-screen";
+          inherit src;
+          nativeBuildInputs = [ pkgs.nodejs ];
+          buildPhase = ''
+            runHook preBuild
+            ln -s ${nodeModules}/node_modules node_modules
+            # npm runs the screen's scripts and nothing else: no registry, no
+            # check for a newer npm.
+            export HOME="$TMPDIR" npm_config_offline=true npm_config_update_notifier=false
+            npm run --silent check
+            npm run --silent build
+            runHook postBuild
+          '';
+          installPhase = ''
+            runHook preInstall
+            test -f dist/index.html || { echo "${name}: its build wrote no dist/index.html" >&2; exit 1; }
+            cp -r dist $out
+            runHook postInstall
+          '';
+          passthru = { inherit nodeModules npmDeps; };
+        };
+
+      # The showcase's single-page screen (checks/showcase/screen, its
+      # sign-off.lisp): bin/check links its build into the showcase's tree.
+      showcaseScreen = buildScreen {
+        name = "showcase-sign-off";
+        src = ./checks/showcase/screen;
+        npmDepsHash = "sha256-PBgy2PvDijasio2uypSZHFUUkieg2b96Udkkvip+igw=";
+      };
+      # The showcase's server as a client builds its own, its screen's files
+      # put in its source where its define-single-page looks: what a
+      # client's nix build does with a screen (spec/typescript.md 6).
+      showcase = buildClient {
+        pname = "showcase";
+        src = lib.fileset.toSource {
+          root = ./checks/showcase;
+          fileset = lib.fileset.union
+            (lib.fileset.difference
+              (lib.fileset.fileFilter (f: f.hasExt "lisp" || f.hasExt "asd") ./checks/showcase)
+              (lib.fileset.unions [ ./checks/showcase/tests ./checks/showcase/modules ./checks/showcase/checks ]))
+            ./checks/showcase/icons;
+        };
+        modules = builtins.filter (m: m.name == "customers") repoModules
+          ++ [ ((import ./checks/showcase/modules/meetings/flake.nix).outputs { inherit self; }).tunModule ];
+        screens = { "screen/dist" = showcaseScreen; };
+      };
+
       # A client's OCI image (spec/deploy.md 2): its server is the
       # entrypoint, so arguments are the server's flags, and PORT and
       # DATABASE_URL come from the environment.  No shell, no other programs.
@@ -409,8 +504,48 @@
         inherit tun reference mallet cli;
         ui-shots = uiShots;
         tun-test-support = testSupport;
+        showcase-screen = showcaseScreen;
+        inherit showcase;
         default = tun;
       };
+
+      # nix build .#checks.x86_64-linux.client-without-screen: a client with
+      # no single-page screen pays nothing for them (spec/typescript.md 6).
+      # The test client's server, built as any client's is, has neither Node
+      # nor npm in its closure, and a client's dev shell has no node, npm or
+      # tsc among its programs.
+      checks.${system}.client-without-screen =
+        let
+          server = buildClient {
+            pname = "test-client";
+            src = lib.fileset.toSource {
+              root = ./tests/client;
+              fileset = lib.fileset.difference
+                (lib.fileset.fileFilter (f: f.hasExt "lisp" || f.hasExt "asd") ./tests/client)
+                (lib.fileset.unions [ ./tests/client/tests ./tests/client/modules ]);
+            };
+            modules = repoModules
+              ++ [ ((import ./tests/client/modules/logbook/flake.nix).outputs { inherit self; }).tunModule ];
+          };
+          shell = clientShell { };
+        in
+        pkgs.runCommand "client-without-screen" {
+          closure = pkgs.closureInfo { rootPaths = [ server ]; };
+          programs = shell.nativeBuildInputs ++ shell.buildInputs;
+        } ''
+          found=$(grep -E -- '-(nodejs|npm)-' "$closure/store-paths" || true)
+          if [ -n "$found" ]; then
+            echo "a client without a screen has Node in its server's closure:"; echo "$found"; exit 1
+          fi
+          for p in $programs; do
+            for name in node npm npx tsc; do
+              if [ -e "$p/bin/$name" ]; then
+                echo "a client without a screen has $name in its dev shell, from $p"; exit 1
+              fi
+            done
+          done
+          echo "$(wc -l < "$closure/store-paths") paths in the server's closure, none of Node or npm" > $out
+        '';
 
       apps.${system}.default = {
         type = "app";
@@ -442,6 +577,10 @@
         # shell from .envrc, for one.
         shellHook = ''
           export TUN_LISP_ROOT="$PWD"
+          # svelte-check, Svelte and TypeScript, the showcase screen's own
+          # packages, for the suite's type check of a Svelte component
+          # (spec/typescript.md 6.5).
+          export TUN_SCREEN_NODE_MODULES="${showcaseScreen.nodeModules}/node_modules"
           ${pdfEnvironment}
           export CL_SOURCE_REGISTRY="$PWD/:$PWD/modules//:$PWD/tests/client/:$PWD/clients//''${CL_SOURCE_REGISTRY:+:$CL_SOURCE_REGISTRY}"
         '';

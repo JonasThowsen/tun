@@ -30,6 +30,7 @@
    #:octets-text
    ;; the stylesheet and the script
    #:stylesheet #:stylesheet-path #:script #:script-path #:asset-content #:asset-hashes
+   #:tokens-stylesheet
    ;; htmx
    #:htmx-path #:htmx-config
    ;; icons

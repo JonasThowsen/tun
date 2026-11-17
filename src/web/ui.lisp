@@ -2384,14 +2384,22 @@ one host are two origins, although the browser shares their cookies)."
 (defun serve-asset (path)
   "The design system's stylesheet or script at PATH (spec/ui.md 4), or NIL.
 The current version is cached for good; an older hash gets today's content,
-uncached, so a page rendered before a deploy still gets styles."
-  (multiple-value-bind (content type current) (ui:asset-content path)
-    (when content
-      (setf (hunchentoot:content-type*) type
-            (hunchentoot:header-out "Cache-Control") (if current
-                                                         "public, max-age=31536000, immutable"
-                                                         "no-store"))
-      (sb-ext:string-to-octets content :external-format :utf-8))))
+uncached, so a page rendered before a deploy still gets styles.  The tokens
+alone, /assets/tokens.css (spec/ui.md 3), have no hash: a browser asks for
+them again each time, so a single-page screen takes a new Tun's tokens."
+  (if (string= path "/assets/tokens.css")
+      (progn
+        (setf (hunchentoot:content-type*) "text/css; charset=utf-8"
+              (hunchentoot:header-out "Cache-Control") "no-cache"
+              (hunchentoot:header-out "X-Content-Type-Options") "nosniff")
+        (sb-ext:string-to-octets (ui:tokens-stylesheet) :external-format :utf-8))
+      (multiple-value-bind (content type current) (ui:asset-content path)
+        (when content
+          (setf (hunchentoot:content-type*) type
+                (hunchentoot:header-out "Cache-Control") (if current
+                                                             "public, max-age=31536000, immutable"
+                                                             "no-store"))
+          (sb-ext:string-to-octets content :external-format :utf-8)))))
 
 (defun choice-answer (query rows &rest keys &key (limit 20) &allow-other-keys)
   "What a choice's SOURCE answers (spec/ui.md 6, «Answering a choice»): the

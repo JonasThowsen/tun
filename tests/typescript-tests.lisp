@@ -1,8 +1,9 @@
 ;;;; tests/typescript-tests.lisp -- the outputs operations declare
 ;;;; (spec/core.md 3.11) and the TypeScript module of a single-page screen
-;;;; (spec/typescript.md 2, 3): its text, tsc's verdict on a screen's code
-;;;; as an operation changes under it, the module run in Node, and tun
-;;;; typescript on the showcase.
+;;;; (spec/typescript.md 2, 3): its text, svelte-check's verdict on a Svelte
+;;;; component as an operation changes under it, the module run in Node, tun
+;;;; typescript on the showcase, and the design tokens a screen links
+;;;; (spec/ui.md 3).
 
 (in-package #:tun.tests)
 
@@ -134,6 +135,43 @@ the tests, in the system's temporary directory."
   (write-text-file (merge-pathnames "tsconfig.json" folder) +ts-config+)
   (dolist (file files) (copy-fixture file folder))
   folder)
+
+(defun screen-node-modules ()
+  "The node_modules of the showcase screen's packages, svelte-check, Svelte
+and TypeScript among them, which Tun's dev shell names (spec/typescript.md
+6.5)."
+  (let ((modules (uiop:getenv "TUN_SCREEN_NODE_MODULES")))
+    (unless (and modules (probe-file (format nil "~a/svelte-check/bin/svelte-check" modules)))
+      (error "TUN_SCREEN_NODE_MODULES names no svelte-check: run inside Tun's nix develop"))
+    modules))
+
+(defparameter +svelte-config+
+  "{\"compilerOptions\": {\"strict\": true, \"exactOptionalPropertyTypes\": true,
+  \"noUnusedLocals\": true, \"noUnusedParameters\": true, \"isolatedModules\": true,
+  \"verbatimModuleSyntax\": true, \"target\": \"es2022\", \"module\": \"es2022\",
+  \"moduleResolution\": \"bundler\", \"lib\": [\"es2022\", \"dom\"], \"types\": [],
+  \"noEmit\": true}, \"include\": [\"*.ts\", \"*.svelte\"]}"
+  "The showcase screen's settings, for svelte-check of the fixture's component.")
+
+(defmacro with-svelte-project ((folder &rest files) &body body)
+  "Run BODY with FOLDER a new project of the fixture's module, FILES and the
+screen's packages, linked as its node_modules; the link is taken away before
+the folder, so nothing of the store is touched."
+  (let ((link (gensym "LINK")))
+    `(with-ts-folder (,folder)
+       (let ((,link (namestring (merge-pathnames "node_modules" ,folder))))
+         (write-typescript-module ,folder "fixture")
+         (write-text-file (merge-pathnames "tsconfig.json" ,folder) +svelte-config+)
+         (dolist (file (list ,@files)) (copy-fixture file ,folder))
+         (sb-posix:symlink (screen-node-modules) ,link)
+         (unwind-protect (progn ,@body)
+           (sb-posix:unlink ,link))))))
+
+(defun run-svelte-check (folder)
+  "Values svelte-check's output and exit status for the project in FOLDER, a
+warning failing it as an error does."
+  (run-command (list "node" (format nil "~a/svelte-check/bin/svelte-check" (screen-node-modules))
+                     "--workspace" (namestring folder) "--fail-on-warnings")))
 
 (defun ts-file-octets (path)
   (with-open-file (in path :element-type '(unsigned-byte 8))
@@ -320,13 +358,12 @@ the tests, in the system's temporary directory."
       (is (search (format nil "  | ~s" code) module) "RefusalCode has ~a" code))))
 
 ;;; ------------------------------------------------------------------
-;;; tsc and node (criteria 7, 8)
+;;; svelte-check and node (typescript-client's criteria 7, 8)
 
-(test tsc-takes-the-screen-and-refuses-it-once-an-operation-changed
-  (with-ts-folder (folder)
-    (ts-project folder "screen.ts")
-    (multiple-value-bind (output status) (run-tsc folder "--noEmit")
-      (is (eql 0 status) "tsc accepts the screen against its module:~%~a" output))
+(test svelte-check-takes-the-component-and-refuses-it-once-an-operation-changed
+  (with-svelte-project (folder "Screen.svelte")
+    (multiple-value-bind (output status) (run-svelte-check folder)
+      (is (eql 0 status) "svelte-check accepts the component against its module:~%~a" output))
     (flet ((after-change (change)
              ;; Defining an operation again redefines its generic function,
              ;; which SBCL warns of, as it should here.
@@ -334,7 +371,7 @@ the tests, in the system's temporary directory."
                (unwind-protect
                     (progn (eval change)
                            (write-typescript-module folder "fixture")
-                           (multiple-value-list (run-tsc folder "--noEmit")))
+                           (multiple-value-list (run-svelte-check folder)))
                  (eval (ts-operation-form (second change)))
                  (write-typescript-module folder "fixture")))))
       (loop for (what change) in
@@ -355,9 +392,10 @@ the tests, in the system's temporary directory."
                                               (titles (:list (:value string)))))
                  (jobj "latest" :null "titles" (jarr '())))))
             do (destructuring-bind (output status) (after-change change)
-                 (is (not (eql 0 status)) "~a: tsc refuses the screen" what)
-                 (is (search "screen.ts" output) "~a: naming the screen's file:~%~a" what output)))
-      (multiple-value-bind (output status) (run-tsc folder "--noEmit")
+                 (is (not (eql 0 status)) "~a: svelte-check refuses the component" what)
+                 (is (search "Screen.svelte" output) "~a: naming the component's file:~%~a"
+                     what output)))
+      (multiple-value-bind (output status) (run-svelte-check folder)
         (is (eql 0 status) "and accepts it again once each is as it was:~%~a" output)))))
 
 (test the-module-answers-every-kind-of-answer-in-node
@@ -422,19 +460,12 @@ the tests, in the system's temporary directory."
       (is (equalp (ts-file-octets (merge-pathnames "checks/showcase/screen/src/api.ts" root))
                   (ts-file-octets (merge-pathnames "module/api.ts" folder)))
           "the committed module is what the command writes: run it again and commit it")
-      (write-text-file (merge-pathnames "tsconfig.json" folder)
-                       (format nil "{\"extends\": ~s, \"compilerOptions\": {\"outDir\": ~s}}"
-                               (namestring (merge-pathnames "checks/showcase/screen/tsconfig.json"
-                                                            root))
-                               (namestring (merge-pathnames "dist/" folder))))
-      (multiple-value-bind (output status) (run-tsc folder)
-        (is (eql 0 status) "tsc compiles the screen:~%~a" output))
-      (dolist (name '("api.js" "screen.js"))
-        (is (equalp (ts-file-octets (merge-pathnames (format nil "checks/showcase/screen/public/dist/~a"
-                                                             name)
-                                                     root))
-                    (ts-file-octets (merge-pathnames (format nil "dist/~a" name) folder)))
-            "the committed dist/~a is what tsc writes: compile it again and commit it" name)))))
+      ;; The screen's built files are Nix's (spec/typescript.md 6.5), never git's.
+      (multiple-value-bind (output status)
+          (run-command (list "git" "-C" (namestring root) "ls-files"
+                             "checks/showcase/screen/dist" "checks/showcase/screen/public"))
+        (is (eql 0 status) "git ls-files: ~a" output)
+        (is (equal "" output) "no built file of the screen is committed: ~a" output)))))
 
 (test tun-typescript-refuses-a-wrong-command-line
   (with-ts-folder (folder)
@@ -450,3 +481,68 @@ the tests, in the system's temporary directory."
       (is (= 2 (status (namestring (merge-pathnames "d/" folder)) "--dir" (namestring folder)))
           "a DIR that holds no client")
       (is (null (directory (merge-pathnames "*/" folder))) "and nothing was written"))))
+
+;;; ------------------------------------------------------------------
+;;; The design tokens a screen links (spec/ui.md 3)
+
+(defun css-root-properties (css)
+  "The custom properties CSS declares in a rule whose selector starts with
+:root, as sorted strings \"MEDIA | SELECTOR | --NAME: VALUE\": MEDIA the
+@media queries around the rule (an @layer is no part of it), white space
+in each part made one space."
+  (let ((text (cl-ppcre:regex-replace-all "(?s)/\\*.*?\\*/" css ""))
+        (stack '())
+        (start 0)
+        (found '()))
+    (labels ((clean (part) (string-trim " " (cl-ppcre:regex-replace-all "\\s+" part " ")))
+             (declaration (end)
+               (let* ((rule (first stack))
+                      (part (clean (subseq text start end)))
+                      (colon (position #\: part)))
+                 (when (and rule (string-prefix-p ":root" rule)
+                            colon (string-prefix-p "--" part))
+                   (push (format nil "~{~a~^ ~} | ~a | ~a: ~a"
+                                 (reverse (remove-if-not (lambda (p) (string-prefix-p "@media" p))
+                                                         (rest stack)))
+                                 rule (clean (subseq part 0 colon))
+                                 (clean (subseq part (1+ colon))))
+                         found)))))
+      (loop for i from 0 below (length text)
+            do (case (char text i)
+                 (#\{ (push (clean (subseq text start i)) stack) (setf start (1+ i)))
+                 (#\; (declaration i) (setf start (1+ i)))
+                 (#\} (declaration i) (pop stack) (setf start (1+ i)))))
+      (sort found #'string<))))
+
+(test the-tokens-file-holds-the-pages-tokens-and-nothing-else
+  (let ((pages (css-root-properties (tun.ui:stylesheet)))
+        (file (css-root-properties (tun.ui:tokens-stylesheet))))
+    (is (< 60 (length file)) "the tokens are read: ~d" (length file))
+    (is (equal pages file)
+        "the same custom properties on :root, each with its value, selector and media query:~%~
+only the pages': ~s~%only the file's: ~s"
+        (set-difference pages file :test #'string=) (set-difference file pages :test #'string=))
+    (is (member " | :root | --background: light-dark(#ffffff, #19191c)" file :test #'string=)
+        "light and dark in one value")
+    (is (member "@media (pointer: coarse) | :root | --control-height: 2.75rem" file
+                :test #'string=)
+        "under its media query")
+    (is (find-if (lambda (p) (search "--primary: light-dark(#171717, #ededed)" p)) file)))
+  (is (equal (list " | :root | --a: 1" " | :root | --b: light-dark(1, 2)")
+             (css-root-properties "@layer tokens { :root { --a: 1; /* x */ --b: light-dark(1,
+  2) } } body { --c: 3; }"))
+      "the reader: comments, layers and other rules left out")
+  (is (not (equal (css-root-properties ":root { --a: 1; }")
+                  (css-root-properties ":root { --a: 2; }")))
+      "a value that differs is a difference"))
+
+(test the-tokens-file-is-served-to-anyone
+  (with-test-server (port)
+    (multiple-value-bind (status body headers) (web-request port "/assets/tokens.css")
+      (is (= 200 status) "signed out")
+      (is (equal (tun.ui:tokens-stylesheet) body))
+      (is (equal "text/css; charset=utf-8" (header-of headers :content-type)))
+      (is (equal "no-cache" (header-of headers :cache-control)))
+      (is (equal "nosniff" (header-of headers :x-content-type-options))))
+    (is (= 200 (web-request port "/assets/tokens.css" :jar (web-login port "employee:anna")))
+        "signed in")))

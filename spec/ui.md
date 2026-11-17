@@ -277,6 +277,20 @@ Each colour token holds both its values, `light-dark(LIGHT, DARK)`, and
 needs a different value in the dark writes `light-dark()` itself; no
 component has a dark-mode selector.
 
+**The tokens alone, for a screen of the client's own.** `GET
+/assets/tokens.css` answers the tokens layer's own text, the very rules
+the stylesheet's `tokens` layer holds (every custom property on `:root`,
+light and dark, `data-theme`'s two rules, and the coarse-pointer and
+reduced-motion ones), without a layer, reset or component: what a
+single-page screen (`typescript.md` §4) links to look like the pages.
+It is `text/css; charset=utf-8`, `Cache-Control: no-cache` and
+`X-Content-Type-Options: nosniff`, to anyone, as the stylesheet is. Its
+address has no hash, since a screen's built `index.html` cannot know
+one; `no-cache` makes a browser ask again, so a screen takes a new Tun's
+tokens without being built again. A screen follows a person's chosen
+theme by setting `data-theme` on its `<html>` from the browser's
+`tun-theme` storage key, as the pages' theme switch keeps it.
+
 ## 4. The stylesheet and the script
 
 - One stylesheet, in this layer order:
@@ -2198,8 +2212,9 @@ A screen whose work is a quick run of taps that a page load after each
 would slow down may instead be a single-page screen of the client's own
 (`define-single-page`, `typescript.md` §4): built files served behind
 its page's policy under this section's policy for the browser (§4),
-calling the operations in the person's session. It is the exception;
-lists, forms and record pages are pages.
+calling the operations in the person's session, and looking like the
+pages by the tokens it links (§3). It is the exception; lists, forms and
+record pages are pages.
 
 - **Filling the screen.** An element marked `data-tun-fill` (a board)
   that is in the content directly or in up to two `stack`s makes the
@@ -2725,7 +2740,11 @@ lists, forms and record pages are pages.
   that was not looked up (`i18n.md` §3.7), and renders the same in
   extension output (only allowed markup); every selector is scoped to
   its component; the stylesheet, the script and htmx are served with
-  their hash and cache headers; pages have the viewport tag and htmx's
+  their hash and cache headers; `/assets/tokens.css` holds exactly the
+  custom properties the stylesheet declares on `:root`, each with the
+  same value under the same selector and media query, and is served
+  with its headers (`tests/typescript-tests.lisp`); pages have the
+  viewport tag and htmx's
   configuration; the allowed htmx attributes pass extension output, with
   `:inherited`, and others (`hx-on`, `data-hx-on`, `hx-headers`,
   `hx-status`, an unknown modifier, a `javascript:` `hx-get`) do not;

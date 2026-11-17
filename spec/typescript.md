@@ -4,11 +4,13 @@ Status: v1, 2026-11-17. How a client gives one screen a front end of its
 own, a single-page application written in TypeScript, when that screen
 is better so than as a server-rendered page: what the screen is served
 as, how it calls the application's operations under the signed-in
-person's session, and the TypeScript module `tun typescript` generates
+person's session, the TypeScript module `tun typescript` generates
 from the registry so the screen's code and the operations cannot drift
-apart. Server-rendered pages stay the rule (`ui.md` §8); a single-page
-screen is chosen for one screen at a time, when a person's work on it
-is a quick run of taps that a page load after each would slow down.
+apart, and how the client's Nix build type-checks and builds a screen
+in Svelte with the pages' design tokens (§6). Server-rendered pages
+stay the rule (`ui.md` §8); a single-page screen is chosen for one
+screen at a time, when a person's work on it is a quick run of taps
+that a page load after each would slow down.
 
 The owner, 2026-11-14: «There are definitely cases where a SPA frontend
 is the best alternative, and that opens up the typescript world. I think
@@ -190,7 +192,12 @@ the browser sends the person's session cookie.
   you», 403.
 - `GET /PREFIX` and `GET /PREFIX/` answer `index.html` with the proof
   (§5.1) put in its `<head>`, `Content-Type: text/html;
-  charset=utf-8` and `Cache-Control: no-store`.
+  charset=utf-8` and `Cache-Control: no-store`. Its `<html>` gets `lang`
+  set to the language the person's pages are written in (`i18n.md` §2),
+  as a page's `<html lang>` is, in place of the file's own: the screen
+  picks its words by it. A screen's words are its own, a table of them
+  for each language the client's pages have, since Tun's catalogues are
+  the server's.
 - `GET /PREFIX/PATH` answers the file PATH in the folder when every
   part of PATH is letters, digits, `.`, `_` and `-` not starting with
   `.`, the file is in the folder (a link out of it is not followed), and
@@ -212,7 +219,18 @@ the browser sends the person's session cookie.
   rel="stylesheet">`), never an inline `<script>` or `<style>` and never
   `eval`; it calls only its own origin (`connect-src` is `default-src`);
   it shows images of its own and `blob:`; no other site frames it. A
-  `style` attribute, and a style set from a script, are allowed.
+  `style` attribute, and a style set from a script, are allowed. A
+  `data:` URL is neither an image nor a font the policy takes, so a
+  bundler must write each asset as a file (Vite's `assetsInlineLimit:
+  0`), and a component's styles go into a style sheet file, never a
+  `<style>` put in the page while it runs (Svelte's `css: "external"`).
+- **It looks like the pages** by linking the design tokens,
+  `<link rel="stylesheet" href="/assets/tokens.css">` (`ui.md` §3), and
+  writing its styles with them: `var(--background)`, `var(--primary)`,
+  `calc(var(--spacing) * 4)`, `var(--radius-md)`. The same file holds
+  both schemes, so the screen follows the system's light or dark; it
+  follows a person's own choice when it sets `data-theme` on its `<html>`
+  from the browser's `tun-theme` storage key.
 - If the folder has no `index.html`, `/PREFIX` is 404 and the server's
   error output says which folder it looked in.
 
@@ -293,12 +311,103 @@ answers and their statuses (`api.md` §3), the request record.
   for a body over 256 KB (`core.md` §7.5), so a tool that takes files is
   called from a page's form, not from a screen.
 
-## 6. Not yet, for a later loop
+## 6. A screen built by Nix
 
-- Building a screen inside the client's Nix build (Node, a bundler and
-  the screen's npm dependencies pinned and fetched by Nix), `bin/test`
-  type-checking it, and the example screen in Svelte in the showcase.
-- Tun's design tokens as a CSS file a screen imports.
+A screen in Svelte is type-checked and built inside the client's `nix
+build`, from its sources and a lock file, with no network but the one
+fetch of its npm dependencies, pinned by their hash; the server's
+closure gets its built files and nothing of Node.
+
+### 6.1 The screen's folder
+
+A screen is a folder of the client's repository, `screens/NAME/` by
+custom, holding:
+
+- `package.json`, its npm dependencies at exact versions, and two
+  scripts: `check`, which type-checks the screen and exits non-zero on
+  any error or warning, and `build`, which writes the built files into
+  `dist/`, `dist/index.html` among them;
+- `package-lock.json`, npm's lock of every package, written by `npm
+  install` (lock file version 3, each package with its `resolved` and
+  `integrity`);
+- `index.html`, the bundler's entry, with its script's and style
+  sheets' paths under the screen's prefix;
+- `src/`, the screen's code, the generated `src/api.ts` among it (§2),
+  and the configuration of its bundler and type checker.
+
+Tun's model, the showcase's screen (§6.5), is Svelte 5 with Vite and
+Svelte's plugin, type-checked by `svelte-check --fail-on-warnings`
+under TypeScript's strict settings (`check`) and built by `vite build`
+(`build`). Other tools npm installs will do, if they keep to the two
+scripts and to the page's policy (§4).
+
+### 6.2 `buildScreen`
+
+`tun.lib.${system}.buildScreen { name, src, npmDepsHash }` is the
+derivation whose output is the screen's built files: the contents of
+`dist/`.
+
+- **The dependencies.** The packages the lock file names are fetched
+  by one fixed-output derivation (nixpkgs' `fetchNpmDeps`) whose hash is
+  `npmDepsHash`; it is the build's only step with a network, and Nix
+  checks what it fetched against the hash. They are installed by npm
+  from that cache with no network (nixpkgs' `npmConfigHook`) into
+  `node_modules`, a derivation of its own (`passthru.nodeModules`) that
+  depends only on `package.json` and the lock file, so a change to the
+  screen's code fetches and installs nothing again.
+- **The build**, in Nix's sandbox with no network: `npm run check`,
+  then `npm run build`, npm told to stay offline and not to look for a
+  newer npm. A type error, a lock file changed without a new hash (the
+  failure names the hash it needs), or a build that wrote no
+  `dist/index.html` fails it.
+- **What it leaves.** Node, npm and the screen's packages are inputs of
+  the build only: its output holds the built files and refers to no
+  store path.
+
+### 6.3 A client's build and shell
+
+- `buildClient`'s `screens` (`{ "screens/queue/dist" = queue; }`) maps
+  the folder of the client's source each built screen goes in, the path
+  its `define-single-page`'s `:files` names, to the screen's
+  `buildScreen`. Each is copied there before the Lisp build, so the
+  server finds its files in the store where it finds its code. A folder
+  that is empty, absolute or has `..` in it stops the evaluation.
+- **A client without a screen pays nothing.** Without `screens` the
+  source is the client's as given, and `buildClient` is the derivation
+  it was. `clientShell` takes no screen: no client's shell has Node,
+  npm or `tsc`, and a client's server has neither Node nor npm in its
+  closure (`checks.x86_64-linux.client-without-screen` holds both for
+  the test client). `bin/test` of a client without a screen runs no new
+  step.
+
+### 6.4 In the working tree
+
+The preview, the browser checks and the client's `bin/test` run from
+the working tree, where the screen's `dist/` is a link to its Nix
+build: the client's flake gives the screen as a package
+(`packages.${system}.screen-queue`), and `nix build .#screen-queue
+--out-link screens/queue/dist` writes the link. `dist/` and
+`node_modules/` are not committed.
+
+A client with a screen adds two lines to its `bin/test`, before its
+suite: `tun typescript screens/queue/src`, which writes the module again
+from the registry, and the `nix build` above, which type-checks the
+screen against it. A changed operation the screen still calls in its
+old shape then fails the client's `bin/test` at the screen's type check,
+with the checker's message.
+
+Nix builds a flake from the files git tracks: a file of the screen git
+does not know yet is not in the build until it is added (`git add`).
+
+### 6.5 The showcase's screen
+
+Tun's flake builds the showcase's screen, `checks/showcase/screen/`, as
+`packages.${system}.showcase-screen`, and the showcase's server with it
+as `packages.${system}.showcase`. `bin/check` links the screen's build
+at `checks/showcase/screen/dist` before the browser checks, so they run
+it as Nix built it. Tun's dev shell has the screen's installed
+packages, `TUN_SCREEN_NODE_MODULES`, which the suite's `svelte-check`
+of the fixture's Svelte component uses.
 
 ## 7. Evidence
 
@@ -306,14 +415,15 @@ answers and their statuses (`api.md` §3), the request record.
   byte for byte the same twice; the names, the input types and every row
   of §3.2's table; a declared output of each form and an undeclared one;
   the refusal codes against the operations' error codes and the API's;
-  two tools whose names would meet; `tsc --strict --noEmit` accepting the
-  fixture's screen against the module, and refusing it, naming the
-  screen's file, after an operation it calls changed (a parameter
+  two tools whose names would meet; `svelte-check` accepting the
+  fixture's Svelte component against the module, and refusing it, naming
+  the component's file, after an operation it calls changed (a parameter
   renamed, a value taken out of an enum, an output's key taken out); the
   module compiled and run in Node against a stand-in `fetch`, for every
   kind of answer of §3.4; `tun typescript` on the showcase writing its
-  screen's committed `api.ts`, and `tsc` its committed `dist/`, byte
-  for byte; the command's usage errors.
+  screen's committed `api.ts` byte for byte; the command's usage errors;
+  `/assets/tokens.css` against the pages' stylesheet's custom
+  properties, and its headers.
 - `tests/session-api-tests.lisp`, written first and seen to fail before
   §5 was built: a session call admitted with its proof, as the person, with
   the session's credential, a session-only operation run, and messages
@@ -327,12 +437,21 @@ answers and their statuses (`api.md` §3), the request record.
   session cookie beside it and with another site's `Origin`; the
   session's last use not moved by a refused call.
 - `tests/session-api-tests.lisp` too: a single-page screen signed out,
-  with a role its policy refuses and signed in, and its menu entry; the proof in its `index.html`; the
+  with a role its policy refuses and signed in, and its menu entry; the
+  proof in its `index.html` and its `<html lang>` the page's language,
+  English and Norwegian; the
   headers of each answer; a file, a path out of the folder, an unknown
   extension, a missing `index.html`; htmx and preload; 405.
 - `checks/showcase/checks/single-page-screen.py`: in a browser at 390
-  and 1280 px, the showcase's screen, calling through its generated
-  module, loads under the page's policy with no violation, calls a
-  session-only operation through `/api` with the proof and shows its
-  answer, shows a refusal at its field and a call that got no answer,
-  and is refused signed out.
+  and 1280 px, the showcase's Svelte screen as Nix built it, calling
+  through its generated module, loads under the page's policy with no
+  violation, calls a session-only operation through `/api` with the
+  proof and shows its answer, shows a refusal at its field and a call
+  that got no answer, and is refused signed out; in light and dark, its
+  ground and its button are the pages' tokens' colours.
+  `single-page-screen-norwegian.py`: on a Norwegian tenant its words are
+  Norwegian.
+- `scripts/test-screens.sh`, one of `bin/test`'s jobs: `nix build` of
+  `.#showcase`, whose server's source in the store holds the screen's
+  built `index.html` and whose closure has no Node, and of
+  `.#checks.x86_64-linux.client-without-screen` (§6.3).

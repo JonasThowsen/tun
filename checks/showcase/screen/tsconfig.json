@@ -10,9 +10,8 @@
     "module": "es2022",
     "moduleResolution": "bundler",
     "lib": ["es2022", "dom"],
-    "rootDir": "src",
-    "outDir": "public/dist",
-    "newLine": "lf"
+    "types": ["vite/client"],
+    "noEmit": true
   },
-  "include": ["src/*.ts"]
+  "include": ["src/**/*.ts", "src/**/*.svelte"]
 }

@@ -270,7 +270,13 @@ status and the parsed body."
         (is (search "<main id=\"screen\"></main>" body) "and the rest as built")
         (is (equal (header-of (nth-value 2 (web-request port "/access" :jar jar)) :content-security-policy)
                    (header-of headers :content-security-policy))
-            "the page's own policy"))
+            "the page's own policy")
+        (is (equal (concatenate 'string "default-src 'self'; script-src 'self'; style-src 'self'; "
+                                "style-src-attr 'unsafe-inline'; img-src 'self' blob:; "
+                                "object-src 'none'; base-uri 'none'; frame-ancestors 'none'; "
+                                "form-action 'self'")
+                   (header-of headers :content-security-policy))
+            "exactly, nothing loosened for a screen"))
       (is (= 200 (web-request port "/ts-screen/" :jar jar)) "with a slash too")))
   (with-test-server (port :identity :authenticated)
     (let ((cookie (person-session "kari" "employee")))
@@ -279,6 +285,24 @@ status and the parsed body."
         (is (= 200 status))
         (is (search (format nil "content=\"~a\"" (proof-of cookie)) body)
             "a person's session: the proof of its cookie")))))
+
+(test a-single-page-screen-says-the-page-s-language
+  (with-test-server (port)
+    (let ((jar (web-login port "employee:anna")))
+      (let ((body (nth-value 1 (web-request port "/ts-screen" :jar jar))))
+        (is (search "<html lang=\"en\">" body) "an English tenant's: ~a" body)
+        (is (search "<head><meta name=\"tun-api-proof\"" body) "the proof still right after <head>"))
+      (call-ok "settings_set" "admin:root" "key" "locale.language" "value" "nb")
+      (let ((body (nth-value 1 (web-request port "/ts-screen" :jar jar))))
+        (is (search "<html lang=\"nb\">" body) "a Norwegian tenant's, in place of the file's: ~a" body)
+        (is (= 1 (length (cl-ppcre:all-matches-as-strings "lang=" body))) "one lang"))))
+  (with-language ("nb")
+    (is (equal "<!doctype html><html lang=\"nb\" class=\"x\"><head>"
+               (tun.web::with-page-language "<!doctype html><html class=\"x\"><head>"))
+        "an <html> without lang gets one")
+    (is (equal "<html lang=\"nb\" data-a=\"1\"><head>"
+               (tun.web::with-page-language "<html LANG='en' data-a=\"1\"><head>")))
+    (is (equal "<p>no html</p>" (tun.web::with-page-language "<p>no html</p>")))))
 
 (test a-single-page-screen-is-in-the-menu-of-those-its-policy-admits
   (unwind-protect

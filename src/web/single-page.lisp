@@ -87,6 +87,21 @@ carries no session's cookie."
                 (concatenate 'string (subseq html 0 end) meta (subseq html end))
                 (concatenate 'string meta html)))))))
 
+(defun with-page-language (html)
+  "HTML, a screen's index.html, whose <html> says the language the person's
+pages are written in (spec/typescript.md 4), in place of its own lang: the
+screen picks its words by it."
+  (multiple-value-bind (start end) (cl-ppcre:scan "(?i)<html(\\s[^>]*)?>" html)
+    (if (null start)
+        html
+        (let* ((tag (subseq html start end))
+               (lang (format nil " lang=\"~a\"" (page-language)))
+               (without (cl-ppcre:regex-replace-all
+                         "(?i)\\slang\\s*=\\s*(\"[^\"]*\"|'[^']*'|[^\\s>]+)" tag "")))
+          (concatenate 'string (subseq html 0 start)
+                       (subseq without 0 5) lang (subseq without 5)
+                       (subseq html end))))))
+
 (defun single-page-not-found ()
   (setf (hunchentoot:content-type*) "text/plain; charset=utf-8")
   (values 404 :answered ""))
@@ -102,7 +117,8 @@ carries no session's cookie."
                    (hunchentoot:header-out "Cache-Control") "no-store")
              (values 200 :answered
                      (sb-ext:string-to-octets
-                      (with-api-proof (uiop:read-file-string file :external-format :utf-8))
+                      (with-api-proof (with-page-language
+                                       (uiop:read-file-string file :external-format :utf-8)))
                       :external-format :utf-8))))))
 
 (defun serve-single-page (files method parts)
