@@ -2,7 +2,7 @@
 
 - loop: several-clients
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 4e349c6473419674cbb3478dc39d6d43096dd413
 - item: sak_2qy4dngq8pfq4f3h
 - estimate: 4h 6h 10h
@@ -420,6 +420,12 @@ Nothing a person sees in Tun's showcase changes. `tun loop show --path
 which looks as before. A further client's pictures are the client
 repository's (the proof above).
 
+## Actuals
+
+```json
+{"loop":"several-clients","title":"A repository with several clients: one verify round, show and the gate packets cover each, and generated tests choose Postgres by the modules a client loads","repository":"tun","mode":"reviewed","stage":"done","item":"sak_2qy4dngq8pfq4f3h","tags":["kind:tooling","core"],"like":["tun/workflow-planner","tun/checks-under-load","tun/client-modules"],"started":"2026-11-16 17:59","ended":"2026-11-17 03:27","minutes":{"total":568,"waiting_person":0,"waiting_reviewer":2,"working":566,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":240,"likely":360,"worst":600,"at":"brief"},"latest_estimate":{"best":240,"likely":360,"worst":600,"at":"brief"},"within_estimate":true,"ratio":1.58,"verify":{"rounds":5,"failed":1},"changes":{"A":0,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-16 17:59  started, reviewed
@@ -517,3 +523,4 @@ repository's (the proof above).
   - C12 names "the test client's class". The test uses its own `store-choice-client`, which has the same property (enables only `customers`). It proves the same thing.
   - `needs-postgres-p` now skips an enabled module that isn't loaded (`find-module name` without erroring), where it used to error. That is reasonable and tested, but now the generated tests won't complain about it.
   - `spec/testing.md`'s test list doesn't name the new test-2 and Postgres-choice tests, although `spec/store.md` does name the Postgres-choice one.
+- 2026-11-17 03:27  finished at tun 6ba559ed
