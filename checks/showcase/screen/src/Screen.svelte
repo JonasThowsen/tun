@@ -88,6 +88,12 @@
     line-height: var(--text-base--line-height);
   }
 
+  /* The pages' focus ring (spec/ui.md 3): the accent, outside the edge. */
+  :global(:focus-visible) {
+    outline: 2px solid var(--ring);
+    outline-offset: 2px;
+  }
+
   main {
     max-width: 36rem;
     margin: 0 auto;
