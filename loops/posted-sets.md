@@ -2,7 +2,7 @@
 
 - loop: posted-sets
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 945d834a6ef05fae87bd00f81a3aa68a79181c27
 - item: sak_fyatfdaafm4k68p7
 - estimate: 2h 3h30m 7h
@@ -317,6 +317,12 @@ reason), keep working; each may go back to `ui:checkboxes` and
 `query-values` when it takes 2.47.0. factory, kurs and
 nixploy-dashboard have no `ui:checkboxes` in a posted form.
 
+## Actuals
+
+```json
+{"loop":"posted-sets","title":"A posted form keeps a repeated name, and a public page hands a file to the browser","repository":"tun","mode":"reviewed","stage":"done","item":"sak_fyatfdaafm4k68p7","tags":["kind:fault","core"],"like":["tun/erase-audit-download","tun/workflow-planner","tun/several-clients"],"started":"2026-11-17 03:39","ended":"2026-11-17 08:13","minutes":{"total":274,"waiting_person":0,"waiting_reviewer":4,"working":270,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":120,"likely":210,"worst":420,"at":"brief"},"latest_estimate":{"best":120,"likely":210,"worst":420,"at":"brief"},"within_estimate":true,"ratio":1.3,"verify":{"rounds":2,"failed":0},"changes":{"A":0,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-17 03:39  started, reviewed
@@ -418,3 +424,4 @@ nixploy-dashboard have no `ui:checkboxes` in a posted form.
   - **The build is green.** `verify.txt` round 2 passed build, test and check, and the version is 2.47.0 in both `+core-version+` and `flake.nix`.
   
   **Minor, no change needed:** the screenshots in the packet show only the state with nothing saved. The browser check covers two, three and none saved at both widths.
+- 2026-11-17 08:13  finished at tun 5a5c17cb
