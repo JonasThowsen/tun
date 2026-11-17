@@ -2,7 +2,7 @@
 
 - loop: typescript-client
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 3cc8b09c81cd015a04f92c76730b6c61c43fee59
 - item: sak_bd087aramz0j0apw
 - estimate: 4h 7h 12h
@@ -427,6 +427,12 @@ a new key per operation, `returns` (null); `/api` without a token and
 with a session's cookie but no proof is now 403 and audited where it was
 401; a client's shell and build have no Node and no new step.
 
+## Actuals
+
+```json
+{"loop":"typescript-client","title":"A typed TypeScript client generated from the registry, for a screen that is better as a single-page application","repository":"tun","mode":"reviewed","stage":"done","item":"sak_bd087aramz0j0apw","tags":["kind:feature","core","security"],"like":["tun/workflow-planner","tun/erase-audit-download","tun/pdf","tun/several-clients"],"started":"2026-11-17 03:33","ended":"2026-11-17 18:37","minutes":{"total":904,"waiting_person":0,"waiting_reviewer":2,"working":902,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":240,"likely":420,"worst":720,"at":"brief"},"latest_estimate":{"best":240,"likely":420,"worst":720,"at":"brief"},"within_estimate":false,"ratio":2.15,"verify":{"rounds":2,"failed":0},"changes":{"A":1,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-17 03:33  started, reviewed
@@ -522,3 +528,4 @@ with a session's cookie but no proof is now 403 and audited where it was
   **Not blocking**
   - The Evidence section of `loop.md`, item 18 (line 376), still says "2.47.0"; the code and the criterion say 2.48.0.
   - The showcase screen's own words ("Sign off", "No answer came. Try again.") are English only. That's acceptable for a test screen, but the docs could say how a real screen gets the person's language.
+- 2026-11-17 18:37  finished at tun 684ebe78
