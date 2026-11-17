@@ -138,6 +138,9 @@ string written out: a spec is data, so +TEXT+ would not be evaluated."
                          :reader operation-beyond-record-policy
                          :documentation "NIL, or why the tool shows records the caller's record
 policy hides, on purpose (spec/store.md 6 item 9).")
+   (returns :initarg :returns :initform nil :reader operation-returns
+            :documentation "The output the operation declares, a form CHECK-OUTPUT-FORM
+takes, or NIL when it declares none (spec/core.md 3.11).")
    (live-view :initarg :live-view :initform nil :reader operation-live-view
               :documentation "A function of a mutation's result JSON adding what the response shows
 but the operation does not record (a live view, such as an order's stock
@@ -460,7 +463,7 @@ runs outside any transaction (doing its own) and returns the final result."
                                   (policy nil policy-p) session-only confirm audit
                                   (destructive nil destructive-p)
                                   test-only debug-only eval-only summary viewer-mutation live-view
-                                  beyond-record-policy)
+                                  beyond-record-policy returns)
                             &body body)
   "Define operation NAME.  PARAMETERS are parameter specs bound as variables in
 BODY; a (:DRAFT VAR) element binds the validated draft entity of a :CREATE
@@ -498,6 +501,7 @@ on the application), the input schema, the MCP tool and the registry entry."
              name))
     ;; Refused when the definition is compiled, not when it is loaded.
     (mapc #'check-parameter-texts param-specs)
+    (when returns (check-output-form returns name))
     (let ((input (gensym "INPUT")))
       `(progn
          (defgeneric ,name (application input)
@@ -527,6 +531,7 @@ on the application), the input schema, the MCP tool and the registry entry."
                          :draft ,(and draft-spec t)
                          :summary ',summary
                          :live-view ',live-view
+                         :returns ',returns
                          :beyond-record-policy ,beyond-record-policy
                          :source ,source
                          :module ,module

@@ -131,6 +131,12 @@ offers the providers is §3.4.
   `none` passes. Its `Origin` can be `null` on a page sent with
   `Referrer-Policy: no-referrer`: setup, `/access` and the public pages. Without `Sec-Fetch-Site`, `Origin`, when present,
   must be the server's own `scheme://host:port`.
+- `/api` takes a session only with the session's proof in
+  `Tun-Api-Proof`, which the application's own single-page screen
+  carries, from the same origin and with a JSON body; any other session
+  call is refused and audited (`typescript.md` §5). Looking up a session
+  to audit a refused call does not move its last use. `/mcp` takes no
+  session.
 
 ### 3.4 Logging in
 
@@ -488,7 +494,8 @@ with OAuth (§5.1) as it is, and with a new token followed by `--header
   and a session-only operation (§3.7): run from a page in a session and
   under claimed identity, refused and audited for a token over `/mcp`
   and `/api`, in-process and below its policy, absent from `tools/list`,
-  shown by `registry_describe` and `explain`.
+  shown by `registry_describe` and `explain`; run over `/api` in a
+  session with its proof (`typescript.md` §7).
 - `tests/sign-in-tests.lisp` covers §3.5 and setup with a provider over
   real HTTP, against a fake OpenID Connect provider in the test process
   that checks what it is sent (the client secret, the redirect URI, the

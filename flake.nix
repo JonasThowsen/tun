@@ -84,7 +84,7 @@
       # The kernel's version; modules declare the range they build against
       # (each module's flake.nix, "core").  Must equal TUN.CORE:+CORE-VERSION+
       # (a core test checks it).
-      coreVersion = "2.47.0";
+      coreVersion = "2.48.0";
 
       # Core (the kernel) as an installable ASDF package: only kernel
       # sources, no modules, compiled in the sandbox by nixpkgs' builder;
@@ -429,6 +429,11 @@
           pkgs.util-linux
           # pdfinfo and pdftotext, which the PDF tests read a made PDF with.
           pkgs.poppler-utils
+          # tsc, which type-checks and compiles the TypeScript module of a
+          # single-page screen, and node, which the module's tests run it
+          # in (spec/typescript.md 7).  Tun's own shell only: a client's
+          # shell and build have no Node.
+          pkgs.typescript pkgs.nodejs
         ];
         # The checkout's own systems (the kernel, modules/, the test client
         # and clients/) join

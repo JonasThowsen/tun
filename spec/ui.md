@@ -2194,6 +2194,13 @@ lists are `table`s, a record is a `summary-list`, an operation is a
 form of `field`s with an `error-summary`, a confirmation is a
 `confirm-panel`. A client's screen does the same.
 
+A screen whose work is a quick run of taps that a page load after each
+would slow down may instead be a single-page screen of the client's own
+(`define-single-page`, `typescript.md` §4): built files served behind
+its page's policy under this section's policy for the browser (§4),
+calling the operations in the person's session. It is the exception;
+lists, forms and record pages are pages.
+
 - **Filling the screen.** An element marked `data-tun-fill` (a board)
   that is in the content directly or in up to two `stack`s makes the
   content as tall as the screen under the header (the whole height

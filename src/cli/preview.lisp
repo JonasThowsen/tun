@@ -318,7 +318,19 @@ and TOP/modules/ exists; else NIL."
              (uiop:directory-exists-p (merge-pathnames "modules/" top)))))))
 
 (defun server-command (client directory worktree flags)
-  "The command that serves CLIENT from DIRECTORY with FLAGS: on the Tun the
+  "The command that serves CLIENT from DIRECTORY with FLAGS, as
+CLIENT-LISP-COMMAND loads it, its tests' system included for the scenarios."
+  (append (client-lisp-command
+           client directory worktree
+           (list (lisp-form "(let ((*compile-verbose* nil) (*load-verbose* nil)) (handler-bind ((warning #'muffle-warning)) (asdf:load-system ~s)))"
+                            (format nil "~a/tests" client))
+                 (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"SERVE-PREVIEW\" (symbol-value (find-symbol \"*APPLICATION-CLASS*\" ~s)) :name ~s)"
+                            (string-upcase client) client)))
+          flags))
+
+(defun client-lisp-command (client directory worktree forms &key (fasl "preview-fasl"))
+  "The command of an SBCL that loads CLIENT from DIRECTORY and then evaluates
+FORMS, each a form's text: on the Tun the
 client's dev shell provides, or with WORKTREE, on that working tree of Tun,
 whose kernel and modules then take the place of the client's pins. The
 client's files compile apart from those of its own shell then, so neither
@@ -328,7 +340,8 @@ its sbcl would otherwise add to its own.  The client's own modules, under
 its modules/ (tun-platform.md 2.1), come from the working tree too, named in
 the source registry before anything else (preview.md 2), and so, for a
 further client of a repository of several, do the repository's modules,
-after its own."
+after its own.  With WORKTREE, the client's files compile under
+.build/FASL/CLIENT/ there."
   (let* ((client-directory (namestring directory))
          (modules (namestring (merge-pathnames "modules/" (uiop:ensure-directory-pathname directory))))
          (shared (repository-modules directory))
@@ -345,17 +358,13 @@ after its own."
                                      own tun (namestring (merge-pathnames "modules/" tun)))
                  "--eval" (lisp-form "(asdf:initialize-output-translations '(:output-translations (~s ~s) (~s ~s) :inherit-configuration))"
                                      client-directory
-                                     (namestring (merge-pathnames (format nil ".build/preview-fasl/~a/" client) tun))
+                                     (namestring (merge-pathnames (format nil ".build/~a/~a/" fasl client) tun))
                                      tun (namestring (merge-pathnames ".build/fasl/" tun)))))
          (list "--eval" "(load (sb-ext:posix-getenv \"ASDF\"))"
                "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a :inherit-configuration))"
                                    own)))
-     (list "--eval" (lisp-form "(let ((*compile-verbose* nil) (*load-verbose* nil)) (handler-bind ((warning #'muffle-warning)) (asdf:load-system ~s)))"
-                               (format nil "~a/tests" client))
-           "--eval" (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"SERVE-PREVIEW\" (symbol-value (find-symbol \"*APPLICATION-CLASS*\" ~s)) :name ~s)"
-                               (string-upcase client) client)
-           "--end-toplevel-options")
-     flags)))
+     (loop for form in forms append (list "--eval" form))
+     (list "--end-toplevel-options"))))
 
 (defparameter *server-start-script*
   "echo $$ > \"$0\" && [ ! -e \"$0.given-up\" ] && exec \"$@\""

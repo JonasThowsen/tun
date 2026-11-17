@@ -2,7 +2,8 @@
 
 Status: v1, 2026-10-12. `tun` is how a person or an agent finds the modules
 Tun offers, starts a client repository from them, adds a module to a
-client later, and moves a client to a newer Tun. The module contract is `tun-platform.md`; this document is the
+client later, moves a client to a newer Tun, and writes the TypeScript
+module of a single-page screen. The module contract is `tun-platform.md`; this document is the
 command's contract and the shape of the client it creates. `tun preview`
 and `tun check`, which run a client's working tree and its browser
 checks, are in `preview.md`; `tun loop`, the feature loop, is in
@@ -126,6 +127,14 @@ that pins it, when the head cannot be read, or when locking fails or
 leaves an input at another revision, `flake.lock` is left as it was and
 `tun update` says what went wrong (exit 1). A REV that is not a full
 commit hash is a usage error.
+
+### 5.1 `tun typescript FOLDER [--dir DIR]`
+
+Writes `FOLDER/api.ts`, the TypeScript module of the client in DIR
+(default `.`) for a single-page screen: its operations' types and one
+function per operation (`typescript.md` §2, §3). It loads the client as
+`tun preview` does, so it needs nothing beyond the client's dev shell,
+and no Node.
 
 ## 6. The client `tun new` creates
 

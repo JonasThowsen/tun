@@ -12,7 +12,8 @@
            #:*large-body-bytes* #:*multipart-body-bytes* #:*large-body-places*
            #:*large-body-seconds* #:*small-body-seconds* #:*header-seconds*
            #:*place-body-bytes* #:*connections-per-address* #:*requests-per-address*
-           #:parse-ip-address #:address-key))
+           #:parse-ip-address #:address-key
+           #:+claimed-actor-cookie+ #:api-proof #:session-cookie-value))
 
 (in-package #:tun.http)
 
@@ -648,6 +649,107 @@ transport's DNS rebinding rule), on /mcp and /api alike."
   (let ((origin (hunchentoot:header-in* :origin)))
     (and origin (not (same-origin-p origin)) origin)))
 
+;;; ------------------------------------------------------------------
+;;; /api in the signed-in person's session (spec/typescript.md 5): what
+;;; proves that the application's own page made the call is not the
+;;; cookie, which a request another site makes carries too, but the
+;;; session's proof, which only a page of this origin can read and send.
+
+(defparameter +claimed-actor-cookie+ "tun_actor"
+  "The cookie that names the claimed actor under --claimed-identity
+(spec/auth.md 1); the page sets it at /login?actor=ROLE:NAME.")
+
+(defparameter +api-proof-header+ "Tun-Api-Proof"
+  "The header a single-page screen sends its session's proof in.")
+
+(defparameter +session-call-refused+
+  "A call in a person's session must come from the application's own page"
+  "What a session call without its proof, from another origin or not as
+JSON is refused with (spec/typescript.md 5.2).")
+
+(defun api-proof (cookie)
+  "The proof of the session whose cookie's value is COOKIE: the hex SHA-256
+of tun-api-proof: and the value (spec/typescript.md 5.1).  It is computed,
+never stored, and cannot be turned back into the cookie."
+  (sha256-hex (concatenate 'string "tun-api-proof:" cookie)))
+
+(defun session-cookie-value (application)
+  "Values the cookie of this request that is a person's session on a page,
+and its name: the tun_session cookie, else, under APPLICATION's claimed
+identity, the tun_actor cookie; NIL when there is neither."
+  (let ((session (hunchentoot:cookie-in tun.auth:+session-cookie+))
+        (claimed (and (claimed-identity-p application)
+                      (hunchentoot:cookie-in +claimed-actor-cookie+))))
+    (cond ((plusp (length session)) (values session tun.auth:+session-cookie+))
+          ((plusp (length claimed)) (values claimed +claimed-actor-cookie+))
+          (t nil))))
+
+(defun session-caller (application)
+  "Values the actor of this request's session (spec/typescript.md 5.2), its
+credential, its cookie's value and whether its use is still to be
+recorded (TOUCH-SESSION); NIL when it carries no live session.  Looking it
+up records no use: a request that is refused must not keep a session alive."
+  (multiple-value-bind (cookie name) (session-cookie-value application)
+    (cond ((null cookie) nil)
+          ((string= name tun.auth:+session-cookie+)
+           (multiple-value-bind (actor id stale)
+               (with-application (application) (tun.auth:authenticate-session cookie :touch nil))
+             (and actor (values actor id cookie stale))))
+          (t (let ((actor (parse-actor (handler-case (hunchentoot:url-decode cookie :utf-8)
+                                         (error () nil)))))
+               (and actor (values actor "claimed" cookie nil)))))))
+
+(defun json-body-p ()
+  "True when this request's Content-Type names JSON: its media type,
+without its parameters and whatever its case, is application/json."
+  (let ((type (hunchentoot:header-in* :content-type)))
+    (and type
+         (string-equal "application/json"
+                       (string-trim " " (subseq type 0 (or (position #\; type) (length type)))))
+         t)))
+
+(defun from-own-origin-p ()
+  "True when the browser says this request came from this server's own
+origin: Sec-Fetch-Site same-origin, or, from a browser that sends no
+Sec-Fetch-Site, the server's own Origin.  A request that says neither is
+not taken as the page's."
+  (let ((site (hunchentoot:header-in* :sec-fetch-site))
+        (origin (hunchentoot:header-in* :origin)))
+    (if site
+        (string-equal site "same-origin")
+        (and origin (same-origin-p origin)))))
+
+(defun session-call-admitted-p (cookie)
+  "True when this session call may run (spec/typescript.md 5.2): it carries
+the proof of COOKIE's session, compared in constant time, it came from this
+origin, and its body is JSON."
+  (let ((proof (hunchentoot:header-in* +api-proof-header+)))
+    (and (stringp proof)
+         (constant-time-string= proof (api-proof cookie))
+         (from-own-origin-p)
+         (json-body-p))))
+
+(defun audited-tool-name (tool)
+  "TOOL, the name a path gives, as an audit entry can hold it: a tool's
+name, else \"api\"."
+  (if (and (<= 1 (length tool) 64) (cl-ppcre:scan "^[a-z][a-z0-9_]*$" tool))
+      tool
+      "api"))
+
+(defun refuse-session-call (application actor credential tool status message)
+  "Refuse the session call of TOOL by ACTOR with STATUS, before its body is
+read, and audit it as ACTOR's rejected call with CREDENTIAL, the session's
+(spec/typescript.md 5.2)."
+  (handler-case
+      (with-application (application)
+        (let ((*actor* actor)
+              (*credential* credential))
+          (with-transaction (:write)
+            (write-system-audit (audited-tool-name tool) "rejected" :error-code "forbidden"))))
+    (error (e)
+      (format *error-output* "~&;; tun api: could not audit a refused session call: ~a~%" e)))
+  (refuse-caller application :api tool status :forbidden message))
+
 (defparameter +plain-wait-seconds+ 90
   "The longest a call waits when its answer is plain JSON: a proxy that drops
 a connection silent for 100 seconds, as Cloudflare does, must not cut it
@@ -879,12 +981,14 @@ number in it (core.md §7.5)."
         (and (or (hash-table-p json) (eq json :too-many) (typep json 'json-number-out-of-range))
              json))))
 
-(defun call-api (application actor credential tool)
+(defun call-api (application actor credential tool &key session)
   "Call TOOL as ACTOR with the request body's arguments, retained as a
 request of kind api that the operation takes over.  For a tool that takes
 files, from a caller it admits, the files' data is set aside before the
 body is parsed, and the body refused when anything else is long
-(spec/files.md 4.3)."
+(spec/files.md 4.3).  SESSION, for a call in a person's session, writes
+its refusals in the language of the person's pages (spec/typescript.md
+5.3)."
   (let ((*credential* credential))
     (with-request-record (:id *request-id* :kind :api :claimable t :application application
                           :at (let ((*application* application)) (now))
@@ -897,13 +1001,16 @@ body is parsed, and the body refused when anything else is long
             (call-with-file-data-set-aside
              (lambda (body)
                (if body
-                   (answer-api application actor tool op t (api-arguments body))
+                   (answer-api application actor tool op t (api-arguments body) session)
                    (api-failure 413 "invalid_input" +rest-too-long+))))
-            (answer-api application actor tool op nil (api-arguments (request-body-octets))))))))
+            (answer-api application actor tool op nil (api-arguments (request-body-octets))
+                        session))))))
 
-(defun answer-api (application actor tool op files arguments)
+(defun answer-api (application actor tool op files arguments &optional session)
   "Answer the call of TOOL, OP's, as ACTOR with ARGUMENTS, what API-ARGUMENTS
-made of the body; FILES when the body may carry files."
+made of the body; FILES when the body may carry files.  A refusal's
+messages are source text, or, for a SESSION call, in the language of the
+person's pages."
   (cond
     ((null arguments)
      (api-failure 400 "invalid_json" "The body must be one JSON object: the tool's arguments"))
@@ -919,7 +1026,9 @@ made of the body; FILES when the body may carry files."
          (api-answer 200 (call-tool tool arguments :application application :actor actor))
        (operation-error (e)
          (api-answer (error-status (operation-error-code e))
-                     (with-language (:source) (operation-error-json e))))
+                     (if session
+                         (operation-error-json e)
+                         (with-language (:source) (operation-error-json e)))))
        (unknown-tool ()
          (api-failure 404 "unknown_tool" (format nil "Unknown tool: ~a" (shown-name tool))))
        ;; SERIOUS-CONDITION, as on /mcp: a stack or heap exhaustion fails
@@ -929,9 +1038,32 @@ made of the body; FILES when the body may carry files."
                                 (type-of e) tool e))
          (api-failure 500 "internal_error" "Internal error"))))))
 
+(defun serve-session-call (application tool)
+  "Answer POST /api/TOOL when it is a session call (spec/typescript.md 5.2):
+no bearer token, no claimed X-Tun-Actor, and a live session's cookie.
+NIL when it is not one, for SERVE-API to decide as before."
+  (unless (or (bearer-token)
+              (and (claimed-identity-p application) (hunchentoot:header-in* :x-tun-actor)))
+    (multiple-value-bind (actor credential cookie stale) (session-caller application)
+      (when actor
+        (cond ((foreign-origin)
+               (refuse-session-call application actor credential tool 403
+                                    (format nil "Requests from another site (~a) are refused"
+                                            (foreign-origin))))
+              ((not (session-call-admitted-p cookie))
+               (refuse-session-call application actor credential tool 403
+                                    +session-call-refused+))
+              (t (when stale
+                   (with-application (application) (tun.auth:touch-session credential)))
+                 (let ((*await-limit* +plain-wait-seconds+))
+                   (call-api application actor credential tool :session t))))))))
+
 (defun serve-api (acceptor tool)
-  "POST /api/TOOL (spec/api.md): who calls is decided as on /mcp."
+  "POST /api/TOOL (spec/api.md): who calls is decided as on /mcp, or, for a
+person's session on the application's own page, as SERVE-SESSION-CALL says."
   (let ((application (acceptor-application acceptor)))
+    (let ((answer (serve-session-call application tool)))
+      (when answer (return-from serve-api answer)))
     (when (foreign-origin)
       (return-from serve-api
         (refuse-caller application :api tool 403 :forbidden

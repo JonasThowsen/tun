@@ -11,6 +11,7 @@ behaviour, and run the suites before calling work done.
 | `cli.md` | The `tun` command: listing modules, creating a client repository, adding a module, moving a client to a newer Tun, and the shape of the client it creates. |
 | `deploy.md` | Deploying a client: the server's port and database, the image, nixploy targets, backups and restore. |
 | `api.md` | The HTTP API: `POST /api/TOOL` with a bearer token, for systems that are not agents. |
+| `typescript.md` | A single-page screen: the TypeScript module `tun typescript` generates from the registry, refusals as values, the screen served behind its page's policy, and `/api` in the person's session with its proof against forged requests. |
 | `waiting.md` | Waiting for people: `:kind :wait` operations and `await`, long calls over MCP (SSE with progress) and the API, instructions for agents. |
 | `outbound.md` | Calling other systems: `http-json-post` with its failures, trace and test stub, and settings read from the environment. |
 | `auth.md` | Identity and access: accounts, sign-in through identity providers such as WorkOS, access tokens, sessions, the first administrator, MCP authentication. |

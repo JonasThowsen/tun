@@ -22,6 +22,7 @@
                (:file "welcome")
                (:file "visits")
                (:file "wait")
+               (:file "sign-off")
                (:file "application")
                (:file "public")
                (:file "nb")))

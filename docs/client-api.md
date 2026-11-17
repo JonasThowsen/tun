@@ -1036,6 +1036,98 @@ curl -X POST https://tracker.example.no/api/items_create \
   -d '{"title": "Eksporten feiler", "request_key": "erp-4711"}'
 ```
 
+## A single-page screen
+
+Server-rendered pages are the rule: a list, a form, a record page, a
+board are pages, and htmx makes them quick enough. Rarely, one screen is
+a quick run of taps on the same few things, where a page load after each
+tap is what slows a person down: answering what waits for them one
+after another on a phone, say. Such a screen may be a single-page
+application of the client's own, in TypeScript, served by the same
+application and calling its operations in the signed-in person's
+session (`spec/typescript.md`). Choose it for that one screen, not for
+the application.
+
+1. **Declare what the screen reads.** Give each operation the screen
+   calls a `:returns` (`spec/core.md` §3.11), so its output is typed
+   exactly; an operation without one comes out as an object of unknown
+   values, which the screen must check before it uses it.
+
+   ```lisp
+   (define-operation queue-next ()
+       (:entity question :kind :read :returns (:object (questions (:list question))))
+     (jobj "questions" (jarr (mapcar #'entity->json
+                                     (select 'question :order-by '(("place" :asc)) :limit 5)))))
+
+   (define-operation questions-answer ((id :type (id question) :required t)
+                                       (answer :type (enum "yes" "no") :required t))
+       (:entity question :kind :transition :returns question)
+     …)
+   ```
+
+2. **Generate the module.** In the client's dev shell, `tun typescript
+   screens/queue/src` writes `screens/queue/src/api.ts`: an input and an
+   output type per operation and a function per operation. Run it again
+   after any change to an operation; never edit the file. A changed
+   operation then breaks the screen's type check where it still uses the
+   old shape.
+
+3. **Call the operations.** Each function answers a value, never an
+   exception: `ok` with the output, `refused` with the API's code and,
+   for `invalid_input`, each field's message in the person's language,
+   `confirm` for a confirm operation, `failed` when no answer came.
+
+   ```ts
+   import { questionsAnswer } from "./api";
+
+   const answer = await questionsAnswer({ id, answer: "yes" });
+   switch (answer.kind) {
+     case "ok": show(answer.value); break;
+     case "refused": errors = answer.refusal.fields; break;
+     case "failed": offline = true; break;
+   }
+   ```
+
+4. **Serve the built screen.** Build the screen into a folder of the
+   client's repository with its `index.html` and its files, then declare
+   it:
+
+   ```lisp
+   (define-single-page queue ("queue" :title "Queue" :icon :list-checks :policy :employee)
+     :files ("my-client" "screens/queue/dist/"))
+   ```
+
+   The showcase's screen is the smallest model: `checks/showcase/screen/`
+   holds `src/screen.ts` and the generated `src/api.ts`, a
+   `tsconfig.json` that compiles them with `tsc -p` into `public/dist/`
+   (one ES module each, importing `./api.js`, no bundler), and
+   `public/index.html` and `public/screen.css`; `sign-off.lisp` declares
+   its operations and the screen.
+
+   It is a staff page at `/queue`, in the menu for those its policy
+   admits; someone signed out is sent to sign in, and the policy decides
+   who gets any of its files. Its `index.html` gets the session's proof
+   put in its head, which the module sends with every call: that is how
+   `/api` knows the call came from the application's own page and not
+   from another site the person has open (`spec/typescript.md` §5). No
+   token is ever in the browser.
+
+5. **Write it for the page's policy.** The browser holds the screen to
+   the same Content-Security-Policy as every page (`spec/ui.md` §4):
+   scripts and style sheets as files of the folder, loaded with `<script
+   type="module" src>` and `<link rel="stylesheet">`, no inline `<script>`
+   or `<style>`, no `eval`, calls only to its own origin. Paths in the
+   built `index.html` are under the screen's prefix (`/queue/…`).
+
+What a client that has no such screen pays: nothing. It declares no
+`:returns` unless it wants to, runs no `tun typescript`, has no Node in
+its shell or its build, and its `bin/test` is as before. Building a
+screen inside the client's Nix build, with Node, a bundler and its npm
+dependencies pinned there, and type-checking it in `bin/test`, come in a
+later loop (`spec/typescript.md` §6); until then a screen is built and
+type-checked with the client's own tools, and its built folder is
+committed.
+
 ## Signing in
 
 `(:sign-in strategy...)` in `define-application` lists how people log in

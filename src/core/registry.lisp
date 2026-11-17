@@ -298,6 +298,7 @@ messaging module is enabled; otherwise do nothing.  Returns the message or NIL."
         "audit" (json-bool (operation-audited-p op))
         "policy" (string-downcase (symbol-name (operation-policy op)))
         "session_only" (json-bool (operation-session-only-p op))
+        "returns" (if (operation-returns op) (output-schema (operation-returns op)) :null)
         "source" (source-string (operation-source op))
         "module" (operation-module op)))
 

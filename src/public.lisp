@@ -134,6 +134,9 @@ the listed symbols (the same symbol objects, not copies)."
   (#:tun.web
    #:render-screen #:section #:json-table #:entity-detail
    #:define-page #:web-call #:error-alert #:htmx-request-p #:staff-page-extras #:home-path
+   ;; a screen of the client's own, a single-page application calling /api
+   ;; in the person's session (spec/typescript.md 4)
+   #:define-single-page
    #:preload-request-p #:decline-preload #:query-values #:query-address
    ;; a file a page makes on the spot, answered as a download
    ;; (spec/files.md 5.5)

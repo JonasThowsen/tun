@@ -218,9 +218,13 @@ so the kernel's other parts let go of what belongs to it: push subscriptions
     (unless (session-live-p session)
       (delete-entity session))))
 
-(defun authenticate-session (cookie)
+(defun authenticate-session (cookie &key (touch t))
   "Values the actor and the session's id for COOKIE, the tun_session
-cookie's value, or NIL when it names no live session."
+cookie's value, or NIL when it names no live session.  The lookup records
+the session's use, at most once an hour; with TOUCH NIL it does not, for a
+request that is refused (spec/typescript.md 5.2), and the third value is
+then true when the use would have been recorded, for TOUCH-SESSION once
+the request is admitted."
   (when (and (stringp cookie) (= (length cookie) 64))
     (multiple-value-bind (actor id stale)
         (with-transaction (:read)
@@ -230,10 +234,11 @@ cookie's value, or NIL when it names no live session."
             (when (and account (account-active-p account) (person-p account))
               (values (account-actor account) (entity-id session)
                       (>= (- (now) (session-last-seen-at session)) *session-touch-seconds*)))))
-      (when stale (touch-session id))
-      (values actor id))))
+      (when (and stale touch) (touch-session id))
+      (values actor id (and stale (not touch))))))
 
 (defun touch-session (id)
+  "Record that the session ID was used now."
   (handler-case
       (with-transaction (:write)
         (let ((session (fetch 'session id)))

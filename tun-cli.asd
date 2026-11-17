@@ -6,7 +6,7 @@
 ;;;; and those are the modules it describes.
 
 (defsystem "tun-cli"
-  :description "The tun command: list Tun's modules, create a client, add a module to one, preview one, run the feature loop."
+  :description "The tun command: list Tun's modules, create a client, add a module to one, preview one, write a screen's TypeScript module, run the feature loop."
   :depends-on ("tun" "cl-ppcre" "uiop" "drakma" (:require "sb-posix") (:require "sb-bsd-sockets"))
   :pathname "src/cli"
   :serial t
@@ -14,6 +14,7 @@
                (:file "catalog")
                (:file "client")
                (:file "preview")
+               (:file "typescript")
                (:file "check")
                (:file "loop")
                (:file "main")))

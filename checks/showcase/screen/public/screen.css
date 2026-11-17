@@ -1,0 +1,95 @@
+/* The showcase's single-page screen (spec/typescript.md 4): a style sheet
+   of its own folder, as the page's policy asks. */
+
+:root {
+  color-scheme: light dark;
+  --text: #18181b;
+  --muted: #52525b;
+  --background: #ffffff;
+  --border: #d4d4d8;
+  --accent: #18181b;
+  --on-accent: #fafafa;
+  --error: #b91c1c;
+}
+
+@media (prefers-color-scheme: dark) {
+  :root {
+    --text: #fafafa;
+    --muted: #a1a1aa;
+    --background: #09090b;
+    --border: #3f3f46;
+    --accent: #fafafa;
+    --on-accent: #18181b;
+    --error: #f87171;
+  }
+}
+
+body {
+  margin: 0;
+  background: var(--background);
+  color: var(--text);
+  font: 16px/1.5 ui-sans-serif, system-ui, -apple-system, "Segoe UI", Roboto, "Helvetica Neue",
+    Arial, "Open Sans", sans-serif;
+}
+
+main {
+  max-width: 36rem;
+  margin: 0 auto;
+  padding: 1.5rem 1rem;
+}
+
+h1 {
+  margin: 0 0 0.25rem;
+  font-size: 1.5rem;
+}
+
+.muted {
+  margin: 0 0 1.5rem;
+  color: var(--muted);
+}
+
+form {
+  display: grid;
+  gap: 0.5rem;
+}
+
+label {
+  font-weight: 600;
+}
+
+textarea {
+  box-sizing: border-box;
+  width: 100%;
+  padding: 0.5rem 0.75rem;
+  border: 1px solid var(--border);
+  border-radius: 0.5rem;
+  background: transparent;
+  color: inherit;
+  font: inherit;
+}
+
+textarea[aria-invalid="true"] {
+  border-color: var(--error);
+}
+
+.error {
+  margin: 0;
+  color: var(--error);
+}
+
+button {
+  justify-self: start;
+  min-height: 2.75rem;
+  padding: 0 1.25rem;
+  border: 0;
+  border-radius: 0.5rem;
+  background: var(--accent);
+  color: var(--on-accent);
+  font: inherit;
+  font-weight: 600;
+}
+
+#answer {
+  min-height: 1.5rem;
+  margin: 1rem 0 0;
+}

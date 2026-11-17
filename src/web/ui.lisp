@@ -23,7 +23,7 @@
            #:register-json-endpoint #:register-web-resource #:resource-path #:resource-entity
            #:page-texts #:query-values #:query-address #:choice-answer #:choice-find
            #:make-download #:download #:download-octets #:download-content-type
-           #:download-filename))
+           #:download-filename #:define-single-page))
 
 (in-package #:tun.web)
 
@@ -35,7 +35,8 @@ returning status and JSON; it calls the same guarded operations as MCP.
 AUTHORIZE, a function of the secret, decides before the body is parsed."
   (tun.http:register-json-endpoint path handler :authorize authorize))
 
-(defparameter +actor-cookie+ "tun_actor")
+(defparameter +actor-cookie+ tun.http:+claimed-actor-cookie+
+  "The cookie that names the claimed actor under --claimed-identity (spec/auth.md 1).")
 (defvar *public-pages* (make-hash-table :test 'equal))
 (defvar *staff-pages* (make-hash-table :test 'equal))
 
@@ -288,6 +289,10 @@ after it keeps it (spec/ui.md 4.1)."
                   ((eq title :declined) (answer-declined-preload))
                   ((eq title :fragment) (respond-fragment status body))
                   ((eq title :download) (send-download body))
+                  ;; A single-page screen's file: the handler set its headers.
+                  ((eq title :answered)
+                   (setf (hunchentoot:return-code*) status)
+                   body)
                   (t (respond status title body :description description :meta meta
                                                 :actions actions :breadcrumbs breadcrumbs
                                                 :width (staff-page-width page))))))))))

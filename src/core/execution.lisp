@@ -691,9 +691,14 @@ Returns the result JSON object or signals OPERATION-ERROR / UNKNOWN-TOOL / ACTOR
       (check-definition-integrity "serve the request"))
     (when (or (null op) (not (operation-visible-p op application)))
       (error 'unknown-tool :tool tool))
-    (let ((*actor* actor)
-          (*request-id* (or *request-id* (new-id "req"))))
-      (funcall (operation-name op) application (make-input arguments)))))
+    (let* ((*actor* actor)
+           (*request-id* (or *request-id* (new-id "req")))
+           (result (funcall (operation-name op) application (make-input arguments))))
+      ;; spec/core.md 3.11: a declared output is checked where the suites,
+      ;; previews and browser checks call, never on the real clock.
+      (when (and (operation-returns op) (test-mode-p application))
+        (check-declared-output op result))
+      result)))
 
 (defun invoke (name &rest keys-and-values)
   "Call operation NAME (a symbol) in the current application as *ACTOR*.

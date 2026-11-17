@@ -170,6 +170,8 @@
    #:operation-kind #:operation-title #:operation-description #:operation-policy
    #:operation-beyond-record-policy
    #:operation-confirm-p #:operation-session-only-p #:operation-destructive-p
+   #:operation-returns #:output-schema #:entity-output-schema #:type-output-schema
+   #:schema-mismatch #:typescript-module #:write-typescript-module #:refusal-codes
    #:operation-test-only-p #:operation-debug-only-p
    #:operation-visible-p #:operation-parameters
    #:operation-draft-p #:operation-source #:operation-mutating-p #:operation-idempotent-p

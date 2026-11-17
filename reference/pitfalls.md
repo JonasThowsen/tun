@@ -124,6 +124,31 @@ repeating the history.
   `tests/timing.lisp` reads a clock, and a test checks that
   (`spec/tooling.md`, «Speed and time in tests»).
 
+## Single-page screens and TypeScript
+
+- **A session cookie goes with a request from another origin on the same
+  site.** `SameSite=Lax` keeps a cross-site POST from carrying it, but a
+  page on another port of the same host, such as another tenant, is the
+  same site. That is why `/api` takes a session only with the session's
+  proof, which only the screen's own page can read
+  (`spec/typescript.md` §5), and never the cookie alone.
+- **A link in the staff shell is boosted by htmx.** htmx would fetch a
+  single-page screen's document and swap its body into the shell, where
+  its module scripts never run. The screen answers an htmx request with
+  `HX-Redirect`, so the browser loads it whole.
+- **`tsc` does not rewrite import paths.** Code the browser loads
+  without a bundler imports `./api.js`, not `./api`; with
+  `"moduleResolution": "bundler"` that name finds `api.ts` when it is
+  type-checked.
+- **`exactOptionalPropertyTypes` refuses `undefined` where a DOM type
+  says `?: T | null`.** `fetch`'s `signal: options?.signal` does not
+  type-check under it; `options?.signal ?? null` does. A screen's
+  project may well turn the option on, so the generated module is
+  checked with it.
+- **A result is a JSON object.** MCP's `structuredContent` is one and
+  `result->json` takes a record or an object, so `:returns` declares a
+  record, a page or an object, and a list or a value only as a key's.
+
 ## Sandboxing
 
 - **Code in the same image cannot be sandboxed.** Package locks, the reader

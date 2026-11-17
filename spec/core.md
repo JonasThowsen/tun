@@ -524,7 +524,8 @@ A read for `viewer` and up, computed from the live definitions:
 - `operations`: `name`, `entity` (or null), `kind` (`read`, `create`,
   `update`, `transition`, `workflow`), `confirm`, `idempotent`, `audit`
   (§3.8), `policy`,
-  `session_only` (§3.3), `source`, `module`, and `beyond_record_policy`,
+  `session_only` (§3.3), `returns`, the JSON Schema of the output the
+  operation declares (§3.11) or null, `source`, `module`, and `beyond_record_policy`,
   the reason, for a tool declared to show records beyond the record policy
   (`store.md` §6);
 - `invariants`: each with its `name`, `description`, `source` and
@@ -550,6 +551,46 @@ step.
 | `workflows_get` | viewer | `{"id"}` | one workflow (§4) |
 
 The account, job, mail, error and setting tools are in their own contracts.
+
+### 3.11 Declared outputs
+
+An operation may declare its result with `:returns OUTPUT` among its
+options, so a client's screen can be typed from it (`typescript.md`).
+OUTPUT is one of:
+
+| OUTPUT | The result |
+|---|---|
+| `ENTITY` | one record of ENTITY, as `entity->json` gives it |
+| `(:page ENTITY)` | `{"items": [records], "returned", "has_more"}`, the shape the kernel's and the modules' lists answer |
+| `(:object (KEY OUTPUT [:optional t]) …)` | an object with those keys (snake_case of KEY); an optional key may be missing or null; other keys may be there too |
+| `(:list OUTPUT)`, as a key's | an array of OUTPUT |
+| `(:value TYPE)`, as a key's | a value of a field type, such as `(:value string)` or `(:value (enum "a" "b"))`, never null |
+
+A result is a JSON object, so the whole output is a record, a page or an
+object; a list and a value are what an object's keys hold.
+
+```lisp
+(define-operation items-answer ((id :type (id item) :required t)
+                                (answer :type (enum "yes" "no") :required t))
+    (:entity item :kind :transition :returns item)
+  …)
+```
+
+- An entity is looked up when the output is used, so it may be defined
+  after the operation. A form that is none of the above, or an `:object`
+  key given twice, is refused when the definition is compiled; an
+  ENTITY that names no entity, when the output is first used (described,
+  generated or checked).
+- Under the test clock (the suites, previews and their browser checks),
+  every call's result through a surface (`call-tool`: MCP, `/api`, a
+  page) is checked against its declaration before it is answered: a
+  result that does not match is an internal error naming the tool and
+  the first place it differs, such as `items[0].status`. A confirmation
+  request (§3.6) is not checked. A server on the real clock does not
+  check.
+- An operation without `:returns` answers as before; its output is
+  undeclared, and the TypeScript module types it as an object of
+  unknown values.
 
 ## 4. Workflows
 

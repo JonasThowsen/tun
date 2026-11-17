@@ -281,3 +281,18 @@ kundefilter finner blant (spec/ui.md 6, choice-input).")
   ("Tick every day that suits." "Kryss av for hver dag som passer.")
   ("Saved: ~a." "Lagret: ~a.")
   ("No days are saved." "Ingen dager er lagret."))
+
+;;; The single-page screen's operations (sign-off.lisp)
+
+(define-translations "nb"
+  ("Sign-off" "Signering")
+  ("Sign-offs" "Signeringer")
+  ("Note" "Merknad")
+  ("Signed by" "Signert av")
+  ("Signed in with" "Innlogget med")
+  ("Sign off" "Signer")
+  ("Signs off with a note, as the person signed in on the page: never with an
+access token."
+   "Signerer med en merknad, som personen som er logget inn på siden: aldri med en
+tilgangsnøkkel.")
+  ("The latest sign-offs, newest first." "De siste signeringene, nyeste først."))

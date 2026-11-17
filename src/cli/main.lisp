@@ -15,6 +15,7 @@
        tun preview list [--json]
        tun preview stop NAME... | --all
        tun check [NAME...] [--dir DIR]
+       tun typescript FOLDER [--dir DIR]
        tun loop start NAME --title TEXT [--mode MODE] [--client DIR] [--after LOOP]
                       [--item REF] [--tag TAG]... [--drafted DURATION]
        tun loop status [NAME] [--json]
@@ -181,6 +182,8 @@ the first item."
                                          :options '("--dir" "--scenario" "--port")))
             ((string= command "check")
              (run-with #'check-command :options '("--dir")))
+            ((string= command "typescript")
+             (run-with #'typescript-command :options '("--dir")))
             ((string= command "loop")
              (run-with #'loop-command :flags '("--json")
                                       :options '("--dir" "--title" "--mode" "--client" "--after"

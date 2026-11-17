@@ -226,6 +226,14 @@ PATH when Tun does not take it."
                (input-error path "The files cannot be larger than 25 MB together."))
              uploads))))
 
+(defmethod type-output-schema ((type files-type))
+  ;; What TYPE->JSON below writes of each file (spec/core.md 3.11).
+  (jobj "type" "array"
+        "items" (jobj "type" "object"
+                      "properties" (jobj "filename" (jobj "type" "string")
+                                         "bytes" (jobj "type" "integer"))
+                      "required" (jarr '("filename" "bytes")))))
+
 (defmethod type->json ((type files-type) value)
   (jarr (mapcar (lambda (upload)
                   (jobj "filename" (upload-filename upload)

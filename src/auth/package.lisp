@@ -20,7 +20,7 @@
    ;; access tokens
    #:access-token #:authenticate-token
    ;; sessions and logging in
-   #:+session-cookie+ #:+session-lifetime+ #:authenticate-session #:log-out
+   #:+session-cookie+ #:+session-lifetime+ #:authenticate-session #:touch-session #:log-out
    ;; the first administrator
    #:setup-code #:setup-code-valid-p #:announce-setup
    ;; signing in with an identity provider

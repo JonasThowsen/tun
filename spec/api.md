@@ -1,6 +1,7 @@
 # The HTTP API
 
-Status: v1, 2026-10-21. How a system that is not an agent, such as
+Status: v1, 2026-10-21; a person's session from a single-page screen,
+2026-11-17. How a system that is not an agent, such as
 another company's ERP with a «Meld fra» button, calls a tenant's tools
 with one HTTP request. MCP (`/mcp`, `core.md` §3) is for agents;
 this is the same tools without JSON-RPC.
@@ -31,14 +32,21 @@ curl -X POST https://tracker.example.no/api/items_create \
 - The caller is an account's access token (`auth.md` §3.2), sent as
   `Authorization: Bearer tun_…`: normally an `agent` account the admin
   made for that system, with the role its tools need. An AuthKit access
-  token works as on `/mcp` (`auth.md` §5.1). A session cookie does not:
-  a browser does not call the API.
+  token works as on `/mcp` (`auth.md` §5.1).
+- Or a person signed in on the application's own page, from a
+  single-page screen (`typescript.md` §4): their session cookie, with
+  the session's proof in `Tun-Api-Proof`, from the same origin, with a
+  JSON body (`typescript.md` §5). A session call without all three is
+  refused 403 and audited as the person. A token, when one is sent,
+  decides alone, as before.
 - With claimed identity (`auth.md` §1), `X-Tun-Actor` names the caller,
   as on `/mcp`.
 - The token belongs on the calling system's server. A button in another
-  system's page posts to that system, which calls the API.
+  system's page posts to that system, which calls the API. No token is
+  ever put in a browser: a screen calls in its person's session.
 - A request with an `Origin` other than the server's own is refused with
-  403, as on `/mcp`. The API sends no CORS headers.
+  403, as on `/mcp`. The API sends no CORS headers and answers no
+  preflight.
 
 ## 3. Answers
 
@@ -50,7 +58,7 @@ for `introspect_request`.
 | 200 | The tool ran. | Its result, as `structuredContent` on MCP. |
 | 400 | The body is not a JSON object. | `{"error": {"code": "invalid_json", "message": …}}` |
 | 401 | No token, or a token that is unknown, expired, revoked or its account disabled. With `WWW-Authenticate`, as `/mcp`'s. | `{"error": {"code": "unauthenticated", …}}` |
-| 403 | The tool's policy refused the caller (`forbidden`), another origin, or an AuthKit identity no one has linked. | The error document. |
+| 403 | The tool's policy refused the caller (`forbidden`), another origin, a session call without its proof (`typescript.md` §5.2), or an AuthKit identity no one has linked. | The error document. |
 | 404 | No tool TOOL (`unknown_tool`), or a record the call names does not exist (`not_found`). | The error document. |
 | 405 | Any method but POST. With `Allow: POST`. | Empty. |
 | 409 | `conflict`, `idempotency_conflict`, `invalid_transition`, `unavailable`, `insufficient_stock`. | The error document. |
@@ -60,7 +68,8 @@ for `introspect_request`.
 The error document is the one an operation error has everywhere,
 `{"error": {"code", "message", …}}`, its message source text,
 untranslated, on every tenant (`i18n.md` §7; `Accept-Language` is under
-its «Not yet»).
+its «Not yet»). A session call's messages are in the language of the
+person's pages (`typescript.md` §5.3).
 
 ## 4. Records
 
@@ -81,4 +90,6 @@ token, another origin, bad JSON, an unknown tool) is a request of kind
   the same `request_key` answers the same result and makes one record;
   the error statuses above; a token's role meets the tool's policy;
   without a token 401 and the challenge; another origin 403; GET 405;
-  a call is retained as its tool's record, a refusal with kind `api`.
+  a call is retained as its tool's record, a refusal with kind `api`;
+  the session path and its refusals are in `tests/session-api-tests.lisp`
+  (`typescript.md` §7).
