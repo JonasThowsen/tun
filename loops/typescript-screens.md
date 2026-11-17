@@ -2,7 +2,7 @@
 
 - loop: typescript-screens
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: bf706a67de0668287beee84cedf45bd698d5fa22
 - after: typescript-client
 - item: sak_b2dgtad9737941ws
@@ -375,6 +375,12 @@ What a client sees differently on 2.49.0: nothing unless it uses it.
 and the flake's `lib` has `buildScreen`; a client's shell and server
 have no Node.
 
+## Actuals
+
+```json
+{"loop":"typescript-screens","title":"A single-page screen in Svelte, built by Nix in a client's build, with Tun's design tokens","repository":"tun","mode":"reviewed","stage":"done","item":"sak_b2dgtad9737941ws","tags":["kind:feature","core"],"like":["tun/typescript-client","tun/pdf"],"started":"2026-11-17 18:46","ended":"2026-11-17 21:56","minutes":{"total":190,"waiting_person":0,"waiting_reviewer":2,"working":188,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":180,"likely":300,"worst":600,"at":"brief"},"latest_estimate":{"best":180,"likely":300,"worst":600,"at":"brief"},"within_estimate":true,"ratio":0.63,"verify":{"rounds":1,"failed":0},"changes":{"A":0,"B":0,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-17 18:46  started, reviewed
@@ -442,3 +448,4 @@ have no Node.
   **Not blocking**
   - Criterion 2 lists three bad folders: empty, absolute, and containing `..`. Only the `..` case is tested (`scripts/test-screens.nix`, `outOfSource`). The code in `flake.nix:2800` handles all three plainly. Adding `""` and `"/abs"` to `test-screens.nix` would cover the rest of the criterion.
   - Tun's own dev shell now depends on the showcase screen's npm fetch (`TUN_SCREEN_NODE_MODULES`). That is acceptable, since it is cached after the first fetch and a client's shell doesn't get it.
+- 2026-11-17 21:56  finished at tun 82b4510b
