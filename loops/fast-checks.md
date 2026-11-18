@@ -2,7 +2,7 @@
 
 - loop: fast-checks
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: 44a39c177392b9ae5fbb6108ddfbffa1496d1250
 - item: sak_y2wez8ch679ffv0w
 - estimate: 6h 9h 16h
@@ -552,6 +552,12 @@ passed in them (Log). A test of the client's that relied on another having
 run before it would fail only in the workers (`docs/client-api.md`); none
 did.
 
+## Actuals
+
+```json
+{"loop":"fast-checks","title":"A verify round in minutes: one image and one database server per round, scenarios as templates, checks and suites in parallel inside the one lock","repository":"tun","mode":"reviewed","stage":"done","item":"sak_y2wez8ch679ffv0w","tags":["kind:tooling","core"],"like":["tun/checks-under-load","tun/test-timing"],"started":"2026-11-17 18:51","ended":"2026-11-18 12:27","minutes":{"total":1056,"waiting_person":0,"waiting_reviewer":9,"working":1047,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":360,"likely":540,"worst":960,"at":"brief"},"latest_estimate":{"best":360,"likely":540,"worst":960,"at":"brief"},"within_estimate":false,"ratio":1.96,"verify":{"rounds":9,"failed":3},"changes":{"A":1,"B":3,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-17 18:51  started, reviewed
@@ -776,3 +782,4 @@ did.
   - **The wait can't catch every case.** Before the install starts, while `/sw.js` is still being fetched for a new or changed worker, no registration shows the worker as installing. So the check passes and the navigation goes ahead. The server log from verify 8 shows `/sw.js` fetched in the same second as `GET /fields`, so the fix makes the stall less likely but may not rule it out. Six clean runs against an earlier rate of about one in eight is encouraging but not proof. A failed check now keeps both server logs, so the next failure, if one comes, will show which case it was.
   - **A real user may hit the same stall.** A page whose service worker takes control during a navigation may stall in a person's browser too. That is left to a later loop, which is reasonable because the worker existed before this change. The report should list it.
   - **Duplicated helpers.** `check.lisp`'s `available-gb`, `environment-jobs` and `default-check-jobs` still repeat the helpers in `tests/parallel.lisp`, and the two copies treat a bad value differently.
+- 2026-11-18 12:27  finished at tun 8585e5b5
