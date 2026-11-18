@@ -403,13 +403,17 @@ generated-every-page-at-both-widths`:
 - **What it checks.** Each page of each actor at 390×844 with touch and
   at 1280×800, signed in as the actor (no one: not signed in): after its
   load, and after every htmx request it began has been answered, it
-  fails when the page answered 400 or more, when the document is wider
+  fails when the page answered 400 or more or the browser could not load
+  it at all (an error answered with no body), when the document is wider
   than the window (it scrolls sideways), when the page had a JavaScript
   error or its console an error, or when the browser reported a
   violation of the page's Content-Security-Policy.
 - **What it records.** One result a page and width, naming the width,
   the actor, the path and what failed, each with a picture of the screen
-  as a JPEG, `NAME-N.jpg`, beside the results.
+  as a JPEG, `NAME-N.jpg`, beside the results. A console error about
+  `/favicon.ico` alone is not a page's: the browser asks for it for a
+  page that names no icon. The showcase's check
+  `generated-check-sees-what-is-wrong` holds the check to each of these.
 
 **The verify lock.** When `TUN_VERIFY_LOCK` names a file, `tun check`
 runs its checks holding an exclusive `flock(2)` lock on it (the file is

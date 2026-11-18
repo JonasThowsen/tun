@@ -81,6 +81,21 @@ def problems_of(page, response):
     return found
 
 
+def opened(page, path):
+    """Open PATH in PAGE and say what is wrong with it: a page the browser
+    could not load at all, such as an error answered with no body, is that."""
+    try:
+        response = page.goto(path)
+    except Exception as error:  # Playwright's, for a navigation that failed
+        # Chromium shows its own error page instead, a navigation of its own
+        # that would cut the next page's short: it is waited for first.
+        page.wait_for_url(lambda url: url.startswith("chrome-error:"))
+        page.errors.clear()
+        page.console_errors.clear()
+        return [f"did not load: {str(error).splitlines()[0]}"]
+    return problems_of(page, response)
+
+
 def run(t):
     actors = swept()
     for entry in actors:
@@ -92,8 +107,7 @@ def run(t):
                 page.errors.clear()
                 page.console_errors.clear()
             for path in paths:
-                response = page.goto(path)
-                found = problems_of(page, response)
+                found = opened(page, path)
                 said = f": {'; '.join(found)}" if found else ""
                 t.check(not found, f"{width} px, {who}: {path}{said}", picture=page)
         t.close_pages()

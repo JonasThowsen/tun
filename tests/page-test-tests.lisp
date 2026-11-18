@@ -275,6 +275,26 @@ counting is not a variable the scenario sets.")
   (is (= 3 (page-test-scenario-runs))
       "one that sets a variable is made again for each server, after the first look"))
 
+(test on-postgres-the-scenario-is-a-template-copied-for-each-server
+  (if (not (postgres-available-p))
+      (skip "no test Postgres (TUN_TEST_POSTGRES)")
+      (progn
+        (setf (car *page-test-scenario-runs*) 0)
+        (clrhash tun.page-test::*templates*)
+        (dotimes (i 3)
+          (page:with-server (:scenario 'page-test-records :database :postgres :actor "admin:ada")
+            (is (typep (application-store *app*) 'tun.store.postgres:postgres-store))
+            (is (scenario-shown-p) "each copy holds the scenario's records")
+            (call-ok "settings_set" "admin:ada" "key" "locale.language" "value" "en")
+            (is (not (scenario-shown-p)) "and is changed in itself")))
+        (is (= 1 (page-test-scenario-runs))
+            "made once into a template, which each server copied while no one held it")
+        (setf (car *page-test-scenario-runs*) 0)
+        (dotimes (i 2)
+          (page:with-server (:scenario 'page-test-sets :database :postgres :actor "admin:ada")
+            (is (scenario-shown-p))))
+        (is (= 3 (page-test-scenario-runs)) "one that sets a variable, made for each"))))
+
 (test a-page-test-costs-milliseconds
   (page:with-server (:scenario 'page-test-records :actor "admin:ada")
     (page:visit "/settings"))

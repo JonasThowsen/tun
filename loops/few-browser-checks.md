@@ -2,7 +2,7 @@
 
 - loop: few-browser-checks
 - mode: reviewed
-- stage: shown
+- stage: build
 - base: e89b3f8ba4d02fd591e64de8c7f32dbdd2b9f17c
 - item: sak_z4ggf27qjx57443v
 - estimate: 3h 5h 9h
@@ -127,7 +127,7 @@ The orchestrator's brief, in short:
    posts), for each of the sweep's actors (the scenario's, the fuzz roles
    none of them has, and no one); the check opens each at 390×844 with
    touch and at 1280×800, signed in as that actor, and fails a page that
-   answers 400 or more, scrolls sideways, has a JavaScript error or an
+   answers 400 or more or does not load, scrolls sideways, has a JavaScript error or an
    error in its console, or a Content-Security-Policy violation. Each
    page and width is one result with a picture of the screen in the
    results. `tun check NAME` runs it by its name; `TUN_CHECK_IMAGE=0`
@@ -376,3 +376,42 @@ The orchestrator's brief, in short:
 - 2026-11-18 15:20  the generated check on the client with 102 checks, alone (`tun check generated-every-page-at-both-widths` in a scratch clone, its Tun inputs overridden to b1af95ec), after 8m23s waiting for the verify lock: 110 s for the whole run (the client's image, its default scenario, the sweep, then the browser), of which 85 s the browser opening 377 pages of 6 actors (its scenario's and the fuzz roles: 227 an employee's, 133 an admin's, 14 a viewer's, 3 no one's), each at 390 and 1280 px, 754 results with a picture each (35 MB); every page passed: none answered 400 or more, scrolled sideways, had a JavaScript or console error or a policy violation. Its 102 checks took 341 to 356 s in four workers (fast-checks' Log); the generated check alone would take a worker's 110 s of them
 - 2026-11-18 15:20  verify 2 (06e989b9: TUN_CHECK_IMAGE=0 refuses the generated check named alone, which before ran every file) passed build 13 s, test 200 s, check 185 s, every check passed
 - 2026-11-18 15:20  tun clients test on 452be83a, `--jobs 1`, under one hold of the lock: factory 90 s, nixploy-dashboard 101 s, ferdig 60 s, kurs 47 s, the client with 102 checks 755 s, its second client 43 s: 6 of 6 passed, no compiler warning, each client unchanged
+- 2026-11-18 14:54  gate B asked of a reviewer
+- 2026-11-18 14:56  gate B: changes (reviewer)
+  I'm asking for changes. The work is nearly all there and verify passed, but two parts of the criteria have no test that would fail if the behaviour broke.
+  
+  **What is right**
+  - **Verify:** `verify.txt` shows build, test and check all passed. Every result in `checks/` passed, the generated check included: 344 results, each with a picture. The screenshots of `/visit-days` and `/mail` look right at both widths.
+  - **Brief against the change:**
+    - **Item 1, the reader:** `tun.page-test` is a separate package that tests reach through a nickname.
+    - **Item 2, the generated check:** it runs first, can be run by its name, and `TUN_CHECK_IMAGE=0` refuses it when it is named alone. The Log has its time on the client with 102 checks (110 s, 377 pages).
+    - **Item 3, the rule:** it is written in `docs/loop.md` §2 and §4, `spec/preview.md` §4, `spec/testing.md` §6 and `reference/style.md`. `reference/pitfalls.md` gives the measurement behind it.
+    - **Item 4, the showcase:** 5 checks became page tests and 3 kept only the browser's part. The Log has the count and minutes before and after.
+    - **Item 5, the playbook:** the sentence is under Decisions.
+    - **Clients:** the run with `--jobs 1` passed 6 of 6. `tun.test-support`'s exports are unchanged, since every `support:` symbol the reader uses was already exported.
+  - **Tests for criteria 2–6:** `tests/page-test-tests.lisp` covers them well:
+    - the selectors, and that anything else is refused by name;
+    - the text a person reads, links and alerts;
+    - the fields a form sends, and the form inside `<main>` rather than «Sign out»;
+    - replacing the page's fields with the test's;
+    - actors, the actor's cookies, htmx headers, extra headers and a path sent as written;
+    - the language;
+    - a scenario made once versus made again for each server.
+  - **The converted showcase tests** (`checks/showcase/tests/pages.lisp`) keep every assertion of the checks they replace, apart from «does not scroll sideways».
+  - **The code:** no leftover debugging, and the favicon exception explains itself.
+  
+  **Changes**
+  
+  1. **Criterion 1's Postgres path has no test.** The criterion and `spec/testing.md` §6 promise `with-server … :database :postgres`, with the scenario made once into a template and each server getting a copy made by `CREATE DATABASE … TEMPLATE`. The relevant code is `template-for` and `call-with-database` (diff 2675–2704, `tests/page-test.lisp`). No test uses `:postgres`; the only scenario test is in memory (diff 1796–1809).
+     - Add a test like `a-scenario-is-made-once-and-copied-unless-it-sets-a-variable` that uses `:database :postgres`. It should skip when the test Postgres server is missing, as `scratch-databases` does.
+     - It should show that the copy holds the scenario's records, that the scenario is made once across several servers, and that a change in one server does not reach the next.
+     - This matters because `CREATE DATABASE … TEMPLATE` fails while anyone is still connected to the template. As things stand, nothing shows that `close-application` frees it in time.
+  
+  2. **Nothing shows the generated check can fail.** Criterion 8 is about failing a page that scrolls sideways, has a JavaScript or console error, or has a policy violation. This loop deletes 205-style «does not scroll sideways» assertions, and the menu pages from `policy-tour`, because the generated check is meant to catch those now. Yet the only evidence is a run in which everything passed.
+     - A slip would pass the same way. Examples: a typo in `WATCH` makes `window.__tunViolations || []` always empty, or `browser_own` filters too much.
+     - Add a negative test of `problems_of`/`watched` from `scripts/checks/generated-every-page-at-both-widths.py`. For instance, a showcase check (or helper test) could load a page that is wider than the window, calls `console.error`, and breaks the policy, then assert that each of the three is reported, and that a console error about `/favicon.ico` alone is not.
+  
+  **Minor (fix while there, not blocking)**
+  - `checks/showcase/tests/pages.lisp:597–603`: `(is (not (null link)))` comes after `(page:attribute link "href")` has already used `link`. A missing link would show up as an error, not as that assertion failing; check it before using it.
+  - `checks/showcase/tests/pages.lisp:617–620`: the «nor its bytes» assertion turns a string back into octets, and it passes without checking anything when the body is octets. `(not (equal "%PDF-" (octets-start …)))` on the raw octets, or a `search` on the text, would say the same plainly.
+- 2026-11-18 15:58  gate B 1: changes. Done: a test of the Postgres path (`on-postgres-the-scenario-is-a-template-copied-for-each-server`: three servers each on a copy of the template made once, each copy changed in itself, the next one's as the scenario made it; a scenario that sets a variable made for each; skipped without the test Postgres, passed with it, 111 of 111 with `bin/with-postgres`); a showcase check that holds the generated check to what it must see, `generated-check-sees-what-is-wrong` (a 404 with a body, a page the browser cannot load, a page made 3000 px wide, a planted console error, a planted JavaScript error and an inline script the policy refuses each fail it; a sound page passes; a console error about `/favicon.ico` alone is the browser's own), which found that a page the browser could not load at all (an error answered with no body) raised and ended the whole check, and then cut the next page's navigation short: the generated check now records it as that page's failure, waits for Chromium's error page, and goes on; the showcase test's link is checked before it is used, and the refused PDF's body is read as what it is
