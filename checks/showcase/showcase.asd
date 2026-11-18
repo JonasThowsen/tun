@@ -28,9 +28,11 @@
                (:file "nb")))
 
 (defsystem "showcase/tests"
-  :description "The showcase's scenarios."
-  :depends-on ("showcase" "tun-test-support")
+  :description "The showcase's scenarios, and its page tests, which bin/test runs."
+  :depends-on ("showcase" "tun-test-support" "fiveam")
   :serial t
   :components ((:module "tests"
+                :serial t
                 :components ((:file "package")
-                             (:file "scenarios")))))
+                             (:file "scenarios")
+                             (:file "pages")))))

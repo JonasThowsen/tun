@@ -254,6 +254,7 @@
                              (:file "policy-tests")
                              (:file "sequence-tests")
                              (:file "page-tests")
+                             (:file "page-test-tests")
                              (:file "loop-tests")
                              (:file "timing-tests")
                              (:file "run")))))

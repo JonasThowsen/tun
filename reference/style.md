@@ -228,6 +228,15 @@ Lisp. Code that is obvious beats code that is clever.
 - **Test through operations,** the way a client or the MCP surface would.
   Use `with-test-app` for a fresh application.
 - **Every bug gets a test that fails before the fix.**
+- **What the server answers is a test, not a browser check.** A page's
+  texts, parts, links, forms, a refusal, a redirect, a fragment or a
+  download are read with `tun.page-test` (`page:visit`, `page:submit`,
+  `page:part`, `spec/testing.md` §6), in milliseconds. A browser check is
+  only for what a browser alone decides: a script's behaviour, touch, the
+  layout at a width, what is on the first screen (`spec/preview.md` §4).
+  One language suffices for a browser check when the other changes only
+  text, and «the page does not scroll sideways» is left to the generated
+  check, which opens every page the page sweep reaches at both widths.
 
 ## Before you call it done
 

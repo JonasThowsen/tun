@@ -5,6 +5,7 @@
   (:shadowing-import-from #:tun.core #:fail)
   ;; The suite's HTTP-POST posts to a test server; TUN.OUTBOUND's is Tun's own call.
   (:shadowing-import-from #:tun.test-support #:http-post)
+  (:local-nicknames (#:page #:tun.page-test))
   (:export #:run-core-tests #:core-child-suites #:tests-outside-child-suites))
 
 (in-package #:tun.tests)

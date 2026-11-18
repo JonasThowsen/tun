@@ -1,7 +1,9 @@
-"""Signed in on a computer, every page in the menu, the specimen, a board,
-a file's preview before it is sent, a chart and the login page work under
-the page's Content-Security-Policy: the browser reports no violation
-(spec/ui.md 4)."""
+"""The login page, the specimen and a file's preview before it is sent work
+under the page's Content-Security-Policy: the browser reports no
+violation (spec/ui.md 4). Every page the page sweep reaches is the
+generated check's, which records violations on each; the login page and
+the specimen are left out of the sweep, and a preview from a blob: URL
+is a script's."""
 
 import pathlib
 import sys
@@ -21,16 +23,13 @@ def run(t):
     page = t.desktop()
     _policy.record(page)
     page.sign_in("employee:anna")
-    menu = page.locator(".tun-nav-list a[href^='/']").evaluate_all(
-        "(links) => links.map((a) => a.getAttribute('href'))")
-    t.check(len(menu) >= 5, f"the menu has the pages: {menu}")
-    for path in menu + ["/ui", "/ui/card", "/prices"]:
+    for path in ["/ui", "/ui/card"]:
         page.goto(path)
         page.wait_for_load_state("networkidle")
         found = _policy.violations(page)
         t.check(found == [], f"no violation on {path}: {found}")
 
-    # The board, moved through htmx, and a picture previewed from a blob: URL.
+    # A picture previewed from a blob: URL.
     _files.card_page(page, "Notification by email")
     page.locator(".tun-card input[type=file][name=files]").set_input_files(_files.path("photo.jpg"))
     preview = page.locator(".tun-file-input-item img.tun-file-input-preview")

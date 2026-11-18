@@ -215,13 +215,36 @@ shell, and SCRIPT of the Tun the client runs on."
       (when (stringp error)
         (format t "~&          ~a~%" (string-trim '(#\Newline) error))))))
 
-(defstruct (browser-check (:constructor make-browser-check (name scenario file)))
+(defstruct (browser-check (:constructor make-browser-check (name scenario file &optional sweep)))
   "A check the runner runs: its NAME, the SCENARIO its server starts from
-and the FILE tun_check.py drives. The files in checks/ are these, and so,
-in time, are the checks Tun makes for every client (spec/preview.md 4)."
+and the FILE tun_check.py drives; with SWEEP, its server first writes the
+pages the page sweep gets, which the check opens. The files in checks/ are
+these, and so is the check Tun makes for every client (spec/preview.md 4)."
   (name "" :type string)
   (scenario "default" :type string)
-  file)
+  file
+  (sweep nil))
+
+(defparameter +generated-check-name+ "generated-every-page-at-both-widths"
+  "The browser check Tun makes for every client (spec/preview.md 4, «The
+generated check»).")
+
+(defun generated-check ()
+  "The check Tun makes for every client: every page the page sweep reaches,
+as each of its actors, at 390 and 1280 px, from the default scenario."
+  (make-browser-check +generated-check-name+ "default"
+                      (tun-path (format nil "scripts/checks/~a.py" +generated-check-name+))
+                      t))
+
+(defun run-list (directory names)
+  "The checks a run of the client in DIRECTORY runs: the generated check
+first, being the longest, then the files of checks/; or the ones NAMES
+name, by name."
+  (let* ((generated (or (null names) (member +generated-check-name+ names :test #'string=)))
+         (file-names (remove +generated-check-name+ names :test #'string=)))
+    (append (and generated (list (generated-check)))
+            (cond (file-names (file-checks (check-files directory file-names)))
+                  ((null names) (file-checks (browser-checks directory)))))))
 
 (defun file-checks (files)
   "The checks of FILES, browser checks in checks/."
@@ -235,15 +258,16 @@ workers, from one image of the client and its scenarios' templates, or
 with TUN_CHECK_IMAGE=0 against a fresh preview each, one after another."
   (let* ((directory (absolute-directory (or dir ".")))
          (client (client-name directory))
-         (files (check-files directory names))
          (runner (check-runner))
          (out (merge-pathnames ".build/checks/" directory))
          (name (format nil "~a-check" (preview-name client (worktree-branch directory))))
          (data (merge-pathnames ".data/check/" directory)))
     (with-verify-lock ()
       (if (equal (uiop:getenv "TUN_CHECK_IMAGE") "0")
-          (run-checks client files runner out name directory data)
-          (run-checks-from-image client (file-checks files) runner out name directory data
+          (run-checks client (check-files directory (remove +generated-check-name+ names
+                                                            :test #'string=))
+                      runner out name directory data)
+          (run-checks-from-image client (run-list directory names) runner out name directory data
                                  :jobs (check-jobs))))))
 
 (defun run-checks (client files runner out name directory data)
@@ -466,6 +490,7 @@ named NAME-INDEX."
          (database (database-name "check" index))
          (place (merge-pathnames (format nil "check-~d/" index) (check-run-data run)))
          (log (merge-pathnames "server.log" place))
+         (sweep (and (browser-check-sweep check) (merge-pathnames "sweep.json" place)))
          (self (sb-posix:getpid))
          (url (format nil "http://127.0.0.1:~d" port))
          (pid nil)
@@ -481,6 +506,7 @@ named NAME-INDEX."
                                          "--claimed-identity" "--public-url" url
                                          "--preview-report"
                                          (namestring (merge-pathnames "report.json" place)))
+                                   (and sweep (list "--page-sweep" (namestring sweep)))
                                    (if copied
                                        (list "--scenario-made")
                                        (list "--scenario" (browser-check-scenario check)))))
@@ -491,7 +517,8 @@ named NAME-INDEX."
                                 "directory" (namestring (check-run-directory run))
                                 "port" port "pid" pid "url" url "local_url" url "shared" nil
                                 "data" (namestring place) "log" (namestring log)
-                                "database" database "started" (local-time-string))))
+                                "database" database "started" (local-time-string)
+                                "sweep" (if sweep (namestring sweep) :null))))
              (ensure-directories-exist (state-directory))
              (write-text (state-file (jget preview "name")) (to-json-string preview))
              (handler-bind ((step-failed (lambda (condition)
@@ -522,6 +549,12 @@ named NAME-INDEX."
     (uiop:copy-file log (merge-pathnames (format nil "~a-~a.log" (browser-check-name check) what)
                                          (check-run-out run)))))
 
+(defun sweep-environment (sweep)
+  "What goes before the runner's command for a check whose server wrote the
+page sweep's pages to SWEEP, a file's name or :NULL: the generated check
+reads them from TUN_PAGE_SWEEP."
+  (and (stringp sweep) (list "env" (format nil "TUN_PAGE_SWEEP=~a" sweep))))
+
 (defun run-one-check (run check index)
   "Run CHECK, the INDEXth of RUN, against a server of its own; its result
 and what the runner printed, as (RESULT . OUTPUT)."
@@ -530,7 +563,8 @@ and what the runner printed, as (RESULT . OUTPUT)."
              (output (merge-pathnames "runner.log" (jget preview "data"))))
         (unwind-protect
              (progn
-               (uiop:run-program (append (check-run-runner run)
+               (uiop:run-program (append (sweep-environment (jget preview "sweep"))
+                                         (check-run-runner run)
                                          (list (namestring (check-run-out run))
                                                (jget preview "local_url")
                                                (namestring (browser-check-file check))))

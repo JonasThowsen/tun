@@ -486,7 +486,104 @@ posts what they offer, as a browser would.
 - **Tun's own pages** are opened in Tun's suite, as their tools are
   fuzzed: core's and every module's, from the scenario `fuzz-records`.
 
-## 6. Not yet
+## 6. Page tests over HTTP
+
+What a browser check asserts from the server's answer, a client's suite
+asserts without a browser (`preview.md` §4, «What a browser check is
+for»): a browser check is only for what a browser alone decides (what a
+script does, touch, the layout at a width, what is on the first screen);
+everything the server's answer decides is a page test. One language
+suffices for a browser check when the other changes only text, and «the
+page does not scroll sideways» is the generated check's on every page it
+reaches (`preview.md` §4, «The generated check»). `tun-test-support`
+has a reader for it, the package `tun.page-test`, which a test reaches
+through a local nickname: its
+`defpackage` gets `(:local-nicknames (#:page #:tun.page-test))`. No
+client `:use`s it, so its names never meet a client's own.
+
+- **The server.** `(page:with-server (&key class scenario database
+  language actor) body...)` runs BODY with `*app*` an application of
+  CLASS on the test clock, holding SCENARIO's records (a scenario or its
+  name; none by default), in memory (`:database :memory`, the default)
+  or on a database of the test Postgres server (`:postgres`, where
+  record policies apply, `store.md` §6). It is served over HTTP by a
+  server in the test's own process on a port of its own, which takes
+  claimed identity (`auth.md` §1), and stopped when BODY ends. LANGUAGE,
+  when given, is set as the tenant's language (`i18n.md`) before BODY;
+  ACTOR is who BODY's requests are sent as unless one names another.
+- **The records, once.** A scenario is made once in a process for each
+  class, scenario and database, and each `with-server` gets a copy of
+  what it made: the memory store copied, or a Postgres database copied
+  from a template. A scenario that changes a global variable, found as
+  `tun check` finds it (`preview.md` §4, «The templates»), among the
+  packages of the class, of the scenario and the client's, is made again
+  for each `with-server` instead, so what it set holds for the test.
+- **Requests.** Each answers a `page:answer` and follows no redirect:
+  - `(page:visit PATH &key actor htmx target headers)`, a GET;
+  - `(page:post PATH FIELDS &key actor htmx target headers multipart)`,
+    FIELDS an alist of a name and a value, or of a name and a list of
+    values, which posts the name once for each, as a set of ticked boxes
+    does; a value that is a pathname is that file, sent multipart;
+  - `(page:submit ANSWER &key form fields button actor htmx target
+    headers)`, a form of ANSWER sent as a browser sends it untouched (§5,
+    «Forms»), with FIELDS in place of the page's values of the same names:
+    to the form's action (the answer's path when it has none), with its
+    method (a GET's fields as the query), multipart when its `enctype`
+    says so. BUTTON, a submit button's name or its text, is the one
+    pressed; without it the first named submit button is sent. The form
+    is the one FORM, a selector, names; without FORM, the form BUTTON
+    belongs to (inside it, or naming it with `form="ID"`); without
+    either, the first form inside the page's `<main>` (the frame's own
+    forms, such as «Sign out», are outside it), else the answer's first
+    form;
+  - `(page:follow ANSWER &key actor)`, a GET of where ANSWER redirects.
+  ACTOR is the server's unless given; NIL sends none. It goes as
+  `X-Tun-Actor`. Each actor's cookies are kept for the server's life.
+  HTMX `:partial` or `:full` sends `HX-Request: true` and that
+  `HX-Request-Type` (`ui.md` §8.1), TARGET as `HX-Target`.
+- **An answer.** `page:status`; `page:location`, the path (on this
+  server, else the URL as sent) of a 3xx's `Location`, or of the
+  `HX-Redirect` or `HX-Location` an htmx request was answered with;
+  `page:header` by name; `page:content-type`; `page:body`, text for a
+  text or JSON type, else octets; `page:json`, the body read as JSON.
+- **What it shows.** Read from an answer's HTML, a page's or a
+  fragment's, or from an element of it:
+  - `page:element` and `page:elements`, the first or every element a
+    selector names, in document order. A selector is a type, `#id`,
+    `.class`, `[attr]` and `[attr=value]` (also `~=`, `^=`, `$=`, `*=`;
+    a value quoted or bare), or several of those together, joined by a
+    space (a descendant) or `>` (a child), and several selectors by
+    `,`. Anything else is refused, naming the selector, rather than
+    misread;
+  - `page:part` and `page:parts`, by `data-part` (`[data-part=NAME]`);
+  - `page:text`, an element's or the page's text as a person reads it:
+    white space collapsed to one space and trimmed, the content of
+    `script`, `style` and `template` elements and of elements with the
+    `hidden` attribute left out (what CSS hides is a browser's to know);
+  - `page:attribute`, `page:tag`;
+  - `page:read-html`, a text of HTML read as an answer's body is, such as
+    a frame's `srcdoc`, for the readers here to read;
+  - `page:title`, the document's title; `page:headings`, the text of
+    each `h1` to `h6` in order; `page:links`, each `<a href>` as its
+    text and its `href`, `(TEXT . HREF)`; `page:alerts`, the text of each `.tun-alert`
+    and `[role=alert]`.
+- **Forms.** `page:form` (the first a selector names; without one, the
+  first form inside the page's `<main>`, else the answer's first form, as
+  `page:submit` takes it) and `page:forms` (every form, in order):
+  `page:form-action`, `page:form-method` (`"get"` or `"post"`),
+  `page:form-multipart-p`, `page:form-fields` (what a browser sends
+  untouched, an alist in order), `page:form-value` and
+  `page:form-values` by name, and `page:form-errors`, each refused field
+  as its name and its message: a control with `aria-invalid="true"`, its
+  message the text of the element of its `aria-describedby` that is a
+  field's error (`ui.md` §5); `page:form-error` by name. A form is read
+  as an element is, by the readers above.
+- **What it is not.** It runs no script: what htmx swaps, what a
+  script hides or shows, layout, focus and touch are a browser check's.
+  A test of a fragment asks for it as htmx would (`:htmx :partial`) and
+  reads the answer, not the page after the swap.
+
+## 7. Not yet
 
 Pages (§5) are not checked for the following:
 - forms posted with values made up as §2 makes inputs;

@@ -1776,7 +1776,12 @@ beside the others, so it may not rely on another test having run before
 it; one that does fails only in the workers.
 
 A browser check is `checks/NAME.py`, with `run(t)`;
-`tun check` runs each against a server and a database of its own, with
+`tun check` runs each, and first a check Tun makes for every client,
+`generated-every-page-at-both-widths` (every page the page sweep reaches,
+as each of its actors, at 390 and 1280 px, failing on an answer of 400
+or more, sideways scrolling, a JavaScript or console error or a policy
+violation, a picture of each),
+against a server and a database of its own, with
 its scenario's records (`SCENARIO = "NAME"`, else `default`), in
 Chromium. The servers start from one image of the client made for the
 run, and each scenario's records are made once and copied for each
@@ -1793,6 +1798,71 @@ def run(t):
     page.sign_in("employee:anna")
     page.goto("/")
     t.check(page.get_by_text("Ola Nordmann").count() == 1, "Ola is listed")
+```
+
+A browser check is only for what a browser alone decides: what a script
+does, touch, the layout at a width, what is on the first screen
+(`spec/preview.md` §4). What the server answers is a page test in the
+suite, over HTTP and in milliseconds, with `tun.page-test`
+(`spec/testing.md` §6), which the tests' package reaches by a nickname:
+
+```lisp
+(defpackage #:notes-client.tests
+  (:use #:cl #:fiveam #:tun.test-support)
+  (:local-nicknames (#:page #:tun.page-test)))
+```
+
+Each step of a check becomes a request or a reading of its answer:
+
+| In a check | In a page test |
+|---|---|
+| `page.sign_in("employee:anna")` | `(page:with-server (:class … :scenario "default" :actor "employee:anna") …)` |
+| `page.goto("/document")` | `(page:visit "/document")` |
+| a click that follows a link | `(page:visit (cdr (assoc "Text" (page:links answer) :test #'string=)))` |
+| filling a form and pressing its button | `(page:submit answer :fields '(("title" . "New")) :button "Save")` |
+| ticking two of a set of boxes | `:fields '(("days" "mon" "wed"))`, and `'(("days"))` for none |
+| `with page.expect_navigation()` after a post | `(page:status answer)` is 303; `(page:follow answer)` |
+| `with page.expect_htmx()` around a swap | `(page:visit "/x" :htmx :partial)`, or `page:post` with it, read as the answer |
+| `page.locator("[data-part=total]").inner_text()` | `(page:text (page:part answer "total"))` |
+| `page.locator("h1").text_content()` | `(first (page:headings answer))` |
+| a field's message after a refused save | `(page:form-error (page:form answer) "email")` |
+| `page.request.get(href)` for a download | `(page:visit href)`, then `page:header`, `page:body` |
+| the same in Norwegian | `:language "nb"` on `with-server` |
+| «the page does not scroll sideways» | nothing: the generated check sees every page at both widths |
+
+The showcase's `pdf-document` check, converted (its whole test is in
+`checks/showcase/tests/pages.lisp`):
+
+```python
+def run(t):
+    page = t.phone()
+    page.sign_in("employee:anna")
+    page.goto("/document")
+    text = page.locator(".tun-code-block").inner_text()
+    t.check("The board's estimate" in text, "the document's title is in its text")
+    before = page.locator("[data-document-file]").count()
+    with page.expect_navigation():
+        page.get_by_role("button", name="Make the PDF").click()
+    links = page.locator("[data-document-file]")
+    t.check(links.count() == before + 1, "a link to the PDF made")
+    answer = page.request.get(links.first.get_attribute("href"))
+    t.check(answer.headers.get("content-type") == "application/pdf", "as a PDF")
+```
+
+```lisp
+(test the-document-page-makes-its-pdf-and-links-to-it
+  (page:with-server (:class 'showcase:showcase :scenario "default" :actor "employee:anna")
+    (let* ((document (page:visit "/document"))
+           (before (length (page:elements document "[data-document-file]")))
+           (made (page:submit document :button "Make the PDF")))
+      (is (search "The board's estimate" (page:text (page:element document ".tun-code-block"))))
+      (is (= 303 (page:status made)))
+      (let* ((after (page:follow made))
+             (links (page:elements after "[data-document-file]"))
+             (file (page:visit (page:attribute (first links) "href"))))
+        (is (= (1+ before) (length links)))
+        (is (equal "application/pdf" (page:content-type file)))
+        (is (equalp "%PDF-" (map 'string #'code-char (subseq (page:body file) 0 5))))))))
 ```
 
 A check gives the same verdict on a busy machine as on a quiet one, so it

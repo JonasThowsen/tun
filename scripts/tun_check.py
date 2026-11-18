@@ -25,7 +25,9 @@ What a check gets:
     page.expect_post(path)     with page.expect_post("/x") as post: ...;
                                then post.body and post.status; a form the
                                browser posts itself: its answer's page loaded
-    t.check(condition, text)   record one check; carry on when it fails
+    t.check(condition, text)   record one check; carry on when it fails;
+                               picture=page records a JPEG of the page's
+                               screen with it, whether it passed or not
     t.close_pages()            close the pages opened so far (their errors recorded)
 
 A check reads no clock (spec/preview.md 4). It waits for what it reads:
@@ -463,9 +465,18 @@ class Run:
         ok = speed.ms < limit_ms
         return self.check(ok, f"{text}: {speed}; {'under' if ok else 'over'} its limit of {limit_ms} ms")
 
-    def check(self, condition, text):
+    def check(self, condition, text, picture=None):
         result = {"text": text, "ok": bool(condition), "screenshot": None}
-        if not condition and self.page is not None:
+        if picture is not None:
+            # A picture of every result, such as each page of the generated
+            # check: a JPEG, so hundreds of them are megabytes, not hundreds.
+            shot = self.out / f"{self.name}-{len(self.results) + 1}.jpg"
+            try:
+                picture.screenshot(path=str(shot), type="jpeg", quality=60)
+                result["screenshot"] = str(shot)
+            except Exception:
+                pass
+        elif not condition and self.page is not None:
             shot = self.out / f"{self.name}-{len(self.results) + 1}.png"
             try:
                 self.page.screenshot(path=str(shot))

@@ -42,8 +42,16 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
   why.
 - Write **Criteria**, numbered. Each is a sentence a check or a test can
   decide: «a card held at the right edge for a second brings the next
-  column into view», not «dragging works better». Criteria a browser shows
-  become browser checks, the rest tests.
+  column into view», not «dragging works better». A criterion becomes a
+  browser check only when a browser alone decides it: what a script does,
+  touch, the layout at a width, what is on the first screen. Everything
+  the server's answer decides (texts, parts, links, forms and their
+  refusals, a status, a redirect, a fragment, a download, a page in
+  another language) is a test in the suite over HTTP (`spec/testing.md`
+  §6), which runs in milliseconds (`spec/preview.md` §4, «What a browser
+  check is for»). One language suffices for a browser check when the
+  other changes only text. «The page does not scroll sideways» is the
+  generated check's on every page it reaches; do not assert it again.
 - **Estimate** the loop before the work: how long from its start to its
   end, gates and waiting included, as a range, and the earlier loops you
   compared it with. Find them with `tun loop actuals` here, and in the
@@ -80,9 +88,11 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
 ## 4. Build
 
 - Code, tests, and what the criteria need to be shown: the client's
-  scenario in `tests/scenarios.lisp`, and browser checks in `checks/`
-  (Tun's own: `checks/showcase/checks/`). The scenario is the data the
-  person will see in the preview, so make it show the change.
+  scenario in `tests/scenarios.lisp`, page tests over HTTP for what the
+  server answers, and browser checks in `checks/` (Tun's own:
+  `checks/showcase/checks/`) for what only a browser decides (§2). The
+  scenario is the data the person will see in the preview, so make it
+  show the change.
 - A change to Tun's kernel raises `+core-version+`
   (`src/core/module.lisp`) and `coreVersion` (`flake.nix`) here, not at
   Ship, so the tree that is shown is the one that ships.

@@ -376,6 +376,10 @@ the forms its pages offered; and the paths waiting to be opened, each
 it opens, for a test of the crawl itself."
   actor port report tally within
   (statuses (make-hash-table :test 'equal))
+  ;; The paths a GET got a page for, a whole one (200, text/html, not
+  ;; asked for as htmx asks), newest first: what the generated browser
+  ;; check opens (spec/preview.md 4).
+  (pages '())
   (forms '()) (form-keys (make-hash-table :test 'equal))
   (queue '()) (queue-end nil))
 
@@ -469,6 +473,12 @@ returns a problem's text, or NIL when the answer is right."
                 (when (>= status 400) "a refusal, to a role the page's policy admits")))
              (t (constantly nil)))))))
 
+(defun note-page (crawl path status html htmx)
+  "Note PATH among the crawl's pages when its GET, asked for with HTMX's
+headers or without (NIL), got a whole page: 200 and HTML, without htmx."
+  (when (and (eql status 200) html (null htmx))
+    (push path (page-crawl-pages crawl))))
+
 (defun open-listed-pages (crawl listed)
   "GET each page of LISTED as the crawl's actor and check its answer."
   (dolist (page listed)
@@ -483,6 +493,7 @@ returns a problem's text, or NIL when the answer is right."
                    (when problem (note-failure crawl "GET" path status :listed problem nil)))))
         (when (and (integerp status) (<= 200 status 299))
           (setf (gethash path (page-report-answered (page-crawl-report crawl))) t))
+        (note-page crawl path status html nil)
         (when (and (integerp status) (< status 400))
           (learn-from crawl path html location))))))
 
@@ -511,6 +522,7 @@ bounds, and check each answer (spec/testing.md 5)."
                         (crawl-request crawl :get path :htmx htmx)
                       (note-opened tally path)
                       (setf (gethash path statuses) status)
+                      (note-page crawl path status html htmx)
                       (cond ((server-error-p status)
                              (note-failure crawl "GET" path status from (error-problem status)
                                            fault))
@@ -667,6 +679,45 @@ under them are opened.  Returns a PAGE-REPORT."
     (setf (page-report-failures report) (reverse (page-report-failures report))
           (page-report-seconds report) (stopwatch-seconds watch))
     report))
+
+(defun swept-pages (application scenario)
+  "The pages the sweep's GETs get as each of its actors, on APPLICATION
+served from an acceptor of its own in this process: a list of (ACTOR .
+PATHS), ACTOR a string or NIL for no one, PATHS in the order they were
+opened. SCENARIO's actors are among them, as OPEN-EVERY-PAGE takes them.
+Only GETs, so the records stay as they were for whoever reads them next
+(spec/preview.md 4, «The generated check»)."
+  (let* ((*app* application)
+         (actors (append (page-actors +fuzz-actors+ (and scenario (scenario-actors scenario)))
+                         (list nil)))
+         (listed (tun.web:application-pages application))
+         (acceptor (tun.http:start-server application :port 0))
+         (port (tun.http:server-port acceptor)))
+    (unwind-protect
+         (loop for actor in actors
+               collect (let* ((report (make-page-report (and scenario (scenario-name scenario))
+                                                        listed))
+                              (tally (make-actor-tally (or actor +no-actor+)))
+                              (crawl (make-page-crawl actor port report tally nil)))
+                         (enqueue-path crawl "/" :listed nil)
+                         (open-listed-pages crawl listed)
+                         (open-linked-paths crawl)
+                         (cons actor (remove-duplicates (reverse (page-crawl-pages crawl))
+                                                        :test #'string= :from-end t))))
+      (tun.http:stop-server acceptor))))
+
+(defun write-page-sweep (file application scenario)
+  "Write to FILE, as JSON, the pages SWEPT-PAGES gets on APPLICATION:
+{\"actors\": [{\"actor\": ACTOR or null, \"paths\": [PATH, ...]}, ...]}."
+  (let ((swept (swept-pages application scenario)))
+    (ensure-directories-exist file)
+    (with-open-file (out file :direction :output :if-exists :supersede :external-format :utf-8)
+      (write-string (to-json-string
+                     (jobj "actors" (jarr (mapcar (lambda (entry)
+                                                    (jobj "actor" (or (car entry) :null)
+                                                          "paths" (jarr (cdr entry))))
+                                                  swept))))
+                    out))))
 
 (defun check-every-page-answers-every-role (what &rest options)
   "Run OPEN-EVERY-PAGE with OPTIONS for WHAT, a name for the summary, print

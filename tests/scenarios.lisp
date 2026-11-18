@@ -226,16 +226,20 @@ the preview's own: --scenario NAME, the scenario to make before the server
 listens (default, when the client defines one); --preview-report FILE,
 where the scenario and its actors are then written as JSON;
 --scenario-made, for a database copied from a scenario's template, which
-makes no scenario; and --seed-template FILE, which makes the scenario,
+makes no scenario; --seed-template FILE, which makes the scenario,
 writes its report to FILE with the variables it set, and ends without
-listening (spec/preview.md 4)."
+listening; and --page-sweep FILE, which writes to FILE, once the scenario
+is in place and before the server listens, the pages the page sweep's
+GETs get as each of its actors, for the generated browser check
+(spec/preview.md 4)."
   (unless (member "--claimed-identity" argv :test #'string=)
     (error "A preview serves with --claimed-identity"))
   (let* ((asked (option-value argv "--scenario"))
          (scenario (if asked (find-scenario asked) (find-scenario "default")))
          (report (option-value argv "--preview-report"))
          (seed (option-value argv "--seed-template"))
-         (made (member "--scenario-made" argv :test #'string=)))
+         (made (member "--scenario-made" argv :test #'string=))
+         (sweep (option-value argv "--page-sweep")))
     (when (and asked (null scenario))
       (format *error-output* "~a: there is no scenario ~a; the scenarios are ~{~a~^, ~}~%"
               name asked (scenario-names))
@@ -250,7 +254,10 @@ listening (spec/preview.md 4)."
                                                  (let ((*app* application))
                                                    (funcall (scenario-function scenario))))
                                                (when report
-                                                 (write-preview-report report scenario))))))))
+                                                 (write-preview-report report scenario))
+                                               (when sweep
+                                                 (write-page-sweep sweep application
+                                                                   scenario))))))))
 
 (defun seed-template (application scenario file)
   "Make SCENARIO in APPLICATION's database, a template's, write its report

@@ -193,6 +193,24 @@ makes:
 
 ## 4. Browser checks
 
+**What a browser check is for** (core 2.51.0). A browser check is only
+for what a browser alone decides: what a script does (a chooser that
+narrows as one types, a dialog, a sheet or a popover, a date picker,
+keyboard and focus, a page's timers, what htmx swaps in), touch, the
+layout at a width (a control sized for a finger, a table on a phone,
+what is on the first screen), and what the browser itself enforces, such
+as the page's policy. Everything the server's answer decides (a page's
+texts, parts, headings, links and forms, a field's value or its refusal,
+a status, a redirect and where it leads, a fragment an htmx request
+gets, a download's headers and bytes, a page in another language) is a
+test in the suite over HTTP (`testing.md` §6), which runs in
+milliseconds. One language suffices for a browser check when the other
+changes only text: the other language's texts are a page test's. «The
+page does not scroll sideways», at both widths, is the generated check's
+on every page it reaches («The generated check» below); a check of its
+own asserts it only for a page the sweep does not reach, or in a state
+only a script brings about.
+
 A check is a Python file in the client's `checks/` directory (one whose
 name starts with `_` is not a check). It defines `run(t)`, and `SCENARIO
 = "NAME"` when it starts from another scenario than `default`:
@@ -242,7 +260,9 @@ and are stopped when their check ends. A check gets:
   redirect, the page the redirect leads to) to be loaded, which the check
   reads next, unless the answer is a download or no content;
 - `t.check(condition, text)`, which records a screenshot when it fails
-  and carries on, so one run lists every failure;
+  and carries on, so one run lists every failure; with `picture=page`
+  it records a picture of that page's screen whether it passed or not,
+  as a JPEG, `NAME-N.jpg`;
 - `t.close_pages()`, which closes the pages the check has opened so far,
   their JavaScript errors recorded, so a check of many pages frees their
   connections (which the server bounds per address, `core.md` §7.5)
@@ -358,10 +378,38 @@ start is mostly the same work for every check: a database server made
    server that made its scenario's template as `NAME-template.log`.
 
 The checks the runner takes are a list, each a name, the scenario it
-starts from and the file `tun_check.py` drives: the files in `checks/`,
-and in time checks Tun makes for every client. `TUN_CHECK_IMAGE=0`
-gives the way of before: each check against a fresh preview of its own
-(§2), one after another.
+starts from and the file `tun_check.py` drives: the generated check below,
+then the files in `checks/`. `TUN_CHECK_IMAGE=0`
+gives the way of before: each file's check against a fresh preview of its
+own (§2), one after another, without the generated check.
+
+**The generated check** (core 2.51.0). Every client gets one check it
+did not write, `generated-every-page-at-both-widths`, run first in a run
+because it is the longest, and by itself with `tun check
+generated-every-page-at-both-widths`:
+
+- **Which pages.** Its server, started from the default scenario as any
+  check's, is given `--page-sweep FILE`: before it serves, it runs the
+  GETs of the page sweep (`testing.md` §5) in its own process, on the
+  same application and database, each actor in turn, and writes to FILE
+  every path for which an actor got a page: a GET answered 200 with
+  `text/html`, of the listed pages, the home path and the links the
+  pages name and the redirects lead to, within the sweep's bounds (two
+  paths a shape, 150 an actor). Not the paths it asks for with htmx's
+  headers, which answer fragments, and not the forms it posts: those
+  would change the records the later pages show.
+- **Who.** The sweep's actors: the scenario's, each fuzz role none of
+  them has (`admin:fuzz`, `employee:fuzz`, `viewer:fuzz`), and no one.
+- **What it checks.** Each page of each actor at 390×844 with touch and
+  at 1280×800, signed in as the actor (no one: not signed in): after its
+  load, and after every htmx request it began has been answered, it
+  fails when the page answered 400 or more, when the document is wider
+  than the window (it scrolls sideways), when the page had a JavaScript
+  error or its console an error, or when the browser reported a
+  violation of the page's Content-Security-Policy.
+- **What it records.** One result a page and width, naming the width,
+  the actor, the path and what failed, each with a picture of the screen
+  as a JPEG, `NAME-N.jpg`, beside the results.
 
 **The verify lock.** When `TUN_VERIFY_LOCK` names a file, `tun check`
 runs its checks holding an exclusive `flock(2)` lock on it (the file is
@@ -386,7 +434,10 @@ them: a page shaped like a tracker's `/saker`, whose board's moves are
 operations. Its checks are in `checks/showcase/checks/`; `bin/check`
 runs them on this working tree. The first are the board checks written
 by hand on 2026-10-22: filling a phone's screen, dragging on a phone
-with paging and autoscroll, and dragging with a mouse.
+with paging and autoscroll, and dragging with a mouse. What the
+showcase's server decides is tested by its own suite,
+`checks/showcase/tests/`, page tests over HTTP (`testing.md` §6), which
+`bin/test` runs as it runs a client's.
 
 ## 5. Decided
 

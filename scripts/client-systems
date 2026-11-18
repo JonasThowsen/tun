@@ -1,12 +1,14 @@
 #!/usr/bin/env bash
 # scripts/client-systems -- the client systems bin/build and bin/test compile
-# and test, one per line: the test client in tests/client/, then every
-# clients/<dir>/<system>.asd (a client's second manifest, such as
+# and test, one per line: the test client in tests/client/, the showcase in
+# checks/showcase/, whose suite is its page tests (spec/preview.md 4), then
+# every clients/<dir>/<system>.asd (a client's second manifest, such as
 # shop-minimal, too; a shared shop-base is not). A checkout without clients/
-# has the test client alone.
+# has the test client and the showcase.
 set -euo pipefail
 cd "$(dirname "$0")/.."
 echo test-client
+echo showcase
 shopt -s nullglob
 for asd in clients/*/*.asd; do
   name="$(basename "$asd" .asd)"

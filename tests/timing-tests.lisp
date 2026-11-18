@@ -146,10 +146,14 @@ WHAT).  A line that is only a comment is not code."
                          collect (cons number (format nil "reads the clock with ~a" read)))))
 
 (defun browser-check-files ()
-  "Every Python file under Tun's checks/: the showcase's checks and their helpers."
-  (directory (merge-pathnames (make-pathname :directory '(:relative "checks" :wild-inferiors)
-                                             :name :wild :type "py")
-                              (asdf:system-source-directory "tun"))))
+  "Every Python file under Tun's checks/: the showcase's checks and their
+helpers; and the checks Tun makes for every client, scripts/checks/."
+  (let ((tun (asdf:system-source-directory "tun")))
+    (append (directory (merge-pathnames (make-pathname :directory '(:relative "checks"
+                                                                    :wild-inferiors)
+                                                       :name :wild :type "py")
+                                        tun))
+            (directory (merge-pathnames "scripts/checks/*.py" tun)))))
 
 (test checks-read-no-clock
   (let ((files (browser-check-files)))

@@ -124,6 +124,16 @@ repeating the history.
   `tests/timing.lisp` reads a clock, and a test checks that
   (`spec/tooling.md`, «Speed and time in tests»).
 
+- **A browser check for what the server decides costs minutes.** A
+  client's 100 checks took 30 minutes, and 77 % of their assertions read
+  only what the server answered to a GET or a POST; 205 more were the
+  same «the page does not scroll sideways» after each step
+  (`loops/fast-checks.md`, «Measured»). Assert what the server answers in
+  a page test (`spec/testing.md` §6); leave sideways scrolling to the
+  generated check, which opens every page the sweep reaches at both
+  widths; and write a browser check only for what a browser alone
+  decides (`spec/preview.md` §4).
+
 ## Single-page screens and TypeScript
 
 - **A session cookie goes with a request from another origin on the same

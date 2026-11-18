@@ -64,6 +64,36 @@
       (is (equal "generated-width" (tun.cli::browser-check-name made))
           "a check Tun makes is a name, a scenario and a file, as a file's"))))
 
+(test the-generated-check-runs-first-and-by-its-name
+  (let ((before (uiop:getenv "TUN_WORKTREE")))
+    (unwind-protect
+         (let* ((directory (asdf:system-relative-pathname "tun" "checks/showcase/"))
+                (files (tun.cli::browser-checks directory))
+                (all (progn (sb-posix:setenv "TUN_WORKTREE"
+                                             (namestring (asdf:system-source-directory "tun")) 1)
+                            (tun.cli::run-list directory nil)))
+                (generated (first all)))
+           (is (equal "generated-every-page-at-both-widths"
+                      (tun.cli::browser-check-name generated))
+               "first, being the longest")
+           (is (equal "default" (tun.cli::browser-check-scenario generated)))
+           (is (tun.cli::browser-check-sweep generated) "its server writes the sweep's pages")
+           (is (probe-file (tun.cli::browser-check-file generated)) "Tun's own file")
+           (is (= (1+ (length files)) (length all)) "then every file")
+           (is (notany #'tun.cli::browser-check-sweep (rest all)))
+           (is (equal '("generated-every-page-at-both-widths")
+                      (mapcar #'tun.cli::browser-check-name
+                              (tun.cli::run-list directory
+                                                 '("generated-every-page-at-both-widths"))))
+               "by its name alone")
+           (is (equal '("ui-look")
+                      (mapcar #'tun.cli::browser-check-name
+                              (tun.cli::run-list directory '("ui-look"))))
+               "and not with a file named alone"))
+      (if before
+          (sb-posix:setenv "TUN_WORKTREE" before 1)
+          (sb-posix:unsetenv "TUN_WORKTREE")))))
+
 ;;; ------------------------------------------------------------------
 ;;; Which scenarios a template stands for
 
