@@ -100,6 +100,17 @@ tun loop start NAME --title "Kort som dras på telefonen bytter kolonne" \
 - On a machine where several builders verify, export `TUN_VERIFY_LOCK`
   naming one file for all of them (the installation says which): each
   round then waits for the others' and says so (`spec/loop.md` §6).
+- In Tun, a change must leave every client passing. Commit, clone each
+  client's repository into a scratch folder, and run their suites on the
+  commit together: `bin/tun clients test CLONE/app CLONE/other ...
+  --log FOLDER` (`spec/cli.md` §5.2). It runs them at once under one hold
+  of the verify lock, overriding every input of theirs that is Tun's
+  repository, and prints a line a client; read a failed one's log.
+- `tun check` runs the checks in workers from one image of the client,
+  each scenario's records copied from a template (`spec/preview.md` §4).
+  `TUN_CHECK_JOBS=1` runs them one after another, and `TUN_CHECK_IMAGE=0`
+  the old way, a fresh preview each, to tell whether a failure comes from
+  running beside the others.
 - After five failed rounds in a row the loop is `stuck`. Tell the person
   what fails and what you tried, and wait. Their go-ahead, with whatever
   they decide, is `tun loop resume --by jonas --why "…"`.

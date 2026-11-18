@@ -93,6 +93,55 @@ and a check added to Tun reaches every client with `tun update`.
   Tun adds of this kind joins the list in `tun.test-support`.
 - **Fast.** A client's generated tests together take at most 30 seconds
   on the machine its suite runs on, so they run with every change.
+- **In parallel.** `(run-tests-in-parallel SUITES &key jobs)`, from
+  `tun.test-support`, runs a client's suite and its modules' the way
+  Tun's `bin/test` runs Tun's (`tooling.md`, «Running the tests»), and
+  `tun new`'s `tests/run.lisp` calls it after the strict compile. SUITES
+  are the tests' packages, the client's and each of its modules', by
+  name, or FiveAM suite names. A package's suite is the FiveAM suite named
+  as the package without `TUN.` and `.TESTS` (`NOTES.TESTS` → `NOTES`,
+  `TUN.BILLING.TESTS` → `BILLING`), when `fiveam:get-test` names a suite
+  of that name: it must then be what the package's `RUN-TESTS` runs (as
+  `tun new`'s and a module's do, `(run! 'NAME)`); a package that runs
+  more than one suite names a suite of another name. Without one, the
+  package's `RUN-TESTS` runs whole, as one unit. It returns true only
+  when every check of every suite passed.
+  - JOBS is `TUN_TEST_JOBS` when set, else the smaller of the machine's
+    processors and its available memory less 4 GB over 1.5 GB, at least
+    1. With one job it runs each package's `RUN-TESTS`, or each suite
+    with `run!`, in this process, one after another, and forks nothing:
+    the run of a client before core 2.50.0.
+  - With more, it forks JOBS workers from its own process, which holds
+    what the strict compile loaded and nothing else: a fork shares that
+    image, so no worker loads or compiles. A process that runs threads
+    besides its main one cannot fork: it says so and runs the suites in
+    itself, as with one job. The work is in units: each
+    test of a suite (the tests of a child suite each a unit too), a
+    package's `RUN-TESTS` whole, and the share of a split test (below).
+    A worker takes the next unit until none is left, the longest first
+    by the times of the last run in `.build/test/times` (one with no
+    time before them all), with its output, FiveAM's report included, in
+    `.build/test/units/UNIT.log`.
+  - At the end it prints a line for each unit, in the order of the
+    suites, `ok` or `FAIL`, its suite and test (and share) and its
+    seconds, so the output names every test run, as FiveAM's does; then
+    the output of each unit that failed, in full; then a line for each
+    suite (`SUITE: N tests, M failed`) and one for the run (`N units in S
+    s on J workers`). A unit fails when one of its
+    checks fails or errs, and when its worker ends while it runs, which
+    the line names; a worker that ends while units are left is replaced.
+    The times of this run replace those of the last.
+  - **Split tests.** The fuzzing test (test 6) and the scenario test
+    (test 5) are each up to four units, the smaller of four and JOBS:
+    share I of N fuzzes the tools, and makes the scenarios, at the
+    positions I, I + N, I + 2N … of the list the whole test takes, so the
+    shares together cover each once. The fuzzer's summary names its
+    share (`share 2 of 4`). Run whole, as with one job, they are the
+    tests they were.
+  - The workers share the suite's Postgres server
+    (`TUN_TEST_POSTGRES`), on which each test makes its own databases,
+    and a test binds the ports it uses, as Tun's own suites do side by
+    side.
 - A client keeps its own tests beside the form, in the same suite or in
   other files. Removing or editing a generated test is not how a client
   skips one: a check that does not fit a client is fixed in Tun.

@@ -916,9 +916,9 @@ it again."
 (defun fuzz-summary (report what)
   "One line on REPORT, a run on WHAT: the tools, the calls, the time, the
 seed and the calls per tool and actor, and how to change them."
-  (format nil "Fuzzed ~d tool~:p of ~a: ~d calls in ~,1f s, seed ~d (TUN_FUZZ_SEED), ~
+  (format nil "Fuzzed ~d tool~:p of ~a~@[ (~a)~]: ~d calls in ~,1f s, seed ~d (TUN_FUZZ_SEED), ~
                ~d per tool and actor (TUN_FUZZ_CALLS)~:[~;, ~:*~d failed~]."
-          (fuzz-report-tools report) what (fuzz-report-calls report)
+          (fuzz-report-tools report) what (share-text) (fuzz-report-calls report)
           (float (fuzz-report-seconds report)) (fuzz-report-seed report)
           (fuzz-report-calls-per-actor report)
           (and (fuzz-report-failures report) (length (fuzz-report-failures report)))))

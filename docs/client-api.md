@@ -1747,9 +1747,43 @@ A test about something else than time whose calls a loaded machine would
 stop at the operation's deadline runs them in `(with-deadline-lifted ()
 ...)`.
 
+`bin/test` runs the suite in workers, one process forked for each after
+the strict compile, the longest tests first, when `tests/run.lisp`
+ends as `tun new` writes it since core 2.50.0. A client made before
+changes its last form, the one that calls each `RUN-TESTS`, to:
+
+```lisp
+;;; The client's suite and each module's, in workers forked from this
+;;; process (spec/testing.md 1, «In parallel»).
+(uiop:quit
+ (if (uiop:symbol-call "TUN.TEST-SUPPORT" "RUN-TESTS-IN-PARALLEL"
+                       (cons "NOTES-CLIENT.TESTS"
+                             (loop for tests in *module-tests*
+                                   for module = (subseq tests (length "tun-") (position #\/ tests))
+                                   collect (format nil "TUN.~:@(~a~).TESTS" module))))
+     0 1))
+```
+
+with the client's own tests' package in place of `NOTES-CLIENT.TESTS`.
+Each package's suite is split into its tests when it is named as the
+package without `TUN.` and `.TESTS` (`NOTES-CLIENT`, a module's
+`BILLING`) and is what its `RUN-TESTS` runs; a package without one runs
+its `RUN-TESTS` whole.
+
+`TUN_TEST_JOBS=1` runs it in one process as before, and a failed test's
+output is printed in full at the end. A test runs in a worker of its own
+beside the others, so it may not rely on another test having run before
+it; one that does fails only in the workers.
+
 A browser check is `checks/NAME.py`, with `run(t)`;
-`tun check` runs each against a fresh preview of its scenario
-(`SCENARIO = "NAME"`, else `default`) in Chromium:
+`tun check` runs each against a server and a database of its own, with
+its scenario's records (`SCENARIO = "NAME"`, else `default`), in
+Chromium. The servers start from one image of the client made for the
+run, and each scenario's records are made once and copied for each
+check, unless the scenario sets a variable of the client's, which
+`tun check` then names and makes per check; `TUN_CHECK_JOBS` checks run
+at once (`TUN_CHECK_JOBS=1` one after another), and `TUN_CHECK_IMAGE=0`
+gives each check a fresh preview as before (`spec/preview.md` §4):
 
 ```python
 """Anna sees both customers on her phone."""

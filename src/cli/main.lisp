@@ -15,6 +15,7 @@
        tun preview list [--json]
        tun preview stop NAME... | --all
        tun check [NAME...] [--dir DIR]
+       tun clients test DIR... [--jobs N] [--log DIR]
        tun typescript FOLDER [--dir DIR]
        tun loop start NAME --title TEXT [--mode MODE] [--client DIR] [--after LOOP]
                       [--item REF] [--tag TAG]... [--drafted DURATION]
@@ -182,6 +183,8 @@ the first item."
                                          :options '("--dir" "--scenario" "--port")))
             ((string= command "check")
              (run-with #'check-command :options '("--dir")))
+            ((string= command "clients")
+             (run-with #'clients-test-command :options '("--jobs" "--log")))
             ((string= command "typescript")
              (run-with #'typescript-command :options '("--dir")))
             ((string= command "loop")

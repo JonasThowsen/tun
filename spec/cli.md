@@ -136,6 +136,37 @@ function per operation (`typescript.md` §2, §3). It loads the client as
 `tun preview` does, so it needs nothing beyond the client's dev shell,
 and no Node.
 
+### 5.2 `tun clients test DIR... [--jobs N] [--log DIR]`
+
+From Tun's working tree (`bin/tun`): runs the `bin/test` of each client
+in a DIR on this tree's head, the way a change to Tun is tried on its
+clients before it lands (`docs/loop.md` §5), and says which passed.
+
+- Each DIR is a client's directory in a clone of its repository: the
+  command runs its `bin/test` there and writes nothing else into it. Its
+  flake is the nearest `flake.nix` at or above DIR within its git
+  repository, so a further client without a flake of its own
+  (`clients/CLIENT/`) runs in its repository's.
+- It runs `nix develop FLAKE --override-input INPUT URL… -c bin/test` in
+  DIR, given as a list of arguments, never through a shell. INPUT is each
+  input of the client's `flake.lock` whose source is Tun's repository,
+  the kernel and every module: URL is `git+file://TUN?rev=HEAD`, and
+  `&dir=PATH` for one locked with a `dir`, such as a module's
+  `modules/dashboard`. A client that pins no Tun is refused, naming it.
+- HEAD is the commit checked out in the Tun tree; a tree with changes is
+  refused, since its head is not what would be tried.
+- N clients run at once: `--jobs`, else the available memory less 4 GB
+  over 4 GB, at least 1. Each gets `TUN_TEST_JOBS` of the processors over
+  N, at least 1, for a suite that runs in parallel (`testing.md` §1).
+- The whole run holds the verify lock when `TUN_VERIFY_LOCK` names one
+  (`preview.md` §4), taken once for every client.
+- Each client's output goes to `--log`'s `NAME.log` (default
+  `.build/clients/`), NAME the client's directory's name, its
+  repository's before it when two are the same (`tun-erp-second`). It
+  prints one line a client as it ends, `ok` or `FAIL`, the name, the
+  seconds and the log, and at the end how many passed; it exits 1 when
+  one failed.
+
 ## 6. The client `tun new` creates
 
 ```
@@ -193,6 +224,11 @@ NAME/
   (`testing.md` §1) and the client's own. Then each module's tests run:
   the package `TUN.NAME.TESTS` of `tun-NAME/tests` exports `RUN-TESTS`,
   true when every test passed, and `bin/test` fails when one is false.
+  `tests/run.lisp` runs them all with `run-tests-in-parallel`
+  (`testing.md` §1, «In parallel»), given the client's tests' package and
+  each module's: each package's suite split into its tests, or its
+  `RUN-TESTS` whole where it has no suite of its name, in workers forked
+  after the compile.
 - `bin/serve [--port N]` serves the working tree, its own modules
   included, on `127.0.0.1:N` (default 8080) against a Postgres server of the client's own under
   `.data/postgres`, reachable only through a socket in that directory. The

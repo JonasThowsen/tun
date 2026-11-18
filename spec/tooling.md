@@ -145,6 +145,12 @@ to run after every change:
 - `TUN_TEST_SUITES="core test-client"` limits the run as before, and
   `bin/test --only SUITE` runs one core suite in this process.
 - On a machine of 12 processors the whole run takes under 2.5 minutes.
+- A client's `bin/test` runs its suite the same way since core 2.50.0,
+  once its `tests/run.lisp` calls `run-tests-in-parallel` after the
+  strict compile (`testing.md` §1, «In parallel»): workers forked from
+  the compiled process, the longest tests first, each test's output kept
+  and a failed one's printed in full. `TUN_TEST_JOBS` sets how many, and
+  1 is the run of one process as before.
 
 ## Speed and time in tests
 

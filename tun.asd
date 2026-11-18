@@ -247,6 +247,8 @@
                              (:file "introspection-tests")
                              (:file "cli-tests")
                              (:file "preview-tests")
+                             (:file "parallel-tests")
+                             (:file "check-run-tests")
                              (:file "generated-tests")
                              (:file "fuzz-tests")
                              (:file "policy-tests")

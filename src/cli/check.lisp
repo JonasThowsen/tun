@@ -215,9 +215,24 @@ shell, and SCRIPT of the Tun the client runs on."
       (when (stringp error)
         (format t "~&          ~a~%" (string-trim '(#\Newline) error))))))
 
+(defstruct (browser-check (:constructor make-browser-check (name scenario file)))
+  "A check the runner runs: its NAME, the SCENARIO its server starts from
+and the FILE tun_check.py drives. The files in checks/ are these, and so,
+in time, are the checks Tun makes for every client (spec/preview.md 4)."
+  (name "" :type string)
+  (scenario "default" :type string)
+  file)
+
+(defun file-checks (files)
+  "The checks of FILES, browser checks in checks/."
+  (mapcar (lambda (file) (make-browser-check (pathname-name file) (check-scenario file) file))
+          files))
+
 (defun check-command (names &key dir)
   "tun check (spec/preview.md 4): run the client's browser checks, or the
-ones NAMES name, each against a fresh preview of its scenario."
+ones NAMES name, each against a server and a database of its own: in
+workers, from one image of the client and its scenarios' templates, or
+with TUN_CHECK_IMAGE=0 against a fresh preview each, one after another."
   (let* ((directory (absolute-directory (or dir ".")))
          (client (client-name directory))
          (files (check-files directory names))
@@ -226,7 +241,10 @@ ones NAMES name, each against a fresh preview of its scenario."
          (name (format nil "~a-check" (preview-name client (worktree-branch directory))))
          (data (merge-pathnames ".data/check/" directory)))
     (with-verify-lock ()
-      (run-checks client files runner out name directory data))))
+      (if (equal (uiop:getenv "TUN_CHECK_IMAGE") "0")
+          (run-checks client files runner out name directory data)
+          (run-checks-from-image client (file-checks files) runner out name directory data
+                                 :jobs (check-jobs))))))
 
 (defun run-checks (client files runner out name directory data)
   "Run FILES, CLIENT's checks in DIRECTORY, each against a fresh preview NAME
@@ -257,3 +275,348 @@ with its database in DATA, by RUNNER, their results in OUT."
               (zerop failed) failed (length results) (namestring out))
       (unless (zerop failed)
         (fail-step "~d check~:p failed" failed)))))
+
+;;; ------------------------------------------------------------------
+;;; One image, one database server, workers (spec/preview.md 4)
+
+(defun environment-jobs (name)
+  "The whole number from 1 the environment variable NAME holds, or NIL when
+it is unset or empty; refuses anything else."
+  (let ((text (uiop:getenv name)))
+    (unless (zerop (length text))
+      (let ((number (ignore-errors (parse-integer text))))
+        (unless (and number (plusp number))
+          (refuse "~a is ~s; it takes a whole number from 1" name text))
+        number))))
+
+(defun processors ()
+  "The processors this process may run on, as nproc counts them."
+  (or (ignore-errors (parse-integer (uiop:run-program '("nproc") :output :string)
+                                    :junk-allowed t))
+      1))
+
+(defun available-gb ()
+  "The memory available for new work, MemAvailable of /proc/meminfo, in GB."
+  (let ((line (find-if (lambda (line) (eql 0 (search "MemAvailable:" line)))
+                       (ignore-errors (uiop:read-file-lines "/proc/meminfo")))))
+    (/ (or (and line (parse-integer line :start (length "MemAvailable:") :junk-allowed t)) 0)
+       (* 1024.0 1024.0))))
+
+(defun default-check-jobs (processors available-gb)
+  "How many check workers PROCESSORS and AVAILABLE-GB allow: at most 4 and
+a third of the processors, each taking 1.5 GB with 6 GB left over, at
+least one."
+  (max 1 (min 4 (floor processors 3) (floor (- available-gb 6) 1.5))))
+
+(defun check-jobs ()
+  "The workers tun check runs its checks in: TUN_CHECK_JOBS, else
+DEFAULT-CHECK-JOBS of this machine."
+  (or (environment-jobs "TUN_CHECK_JOBS")
+      (default-check-jobs (processors) (available-gb))))
+
+(defun check-socket-directory ()
+  "Where the run's Postgres server has its socket: a short path of this
+process's own."
+  (merge-pathnames (format nil "tun-check-~d/" (sb-posix:getpid))
+                   (or (uiop:getenv-absolute-directory "XDG_RUNTIME_DIR") #p"/tmp/")))
+
+(defun database-url (socket name)
+  (format nil "postgresql://preview@/~a?host=~a" name (string-right-trim "/" (namestring socket))))
+
+(defun database-name (&rest parts)
+  "A database's name of PARTS, in the letters Postgres takes bare."
+  (substitute-if #\_ (lambda (c) (not (alphanumericp c)))
+                 (string-downcase (format nil "~{~a~^_~}" parts))))
+
+(defun postgres-program (socket program &rest arguments)
+  "Run PROGRAM, createdb or dropdb, with ARGUMENTS on the run's server."
+  (run-checked (list* program "-h" (string-right-trim "/" (namestring socket)) "-U" "preview"
+                      arguments)
+               :output nil :error-output :string))
+
+(defun build-check-image (client directory worktree image log)
+  "Save IMAGE, an SBCL that has loaded CLIENT in DIRECTORY and its tests as a
+preview's server loads them, noting the client's own packages; its output
+in LOG."
+  (let ((own (remove nil (list (namestring directory)
+                               (let ((shared (repository-modules directory)))
+                                 (and shared (namestring shared)))))))
+    (handler-case
+        (run-checked
+         (client-lisp-command
+          client directory worktree
+          ;; The random state SBCL starts with, before anything draws from
+          ;; it, goes into the image (SAVE-CHECK-IMAGE).
+          (list (lisp-form "(let ((state (make-random-state nil)) (*compile-verbose* nil) (*load-verbose* nil)) (handler-bind ((warning #'muffle-warning)) (asdf:load-system \"tun-test-support\")) (setf (symbol-value (find-symbol \"*RANDOM-STATE-AT-START*\" \"TUN.TEST-SUPPORT\")) state))")
+                (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"LOAD-CLIENT-SYSTEMS\" ~s '~s)"
+                           (format nil "~a/tests" client) own)
+                (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"SAVE-CHECK-IMAGE\" ~s)"
+                           (namestring image))))
+         :output (namestring log) :error-output :output)
+      (step-failed (condition)
+        (fail-step "the client's image for the checks was not made: ~a. Its log ended:~%~a"
+                   condition (log-tail log))))
+    (unless (probe-file image)
+      (fail-step "the client's image for the checks was not saved. Its log ended:~%~a"
+                 (log-tail log)))))
+
+;;; A run's state, which its workers share: the run's places and programs,
+;;; what each scenario was found to be, and the templates made so far.
+
+(defstruct (check-run (:constructor make-check-run
+                                    (client directory worktree image socket data name runner out)))
+  client directory worktree image socket data name runner out
+  (lock (sb-thread:make-mutex :name "tun check"))
+  ;; By scenario: (:per-check REASON) once one was found to set a
+  ;; variable, (:error TEXT) once it could not be made.
+  (verdicts (make-hash-table :test 'equal))
+  ;; By (SCENARIO . PORT): the template database made for that port.
+  (templates (make-hash-table :test 'equal)))
+
+(defvar *worker-port* nil
+  "The port the current check worker serves its checks on, or NIL before its
+first: one port a worker, so a template it made holds that port's address.")
+
+(defun worker-port ()
+  "Claim the port of this worker's next check: its port again, or, when
+another has taken it meanwhile, a new one, which this worker keeps."
+  (setf *worker-port*
+        (or (and *worker-port*
+                 (handler-case (claim-port :port *worker-port*)
+                   (step-failed () nil)))
+            (claim-port :taken (mapcar (lambda (preview) (jget preview "port")) (previews))))))
+
+(defun say (run control &rest arguments)
+  "Print a line of the run, from any of its workers."
+  (sb-thread:with-mutex ((check-run-lock run))
+    (format t "~&~?~%" control arguments)
+    (finish-output)))
+
+(defun image-server-command (run flags)
+  "The command of a server of RUN's client from its image, with FLAGS."
+  (append (image-lisp-command (check-run-image run) (check-run-client run)
+                              (check-run-directory run) (check-run-worktree run)
+                              (list (serve-form (check-run-client run))))
+          flags))
+
+(defun seed-template (run scenario port)
+  "Make SCENARIO on a database of its own, served from PORT's address, by a
+server from the image that ends once it has: the template of SCENARIO's
+checks on PORT, or NIL when it set a variable, which RUN's verdicts then
+say, or signals STEP-FAILED with the end of its log."
+  (let* ((database (database-name "template" scenario port))
+         (place (merge-pathnames (format nil "~a/" database) (check-run-data run)))
+         (report (merge-pathnames "report.json" place))
+         (log (merge-pathnames "server.log" place))
+         (socket (check-run-socket run)))
+    (ensure-directories-exist place)
+    (postgres-program socket "createdb" database)
+    (handler-case
+        (run-checked (image-server-command
+                      run (list "--port" (princ-to-string port)
+                                "--db" (database-url socket database)
+                                "--claimed-identity"
+                                "--public-url" (format nil "http://127.0.0.1:~d" port)
+                                "--scenario" scenario "--seed-template" (namestring report)))
+                     :output (namestring log) :error-output :output)
+      (step-failed (condition)
+        (fail-step "the scenario ~a was not made: ~a. Its server's log ended:~%~a"
+                   scenario condition (log-tail log))))
+    (let ((sets (coerce (jget (parse-json (read-text report)) "sets" (jarr '())) 'list)))
+      (cond (sets
+             (postgres-program socket "dropdb" "--if-exists" "--force" database)
+             (sb-thread:with-mutex ((check-run-lock run))
+               (setf (gethash scenario (check-run-verdicts run))
+                     (list :per-check (format nil "sets ~{~a~^, ~}" sets))))
+             (say run "scenario ~a sets ~{~a~^, ~}: made by each of its checks" scenario sets)
+             nil)
+            (t
+             (sb-thread:with-mutex ((check-run-lock run))
+               (setf (gethash (cons scenario port) (check-run-templates run)) database)))))))
+
+(defun check-database (run scenario port database)
+  "Make DATABASE for a check of SCENARIO served from PORT: a copy of its
+template, made first when this port has none; or empty, for a scenario its
+checks make. True when it is a copy."
+  (let* ((socket (check-run-socket run))
+         (verdict (sb-thread:with-mutex ((check-run-lock run))
+                    (gethash scenario (check-run-verdicts run))))
+         (template (and (null verdict)
+                        (or (sb-thread:with-mutex ((check-run-lock run))
+                              (gethash (cons scenario port) (check-run-templates run)))
+                            (handler-case (seed-template run scenario port)
+                              (step-failed (condition)
+                                (sb-thread:with-mutex ((check-run-lock run))
+                                  (setf (gethash scenario (check-run-verdicts run))
+                                        (list :error (princ-to-string condition))))
+                                (error condition)))))))
+    (when (eq (first verdict) :error)
+      (fail-step "~a" (second verdict)))
+    (if template
+        (postgres-program socket "createdb" "-T" template database)
+        (postgres-program socket "createdb" database))
+    (and template t)))
+
+(defun start-check-server (run check index)
+  "Start the server of CHECK, the INDEXth of RUN, from the image, on this
+worker's port and a database of its own; its record, as START-PREVIEW's,
+named NAME-INDEX."
+  (let* ((port (worker-port))
+         (socket (check-run-socket run))
+         (database (database-name "check" index))
+         (place (merge-pathnames (format nil "check-~d/" index) (check-run-data run)))
+         (log (merge-pathnames "server.log" place))
+         (self (sb-posix:getpid))
+         (url (format nil "http://127.0.0.1:~d" port))
+         (pid nil)
+         (started nil))
+    (unwind-protect
+         (let ((copied (check-database run (browser-check-scenario check) port database))
+               (deadline (+ (get-universal-time) +ready-seconds+)))
+           (ensure-directories-exist place)
+           (setf pid (start-server
+                      (image-server-command
+                       run (append (list "--port" (princ-to-string port)
+                                         "--db" (database-url socket database)
+                                         "--claimed-identity" "--public-url" url
+                                         "--preview-report"
+                                         (namestring (merge-pathnames "report.json" place)))
+                                   (if copied
+                                       (list "--scenario-made")
+                                       (list "--scenario" (browser-check-scenario check)))))
+                      log :deadline deadline))
+           (hand-over-claim port self pid)
+           (let ((preview (jobj "name" (format nil "~a-~d" (check-run-name run) index)
+                                "client" (check-run-client run)
+                                "directory" (namestring (check-run-directory run))
+                                "port" port "pid" pid "url" url "local_url" url "shared" nil
+                                "data" (namestring place) "log" (namestring log)
+                                "database" database "started" (local-time-string))))
+             (ensure-directories-exist (state-directory))
+             (write-text (state-file (jget preview "name")) (to-json-string preview))
+             (handler-bind ((step-failed (lambda (condition)
+                                           (declare (ignore condition))
+                                           (stop-check-server run preview))))
+               (wait-until-ready port pid log deadline))
+             (setf started t)
+             preview))
+      (unless started
+        (release-claim port (remove nil (list self pid)))
+        (ignore-errors (postgres-program socket "dropdb" "--if-exists" "--force" database))))))
+
+(defun stop-check-server (run preview)
+  "Stop a check's server: its process, its claim, its files, its database."
+  (stop-preview preview)
+  (ignore-errors (postgres-program (check-run-socket run) "dropdb" "--if-exists" "--force"
+                                   (jget preview "database"))))
+
+(defun failed-check (check text)
+  "The result of CHECK that did not run, with TEXT saying why."
+  (jobj "name" (browser-check-name check) "passed" nil
+        "results" (jarr (list (jobj "text" "the check ran" "ok" nil "screenshot" :null)))
+        "error" text))
+
+(defun keep-log (run log check what)
+  "Copy LOG, when there is one, beside CHECK's results as NAME-WHAT.log."
+  (when (probe-file log)
+    (uiop:copy-file log (merge-pathnames (format nil "~a-~a.log" (browser-check-name check) what)
+                                         (check-run-out run)))))
+
+(defun run-one-check (run check index)
+  "Run CHECK, the INDEXth of RUN, against a server of its own; its result
+and what the runner printed, as (RESULT . OUTPUT)."
+  (handler-case
+      (let* ((preview (start-check-server run check index))
+             (output (merge-pathnames "runner.log" (jget preview "data"))))
+        (unwind-protect
+             (progn
+               (uiop:run-program (append (check-run-runner run)
+                                         (list (namestring (check-run-out run))
+                                               (jget preview "local_url")
+                                               (namestring (browser-check-file check))))
+                                 :output (namestring output) :error-output :output
+                                 :ignore-error-status t)
+               (let ((result (check-result (check-run-out run) (browser-check-file check))))
+                 ;; A failed check's server log stays beside its results,
+                 ;; and so does the log of the server that made its template.
+                 (unless (jget result "passed")
+                   (keep-log run (jget preview "log") check "server")
+                   (keep-log run (merge-pathnames
+                                  (format nil "~a/server.log"
+                                          (database-name "template" (browser-check-scenario check)
+                                                         (jget preview "port")))
+                                  (check-run-data run))
+                             check "template"))
+                 (cons result (if (probe-file output) (read-text output) ""))))
+          (stop-check-server run preview)))
+    (error (condition)
+      (cons (failed-check check (princ-to-string condition)) ""))))
+
+(defun in-workers-printing (jobs items function printer)
+  "Call FUNCTION on each of ITEMS and its index in JOBS threads, and PRINTER
+with each result in the order of ITEMS as soon as it and every one before
+it are known; the results, in that order. FUNCTION handles its own errors.
+Each thread has its own *WORKER-PORT*."
+  (let* ((count (length items))
+         (results (make-array count :initial-element nil))
+         (done (make-array count :initial-element nil))
+         (next 0)
+         (lock (sb-thread:make-mutex :name "check workers"))
+         (changed (sb-thread:make-waitqueue)))
+    (flet ((work ()
+             (let ((*worker-port* nil))
+               (loop for index = (sb-thread:with-mutex (lock)
+                                   (when (< next count) (prog1 next (incf next))))
+                     while index
+                     do (let ((result (funcall function (elt items index) index)))
+                          (sb-thread:with-mutex (lock)
+                            (setf (aref results index) result (aref done index) t)
+                            (sb-thread:condition-broadcast changed)))))))
+      (let ((threads (loop repeat (max 1 (min jobs count))
+                           collect (sb-thread:make-thread #'work :name "check worker"))))
+        (dotimes (index count)
+          (sb-thread:with-mutex (lock)
+            (loop until (aref done index)
+                  do (sb-thread:condition-wait changed lock)))
+          (funcall printer (aref results index)))
+        (mapc #'sb-thread:join-thread threads)
+        (coerce results 'list)))))
+
+(defun run-checks-from-image (client checks runner out name directory data &key (jobs 1))
+  "Run CHECKS, CLIENT's in DIRECTORY, by RUNNER in JOBS workers, each
+against a server of its own started from one image of the client, with a
+database copied from its scenario's template on the run's one Postgres
+server, all of it in DATA; their results in OUT (spec/preview.md 4)."
+  (uiop:delete-directory-tree out :validate (lambda (path) (search "/.build/checks/" (namestring path)))
+                              :if-does-not-exist :ignore)
+  (ensure-directories-exist out)
+  (format t "~&~a: ~d check~:p~%" client (length checks))
+  (finish-output)
+  (uiop:delete-directory-tree data :validate #'preview-data-p :if-does-not-exist :ignore)
+  (ensure-directories-exist data)
+  (let* ((socket (check-socket-directory))
+         (run (make-check-run client directory (uiop:getenv "TUN_WORKTREE")
+                              (merge-pathnames "image.core" data) socket data name runner out)))
+    (unwind-protect
+         (progn
+           (build-check-image client directory (check-run-worktree run) (check-run-image run)
+                              (merge-pathnames "image.log" data))
+           (start-database (merge-pathnames "server/" data) socket
+                           :settings "-c fsync=off -c full_page_writes=off -c max_connections=300")
+           (let* ((results (in-workers-printing
+                            jobs checks
+                            (lambda (check index) (run-one-check run check index))
+                            (lambda (result)
+                              (sb-thread:with-mutex ((check-run-lock run))
+                                (write-string (cdr result))
+                                (print-check-result (car result))
+                                (finish-output)))))
+                  (failed (count-if-not (lambda (result) (jget (car result) "passed")) results)))
+             (format t "~&~:[~d of ~d checks failed~;Every check passed~*~*~]. Results and screenshots: ~a~%"
+                     (zerop failed) failed (length results) (namestring out))
+             (unless (zerop failed)
+               (fail-step "~d check~:p failed" failed))))
+      (stop-database (merge-pathnames "server/" data))
+      (uiop:delete-directory-tree socket :validate (lambda (path) (search "/tun-check-" (namestring path)))
+                                  :if-does-not-exist :ignore)
+      (uiop:delete-directory-tree data :validate #'preview-data-p :if-does-not-exist :ignore))))

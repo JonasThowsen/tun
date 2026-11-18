@@ -99,34 +99,143 @@ what FUNCTION sets them to ends with it."
     (funcall function)))
 
 ;;; ------------------------------------------------------------------
+;;; The check runs' image and their scenarios' templates (spec/preview.md 4,
+;;; «One image, one database server, workers»)
+
+(defvar *client-packages* '()
+  "The names of the packages the client's own systems define, its own
+modules' among them, as LOAD-CLIENT-SYSTEMS found them; NIL when it did not
+load the client.")
+
+(defun own-system-p (name directories)
+  "True when the system NAME's directory is within one of DIRECTORIES, the
+client's own."
+  (let* ((system (asdf:find-system name nil))
+         (place (and system (asdf:system-source-directory system))))
+    (and place
+         (some (lambda (directory)
+                 (uiop:subpathp place (uiop:ensure-directory-pathname directory)))
+               directories))))
+
+(defun foreign-dependencies (system directories)
+  "The systems SYSTEM depends on, at any depth through the client's own,
+that are not the client's: those outside DIRECTORIES."
+  (let ((seen '()) (foreign '()))
+    (labels ((walk (name)
+               (unless (member name seen :test #'equal)
+                 (push name seen)
+                 (dolist (dependency (asdf:system-depends-on (asdf:find-system name)))
+                   (let ((dependency (if (consp dependency) (second dependency) dependency)))
+                     (when (stringp dependency)
+                       (if (own-system-p dependency directories)
+                           (walk dependency)
+                           (pushnew dependency foreign :test #'equal))))))))
+      (walk system))
+    (reverse foreign)))
+
+(defun load-client-systems (system directories)
+  "Load the client's SYSTEM, its dependencies outside DIRECTORIES, the
+client's own, first, and note in *CLIENT-PACKAGES* the packages its own
+systems define."
+  (let ((*compile-verbose* nil) (*load-verbose* nil))
+    (handler-bind ((warning #'muffle-warning))
+      (mapc #'asdf:load-system (foreign-dependencies system directories))
+      (let ((before (list-all-packages)))
+        (asdf:load-system system)
+        (setf *client-packages*
+              (mapcar #'package-name (set-difference (list-all-packages) before)))))))
+
+(defvar *random-state-at-start* nil
+  "A copy of the random state this process started with, when the check
+image's maker kept one: a server from the image starts from it, as a
+fresh SBCL starts from its own, so a scenario that draws random values
+makes the data a preview of it makes.")
+
+(defun save-check-image (file)
+  "Save this process, the client loaded, as the image FILE a check's server
+starts from, and end. Its random state is the one it started with."
+  (when *random-state-at-start*
+    (setf *random-state* (make-random-state *random-state-at-start*)))
+  (sb-ext:save-lisp-and-die (namestring file)))
+
+(defun fingerprint (value)
+  "What of VALUE changes when its object is changed in place and a scenario
+holds it: a hash table's count, a list's length, a vector's length."
+  (typecase value
+    (hash-table (hash-table-count value))
+    (list (list-length value))
+    ((and vector (not string)) (length value))
+    (t nil)))
+
+(defun global-values (&optional (packages *client-packages*))
+  "Each global variable of PACKAGES' own symbols and Tun's isolated
+variables, with its value and FINGERPRINT, as (SYMBOL VALUE FINGERPRINT)."
+  (let ((symbols (copy-list *isolated-variables*)))
+    (dolist (name packages)
+      (let ((package (find-package name)))
+        (when package
+          (do-symbols (symbol package)
+            (when (and (eq (symbol-package symbol) package)
+                       (boundp symbol)
+                       (not (constantp symbol))
+                       (member (sb-int:info :variable :kind symbol) '(:special :global)))
+              (pushnew symbol symbols))))))
+    (mapcar (lambda (symbol)
+              (let ((value (symbol-value symbol)))
+                (list symbol value (fingerprint value))))
+            symbols)))
+
+(defun changed-variables (before &optional (after (global-values)))
+  "The variables of AFTER whose value or fingerprint differs from BEFORE's,
+or that BEFORE did not have, by name."
+  (sort (loop for (symbol value fingerprint) in after
+              for old = (assoc symbol before)
+              unless (and old (eq value (second old)) (equal fingerprint (third old)))
+              collect (format nil "~a::~a" (package-name (symbol-package symbol))
+                              (symbol-name symbol)))
+        #'string<))
+
+;;; ------------------------------------------------------------------
 ;;; The preview's server
 
 (defun option-value (argv option)
   (second (member option argv :test #'string=)))
 
-(defun write-preview-report (file scenario)
-  "Write to FILE, as JSON, what the preview shows of SCENARIO: its name,
-description and actors, or none."
-  (with-open-file (out file :direction :output :if-exists :supersede :external-format :utf-8)
-    (write-string (to-json-string
-                   (if scenario
+(defun scenario-report (scenario &optional (sets '() sets-p))
+  "What a preview shows of SCENARIO as JSON: its name, description and
+actors, or none; and, for a template, SETS, the variables it set."
+  (let ((report (if scenario
                        (jobj "scenario" (scenario-name scenario)
                              "description" (or (scenario-description scenario) "")
                              "actors" (jarr (scenario-actors scenario)))
-                       (jobj "actors" (jarr '()))))
-                  out)))
+                    (jobj "actors" (jarr '())))))
+    (when sets-p
+      (setf (jget report "sets") (jarr sets)))
+    report))
+
+(defun write-preview-report (file scenario &rest sets)
+  "Write to FILE, as JSON, what the preview shows of SCENARIO: its name,
+description and actors, or none; with SETS, a template's report."
+  (with-open-file (out file :direction :output :if-exists :supersede :external-format :utf-8)
+    (write-string (to-json-string (apply #'scenario-report scenario sets)) out)))
 
 (defun serve-preview (application-class &key (name "tun") (argv sb-ext:*posix-argv*))
   "Serve APPLICATION-CLASS as `tun preview` starts it (spec/preview.md 2).
 ARGV holds the server's flags, which must include --claimed-identity, and
-two of the preview's own: --scenario NAME, the scenario to make before the
-server listens (default, when the client defines one), and --preview-report
-FILE, where the scenario and its actors are then written as JSON."
+the preview's own: --scenario NAME, the scenario to make before the server
+listens (default, when the client defines one); --preview-report FILE,
+where the scenario and its actors are then written as JSON;
+--scenario-made, for a database copied from a scenario's template, which
+makes no scenario; and --seed-template FILE, which makes the scenario,
+writes its report to FILE with the variables it set, and ends without
+listening (spec/preview.md 4)."
   (unless (member "--claimed-identity" argv :test #'string=)
     (error "A preview serves with --claimed-identity"))
   (let* ((asked (option-value argv "--scenario"))
          (scenario (if asked (find-scenario asked) (find-scenario "default")))
-         (report (option-value argv "--preview-report")))
+         (report (option-value argv "--preview-report"))
+         (seed (option-value argv "--seed-template"))
+         (made (member "--scenario-made" argv :test #'string=)))
     (when (and asked (null scenario))
       (format *error-output* "~a: there is no scenario ~a; the scenarios are ~{~a~^, ~}~%"
               name asked (scenario-names))
@@ -134,8 +243,23 @@ FILE, where the scenario and its actors are then written as JSON."
     (tun.runtime:main application-class
                       :name name :argv argv
                       :before-serving (lambda (application)
-                                        (when scenario
-                                          (let ((*app* application))
-                                            (funcall (scenario-function scenario))))
-                                        (when report
-                                          (write-preview-report report scenario))))))
+                                        (cond (seed
+                                               (seed-template application scenario seed))
+                                              (t
+                                               (when (and scenario (not made))
+                                                 (let ((*app* application))
+                                                   (funcall (scenario-function scenario))))
+                                               (when report
+                                                 (write-preview-report report scenario))))))))
+
+(defun seed-template (application scenario file)
+  "Make SCENARIO in APPLICATION's database, a template's, write its report
+with the variables it set to FILE, close the application and end."
+  (let ((before (global-values)))
+    (when scenario
+      (let ((*app* application))
+        (funcall (scenario-function scenario))))
+    (write-preview-report file scenario (changed-variables before))
+    (tun.runtime:close-application application)
+    (finish-output)
+    (uiop:quit 0)))

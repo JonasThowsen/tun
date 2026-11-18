@@ -23,7 +23,8 @@ What a check gets:
     page.visible_width(css)    how many pixels of the element are on screen
     page.touch                 a finger: hold, move_to, stay, lift, swipe
     page.expect_post(path)     with page.expect_post("/x") as post: ...;
-                               then post.body and post.status
+                               then post.body and post.status; a form the
+                               browser posts itself: its answer's page loaded
     t.check(condition, text)   record one check; carry on when it fails
     t.close_pages()            close the pages opened so far (their errors recorded)
 
@@ -198,6 +199,16 @@ SERVER_SPEED = """async ([path, headers, runs]) => {
   return timings;
 }"""
 
+# True once no service worker of the page's origin is installing, waiting
+# or activating: one that is claims the page's navigations when it is done,
+# and a navigation begun meanwhile can wait for its load for ever.
+WORKER_SETTLED = """async () => {
+  if (!navigator.serviceWorker || !/^https?:$/.test(location.protocol)) return true;
+  const registrations = await navigator.serviceWorker.getRegistrations();
+  return registrations.every((r) => !r.installing && !r.waiting
+                                    && (!r.active || r.active.state === 'activated'));
+}"""
+
 # Counts the htmx requests begun and ended on this document, once.
 HTMX_WATCH = """() => {
   if (!window.tunHtmx) {
@@ -267,7 +278,21 @@ class Page:
 
     def goto(self, path):
         self._run.page = self
+        # The page's service worker first finishes installing, which the
+        # navigation would otherwise meet half way (spec/preview.md 4). Its
+        # registrations come in a promise, which evaluate waits for and a
+        # page's polling function does not; between looks the check's own
+        # wait runs, not the page's timers, which page.clock may hold.
+        self.poll_until(self._worker_settled, what="the page's service worker to finish installing")
         return self._page.goto(self._run.url + path)
+
+    def _worker_settled(self):
+        try:
+            return self._page.evaluate(WORKER_SETTLED)
+        except Exception:
+            # A page navigating away, or one without scripts, has no worker
+            # to wait for.
+            return True
 
     def sign_in(self, actor):
         return self.goto(f"/login?actor={actor}")
@@ -357,12 +382,32 @@ class Page:
     @contextmanager
     def expect_post(self, path):
         post = Post()
-        with self._page.expect_response(
-                lambda r: r.request.method == "POST" and urlparse(r.url).path == path) as info:
-            yield post
-        response = info.value
-        post.status = response.status
-        post.body = response.request.post_data or ""
+        navigated = []
+
+        def on_navigated(frame):
+            if frame == self._page.main_frame:
+                navigated.append(frame.url)
+
+        self._page.on("framenavigated", on_navigated)
+        try:
+            with self._page.expect_response(
+                    lambda r: r.request.method == "POST" and urlparse(r.url).path == path) as info:
+                yield post
+            response = info.value
+            post.status = response.status
+            post.body = response.request.post_data or ""
+            # A form the browser posts itself, not a script, leads to the page
+            # its answer is (after a redirect, the one it leads to): the check
+            # reads that page next, so it is waited for, loaded. An answer that
+            # is a download, or no content, leads to no page.
+            if (response.request.is_navigation_request()
+                    and response.request.frame == self._page.main_frame
+                    and response.status not in (204, 205)
+                    and "attachment" not in (response.headers.get("content-disposition") or "")):
+                self.poll_until(lambda: navigated, what=f"the page the post to {path} leads to")
+                self._page.wait_for_load_state("load")
+        finally:
+            self._page.remove_listener("framenavigated", on_navigated)
 
 
 class Run:

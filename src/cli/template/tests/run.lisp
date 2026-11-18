@@ -52,12 +52,15 @@
             (length warnings) (reverse warnings))
     (uiop:quit 2)))
 
-;;; The client's suite, then each module's: the package TUN.NAME.TESTS of
-;;; tun-NAME/tests exports RUN-TESTS, true when every test passed.
-(let ((results (cons (uiop:symbol-call "{{package}}.TESTS" "RUN-TESTS")
-                     (loop for tests in *module-tests*
-                           for module = (subseq tests 0 (position #\/ tests))
-                           collect (uiop:symbol-call
-                                    (format nil "TUN.~:@(~a~).TESTS" (subseq module (length "tun-")))
-                                    "RUN-TESTS")))))
-  (uiop:quit (if (every #'identity results) 0 1)))
+;;; The client's suite and each module's, in workers forked from this
+;;; process once it has compiled them ($TUN_SOURCE/spec/testing.md 1, «In
+;;; parallel»): a package's suite split into its tests, the longest first,
+;;; or its RUN-TESTS whole. TUN_TEST_JOBS=1 runs them here, one after
+;;; another.
+(uiop:quit
+ (if (uiop:symbol-call "TUN.TEST-SUPPORT" "RUN-TESTS-IN-PARALLEL"
+                       (cons "{{package}}.TESTS"
+                             (loop for tests in *module-tests*
+                                   for module = (subseq tests (length "tun-") (position #\/ tests))
+                                   collect (format nil "TUN.~:@(~a~).TESTS" module))))
+     0 1))

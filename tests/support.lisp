@@ -24,6 +24,9 @@
            #:+tun-module-names+
            #:define-scenario #:find-scenario #:run-scenario #:scenario-names #:scenario-name #:scenario-actors
            #:scenario-description #:serve-preview #:define-generated-tests
+           #:*client-packages* #:load-client-systems #:save-check-image #:global-values
+           #:*random-state-at-start*
+           #:changed-variables
            #:untranslated-texts #:unused-translations #:known-texts #:definition-texts
            #:page-visible-texts #:unlooked-up-texts #:stored-strings #:data-codes #:json-strings
            #:pages-missing-translations #:pseudo-page-problems
@@ -56,6 +59,9 @@
            #:sequence-failure-text #:sequence-summary #:step-text
            #:sequence-step-operation #:sequence-step-actor #:sequence-step-input
            #:environment-integer
+           ;; a client's suite in parallel (spec/testing.md 1)
+           #:run-tests-in-parallel #:test-jobs #:default-jobs #:*test-share* #:share-of
+           #:note-split-test #:split-test-p #:share-text
            ;; every page for every role (spec/testing.md 5)
            #:open-every-page #:check-every-page-answers-every-role #:page-report
            #:page-report-failures #:page-report-tallies #:page-report-listed

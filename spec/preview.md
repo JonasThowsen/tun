@@ -215,24 +215,32 @@ def run(t):
 ```
 
 `tun check [NAME...] [--dir DIR]` runs every check, or the ones named,
-each against a fresh, unshared preview of its scenario (§2), so no check
-sees what another changed. The previews are named `NAME-check`, keep
-their database in `DIR/.data/check/`, and are stopped when their check
-ends. A check gets:
+each against a server and a database of its own made for it, with its
+scenario's records, so no check sees what another changed. They are
+started as below («One image, one database server, workers»), named
+`NAME-check-N` for the Nth check, keep their data in `DIR/.data/check/`,
+and are stopped when their check ends. A check gets:
 
 - `t.phone()` and `t.desktop()`: a page at 390×844 with touch, or at
   1280×800 with a mouse, each with its own cookies; both take another
   width and height, `permissions`, such as `["notifications"]`, which
   the page's browser grants its preview, `user_agent`, and
   `javascript=False` for a browser without JavaScript;
-- `page.sign_in(actor)`, `page.goto(path)`, `page.card(title)` (the card
+- `page.sign_in(actor)`, `page.goto(path)` (which first waits until no
+  service worker of the page is installing, waiting or activating: one
+  that is takes over the page's navigations when it is done, and a
+  navigation begun meanwhile can wait for its load for ever),
+  `page.card(title)` (the card
   with exactly that title, not the copy that follows a drag),
   `page.column(key)` and `page.visible_width(selector)`;
 - `page.touch`: one finger, through the DevTools protocol's touch events,
   which scroll and drag as a finger does (Playwright's own taps do not
   move): `hold`, `move_to`, `stay`, `lift` and `swipe`;
 - `page.expect_post(path)`, which waits for the post and its answer, and
-  gives its `body` and `status`;
+  gives its `body` and `status`; for a form the browser posts itself,
+  not a script, it then waits for the page the answer leads to (after a
+  redirect, the page the redirect leads to) to be loaded, which the check
+  reads next, unless the answer is a download or no content;
 - `t.check(condition, text)`, which records a screenshot when it fails
   and carries on, so one run lists every failure;
 - `t.close_pages()`, which closes the pages the check has opened so far,
@@ -302,6 +310,58 @@ they do in Chrome), which the dev
 shells of Tun and of a client have. It writes `NAME.json` with each
 check's results and `NAME-N.png` for each failure to `DIR/.build/checks/`.
 `tun check` prints which passed and exits 0 only when every one did.
+
+**One image, one database server, workers** (core 2.50.0). A preview's
+start is mostly the same work for every check: a database server made
+(0.9 s), the client loaded (2 to 3.5 s), its migrations and its scenario
+(0.5 to 6 s). `tun check` does that work once per run:
+
+1. **The image.** An SBCL loads the client and its tests as a preview's
+   server does (§2, compiling what has changed), and saves itself as an
+   image in `DIR/.data/check/`, with the random state it started with, as
+   a fresh SBCL starts with its own: a scenario that draws random values
+   makes the data it makes in a preview. A check's server starts from it,
+   sets up ASDF's source registry as a preview's server does, then
+   serves. The image is removed when the run ends, so a
+   run never starts from code older than its own.
+2. **The database server.** One Postgres server for the run, in
+   `DIR/.data/check/`, reachable only through a socket in
+   `$XDG_RUNTIME_DIR/tun-check-PID/`, stopped and removed when the run
+   ends.
+3. **The templates.** Each scenario the checks start from is made once
+   for each worker that runs one of its checks, from the image, into a
+   database of its own, which is then a template: each of that worker's
+   checks of the scenario gets a copy (`CREATE DATABASE … TEMPLATE …`),
+   dropped when the check ends. A worker serves all its checks on one
+   port, so a template's records that hold its server's address (a link
+   in a mail) hold the address of the server its copies run in. Making it, Tun compares the global variables of the
+   client's own packages (those its systems define, its own modules'
+   among them) and Tun's isolated variables (`testing.md` §1, Isolation)
+   before and after: a scenario that changed one, or the count of a hash
+   table or the length of a list one holds, does more than make records,
+   and a copy of its database would not carry what it set. Its checks
+   start from an empty database and their server makes the scenario, as a
+   preview does, and `tun check` says so: «scenario NAME sets
+   VARIABLE…: made by each of its checks». A scenario that changes an
+   object in place without any of these is not seen; for such a client,
+   `TUN_CHECK_IMAGE=0` is the way of before.
+4. **Workers.** `TUN_CHECK_JOBS` workers, else the smaller of 4, a third
+   of the processors and the available memory less 6 GB over 1.5 GB (a
+   server and a browser), at least 1, take the checks in turn, each check
+   with its own database and its own server, on its worker's port,
+   claimed as a preview's is (§2) for each check; when another has taken
+   it meanwhile, the worker takes another port and makes its templates
+   for it anew. The results are printed in the order of the
+   checks, in the words above, whatever order they end in; with one
+   worker they run one after another. A failed check's server log is
+   kept beside its results, as `NAME-server.log`, and the log of the
+   server that made its scenario's template as `NAME-template.log`.
+
+The checks the runner takes are a list, each a name, the scenario it
+starts from and the file `tun_check.py` drives: the files in `checks/`,
+and in time checks Tun makes for every client. `TUN_CHECK_IMAGE=0`
+gives the way of before: each check against a fresh preview of its own
+(§2), one after another.
 
 **The verify lock.** When `TUN_VERIFY_LOCK` names a file, `tun check`
 runs its checks holding an exclusive `flock(2)` lock on it (the file is

@@ -16,5 +16,6 @@
                (:file "preview")
                (:file "typescript")
                (:file "check")
+               (:file "clients")
                (:file "loop")
                (:file "main")))

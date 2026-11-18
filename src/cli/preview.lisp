@@ -260,9 +260,10 @@ directory can exceed."
   (merge-pathnames (format nil "tun-preview-~d/" port)
                    (or (uiop:getenv-absolute-directory "XDG_RUNTIME_DIR") #p"/tmp/")))
 
-(defun start-database (data socket-directory)
+(defun start-database (data socket-directory &key (settings ""))
   "Start a new, empty Postgres server in DATA, reachable only through a
-socket in SOCKET-DIRECTORY, and return the URL of its database."
+socket in SOCKET-DIRECTORY, with the further server SETTINGS (\"-c NAME=VALUE
+...\"), and return the URL of its database."
   (let ((cluster (namestring (merge-pathnames "cluster/" data)))
         (socket (string-right-trim "/" (namestring socket-directory))))
     (ensure-directories-exist data)
@@ -277,7 +278,9 @@ socket in SOCKET-DIRECTORY, and return the URL of its database."
       (handler-case
           (run-checked (list "pg_ctl" "-D" cluster "-l" (namestring log)
                              "-w" "-t" (princ-to-string +ready-seconds+)
-                             "-o" (format nil "-c listen_addresses= -k ~a" socket) "start")
+                             "-o" (format nil "-c listen_addresses= -k ~a~@[ ~a~]" socket
+                                          (and (plusp (length settings)) settings))
+                             "start")
                        :output nil)
         (step-failed (condition)
           (fail-step "~a. Postgres's log ended:~%~a" condition (log-tail log 15)))))
@@ -317,6 +320,12 @@ and TOP/modules/ exists; else NIL."
              (not (tun-repository-p top))
              (uiop:directory-exists-p (merge-pathnames "modules/" top)))))))
 
+(defun serve-form (client)
+  "The form, as text, with which a server of CLIENT, loaded, serves as a
+preview (spec/preview.md 2)."
+  (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"SERVE-PREVIEW\" (symbol-value (find-symbol \"*APPLICATION-CLASS*\" ~s)) :name ~s)"
+             (string-upcase client) client))
+
 (defun server-command (client directory worktree flags)
   "The command that serves CLIENT from DIRECTORY with FLAGS, as
 CLIENT-LISP-COMMAND loads it, its tests' system included for the scenarios."
@@ -324,9 +333,29 @@ CLIENT-LISP-COMMAND loads it, its tests' system included for the scenarios."
            client directory worktree
            (list (lisp-form "(let ((*compile-verbose* nil) (*load-verbose* nil)) (handler-bind ((warning #'muffle-warning)) (asdf:load-system ~s)))"
                             (format nil "~a/tests" client))
-                 (lisp-form "(uiop:symbol-call \"TUN.TEST-SUPPORT\" \"SERVE-PREVIEW\" (symbol-value (find-symbol \"*APPLICATION-CLASS*\" ~s)) :name ~s)"
-                            (string-upcase client) client)))
+                 (serve-form client)))
           flags))
+
+(defun client-registry-forms (client directory worktree &key (fasl "preview-fasl"))
+  "The forms, each a form's text, that register CLIENT in DIRECTORY with
+ASDF as CLIENT-LISP-COMMAND does: its source registry, and with WORKTREE
+the output translations that keep its files and Tun's apart."
+  (let* ((client-directory (namestring directory))
+         (modules (namestring (merge-pathnames "modules/" (uiop:ensure-directory-pathname directory))))
+         (shared (repository-modules directory))
+         (own (format nil "(:directory ~s)~:[~*~; (:tree ~s)~]~@[ (:tree ~s)~]"
+                      client-directory (uiop:directory-exists-p modules) modules
+                      (and shared (namestring shared)))))
+    (if worktree
+        (let ((tun (namestring (uiop:ensure-directory-pathname worktree))))
+          (list (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a (:directory ~s) (:tree ~s) :inherit-configuration))"
+                           own tun (namestring (merge-pathnames "modules/" tun)))
+                (lisp-form "(asdf:initialize-output-translations '(:output-translations (~s ~s) (~s ~s) :inherit-configuration))"
+                           client-directory
+                           (namestring (merge-pathnames (format nil ".build/~a/~a/" fasl client) tun))
+                           tun (namestring (merge-pathnames ".build/fasl/" tun)))))
+        (list (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a :inherit-configuration))"
+                         own)))))
 
 (defun client-lisp-command (client directory worktree forms &key (fasl "preview-fasl"))
   "The command of an SBCL that loads CLIENT from DIRECTORY and then evaluates
@@ -342,29 +371,28 @@ the source registry before anything else (preview.md 2), and so, for a
 further client of a repository of several, do the repository's modules,
 after its own.  With WORKTREE, the client's files compile under
 .build/FASL/CLIENT/ there."
-  (let* ((client-directory (namestring directory))
-         (modules (namestring (merge-pathnames "modules/" (uiop:ensure-directory-pathname directory))))
-         (shared (repository-modules directory))
-         (own (format nil "(:directory ~s)~:[~*~; (:tree ~s)~]~@[ (:tree ~s)~]"
-                      client-directory (uiop:directory-exists-p modules) modules
-                      (and shared (namestring shared)))))
-    (append
-     (list "env" "-u" "CL_SOURCE_REGISTRY" "-u" "ASDF_OUTPUT_TRANSLATIONS"
-           "sbcl" "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit")
-     (if worktree
-         (let ((tun (namestring (uiop:ensure-directory-pathname worktree))))
-           (list "--load" (namestring (merge-pathnames "scripts/setup.lisp" tun))
-                 "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a (:directory ~s) (:tree ~s) :inherit-configuration))"
-                                     own tun (namestring (merge-pathnames "modules/" tun)))
-                 "--eval" (lisp-form "(asdf:initialize-output-translations '(:output-translations (~s ~s) (~s ~s) :inherit-configuration))"
-                                     client-directory
-                                     (namestring (merge-pathnames (format nil ".build/~a/~a/" fasl client) tun))
-                                     tun (namestring (merge-pathnames ".build/fasl/" tun)))))
-         (list "--eval" "(load (sb-ext:posix-getenv \"ASDF\"))"
-               "--eval" (lisp-form "(asdf:initialize-source-registry '(:source-registry ~a :inherit-configuration))"
-                                   own)))
-     (loop for form in forms append (list "--eval" form))
-     (list "--end-toplevel-options"))))
+  (append
+   (list "env" "-u" "CL_SOURCE_REGISTRY" "-u" "ASDF_OUTPUT_TRANSLATIONS"
+         "sbcl" "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit")
+   (if worktree
+       (list "--load" (namestring (merge-pathnames "scripts/setup.lisp"
+                                                   (uiop:ensure-directory-pathname worktree))))
+       (list "--eval" "(load (sb-ext:posix-getenv \"ASDF\"))"))
+   (loop for form in (append (client-registry-forms client directory worktree :fasl fasl) forms)
+         append (list "--eval" form))
+   (list "--end-toplevel-options")))
+
+(defun image-lisp-command (image client directory worktree forms)
+  "The command of an SBCL started from IMAGE, a saved image of CLIENT
+(spec/preview.md 4), that registers CLIENT in DIRECTORY with ASDF again as
+CLIENT-LISP-COMMAND does and then evaluates FORMS, each a form's text."
+  (append
+   (list "env" "-u" "CL_SOURCE_REGISTRY" "-u" "ASDF_OUTPUT_TRANSLATIONS"
+         "sbcl" "--core" (namestring image)
+         "--noinform" "--non-interactive" "--no-userinit" "--no-sysinit")
+   (loop for form in (append (client-registry-forms client directory worktree) forms)
+         append (list "--eval" form))
+   (list "--end-toplevel-options")))
 
 (defparameter *server-start-script*
   "echo $$ > \"$0\" && [ ! -e \"$0.given-up\" ] && exec \"$@\""

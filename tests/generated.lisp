@@ -110,7 +110,7 @@ or on Postgres when the client needs it."
     ;; tests choose the same.
     (format t "~&The generated tests of ~a run ~:[in memory~;on Postgres~] (spec/testing.md 2).~%"
             system postgres)
-    (check-every-tool-withstands-fuzzing (client-tools system package) system
+    (check-every-tool-withstands-fuzzing (share-of (client-tools system package)) system
                                          :class class :scenario (default-scenario packages)
                                          :variables variables
                                          :database (if postgres :postgres :memory))))
@@ -148,7 +148,7 @@ in PACKAGE needs it."
 (defun check-every-scenario-makes-its-records (class system packages variables)
   "Run each scenario defined in PACKAGES, package names, on a fresh Postgres
 database of its own, with VARIABLES unset around it."
-  (dolist (scenario (package-scenarios packages))
+  (dolist (scenario (share-of (package-scenarios packages)))
     (with-test-app (:class class :db (scratch-postgres system))
       (call-with-variables-unset variables
                                  (lambda () (fiveam:finishes (run-scenario scenario)))))))
@@ -203,6 +203,8 @@ is one of them (test 11)."
                           `(check-application-opens-with-its-modules ,class ,name))
          ,(generated-test "EVERY-TEXT-HAS-A-TRANSLATION-INTO-EACH-LANGUAGE-OFFERED"
                           `(check-translations ,class ,name))
+         (note-split-test ',(intern "GENERATED-EVERY-SCENARIO-MAKES-ITS-RECORDS"))
+         (note-split-test ',(intern "GENERATED-EVERY-TOOL-WITHSTANDS-FUZZING"))
          ,(generated-test "EVERY-SCENARIO-MAKES-ITS-RECORDS"
                           `(check-every-scenario-makes-its-records
                             ,class ,name ',scenario-packages ',variables))

@@ -260,7 +260,9 @@ to the tree, and `verify` also from `ship`. `decide ... changes` needs
     touches the runtime, jobs or the store (`src/runtime.lisp`,
     `src/jobs/`, `src/store/`, `src/core/store.lisp`).
     With a client, it runs `bin/tun check --dir CLIENT`, the client's
-    checks on the Tun worktree;
+    checks on the Tun worktree. The clients' suites on the tree are not a
+    step of the round: `bin/tun clients test DIR...` (`cli.md` §5.2) runs
+    them, at once, under one hold of the verify lock;
   - in a client: `bin/test`, and `tun check` when it has checks; then
     the same for each further client of the repository, in its
     directory: its `bin/test`, and `tun check` when it has checks. A
