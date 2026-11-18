@@ -2,7 +2,7 @@
 
 - loop: few-browser-checks
 - mode: reviewed
-- stage: ship
+- stage: done
 - base: e89b3f8ba4d02fd591e64de8c7f32dbdd2b9f17c
 - item: sak_z4ggf27qjx57443v
 - estimate: 3h 5h 9h
@@ -294,6 +294,12 @@ The orchestrator's brief, in short:
   (the runner this joins) and `tun/posted-sets` (a showcase check and a
   form's post).
 
+## Actuals
+
+```json
+{"loop":"few-browser-checks","title":"Few browser checks: page tests over HTTP, one generated width sweep, and browser checks only for what a browser alone decides","repository":"tun","mode":"reviewed","stage":"done","item":"sak_z4ggf27qjx57443v","tags":["kind:tooling","core"],"like":["tun/fast-checks","tun/posted-sets"],"started":"2026-11-18 12:29","ended":"2026-11-18 15:09","minutes":{"total":160,"waiting_person":0,"waiting_reviewer":5,"working":155,"drafted":null,"person_at_gates":null,"agent":null},"estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"latest_estimate":{"best":180,"likely":300,"worst":540,"at":"brief"},"within_estimate":false,"ratio":0.53,"verify":{"rounds":3,"failed":0},"changes":{"A":2,"B":1,"C":0},"interventions":0,"cost":{"tokens_in":null,"tokens_out":null,"usd":null,"agent_minutes":null}}
+```
+
 ## Log
 
 - 2026-11-18 12:29  started, reviewed
@@ -455,3 +461,4 @@ The orchestrator's brief, in short:
   
   **Minor, not blocking**
   - Postgres templates in `tun.page-test::*templates*` are never dropped, so one database per scenario stays on the test server after the process ends. The new test's `clrhash` (diff 1917) also forgets one without dropping it. On a throwaway test server this does no harm. A later loop could drop the templates at exit.
+- 2026-11-18 15:09  finished at tun fc4ff70d
