@@ -2,7 +2,7 @@
 
 - loop: few-browser-checks
 - mode: reviewed
-- stage: shown
+- stage: ship
 - base: e89b3f8ba4d02fd591e64de8c7f32dbdd2b9f17c
 - item: sak_z4ggf27qjx57443v
 - estimate: 3h 5h 9h
@@ -417,3 +417,41 @@ The orchestrator's brief, in short:
 - 2026-11-18 15:58  gate B 1: changes. Done: a test of the Postgres path (`on-postgres-the-scenario-is-a-template-copied-for-each-server`: three servers each on a copy of the template made once, each copy changed in itself, the next one's as the scenario made it; a scenario that sets a variable made for each; skipped without the test Postgres, passed with it, 111 of 111 with `bin/with-postgres`); a showcase check that holds the generated check to what it must see, `generated-check-sees-what-is-wrong` (a 404 with a body, a page the browser cannot load, a page made 3000 px wide, a planted console error, a planted JavaScript error and an inline script the policy refuses each fail it; a sound page passes; a console error about `/favicon.ico` alone is the browser's own), which found that a page the browser could not load at all (an error answered with no body) raised and ended the whole check, and then cut the next page's navigation short: the generated check now records it as that page's failure, waits for Chromium's error page, and goes on; the showcase test's link is checked before it is used, and the refused PDF's body is read as what it is
 - 2026-11-18 15:07  verify 3: passed build, test, check
 - 2026-11-18 15:08  shown (/visit-days, /mail)
+- 2026-11-18 15:08  gate B asked of a reviewer
+- 2026-11-18 15:09  gate B: approve (reviewer)
+  I approve. Both changes asked for at gate B round 1 are made, and nothing new needs to change.
+  
+  **The Postgres path (criterion 1)**
+  - `on-postgres-the-scenario-is-a-template-copied-for-each-server` (diff 1912–1930) is now in the suite. It skips when there is no test Postgres server.
+  - The test shows everything that change asked for:
+    - each server's store is a `postgres-store`;
+    - each copy holds the scenario's record;
+    - a change made in one copy stays in that copy, and the next copy is back to the scenario's state;
+    - the scenario is made once for three servers;
+    - a scenario that sets a variable is made again for each server (3 runs for 2 servers, the first being the look at whether it sets one).
+  - The worry was that the copy could fail while the template was still open. That is now covered: the template is made through `make-records`, which closes its application in an `unwind-protect` (diff 2789–2790), and the three successive copies prove it.
+  - The Log says it passed 111 of 111 under `bin/with-postgres`.
+  
+  **Proof that the generated check can fail (criterion 8)**
+  - `checks/showcase/checks/generated-check-sees-what-is-wrong.py` loads the real script and runs its own `watched`, `opened`, `problems_of` and `browser_own`.
+  - Its result (`checks/generated-check-sees-what-is-wrong.json`) shows each failure detected with a concrete message:
+    - `answered 404`;
+    - `did not load: … ERR_HTTP_RESPONSE_CODE_FAILURE`;
+    - `scrolls sideways (3000 px in 1280)`;
+    - the planted console error and the planted JavaScript error;
+    - `policy violations: ['script-src-elem inline']`.
+  - A sound page gives `[]`. Only a console error about `/favicon.ico` is treated as the browser's own.
+  - Writing this check also turned up a real bug, now fixed (diff 1109–1121). A page with no body used to abort the whole generated run. It is now that page's failure, and the run goes on: the `/items` page after it loads cleanly.
+  
+  **The two minor points**
+  - `pages.lisp:687`: the link is now checked before it is used.
+  - The refused PDF's body is now asserted as text (`stringp`) with a content type other than PDF (diff 701–703), instead of the round trip that checked nothing.
+  
+  **Unchanged from the last round, and still right**
+  - `verify.txt` round 3: build, test and check all passed.
+  - No result in `checks/` failed.
+  - Screenshots of `/visit-days` and `/mail` exist at both widths.
+  - The Log has the timings, the client run with `--jobs 1` (6 of 6 passed) and the playbook's sentence.
+  
+  **Minor, not blocking**
+  - Postgres templates in `tun.page-test::*templates*` are never dropped, so one database per scenario stays on the test server after the process ends. The new test's `clrhash` (diff 1917) also forgets one without dropping it. On a throwaway test server this does no harm. A later loop could drop the templates at exit.
