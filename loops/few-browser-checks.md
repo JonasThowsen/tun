@@ -2,14 +2,14 @@
 
 - loop: few-browser-checks
 - mode: reviewed
-- stage: build
+- stage: shown
 - base: e89b3f8ba4d02fd591e64de8c7f32dbdd2b9f17c
 - item: sak_z4ggf27qjx57443v
 - estimate: 3h 5h 9h
 - like: tun/fast-checks tun/posted-sets
 - tags: kind:tooling core
-- verified: 4c966b5da76def198f15e050aad4b9d2b2130d37
-- shown: 4c966b5da76def198f15e050aad4b9d2b2130d37
+- verified: 34821b8827376d2b392af7d3d446ea2e284eb91e
+- shown: 34821b8827376d2b392af7d3d446ea2e284eb91e
 
 ## Brief
 
@@ -415,3 +415,5 @@ The orchestrator's brief, in short:
   - `checks/showcase/tests/pages.lisp:597–603`: `(is (not (null link)))` comes after `(page:attribute link "href")` has already used `link`. A missing link would show up as an error, not as that assertion failing; check it before using it.
   - `checks/showcase/tests/pages.lisp:617–620`: the «nor its bytes» assertion turns a string back into octets, and it passes without checking anything when the body is octets. `(not (equal "%PDF-" (octets-start …)))` on the raw octets, or a `search` on the text, would say the same plainly.
 - 2026-11-18 15:58  gate B 1: changes. Done: a test of the Postgres path (`on-postgres-the-scenario-is-a-template-copied-for-each-server`: three servers each on a copy of the template made once, each copy changed in itself, the next one's as the scenario made it; a scenario that sets a variable made for each; skipped without the test Postgres, passed with it, 111 of 111 with `bin/with-postgres`); a showcase check that holds the generated check to what it must see, `generated-check-sees-what-is-wrong` (a 404 with a body, a page the browser cannot load, a page made 3000 px wide, a planted console error, a planted JavaScript error and an inline script the policy refuses each fail it; a sound page passes; a console error about `/favicon.ico` alone is the browser's own), which found that a page the browser could not load at all (an error answered with no body) raised and ended the whole check, and then cut the next page's navigation short: the generated check now records it as that page's failure, waits for Chromium's error page, and goes on; the showcase test's link is checked before it is used, and the refused PDF's body is read as what it is
+- 2026-11-18 15:07  verify 3: passed build, test, check
+- 2026-11-18 15:08  shown (/visit-days, /mail)
