@@ -89,7 +89,12 @@
            (is (equal '("ui-look")
                       (mapcar #'tun.cli::browser-check-name
                               (tun.cli::run-list directory '("ui-look"))))
-               "and not with a file named alone"))
+               "and not with a file named alone")
+           (is (equal (mapcar #'pathname-name files)
+                      (mapcar #'pathname-name (tun.cli::files-without-image directory nil)))
+               "without the image, the files alone")
+           (signals tun.cli:usage-error
+             (tun.cli::files-without-image directory '("generated-every-page-at-both-widths"))))
       (if before
           (sb-posix:setenv "TUN_WORKTREE" before 1)
           (sb-posix:unsetenv "TUN_WORKTREE")))))

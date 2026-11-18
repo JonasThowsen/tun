@@ -2,13 +2,14 @@
 
 - loop: few-browser-checks
 - mode: reviewed
-- stage: verified
+- stage: shown
 - base: e89b3f8ba4d02fd591e64de8c7f32dbdd2b9f17c
 - item: sak_z4ggf27qjx57443v
 - estimate: 3h 5h 9h
 - like: tun/fast-checks tun/posted-sets
 - tags: kind:tooling core
 - verified: 1247327db00671792b327419ef28a4a95a9440b3
+- shown: 1247327db00671792b327419ef28a4a95a9440b3
 
 ## Brief
 
@@ -366,3 +367,7 @@ The orchestrator's brief, in short:
     - Using GETs only for the sweep, and the JPEG quality, are technical choices with their reasons stated.
   - **The converted `pdf-document` example** (diff 72–86) is consistent with the spec. The button picks the document form, `page:follow` follows the 303, and `page:body` gives octets for the PDF.
 - 2026-11-18 13:35  verify 1: passed build, test, check
+- 2026-11-18 13:42  shown (/visit-days, /mail)
+- 2026-11-18 14:18  verify 1 (after 13m29s waiting for the verify lock) passed build 18 s, test 232 s (107 suites; `page-test` 13.8 s, the showcase's page tests 4.6 s), check 187 s: the showcase's 52 checks in 4 workers, every one passed, the generated check among them (172 pages of 4 actors, each at 390 and 1280 px: 344 results with a picture each, 17 MB, about 75 s of the run, beside the others)
+- 2026-11-18 14:18  Tun's check step, before and after: before, the base tree's 56 checks (fast-checks' verify 10, the same tree less this loop) 172 s in 4 workers (163 to 177 s over that loop's rounds); after, 52 checks (51 files and the generated check) 187 s. Five checks became page tests and three kept only their browser's part; the generated check adds about 85 s of work, which runs beside the others, so the step is about as long as before while it now opens every page the sweep reaches, as four actors, at both widths. The showcase's 9 page tests (77 assertions) run in 0.37 s in a live image and 4.6 s as a suite of `bin/test`; a `page:with-server` on a scenario made before and a page of it costs 27 ms of processor time (`a-page-test-costs-milliseconds`)
+- 2026-11-18 14:18  tun clients test on b1af95ec, 2 at once under one hold of the lock (after 8m52s waiting): factory 96 s, nixploy-dashboard 107 s, ferdig 61 s, kurs 48 s, the client with 102 checks 812 s, ok; its second client failed in 8 s while loading: «Lock on package TUN.COMPANY violated when adding UI as a local nickname», a module of the repository loaded twice while the first client, run at the same time from the same clone, compiled the same module into the same fasl cache. Alone, under the lock, its `bin/test` passed 168 of 168 on this tree and on the base (e89b3f8b). Two clients of one repository run at once by `tun clients test` race over their shared modules' fasls (fast-checks' tool, not changed here; report). Run again with `--jobs 1`

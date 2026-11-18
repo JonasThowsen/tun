@@ -251,6 +251,16 @@ name, by name."
   (mapcar (lambda (file) (make-browser-check (pathname-name file) (check-scenario file) file))
           files))
 
+(defun files-without-image (directory names)
+  "The files of checks/ that TUN_CHECK_IMAGE=0 runs, all or those NAMES
+name: the generated check runs only from the image, so naming it alone is
+refused."
+  (let ((file-names (remove +generated-check-name+ names :test #'string=)))
+    (when (and names (null file-names))
+      (refuse "~a runs only from the client's image; TUN_CHECK_IMAGE=0 runs the files of checks/"
+              +generated-check-name+))
+    (check-files directory file-names)))
+
 (defun check-command (names &key dir)
   "tun check (spec/preview.md 4): run the client's browser checks, or the
 ones NAMES name, each against a server and a database of its own: in
@@ -264,9 +274,7 @@ with TUN_CHECK_IMAGE=0 against a fresh preview each, one after another."
          (data (merge-pathnames ".data/check/" directory)))
     (with-verify-lock ()
       (if (equal (uiop:getenv "TUN_CHECK_IMAGE") "0")
-          (run-checks client (check-files directory (remove +generated-check-name+ names
-                                                            :test #'string=))
-                      runner out name directory data)
+          (run-checks client (files-without-image directory names) runner out name directory data)
           (run-checks-from-image client (run-list directory names) runner out name directory data
                                  :jobs (check-jobs))))))
 
